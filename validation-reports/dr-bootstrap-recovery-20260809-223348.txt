@@ -1,0 +1,23 @@
+============================================================
+ LUKE AI STUDIO - DR BOOTSTRAP ORDER RECOVERY
+============================================================
+[1/8] ตรวจ Base / Recovery State
+Branch : feat/text-model-manager-v1
+Local  : 9e00ac5
+Remote : 9e00ac5
+Current git status:
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/frontend/src/App.css
+ M app/frontend/src/components/PersistentTextChat.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/dist/assets/event-Cgj4SAJP.js
+?? app/dist/assets/index-DbjSx4l5.js
+?? app/dist/assets/index-DpgZ9If4.css
+?? app/frontend/src/components/StorageDisasterRecoveryPanel.jsx
+?? app/runtime-state/storage/storage-disaster-recovery-state.json
+?? scripts/server/storage-disaster-recovery-dashboard.cjs
+?? scripts/validation/test-storage-disaster-recovery-dashboard.cjs

@@ -1,0 +1,28 @@
+============================================================
+ LUKE AI STUDIO - I2V STAGE / COMMIT RECOVERY
+============================================================
+
+[1/4] Resume Safety Check
+Branch : feat/text-model-manager-v1
+Local  : fc09bdd
+Remote : fc09bdd
+PASS: Source พร้อมสำหรับ Stage
+
+[2/4] Cleanup Runtime Files
+PASS: Runtime/generated files cleaned
+
+[3/4] Stage + Portable Dirty-File Gate
+Staged changes:
+ app/frontend/src/App.css                           | 128 +++++++++++---
+ app/frontend/src/components/ImageToVideo.jsx       |  93 ++++++++++-
+ .../components/ImageToVideoRuntimeHealthCard.jsx   | 183 +++++++++++++++++++++
+ app/frontend/src/services/api.js                   |  40 ++++-
+ .../test-image-to-video-runtime-ui-integration.cjs | 127 ++++++++++++++
+ scripts/validation/validate-release.sh             |   8 +
+ 6 files changed, 550 insertions(+), 29 deletions(-)
+PASS: Portable zsh dirty-file gate ผ่าน
+PASS: Ready to commit
+
+[4/4] Commit / Push / Final Verify
+PASS: Commit created
+PASS: Push completed

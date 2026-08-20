@@ -1,0 +1,1759 @@
+============================================================
+ LUKE AI STUDIO - FIX RUNTIME API JSON RESPONSE HELPER
+============================================================
+
+[1/9] ตรวจ Branch และไฟล์ค้างจากขั้นก่อน
+Branch : feat/beta7-foundation
+Local  : bae2106
+Remote : bae2106
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/runtime-dependencies.json
+?? scripts/validation/test-runtime-dependencies.cjs
+PASS: Branch พร้อมและพบเฉพาะไฟล์ Runtime Feature ที่คาดไว้
+
+[2/9] สำรองไฟล์ Runtime Feature
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup scripts/validation/validate-release.sh
+PASS: Backup app/config/runtime-dependencies.json
+PASS: Backup scripts/validation/test-runtime-dependencies.cjs
+
+[3/9] ตรวจ JSON Response Helper ที่ Backend ใช้จริง
+322:function jsonErrorStatus(err) {
+2244:  const jsonFilename = `${base}.json`;
+2484:  const jsonFilename = `${base}.json`;
+2607:      const jsonPath = `${outBase}.json`;
+3371:          const jsonBody = JSON.parse(body || "{}");
+5828:function json(res, code, obj) {
+6052:      sendJson(res, 500, {
+6065:    return json(res, 200, await getHealth());
+6070:    return json(res, 200, {
+6097:    return json(res, 200, { candidates: getCleanupCandidates() });
+6106:      return json(res, 200, { ok: true, deleted });
+6109:      return json(res, 500, { ok: false, error: err.message });
+6115:    return json(res, 200, {
+6131:    return json(res, 200, {
+6148:    return json(res, 200, { ok: true, ...getLlmBackendProbe(parsed.searchParams.get("refresh") === "1") });
+6152:    return json(res, 200, getLlmRuntimeStats());
+6156:    return json(res, 200, { ok: true, ...getPersistedLlmModelSettings() });
+6163:    if (!filename) return json(res, 400, { ok: false, error: "model is required" });
+6167:    return json(res, 200, { ok: true, model: filename, settings: updated });
+6171:    return json(res, 200, { ok: true, conversations: listChatConversations() });
+6179:      return json(res, 200, { ok: true, conversation });
+6182:      return json(res, 500, { ok: false, error: err.message || String(err) });
+6191:      return json(res, 200, { ok: true, deleted });
+6194:      return json(res, 500, { ok: false, error: err.message || String(err) });
+6199:    return json(res, 200, { models: getLlmModels() });
+6216:      return json(res, 200, {
+6224:      return json(res, 502, { ok: false, error: err.message || "Hugging Face search failed." });
+6233:      return json(res, 200, { ok: true, ready: llmReady, port: PORT_LLM, settings: llmSettings });
+6239:      return json(res, jsonErrorStatus(err), { ok: false, error: llmError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+6245:    return json(res, 200, { ok: true });
+6253:      return json(res, 200, result);
+6255:      return json(res, 500, { ok: false, error: err.message || String(err) });
+6261:    return json(res, 200, {
+6280:    return json(res, 200, { ok: true, models: getSpeechModels() });
+6288:      return json(res, 200, { ok: true, ready: speechReady, settings: speechSettings, port: PORT_SPEECH });
+6291:      return json(res, jsonErrorStatus(err), { ok: false, error: speechError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+6297:    return json(res, 200, { ok: true });
+6312:      return json(res, 200, { ok: true, transcription: result });
+6315:      return json(res, err.message?.includes("too large") ? 413 : 500, { ok: false, error: speechError });
+6327:      return json(res, 400, { ok: false, error: "A speech model .bin URL or catalog model id is required." });
+6331:      return json(res, 200, { ok: true, message: "Speech model download started", filename, downloadId: job.id });
+6333:      return json(res, 409, { ok: false, error: err.message || String(err) });
+6341:      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
+6344:      return json(res, 500, { ok: false, error: err.message });
+6354:      return json(res, 400, { ok: false, error: "Invalid filename" });
+6359:      return json(res, 200, { ok: true });
+6361:      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "Speech model not found" : err.message });
+6366:    return json(res, 200, { ok: true, transcriptions: listTranscriptions() });
+6374:      return json(res, 400, { ok: false, error: "Invalid filename" });
+6376:    const jsonPath = path.join(TRANSCRIPTIONS, filename);
+6378:      return json(res, 400, { ok: false, error: "Invalid path" });
+6382:        return json(res, 404, { ok: false, error: "Transcription metadata not found" });
+6397:      return json(res, 200, { ok: true });
+6400:      return json(res, 500, { ok: false, error: err.message });
+6406:    return json(res, 200, {
+6425:    return json(res, 200, { ok: true, models: getTtsModels(), voices: TTS_VOICES });
+6433:      return json(res, 200, { ok: true, ready: ttsReady, settings: ttsSettings, port: PORT_TTS });
+6436:      return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+6442:    return json(res, 200, { ok: true });
+6453:      return json(res, 200, { ok: true, output });
+6456:      return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+6465:      return json(res, 200, { ok: true, message: "TTS model manifest installed", filename: model.filename, model });
+6467:      return json(res, 500, { ok: false, error: err.message || String(err) });
+6475:      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
+6478:      return json(res, 500, { ok: false, error: err.message });
+6488:      return json(res, 400, { ok: false, error: "Invalid filename" });
+6493:      return json(res, 200, { ok: true });
+6495:      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "TTS model not found" : err.message });
+6500:    return json(res, 200, { ok: true, outputs: listTtsOutputs() });
+6508:      return json(res, 400, { ok: false, error: "Invalid filename" });
+6510:    const jsonPath = path.join(TTS_OUTPUTS, filename);
+6512:      return json(res, 400, { ok: false, error: "Invalid path" });
+6516:        return json(res, 404, { ok: false, error: "TTS output metadata not found" });
+6527:      return json(res, 200, { ok: true });
+6530:      return json(res, 500, { ok: false, error: err.message });
+6729:        return json(res, 200, result);
+6743:    return json(res, 500, { ok: false, error: err.message || String(err) });
+6931:    return json(res, 200, {
+6950:      return json(res, 200, { ok: true, ...result });
+6952:      return json(res, 500, { ok: false, error: err.message || String(err) });
+6959:    if (!llmReady) return json(res, 409, { ok: false, error: "Load a text model before sending a message." });
+6970:    return json(res, 200, { ok: true, recommendations, source: recommendations ? "llmfit" : "fallback" });
+6985:    return json(res, 200, { ok: true, ...state });
+6996:    if (current.state === "installing") return json(res, 202, { ok: true, state: "installing", message: current.message || "Installation is already running." });
+7008:    return json(res, 202, { ok: true, state: "installing", message: "Image-to-Video components are being installed." });
+7035:    return json(res, 200, { ok: true, hardware: hw, models });
+7054:      if (!imageDataUrl.startsWith("data:image/")) return json(res, 400, { ok: false, error: "A valid source image is required." });
+7055:      if (!["svd", "svd-xt"].includes(modelId)) return json(res, 400, { ok: false, error: "This model is shown for compatibility planning, but its verified local worker adapter is not installed yet." });
+7057:      if (!match) return json(res, 400, { ok: false, error: "Unsupported image encoding." });
+7080:      if (!fs.existsSync(runtimePython)) return json(res, 409, { ok: false, code: "I2V_NOT_INSTALLED", error: "Image-to-Video is not installed yet. Use the Install button in Image-to-Video." });
+7083:      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
+7084:      return json(res, 200, { ok: true, output: path.relative(ROOT, outputPath), message: `Video saved to ${path.relative(ROOT, outputPath)}` });
+7085:    } catch (err) { return json(res, 500, { ok: false, error: err.message || String(err) }); }
+7090:    return json(res, 200, getHardwareSpecs());
+7095:    return json(res, 200, getBackendOptions());
+7100:    return json(res, 200, getTelemetry());
+7110:      return json(res, 200, { models: files });
+7111:    } catch (_) { return json(res, 200, { models: [] }); }
+7116:    return json(res, 200, {
+7152:        return json(res, 200, { ok: true, message: "Backend already running with requested settings.", settings: currentSettings, port: PORT_BACKEND });
+7156:        return json(res, 200, { ok: true, message: "Apple NPU backend already running; updated generation defaults.", settings: currentSettings, port: PORT_BACKEND });
+7170:        return json(res, 200, { ok: true, message: "OpenVINO NPU backend starting...", settings: currentSettings, port: PORT_BACKEND });
+7198:        return json(res, 200, { ok: true, message: "Apple NPU backend starting...", settings: { ...currentSettings, ...newSettings }, port: backendPort });
+7201:      return json(res, 200, { ok: true, message: "Backend restarting...", settings: currentSettings, port: PORT_BACKEND });
+7204:      return json(res, jsonErrorStatus(err), { ok: false, error: backendError, code: err.code || "", activeRuntime: err.activeRuntime || null, port: PORT_BACKEND });
+7212:    return json(res, 200, { ok: true });
+7219:    if (downloadState.active) return json(res, 409, { ok: false, error: "Another download is already active." });
+7223:      return json(res, 200, { ok: true, message: "Backend download started", backendId });
+7225:      return json(res, 400, { ok: false, error: err.message || String(err) });
+7234:    if (!url) return json(res, 400, { error: "URL is required" });
+7237:      return json(res, 200, { ok: true, message: "Download started", filename: job.filename, downloadId: job.id });
+7239:      return json(res, 409, { ok: false, error: err.message || String(err) });
+7247:    if (!url) return json(res, 400, { ok: false, error: "URL is required" });
+7253:        return json(res, 400, { ok: false, error: "Text model URL must point to a .gguf file." });
+7259:      return json(res, 200, {
+7268:      return json(res, 400, { ok: false, error: err.message || String(err) });
+7276:    if (!modelId) return json(res, 400, { ok: false, error: "model_id is required" });
+7279:      return json(res, 200, { ok: true, message: "OpenVINO model download started" });
+7281:      return json(res, 500, { ok: false, error: err.message || String(err) });
+7308:      return json(res, 200, modelSummary);
+PASS: Backend ใช้ Helper ชื่อ json
+
+[4/9] แก้ Runtime Route จาก sendJson เป็น json
+PASS: Runtime Route ใช้ json Helper แล้ว
+
+[5/9] ตรวจ Syntax และ Runtime Route
+  // GET /api/runtime/dependencies
+  if (
+    req.url === "/api/runtime/dependencies" &&
+    req.method === "GET"
+  ) {
+    try {
+      return json(
+        res,
+        200,
+        buildRuntimeDependencyStatus()
+      );
+    } catch (error) {
+      return json(res, 500, {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      });
+    }
+
+    return;
+  }
+
+  if (req.url === "/api/health" && req.method === "GET") {
+    return json(res, 200, await getHealth());
+  }
+
+  // GET /api/diagnostics
+  if (req.url === "/api/diagnostics" && req.method === "GET") {
+    return json(res, 200, {
+      generatedAt: new Date().toISOString(),
+      health: await getHealth(),
+      cleanupCandidates: getCleanupCandidates(),
+      download: downloadState,
+      generation: generationState,
+      llm: {
+        ready: llmReady,
+        running: llmProc !== null,
+        error: llmError,
+        settings: llmSettings,
+        port: PORT_LLM,
+      },
+      speech: {
+        ready: speechReady,
+        error: speechError,
+        settings: speechSettings,
+        backend: getSpeechBackend(),
+        transcription: speechTranscriptionState,
+      },
+      hardware: getHardwareSpecs(),
+      telemetry: getTelemetry(),
+    });
+  }
+
+  // GET /api/cleanup-candidates
+  if (req.url === "/api/cleanup-candidates" && req.method === "GET") {
+    return json(res, 200, { candidates: getCleanupCandidates() });
+  }
+
+  // POST /api/cleanup
+  if (req.url === "/api/cleanup" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const deleted = cleanupSelected(Array.isArray(body.ids) ? body.ids : []);
+      return json(res, 200, { ok: true, deleted });
+    } catch (err) {
+      console.error("  [api] Cleanup failed:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  // GET /api/backend-status
+  if (req.url === "/api/backend-status" && req.method === "GET") {
+    return json(res, 200, {
+      ready: backendReady || openvinoReady,
+      running: backendProc !== null || openvinoProc !== null,
+      port: PORT_BACKEND,
+      preferredPort: PREFERRED_BACKEND_PORT,
+      error: backendError,
+      loading: backendLoadState,
+      unloading: backendUnloadState,
+      settings: currentSettings,
+      build: SERVER_BUILD,
+    });
+  }
+
+  if (req.url === "/api/llm/status" && req.method === "GET") {
+    const backend = getLlmBackend();
+    const probe = getLlmBackendProbe();
+    return json(res, 200, {
+      ready: llmReady,
+      running: llmProc !== null,
+      port: PORT_LLM,
+      preferredPort: PREFERRED_LLM_PORT,
+      error: llmError,
+      settings: llmSettings,
+      backendInstalled: Boolean(backend),
+      backendMode: backend?.mode || "",
+      backendPath: backend?.path || "",
+      selectedBackend: probe.selected,
+      availableBackends: probe.available,
+    });
+  }
+
+  if (req.url.startsWith("/api/llm/backends") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    return json(res, 200, { ok: true, ...getLlmBackendProbe(parsed.searchParams.get("refresh") === "1") });
+  }
+
+  if (req.url === "/api/llm/stats" && req.method === "GET") {
+    return json(res, 200, getLlmRuntimeStats());
+  }
+
+  if (req.url === "/api/llm/model-settings" && req.method === "GET") {
+    return json(res, 200, { ok: true, ...getPersistedLlmModelSettings() });
+  }
+
+  if (req.url === "/api/llm/model-settings" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.model || ""));
+    if (!filename) return json(res, 400, { ok: false, error: "model is required" });
+    const updated = updateLlmModelSettings(filename, {
+      preferredBackend: body.preferredBackend ? String(body.preferredBackend).toLowerCase() : undefined,
+    });
+    return json(res, 200, { ok: true, model: filename, settings: updated });
+  }
+
+  if (req.url === "/api/llm/conversations" && req.method === "GET") {
+    return json(res, 200, { ok: true, conversations: listChatConversations() });
+  }
+
+  if (req.url === "/api/llm/save-conversation" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const conversation = saveChatConversation(body.conversation || body);
+      return json(res, 200, { ok: true, conversation });
+    } catch (err) {
+      console.error("  [api] Failed to save chat conversation:", err);
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/delete-conversation" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const deleted = deleteChatConversation(body.id);
+      return json(res, 200, { ok: true, deleted });
+    } catch (err) {
+      console.error("  [api] Failed to delete chat conversation:", err);
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/models" && req.method === "GET") {
+    return json(res, 200, { models: getLlmModels() });
+  }
+
+  if (req.url.startsWith("/api/huggingface/models") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const query = String(parsed.searchParams.get("query") || "").slice(0, 120);
+    const filters = String(parsed.searchParams.get("filters") || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => ["vision", "uncensored"].includes(value));
+    const page = Math.max(1, Math.min(20, Number(parsed.searchParams.get("page")) || 1));
+    const pageSize = 9;
+    try {
+      const rankedModels = await searchHuggingFaceModels(query, [...new Set(filters)]);
+      const start = (page - 1) * pageSize;
+      const pageModels = rankedModels.slice(start, start + pageSize);
+      const models = await Promise.all(pageModels.map(addHuggingFaceFileSize));
+      return json(res, 200, {
+        ok: true,
+        source: "huggingface",
+        models,
+        page,
+        hasMore: start + models.length < rankedModels.length,
+      });
+    } catch (err) {
+      return json(res, 502, { ok: false, error: err.message || "Hugging Face search failed." });
+    }
+  }
+
+  if (req.url === "/api/llm/start" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      await runExclusiveLlmOperation(() => startLlm(body));
+      return json(res, 200, { ok: true, ready: llmReady, port: PORT_LLM, settings: llmSettings });
+    } catch (err) {
+      llmError = err.message || String(err);
+      if (err.code !== "MODEL_ALREADY_ACTIVE") {
+        await runExclusiveLlmOperation(() => killLlm());
+      }
+      return json(res, jsonErrorStatus(err), { ok: false, error: llmError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+    }
+  }
+
+  if (req.url === "/api/llm/stop" && req.method === "POST") {
+    await runExclusiveLlmOperation(() => killLlm());
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.url === "/api/llm/benchmark" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const result = await runExclusiveLlmOperation(() => benchmarkLlmModel(body));
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/speech/status" && req.method === "GET") {
+    const backend = getSpeechBackend();
+    return json(res, 200, {
+      ok: true,
+      ready: speechReady,
+      running: speechReady,
+      port: PORT_SPEECH,
+      preferredPort: PREFERRED_SPEECH_PORT,
+      backendInstalled: Boolean(backend.cli),
+      backendPath: backend.cli || "",
+      serverPath: backend.server || "",
+      backendMode: backend.mode,
+      backendPreference: backend.preference,
+      backends: backend.candidates,
+      error: speechError,
+      settings: speechSettings,
+      transcription: speechTranscriptionState,
+    });
+  }
+
+  if (req.url === "/api/speech/models" && req.method === "GET") {
+    return json(res, 200, { ok: true, models: getSpeechModels() });
+  }
+
+  if (req.url === "/api/speech/start" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      await runExclusiveSpeechOperation(() => startSpeech(body));
+      return json(res, 200, { ok: true, ready: speechReady, settings: speechSettings, port: PORT_SPEECH });
+    } catch (err) {
+      speechError = err.message || String(err);
+      return json(res, jsonErrorStatus(err), { ok: false, error: speechError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+    }
+  }
+
+  if (req.url === "/api/speech/stop" && req.method === "POST") {
+    await stopSpeech();
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.url.startsWith("/api/speech/transcribe") && req.method === "POST") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    try {
+      const audio = await readBinaryBody(req);
+      const result = await runExclusiveSpeechOperation(() => transcribeWavBuffer(audio, {
+        model: parsed.searchParams.get("model") || speechSettings.model,
+        language: parsed.searchParams.get("language") || "auto",
+        filename: parsed.searchParams.get("filename") || req.headers["x-filename"] || "recording.wav",
+        threads: parsed.searchParams.get("threads") || speechSettings.threads,
+        backendPreference: parsed.searchParams.get("backendPreference") || speechSettings.backendPreference,
+        translate: parsed.searchParams.get("translate") === "true",
+      }));
+      return json(res, 200, { ok: true, transcription: result });
+    } catch (err) {
+      speechError = err.message || String(err);
+      return json(res, err.message?.includes("too large") ? 413 : 500, { ok: false, error: speechError });
+    }
+  }
+
+  if (req.url === "/api/speech/download-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const modelId = String(body.modelId || body.model_id || body.model || "");
+    const catalogModel = SPEECH_MODEL_CATALOG.find((model) => model.id === modelId || model.filename === modelId);
+    const url = body.url ? String(body.url) : (catalogModel ? `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${catalogModel.filename}` : "");
+    const filename = path.basename(String(body.filename || catalogModel?.filename || ""));
+    if (!url || !filename || !filename.toLowerCase().endsWith(".bin")) {
+      return json(res, 400, { ok: false, error: "A speech model .bin URL or catalog model id is required." });
+    }
+    try {
+      const job = startModelDownload(url, filename, SPEECH_MODELS, "speech");
+      return json(res, 200, { ok: true, message: "Speech model download started", filename, downloadId: job.id });
+    } catch (err) {
+      return json(res, 409, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url.startsWith("/api/speech/import-model") && req.method === "POST") {
+    try {
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await streamModelUpload(req, parsed.searchParams.get("filename"), SPEECH_MODELS, "speech");
+      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
+    } catch (err) {
+      console.error("  [api] Failed to import speech model:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (req.url === "/api/speech/delete-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.filename || ""));
+    const modelPath = path.join(SPEECH_MODELS, filename);
+    if (!filename || !pathInside(modelPath, SPEECH_MODELS)) {
+      return json(res, 400, { ok: false, error: "Invalid filename" });
+    }
+    if (speechSettings.model === filename) await stopSpeech();
+    try {
+      fs.unlinkSync(modelPath);
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "Speech model not found" : err.message });
+    }
+  }
+
+  if (req.url === "/api/speech/transcriptions" && req.method === "GET") {
+    return json(res, 200, { ok: true, transcriptions: listTranscriptions() });
+  }
+
+  if (req.url === "/api/speech/delete-transcription" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.filename || ""));
+    if (!filename || !filename.endsWith(".json")) {
+      return json(res, 400, { ok: false, error: "Invalid filename" });
+    }
+    const jsonPath = path.join(TRANSCRIPTIONS, filename);
+    if (!pathInside(jsonPath, TRANSCRIPTIONS)) {
+      return json(res, 400, { ok: false, error: "Invalid path" });
+    }
+    try {
+      if (!fs.existsSync(jsonPath)) {
+        return json(res, 404, { ok: false, error: "Transcription metadata not found" });
+      }
+      
+      const metadata = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+      const textFile = metadata.textFile ? path.basename(String(metadata.textFile)) : "";
+      
+      fs.unlinkSync(jsonPath);
+      
+      if (textFile) {
+        const textPath = path.join(TRANSCRIPTIONS, textFile);
+        if (pathInside(textPath, TRANSCRIPTIONS) && fs.existsSync(textPath)) {
+          fs.unlinkSync(textPath);
+        }
+      }
+      
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      console.error("  [api] Failed to delete transcription:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (req.url === "/api/tts/status" && req.method === "GET") {
+    const runtime = getTtsRuntimeStatus();
+    return json(res, 200, {
+      ok: true,
+      ready: ttsReady,
+      running: ttsReady,
+      port: PORT_TTS,
+      preferredPort: PREFERRED_TTS_PORT,
+      runtimeInstalled: runtime.installed,
+      runtimePath: runtime.runtime,
+      workerPath: runtime.worker,
+      cachePath: runtime.cache,
+      backendMode: runtime.backendMode,
+      error: ttsError,
+      settings: ttsSettings,
+      generation: ttsGenerationState,
+      voices: TTS_VOICES,
+    });
+  }
+
+  if (req.url === "/api/tts/models" && req.method === "GET") {
+    return json(res, 200, { ok: true, models: getTtsModels(), voices: TTS_VOICES });
+  }
+
+  if (req.url === "/api/tts/start" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      await runExclusiveTtsOperation(() => startTts(body));
+      return json(res, 200, { ok: true, ready: ttsReady, settings: ttsSettings, port: PORT_TTS });
+    } catch (err) {
+      ttsError = err.message || String(err);
+      return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+    }
+  }
+
+  if (req.url === "/api/tts/stop" && req.method === "POST") {
+    await stopTts();
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.url === "/api/tts/speak" && req.method === "POST") {
+    const body = await readJsonBody(req, res, 512 * 1024);
+    if (!body) return;
+    try {
+      if (!ttsReady || (body.model && ttsSettings.model !== body.model)) {
+        await runExclusiveTtsOperation(() => startTts(body));
+      }
+      const output = await runExclusiveTtsOperation(() => synthesizeTts(body.text, body));
+      return json(res, 200, { ok: true, output });
+    } catch (err) {
+      ttsError = err.message || String(err);
+      return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+    }
+  }
+
+  if (req.url === "/api/tts/download-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const model = installTtsCatalogModel(body.modelId || body.model_id || body.model || body.filename);
+      return json(res, 200, { ok: true, message: "TTS model manifest installed", filename: model.filename, model });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url.startsWith("/api/tts/import-model") && req.method === "POST") {
+    try {
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await streamModelUpload(req, parsed.searchParams.get("filename"), TTS_MODELS, "tts");
+      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
+    } catch (err) {
+      console.error("  [api] Failed to import TTS model:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (req.url === "/api/tts/delete-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.filename || ""));
+    const modelPath = path.join(TTS_MODELS, filename);
+    if (!filename || !filename.endsWith(".json") || !pathInside(modelPath, TTS_MODELS)) {
+      return json(res, 400, { ok: false, error: "Invalid filename" });
+    }
+    if (ttsSettings.model === filename) await stopTts();
+    try {
+      fs.unlinkSync(modelPath);
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "TTS model not found" : err.message });
+    }
+  }
+
+  if (req.url === "/api/tts/outputs" && req.method === "GET") {
+    return json(res, 200, { ok: true, outputs: listTtsOutputs() });
+  }
+
+  if (req.url === "/api/tts/delete-output" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.filename || ""));
+    if (!filename || !filename.endsWith(".json")) {
+      return json(res, 400, { ok: false, error: "Invalid filename" });
+    }
+    const jsonPath = path.join(TTS_OUTPUTS, filename);
+    if (!pathInside(jsonPath, TTS_OUTPUTS)) {
+      return json(res, 400, { ok: false, error: "Invalid path" });
+    }
+    try {
+      if (!fs.existsSync(jsonPath)) {
+        return json(res, 404, { ok: false, error: "TTS output metadata not found" });
+      }
+      const metadata = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+      const audioFile = metadata.audioFile ? path.basename(String(metadata.audioFile)) : "";
+      fs.unlinkSync(jsonPath);
+      if (audioFile) {
+        const audioPath = path.join(TTS_OUTPUTS, audioFile);
+        if (pathInside(audioPath, TTS_OUTPUTS) && fs.existsSync(audioPath)) {
+          fs.unlinkSync(audioPath);
+        }
+      }
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      console.error("  [api] Failed to delete TTS output:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+function isOomError(msg) {
+  if (!msg) return false;
+  const lower = String(msg).toLowerCase();
+  return lower.includes("out of memory") ||
+         lower.includes("failed to allocate") ||
+         lower.includes("failed to initialize the context") ||
+         lower.includes("oom") ||
+         lower.includes("not enough memory") ||
+         lower.includes("allocation failed") ||
+         lower.includes("failed to create context");
+}
+
+async function retryLowerContext() {
+  const currentCtx = llmSettings.contextSize || 4096;
+  const contextLadder = [20000, 16384, 12288, 8192, 4096, 2048, 1024, 512];
+  const nextLimit = contextLadder.find(limit => limit < currentCtx);
+  if (!nextLimit) {
+    throw new Error("Cannot lower context size any further.");
+  }
+  console.log(`  [llm] Retrying with lower context limit: ${nextLimit} (was ${currentCtx})`);
+  
+  const originalModel = llmSettings.model;
+  const newSettings = {
+    model: originalModel,
+    threads: llmSettings.threads,
+    contextSize: nextLimit,
+    gpuLayers: llmSettings.gpuLayers,
+    enableThinking: llmSettings.enableThinking,
+  };
+  
+  await runExclusiveLlmOperation(() => startLlm(newSettings));
+}
+
+function getMessageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((item) => {
+      if (typeof item === "string") return item;
+      if (typeof item?.text === "string") return item.text;
+      if (typeof item?.content === "string") return item.content;
+      return "";
+    }).join("\n");
+  }
+  if (content && typeof content === "object") {
+    if (typeof content.text === "string") return content.text;
+    if (typeof content.content === "string") return content.content;
+  }
+  return "";
+}
+
+function getLastUserQuery(messages) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === "user") {
+      return getMessageText(messages[i].content).trim();
+    }
+  }
+  return "";
+}
+
+async function augmentMessagesWithWebSearch(messages, body) {
+  if (body.useWeb !== true && body.use_web !== true) {
+    return { messages, webSources: [], webContext: "" };
+  }
+  const query = String(body.webQuery || body.query || getLastUserQuery(messages) || "").trim();
+  if (!query) return { messages, webSources: [], webContext: "" };
+
+  const result = await comprehensiveWebSearch(query, {
+    timeFilter: body.timeFilter || body.time_filter || "any",
+    resultLimit: body.webResultLimit || 5,
+    fetchLimit: body.webFetchLimit || 3,
+    cacheDir: WEB_SEARCH_CACHE,
+  });
+  if (!result.context || !result.sources.length) {
+    return { messages, webSources: [], webContext: "" };
+  }
+  let insertAt = 0;
+  while (insertAt < messages.length && messages[insertAt]?.role === "system") {
+    insertAt += 1;
+  }
+  const augmentedMessages = [
+    ...messages.slice(0, insertAt),
+    { role: "user", content: result.context },
+    ...messages.slice(insertAt),
+  ];
+  return {
+    messages: augmentedMessages,
+    webSources: result.sources,
+    webContext: result.context,
+  };
+}
+
+async function doLlmChat(req, res, body, retryCount = 0) {
+  try {
+    const isStream = body.stream === true;
+    const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+    const webAugmentation = await augmentMessagesWithWebSearch(rawMessages, body);
+    const requestData = JSON.stringify({
+      model: llmSettings.model || "local-model",
+      messages: webAugmentation.messages,
+      temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.7,
+      max_tokens: Math.max(1, Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)),
+      stream: isStream,
+      // New sampling parameters
+      top_p: Number.isFinite(Number(body.top_p)) ? Number(body.top_p) : 0.95,
+      top_k: Number.isFinite(Number(body.top_k)) ? Number(body.top_k) : 40,
+      min_p: Number.isFinite(Number(body.min_p)) ? Number(body.min_p) : 0.05,
+      repeat_penalty: Number.isFinite(Number(body.repeat_penalty)) ? Number(body.repeat_penalty) : 1.1,
+      frequency_penalty: Number.isFinite(Number(body.frequency_penalty)) ? Number(body.frequency_penalty) : 0.0,
+      presence_penalty: Number.isFinite(Number(body.presence_penalty)) ? Number(body.presence_penalty) : 0.0,
+      seed: Number.isInteger(Number(body.seed)) ? Number(body.seed) : undefined,
+      stop: Array.isArray(body.stop) ? body.stop : (body.stop ? [body.stop] : undefined),
+    });
+
+    if (isStream) {
+      const clientReq = http.request({
+        hostname: "127.0.0.1",
+        port: PORT_LLM,
+        path: "/v1/chat/completions",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(requestData),
+        },
+        agent: llmHttpAgent,  // ✅ HTTP keep-alive: eliminates TCP handshake per turn
+      }, (clientRes) => {
+        if (clientRes.statusCode < 200 || clientRes.statusCode >= 300) {
+          let errorBody = "";
+          clientRes.setEncoding("utf8");
+          clientRes.on("data", (chunk) => { errorBody += chunk; });
+          clientRes.on("end", async () => {
+            let message = `Text backend returned HTTP ${clientRes.statusCode}`;
+            try {
+              message = JSON.parse(errorBody || "{}").error?.message || message;
+            } catch (_) {}
+            
+            if (isOomError(message) && retryCount === 0) {
+              try {
+                await retryLowerContext();
+                return doLlmChat(req, res, body, retryCount + 1);
+              } catch (retryErr) {
+                console.error("Failed OOM recovery retry:", retryErr);
+              }
+            }
+            json(res, clientRes.statusCode || 500, { ok: false, error: message });
+          });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+          "X-Content-Type-Options": "nosniff",
+        });
+        const socket = res.socket || res.connection;
+        socket?.setNoDelay?.(true);
+        res.flushHeaders?.();
+        if (webAugmentation.webSources.length) {
+          res.write(`event: web_sources\ndata: ${JSON.stringify({ sources: webAugmentation.webSources })}\n\n`);
+        }
+        clientRes.on("data", (chunk) => res.write(chunk));
+        clientRes.on("end", () => res.end());
+        clientRes.on("error", (err) => res.destroy(err));
+      });
+
+      clientReq.on("error", async (err) => {
+        console.error("LLM stream request error:", err);
+        if (isOomError(err.message) && retryCount === 0) {
+          try {
+            await retryLowerContext();
+            return doLlmChat(req, res, body, retryCount + 1);
+          } catch (retryErr) {
+            console.error("Failed OOM recovery retry:", retryErr);
+          }
+        }
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        } else {
+          res.end();
+        }
+      });
+
+      clientReq.write(requestData);
+      clientReq.end();
+      res.on("close", () => {
+        if (!res.writableEnded && !clientReq.destroyed) clientReq.destroy();
+      });
+      return;
+    } else {
+      try {
+        const result = await requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, JSON.parse(requestData), 300000);
+        if (webAugmentation.webSources.length) {
+          result.web_sources = webAugmentation.webSources;
+        }
+        return json(res, 200, result);
+      } catch (err) {
+        if (isOomError(err.message) && retryCount === 0) {
+          try {
+            await retryLowerContext();
+            return doLlmChat(req, res, body, retryCount + 1);
+          } catch (retryErr) {
+            console.error("Failed OOM recovery retry:", retryErr);
+          }
+        }
+        throw err;
+      }
+    }
+  } catch (err) {
+    return json(res, 500, { ok: false, error: err.message || String(err) });
+  }
+}
+
+function getLlmRuntimeStats() {
+  const benchmarks = getPersistedLlmBenchmarks();
+  return {
+    ok: true,
+    ready: llmReady,
+    running: llmProc !== null,
+    selectedBackend: getLlmBackendProbe().selected,
+    settings: llmSettings,
+    modelSettings: getPersistedLlmModelSettings(),
+    benchmarks: (benchmarks.results || []).slice(0, 20),
+  };
+}
+
+async function benchmarkLlmBackend(model, backend, baseSettings = {}) {
+  const prompt = String(baseSettings.prompt || "Reply with one short sentence about local AI performance.");
+  const startedAt = Date.now();
+  await startLlmWithBackend({
+    ...baseSettings,
+    model,
+    contextSize: Math.min(2048, Number(baseSettings.contextSize) || 2048),
+    gpuLayers: Number.isFinite(Number(baseSettings.gpuLayers)) ? Number(baseSettings.gpuLayers) : -1,
+    enableThinking: false,
+  }, backend);
+
+  const result = await requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, {
+    model: llmSettings.model || "local-model",
+    messages: [
+      { role: "system", content: "You are a concise local benchmark assistant." },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.2,
+    max_tokens: 64,
+    stream: false,
+  }, 180000);
+  const finishedAt = Date.now();
+  const timings = result.timings || {};
+  return {
+    backendKey: backend.key,
+    backendMode: llmSettings.backendMode || backend.mode,
+    backendBinary: llmSettings.backendBinary || path.basename(backend.path),
+    model,
+    ok: true,
+    total_ms: finishedAt - startedAt,
+    prompt_ms: Number(timings.prompt_ms) || null,
+    predicted_ms: Number(timings.predicted_ms) || null,
+    predicted_n: Number(timings.predicted_n) || null,
+    predicted_per_second: Number(timings.predicted_per_second) || null,
+    prompt_per_second: Number(timings.prompt_per_second) || null,
+  };
+}
+
+async function benchmarkLlmModel(settings = {}) {
+  const filename = path.basename(String(settings.model || llmSettings.model || ""));
+  const modelPath = path.join(LLM_MODELS, filename);
+  if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
+    throw new Error("Select a downloaded GGUF text model before benchmarking.");
+  }
+
+  const previous = {
+    ready: llmReady,
+    model: llmSettings.model,
+    settings: { ...llmSettings },
+  };
+  const requestedBackends = Array.isArray(settings.backends)
+    ? settings.backends.map((item) => String(item).toLowerCase())
+    : [];
+  const candidates = getLlmBackendCandidates()
+    .filter((backend) => backend.key !== "cpu" || settings.includeCpu !== false)
+    .filter((backend) => requestedBackends.length === 0 || requestedBackends.includes(backend.key));
+
+  if (candidates.length === 0) {
+    throw new Error("No available text backends were detected for benchmarking.");
+  }
+
+  const results = [];
+  for (const backend of candidates) {
+    try {
+      const result = await benchmarkLlmBackend(filename, backend, settings);
+      results.push(recordLlmBenchmark(result));
+    } catch (err) {
+      results.push(recordLlmBenchmark({
+        backendKey: backend.key,
+        backendMode: backend.mode,
+        backendBinary: path.basename(backend.path),
+        model: filename,
+        ok: false,
+        error: (err.message || String(err)).slice(-800),
+      }));
+      await killLlm();
+    }
+  }
+
+  const successful = results
+    .filter((item) => item.ok && Number(item.predicted_per_second) > 0)
+    .sort((a, b) => Number(b.predicted_per_second) - Number(a.predicted_per_second));
+  const winner = successful[0] || null;
+  if (winner) {
+    updateLlmModelSettings(filename, {
+      preferredBackend: winner.backendKey,
+      benchmarkWinner: {
+        backendMode: winner.backendMode,
+        predicted_per_second: winner.predicted_per_second,
+        createdAt: winner.createdAt,
+      },
+    });
+  }
+
+  if (previous.ready && previous.model && previous.model === filename && winner) {
+    try {
+      await startLlm({ ...previous.settings, model: filename, preferredBackend: winner.backendKey });
+    } catch (err) {
+      console.warn("  [llm] Failed to restore text model after benchmark:", err.message || err);
+    }
+  }
+
+  return { ok: true, model: filename, winner, results };
+}
+
+// ── llmfit Integration ──────────────────────────────────────────────────────────
+let cachedLlmfitResults = new Map();
+
+function getHardwareHash() {
+  const cpus = os.cpus();
+  const gpu = getGpuInfo();
+  const ram = os.totalmem();
+  return `${cpus.length}-${cpus[0]?.model || 'unknown'}-${gpu.name}-${ram}`;
+}
+
+async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
+  const hardwareHash = getHardwareHash();
+  const cacheKey = `${hardwareHash}:${useCase}:${limit}`;
+  
+  const cached = cachedLlmfitResults.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < 3600000) { // 1 hour cache
+    return cached.data;
+  }
+  
+  // Try to find llmfit binary
+  const llmfitPaths = [
+    path.join(ROOT, "app", "tools", "llmfit", osPlatform === "win32" ? "llmfit.exe" : "llmfit"),
+    "llmfit", // PATH
+  ];
+  
+  let llmfitPath = null;
+  for (const p of llmfitPaths) {
+    try {
+      if (fs.existsSync(p)) {
+        llmfitPath = p;
+        break;
+      }
+      if (osPlatform !== "win32") {
+        const whichResult = spawnSync("which", [p], { stdio: "ignore" });
+        if (whichResult.status === 0) {
+          llmfitPath = p;
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+  
+  if (!llmfitPath) return null; // Fallback to tier table
+  
+  try {
+    const result = spawnSync(llmfitPath, [
+      "recommend", "--json", "--limit", String(limit),
+      "--use-case", useCase, "--force-runtime", "llamacpp"
+    ], {
+      encoding: "utf8",
+      timeout: 8000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+    
+    if (result.status !== 0) return null;
+    
+    const data = JSON.parse(result.stdout);
+    cachedLlmfitResults.set(cacheKey, { timestamp: Date.now(), data });
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+  if (req.url === "/api/web-search/config" && req.method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      provider: "duckduckgo",
+      providers: [{ key: "duckduckgo", name: "DuckDuckGo", requiresApiKey: false, active: true }],
+      cachePath: WEB_SEARCH_CACHE,
+      defaults: { resultLimit: 5, fetchLimit: 3, timeFilter: "any" },
+    });
+  }
+
+  if (req.url === "/api/web-search" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const result = await comprehensiveWebSearch(body.query || body.q || "", {
+        timeFilter: body.timeFilter || body.time_filter || "any",
+        resultLimit: body.resultLimit || 5,
+        fetchLimit: body.fetchLimit || 3,
+        cacheDir: WEB_SEARCH_CACHE,
+      });
+      return json(res, 200, { ok: true, ...result });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/chat" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    if (!llmReady) return json(res, 409, { ok: false, error: "Load a text model before sending a message." });
+    await doLlmChat(req, res, body);
+    return;
+  }
+
+  // GET /api/llm/recommend — llmfit recommendations
+  if (req.url.startsWith("/api/llm/recommend") && req.method === "GET") {
+    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const useCase = url.searchParams.get("useCase") || "chat";
+    const limit = Math.min(20, Math.max(1, Number(url.searchParams.get("limit")) || 10));
+    const recommendations = await getLlmfitRecommendations(useCase, limit);
+    return json(res, 200, { ok: true, recommendations, source: recommendations ? "llmfit" : "fallback" });
+  }
+
+
+
+  // GET /api/capabilities/image-to-video/status
+  if (req.url === "/api/capabilities/image-to-video/status" && req.method === "GET") {
+    const runtimeDir = path.join(ROOT, "app", "runtimes", "image-to-video");
+    const installedPath = path.join(runtimeDir, "installed.json");
+    const statusPath = path.join(runtimeDir, "install-status.json");
+    let state = { state: fs.existsSync(installedPath) ? "ready" : "not-installed", installed: fs.existsSync(installedPath) };
+    try { if (fs.existsSync(statusPath)) state = { ...state, ...JSON.parse(fs.readFileSync(statusPath, "utf8")) }; } catch (_) {}
+    if (fs.existsSync(installedPath)) {
+      try { state.manifest = JSON.parse(fs.readFileSync(installedPath, "utf8")); state.installed = true; if (state.state !== "installing") state.state = "ready"; } catch (_) {}
+    }
+    return json(res, 200, { ok: true, ...state });
+  }
+
+  // POST /api/capabilities/image-to-video/install
+  if (req.url === "/api/capabilities/image-to-video/install" && req.method === "POST") {
+    const body = await readJsonBody(req, res) || {};
+    const runtimeDir = path.join(ROOT, "app", "runtimes", "image-to-video");
+    const statusPath = path.join(runtimeDir, "install-status.json");
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    let current = {};
+    try { if (fs.existsSync(statusPath)) current = JSON.parse(fs.readFileSync(statusPath, "utf8")); } catch (_) {}
+    if (current.state === "installing") return json(res, 202, { ok: true, state: "installing", message: current.message || "Installation is already running." });
+    const installer = path.join(ROOT, "scripts", "workers", "install_image_to_video_runtime.py");
+    const systemPython = process.platform === "win32" ? "python" : "python3";
+    const args = [installer, "--root", ROOT, "--status", statusPath];
+    if (body.repair === true) args.push("--repair");
+    fs.writeFileSync(statusPath, JSON.stringify({ state: "installing", step: "Starting", message: "Starting Image-to-Video installation…" }, null, 2));
+    const child = spawn(systemPython, args, { cwd: ROOT, detached: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const logPath = path.join(runtimeDir, "install.log");
+    const log = fs.createWriteStream(logPath, { flags: "a" });
+    child.stdout.pipe(log); child.stderr.pipe(log);
+    child.on("error", (err) => { try { fs.writeFileSync(statusPath, JSON.stringify({ state:"error", message:`Could not start installer: ${err.message}` }, null, 2)); } catch (_) {} });
+    child.on("exit", () => log.end());
+    return json(res, 202, { ok: true, state: "installing", message: "Image-to-Video components are being installed." });
+  }
+
+  // GET /api/image-to-video/compatibility
+  if (req.url === "/api/image-to-video/compatibility" && req.method === "GET") {
+    const hw = getHardwareSpecs();
+    const apple = process.platform === "darwin" && process.arch === "arm64";
+    const ram = Number(hw.ram_total_gb || 0);
+    const vram = Number(hw.gpu_vram_gb || hw.vram_total_gb || 0);
+    const gpuName = String(hw.gpu_name || "").toLowerCase();
+    const cuda = /nvidia|geforce|quadro|tesla|rtx|gtx/.test(gpuName);
+    const models = [
+      { id: "svd", name: "Stable Video Diffusion", minRamGb: 16, recommendedRamGb: 32, minVramGb: 8, recommendedVramGb: 12, backends: ["CUDA", "Metal (experimental)"] },
+      { id: "svd-xt", name: "Stable Video Diffusion XT", minRamGb: 24, recommendedRamGb: 48, minVramGb: 12, recommendedVramGb: 16, backends: ["CUDA", "Metal (experimental)"] },
+      { id: "wan-i2v-small", name: "Wan Image-to-Video (small profile)", minRamGb: 32, recommendedRamGb: 64, minVramGb: 16, recommendedVramGb: 24, backends: ["CUDA"] },
+      { id: "cogvideox-i2v", name: "CogVideoX Image-to-Video", minRamGb: 32, recommendedRamGb: 64, minVramGb: 16, recommendedVramGb: 24, backends: ["CUDA"] },
+    ].map((m) => {
+      let status = "blocked", label = "Not supported", reason = "No compatible GPU runtime was detected.";
+      const effective = apple ? ram : vram;
+      const minimum = apple ? m.minRamGb : m.minVramGb;
+      const recommended = apple ? m.recommendedRamGb : m.recommendedVramGb;
+      const backendOkay = (apple && m.backends.some(x => x.startsWith("Metal"))) || (cuda && m.backends.includes("CUDA"));
+      if (backendOkay && effective >= recommended) { status = "recommended"; label = "Recommended"; reason = `Detected ${effective} GB ${apple ? "unified memory" : "VRAM"}; meets the recommended profile.`; }
+      else if (backendOkay && effective >= minimum) { status = "limited"; label = "Supported with limits"; reason = `Meets minimum memory (${minimum} GB), but lower resolution, fewer frames, CPU offload and longer render times may be required.`; }
+      else if (backendOkay) { reason = `Compatible GPU detected, but only ${effective} GB memory is available; at least ${minimum} GB is required.`; }
+      return { ...m, compatibility: { status, label, reason }, workerReady: ["svd", "svd-xt"].includes(m.id) };
+    });
+    return json(res, 200, { ok: true, hardware: hw, models });
+  }
+
+  // POST /api/image-to-video/generate
+  if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      let modelId = String(body.modelId || "");
+      const imageDataUrl = String(body.imageDataUrl || "");
+      const references = Array.isArray(body.references) ? body.references.slice(0, 8) : [];
+      const automaticMatch = body.automaticMatch === true;
+      if (modelId === "auto") {
+        const hw = getHardwareSpecs();
+        const apple = process.platform === "darwin" && process.arch === "arm64";
+        const ram = Number(hw.ram_total_gb || 0);
+        const vram = Number(hw.gpu_vram_gb || hw.vram_total_gb || 0);
+        modelId = (apple ? ram >= 48 : vram >= 16) ? "svd-xt" : "svd";
+      }
+      if (!imageDataUrl.startsWith("data:image/")) return json(res, 400, { ok: false, error: "A valid source image is required." });
+      if (!["svd", "svd-xt"].includes(modelId)) return json(res, 400, { ok: false, error: "This model is shown for compatibility planning, but its verified local worker adapter is not installed yet." });
+      const match = imageDataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+      if (!match) return json(res, 400, { ok: false, error: "Unsupported image encoding." });
+      const jobId = `i2v-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const inputDir = path.join(ROOT, "app", "cache", "image-to-video");
+      const outputDir = path.join(ROOT, "app", "outputs", "video");
+      fs.mkdirSync(inputDir, { recursive: true }); fs.mkdirSync(outputDir, { recursive: true });
+      const inputPath = path.join(inputDir, `${jobId}.png`);
+      const outputPath = path.join(outputDir, `${jobId}.mp4`);
+      fs.writeFileSync(inputPath, Buffer.from(match[1], "base64"));
+      const referenceDir = path.join(inputDir, jobId + "-references");
+      fs.mkdirSync(referenceDir, { recursive: true });
+      const referenceManifest = [];
+      for (let i = 0; i < references.length; i++) {
+        const ref = references[i] || {};
+        const refMatch = String(ref.dataUrl || "").match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+        if (!refMatch) continue;
+        const refPath = path.join(referenceDir, `ref-${i}.png`);
+        fs.writeFileSync(refPath, Buffer.from(refMatch[1], "base64"));
+        referenceManifest.push({ path: refPath, type: automaticMatch ? "auto" : String(ref.type || "product"), weight: automaticMatch ? 1 : Math.max(0.2, Math.min(1, Number(ref.weight) || 0.85)) });
+      }
+      const manifestPath = path.join(referenceDir, "manifest.json");
+      fs.writeFileSync(manifestPath, JSON.stringify(referenceManifest, null, 2));
+      const worker = path.join(ROOT, "scripts", "workers", "image_to_video_worker.py");
+      const runtimePython = path.join(ROOT, "app", "runtimes", "image-to-video", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+      if (!fs.existsSync(runtimePython)) return json(res, 409, { ok: false, code: "I2V_NOT_INSTALLED", error: "Image-to-Video is not installed yet. Use the Install button in Image-to-Video." });
+      const result = spawnSync(runtimePython, [worker, "--model", modelId, "--image", inputPath, "--output", outputPath, "--prompt", String(body.prompt || ""), "--seconds", String(Math.max(2, Math.min(10, Number(body.seconds) || 5))), "--references", manifestPath, "--reference-lock", body.referenceLock === false ? "0" : "1", "--automatic-match", automaticMatch ? "1" : "0"], { encoding: "utf8", timeout: 60 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 });
+      let parsed = null; try { parsed = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).pop()); } catch (_) {}
+      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
+      return json(res, 200, { ok: true, output: path.relative(ROOT, outputPath), message: `Video saved to ${path.relative(ROOT, outputPath)}` });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message || String(err) }); }
+  }
+
+  // GET /api/hardware-specs
+  if (req.url === "/api/hardware-specs" && req.method === "GET") {
+    return json(res, 200, getHardwareSpecs());
+  }
+
+  // GET /api/backend-options
+  if (req.url === "/api/backend-options" && req.method === "GET") {
+    return json(res, 200, getBackendOptions());
+  }
+
+  // GET /api/telemetry
+  if (req.url === "/api/telemetry" && req.method === "GET") {
+    return json(res, 200, getTelemetry());
+  }
+
+  // GET /api/models — list available model files
+  if (req.url === "/api/models" && req.method === "GET") {
+    try {
+      let files = fs.readdirSync(MODELS).filter(isModelFile).map(getModelInfo);
+      if (downloadState.active && downloadState.filename) {
+        files = files.filter(model => model.filename !== downloadState.filename);
+      }
+      return json(res, 200, { models: files });
+    } catch (_) { return json(res, 200, { models: [] }); }
+  }
+
+  if (req.url === "/api/openvino-models" && req.method === "GET") {
+    const npuInfo = getOpenVinoNpuInfo();
+    return json(res, 200, {
+      supported: npuInfo.supported,
+      reason: npuInfo.reason || "",
+      npu: npuInfo.npu || null,
+      python: npuInfo.python || "",
+      models: npuInfo.supported ? getOpenVinoModelInfo() : [],
+    });
+  }
+
+  // POST /api/restart-backend — restart with new settings
+  if (req.url === "/api/restart-backend" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    console.log("  [api] Restart backend request:", body);
+    const newSettings = {};
+    if (body.model)    newSettings.model    = body.backend_type === "openvino-npu" ? String(body.model) : path.join(MODELS, body.model);
+    if (body.steps)    newSettings.steps    = parseInt(body.steps);
+    if (body.cfgScale) newSettings.cfgScale = parseFloat(body.cfgScale);
+    if (body.sampler)  newSettings.sampler  = body.sampler;
+    if (body.threads)  newSettings.threads  = parseInt(body.threads);
+    if (body.width)    newSettings.width    = parseInt(body.width);
+    if (body.height)   newSettings.height   = parseInt(body.height);
+    if (typeof body.use_gpu === "boolean") newSettings.useGpu = body.use_gpu;
+    if (body.backend_type) {
+      newSettings.backendType = String(body.backend_type);
+      newSettings.useGpu = body.backend_type !== "cpu";
+    }
+    if (typeof body.vae_tiling === "boolean") newSettings.vaeTiling = body.vae_tiling;
+    if (typeof body.vae_on_cpu === "boolean") newSettings.vaeOnCpu = body.vae_on_cpu;
+    if (typeof body.flash_attn === "boolean") newSettings.flashAttn = body.flash_attn;
+    try {
+      const targetModel = newSettings.model || currentSettings.model || getDefaultModel();
+      assertNoOtherActiveRuntime("image", targetModel);
+      const requestedSettings = { ...currentSettings, ...newSettings, model: targetModel };
+      const imageBackendReady = (backendReady && backendProc) || (openvinoReady && openvinoProc);
+      if (imageBackendReady && backendSettingsMatch(currentSettings, requestedSettings)) {
+        return json(res, 200, { ok: true, message: "Backend already running with requested settings.", settings: currentSettings, port: PORT_BACKEND });
+      }
+      if (backendReady && backendProc && appleNpuRuntimeMatches(currentSettings, requestedSettings)) {
+        currentSettings = requestedSettings;
+        return json(res, 200, { ok: true, message: "Apple NPU backend already running; updated generation defaults.", settings: currentSettings, port: PORT_BACKEND });
+      }
+      await killBackend();
+      await new Promise(r => setTimeout(r, 500));
+      if (newSettings.backendType === "openvino-npu") {
+        startBackend(newSettings).catch((err) => {
+          backendError = err.message || String(err);
+          backendLoadState = {
+            ...backendLoadState,
+            active: false,
+            phase: "OpenVINO NPU model load failed",
+          };
+          console.error("  [openvino-npu] Startup failed:", backendError);
+        });
+        return json(res, 200, { ok: true, message: "OpenVINO NPU backend starting...", settings: currentSettings, port: PORT_BACKEND });
+      }
+      if (newSettings.backendType === "apple-npu") {
+        const backendPort = await findAvailableBackendPort();
+        PORT_BACKEND = backendPort;
+        newSettings.backendPort = backendPort;
+        currentSettings = { ...currentSettings, ...newSettings };
+        backendLoadState = {
+          active: true,
+          phase: "Starting Apple NPU backend...",
+          progress: 1,
+          current: 0,
+          total: 0,
+          speed: "",
+          model: path.basename(newSettings.model || targetModel),
+          backendMode: "Apple NPU",
+          backendBinary: path.basename(getCoreMLPythonPath()),
+          device: "",
+        };
+        startBackend(newSettings).catch((err) => {
+          backendError = err.message || String(err);
+          backendLoadState = {
+            ...backendLoadState,
+            active: false,
+            phase: "Apple NPU model load failed",
+          };
+          console.error("  [coreml-npu] Startup failed:", backendError);
+        });
+        return json(res, 200, { ok: true, message: "Apple NPU backend starting...", settings: { ...currentSettings, ...newSettings }, port: backendPort });
+      }
+      await startBackend(newSettings);
+      return json(res, 200, { ok: true, message: "Backend restarting...", settings: currentSettings, port: PORT_BACKEND });
+    } catch (err) {
+      backendError = err.message || String(err);
+      return json(res, jsonErrorStatus(err), { ok: false, error: backendError, code: err.code || "", activeRuntime: err.activeRuntime || null, port: PORT_BACKEND });
+    }
+  }
+
+  // POST /api/stop-backend
+  if (req.url === "/api/stop-backend" && req.method === "POST") {
+    await killBackend();
+    await killOpenVinoWorker();
+    return json(res, 200, { ok: true });
+  }
+
+  // POST /api/download-backend
+  if (req.url === "/api/download-backend" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    if (downloadState.active) return json(res, 409, { ok: false, error: "Another download is already active." });
+    try {
+      const backendId = String(body.backend_id || body.backendId || body.id || "");
+      startImageBackendDownload(backendId);
+      return json(res, 200, { ok: true, message: "Backend download started", backendId });
+    } catch (err) {
+      return json(res, 400, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  // POST /api/download-model
+  if (req.url === "/api/download-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const { url } = body;
+    if (!url) return json(res, 400, { error: "URL is required" });
+    try {
+      const job = startModelDownload(url);
+      return json(res, 200, { ok: true, message: "Download started", filename: job.filename, downloadId: job.id });
+    } catch (err) {
+      return json(res, 409, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/download-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const url = String(body.url || "");
+    if (!url) return json(res, 400, { ok: false, error: "URL is required" });
+    try {
+      const directUrl = url.includes("huggingface.co") ? url.replace("/blob/", "/resolve/") : url;
+      const overrideFilename = body.filename ? path.basename(String(body.filename)) : null;
+      const filename = overrideFilename || path.basename(new URL(directUrl).pathname);
+      if (!filename.toLowerCase().endsWith(".gguf")) {
+        return json(res, 400, { ok: false, error: "Text model URL must point to a .gguf file." });
+      }
+      const projector = body.projectorUrl && body.projectorFilename
+        ? { url: String(body.projectorUrl), filename: path.basename(String(body.projectorFilename)) }
+        : await resolveHuggingFaceProjector(directUrl, filename);
+      const job = startModelDownload(directUrl, filename, LLM_MODELS, "text");
+      return json(res, 200, {
+        ok: true,
+        message: "Text model download started",
+        filename,
+        downloadId: job.id,
+        projectorUrl: projector?.url || "",
+        projectorFilename: projector?.filename || "",
+      });
+    } catch (err) {
+      return json(res, 400, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/download-openvino-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const modelId = String(body.model_id || body.modelId || "");
+    if (!modelId) return json(res, 400, { ok: false, error: "model_id is required" });
+    try {
+      startOpenVinoModelDownload(modelId);
+      return json(res, 200, { ok: true, message: "OpenVINO model download started" });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  // GET /api/download-progress
+  if (req.url === "/api/download-progress" && req.method === "GET") {
+    if (!downloadState.active && downloadState.kind === "backend" && downloadState.backendId) {
+      const backend = IMAGE_BACKEND_DOWNLOADS[downloadState.backendId];
+      const installed = backend &&
+        fs.existsSync(path.join(backend.destDir, backend.exeName)) &&
+        fs.existsSync(path.join(backend.destDir, backend.requiredDll));
+      if (installed && !downloadState.error) {
+        cachedBackendOptions = null;
+        downloadState = {
+          active: false,
+          filename: "",
+          progress: 0,
+          speed: "0 MB/s",
+          eta: 0,
+          totalBytes: 0,
+          downloadedBytes: 0,
+          error: null,
+        };
+      }
+    }
+    const modelSummary = summarizeModelDownloads();
+    if ((modelSummary.downloads || []).length > 0) {
+      return json(res, 200, modelSummary);
+    }
+    return json(res, 200, downloadState);
+  }
+
+  // POST /api/cancel-download
+  if (req.url === "/api/cancel-download" && req.method === "POST") {
+    let body = {};
+    try { body = await readJsonBody(req, res, 64 * 1024) || {}; } catch (_) {}
+    const cancelled = cancelModelDownload(body.filename || body.id || "");
+    return json(res, 200, { ok: true, cancelled });
+  }
+
+  // GET /api/generation-progress
+  if (req.url === "/api/generation-progress" && req.method === "GET") {
+    return json(res, 200, {
+      ...generationState,
+      backendMode: generationState.backendMode || currentSettings.backendMode || "",
+      backendDevice: generationState.backendDevice || currentSettings.backendDevice || "",
+    });
+  }
+
+  if (req.url === "/api/openvino-generate" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      return json(res, 200, await generateWithOpenVino(body));
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  // GET /api/outputs
+  if (req.url === "/api/outputs" && req.method === "GET") {
+    return json(res, 200, { outputs: listGeneratedOutputs() });
+  }
+
+  // GET /api/output-file?filename=...
+  if (req.url.startsWith("/api/output-file") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const filename = path.basename(parsed.searchParams.get("filename") || "");
+    const filePath = path.join(OUTPUTS, filename);
+    if (!filename || !fs.existsSync(filePath)) {
+      return json(res, 404, { error: "Output file not found" });
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    fs.readFile(filePath, (err, data) => {
+      if (err) return json(res, 500, { error: err.message });
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Access-Control-Allow-Origin": "*" });
+      res.end(data);
+    });
+    return;
+  }
+
+  if (req.url.startsWith("/tts-outputs/") && req.method === "GET") {
+    const filename = path.basename(decodeURIComponent(req.url.replace(/^\/tts-outputs\//, "").split("?")[0] || ""));
+    const filePath = path.join(TTS_OUTPUTS, filename);
+    if (!filename || !pathInside(filePath, TTS_OUTPUTS) || !fs.existsSync(filePath)) {
+      return json(res, 404, { ok: false, error: "TTS output not found" });
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    fs.readFile(filePath, (err, data) => {
+      if (err) return json(res, 500, { ok: false, error: err.message });
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Access-Control-Allow-Origin": "*" });
+      res.end(data);
+    });
+    return;
+  }
+
+  // POST /api/save-output
+  if (req.url === "/api/save-output" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const saved = saveGeneratedOutput(body.image, body.metadata || {});
+      return json(res, 200, { ok: true, output: { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}` } });
+    } catch (err) {
+      console.error("  [api] Failed to save output:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  // POST /api/delete-outputs
+  if (req.url === "/api/delete-outputs" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const deleted = deleteGeneratedOutputs(body.outputs || []);
+      return json(res, 200, { ok: true, deleted });
+    } catch (err) {
+      console.error("  [api] Failed to delete outputs:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  // POST /api/import-model?filename=...
+  if (req.url.startsWith("/api/import-model") && req.method === "POST") {
+    try {
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await streamModelUpload(req, parsed.searchParams.get("filename"));
+      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result, filename: result.filename });
+    } catch (err) {
+      console.error("  [api] Failed to import model:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (req.url.startsWith("/api/llm/import-model") && req.method === "POST") {
+    try {
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await streamModelUpload(req, parsed.searchParams.get("filename"), LLM_MODELS, "text");
+      return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
+    } catch (err) {
+      console.error("  [api] Failed to import text model:", err);
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (req.url === "/api/llm/delete-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const filename = path.basename(String(body.filename || ""));
+    const modelPath = path.join(LLM_MODELS, filename);
+    if (!filename || !pathInside(modelPath, LLM_MODELS)) {
+      return json(res, 400, { ok: false, error: "Invalid filename" });
+    }
+    if (llmSettings.model === filename && llmProc) await killLlm();
+    try {
+      fs.unlinkSync(modelPath);
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, err.code === "ENOENT" ? 404 : 500, {
+        ok: false,
+        error: err.code === "ENOENT" ? "Text model not found" : err.message,
+      });
+    }
+  }
+
+  // POST /api/delete-model
+  if (req.url === "/api/delete-model" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const { filename } = body;
+    if (!filename) return json(res, 400, { error: "Filename is required" });
+    
+    const openvinoModel = findOpenVinoModel(filename);
+    const safeFilename = path.basename(filename);
+    const modelPath = path.join(MODELS, safeFilename);
+    
+    try {
+      if (openvinoModel?.installed && openvinoModel.path && pathInside(openvinoModel.path, OPENVINO_MODELS)) {
+        fs.rmSync(openvinoModel.path, { recursive: true, force: true });
+        cachedBackendOptions = null;
+        console.log(`  [api] Deleted OpenVINO model: ${openvinoModel.id}`);
+        return json(res, 200, { ok: true, message: `Deleted ${openvinoModel.name}` });
+      } else if (fs.existsSync(modelPath)) {
+        fs.unlinkSync(modelPath);
+        console.log(`  [api] Deleted model file: ${safeFilename}`);
+        return json(res, 200, { ok: true, message: `Deleted ${safeFilename}` });
+      } else {
+        return json(res, 404, { error: "Model file not found" });
+      }
+    } catch (err) {
+      console.error(`  [api] Failed to delete model ${safeFilename}:`, err);
+      return json(res, 500, { error: err.message });
+    }
+  }
+
+  if (req.url.startsWith("/api/")) {
+    return json(res, 404, { ok: false, error: "Unknown API endpoint" });
+  }
+
+  // ── Static frontend files ─────────────────────────────────────────────────
+  let filePath = path.join(DIST, req.url === "/" ? "index.html" : req.url);
+  filePath = filePath.split("?")[0];
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(DIST, "index.html");
+  }
+
+  const ext  = path.extname(filePath).toLowerCase();
+  const mime = MIME[ext] || "application/octet-stream";
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) { res.writeHead(404); res.end("Not found"); return; }
+    res.writeHead(200, { "Content-Type": mime, "Access-Control-Allow-Origin": "*" });
+    res.end(data);
+  });
+});
+
+server.timeout = 0; // Disable socket timeout for large model uploads/downloads
+
+server.listen(PORT_FRONTEND, "0.0.0.0", () => {
+  console.log("");
+  console.log("  ============================================================");
+  console.log("   LUKE AI STUDIO      |  Running");
+  console.log("   Server Build: " + SERVER_BUILD);
+  console.log("   Frontend : http://localhost:" + PORT_FRONTEND);
+  console.log("   Image API: http://127.0.0.1:" + PORT_BACKEND);
+  console.log("   Text API : starts on http://127.0.0.1:" + PREFERRED_LLM_PORT);
+  console.log("   Speech   : managed locally, API on frontend port");
+  console.log("   TTS      : Kokoro ONNX managed locally, API on frontend port");
+  console.log("  ============================================================");
+  console.log("");
+
+  // Do not auto-start backend; wait for selection from the Web UI
+  console.log("  [backend] Ready. Waiting for model load request from the webapp...");
+});
+
+// Graceful shutdown
+process.on("SIGINT",  async () => { await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
+process.on("SIGTERM", async () => { await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
+PASS: Runtime Route ใช้ return json ถูกต้อง
+
+[6/9] รัน Runtime Dependency API Test
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63566
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+Runtime Test Exit Code: 0
+PASS: Runtime Dependency API Test ผ่าน
+
+[7/9] รัน API Contract และ Release Validation
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 70
+PASS: All frontend API endpoints have backend contracts.
+PASS: API Contract Validation ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 70
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63575
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63575
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63580
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+Validation Exit Code: 0
+PASS: Release Validation ผ่านพร้อม Runtime API Test
+
+[8/9] Commit และ Push Runtime Status API
+app/config/runtime-dependencies.json
+scripts/server/serve.cjs
+scripts/validation/test-runtime-dependencies.cjs
+scripts/validation/validate-release.sh
+ app/config/runtime-dependencies.json             | 167 +++++++++++++++
+ scripts/server/serve.cjs                         | 217 ++++++++++++++++++++
+ scripts/validation/test-runtime-dependencies.cjs | 248 +++++++++++++++++++++++
+ scripts/validation/validate-release.sh           |   8 +
+ 4 files changed, 640 insertions(+)
+PASS: Commit สำเร็จ
+PASS: Push Beta 7 Branch สำเร็จ
+
+[9/9] ตรวจสถานะสุดท้าย
+Local : 0956419
+Remote: 0956419
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 RUNTIME STATUS API PASSED
+============================================================
+Branch  : feat/beta7-foundation
+Commit  : 0956419
+Catalog : app/config/runtime-dependencies.json
+API     : GET /api/runtime/dependencies
+Download: /Volumes/EXTERNAL Drive/ai/ai-downloads
+Report  : validation-reports/beta7-runtime-json-helper-fix-20260806-113520.txt
+Next    : เพิ่ม Runtime Install State Machine และ Download Progress API

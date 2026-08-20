@@ -1,0 +1,1287 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME DASHBOARD FRONTEND DISCOVERY
+============================================================
+
+[1/10] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/beta7-foundation
+Local  : a5f9083
+Remote : a5f9083
+PASS: Beta 7 Branch พร้อมและ Working Tree สะอาด
+
+[2/10] ยืนยัน Runtime Backend Foundation
+PASS: Runtime Status, Install State และ Download Worker พร้อม
+
+[3/10] ตรวจ Frontend Package และ Framework
+Package : tauri-app
+Version : 1.0.0-beta.6
+Type    : module
+
+Scripts:
+  build: vite build
+  dev: vite
+  preview: vite preview
+  tauri: tauri
+
+Relevant dependencies:
+  @vitejs/plugin-react: ^6.0.2
+  lucide-react: ^1.17.0
+  react: ^19.1.0
+  react-dom: ^19.1.0
+  vite: ^8.0.16
+PASS: อ่าน Frontend Package สำเร็จ
+
+[4/10] ตรวจ Entry Point, Router และ Navigation
+app/frontend/src/App.jsx
+app/frontend/src/components/Sidebar.jsx
+app/frontend/src/components/TopStatusBar.jsx
+app/frontend/src/main.jsx
+
+--- app/frontend/src/App.jsx
+220:  const [sidebarVisible, setSidebarVisible] = useState(() => {
+221:    const saved = localStorage.getItem("sidebarVisible");
+226:    localStorage.setItem("sidebarVisible", String(sidebarVisible));
+227:  }, [sidebarVisible]);
+682:  const sidebarContent = useMemo(() => (
+684:      collapsed={!sidebarVisible}
+707:  ), [sidebarVisible, activeTab, specs, conversations, activeConversationId, showHistory, handleDeleteConversation, speechTranscriptions, selectedSpeechTranscript, showSpeechHistory, handleDeleteSpeechTranscription, ttsOutputs, selectedTtsOutput, showTtsHistory, handleDeleteTtsOutput]);
+727:      {sidebarContent}
+741:          sidebarVisible={sidebarVisible}
+742:          onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
+
+--- app/frontend/src/components/Sidebar.jsx
+37:    <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+40:        <div className="sidebar-logo">
+41:          <Sparkles className="sidebar-logo-icon" />
+42:          <span className="sidebar-logo-text"><b>LUKE AI</b><small>Studio</small></span>
+102:                className="sidebar-history-list" 
+142:                        className="sidebar-history-item"
+169:                          className="sidebar-history-delete"
+218:                className="sidebar-history-list"
+262:                        className="sidebar-history-item"
+290:                          className="sidebar-history-delete"
+339:                className="sidebar-history-list"
+383:                        className="sidebar-history-item"
+411:                          className="sidebar-history-delete"
+443:      <div className="sidebar-footer">
+444:        <div className="sidebar-specs-header">
+448:        <div className="sidebar-specs-item" title={specs.cpu_name}>
+451:        <div className="sidebar-specs-item" title={specs.gpu_name}>
+454:        <div className="sidebar-specs-item">
+457:        <div className="sidebar-specs-os">
+
+--- app/frontend/src/components/TopStatusBar.jsx
+27:  sidebarVisible,
+70:          className="sidebar-toggle-btn"
+71:          title={sidebarVisible ? "Collapse Sidebar" : "Expand Sidebar"}
+73:          {sidebarVisible ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+
+--- app/frontend/src/main.jsx
+2:import ReactDOM from "react-dom/client";
+5:ReactDOM.createRoot(document.getElementById("root")).render(
+PASS: พบ Frontend Entry/Navigation Candidates
+
+[5/10] ตรวจ Settings, Health และ Dashboard Components
+app/frontend/src/App.jsx
+app/frontend/src/components/Generator.jsx
+app/frontend/src/components/Home.jsx
+app/frontend/src/components/ImageToVideo.jsx
+app/frontend/src/components/ModelManager.jsx
+app/frontend/src/components/ReferenceManager.jsx
+app/frontend/src/components/Settings.jsx
+app/frontend/src/components/Sidebar.jsx
+app/frontend/src/components/SpeechTranscriber.jsx
+app/frontend/src/components/TextChat.jsx
+app/frontend/src/components/TextToSpeech.jsx
+app/frontend/src/components/TopStatusBar.jsx
+app/frontend/src/services/api.js
+
+--- app/frontend/src/App.jsx
+6:import Settings from "./components/Settings";
+12:import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
+42:    const saved = localStorage.getItem("theme");
+49:    localStorage.setItem("theme", theme);
+70:  const [health, setHealth] = useState(null);
+80:  const [generationProgress, setGenerationProgress] = useState(0);
+122:  const [textSettings, setTextSettings] = useState(() => {
+123:    const saved = localStorage.getItem("textSettings");
+141:      // New performance settings
+165:    localStorage.setItem("textSettings", JSON.stringify(textSettings));
+166:  }, [textSettings]);
+168:  const [speechSettings, setSpeechSettings] = useState(() => {
+169:    const saved = localStorage.getItem("speechSettings");
+190:    localStorage.setItem("speechSettings", JSON.stringify(speechSettings));
+191:  }, [speechSettings]);
+193:  const [ttsSettings, setTtsSettings] = useState(() => {
+194:    const saved = localStorage.getItem("ttsSettings");
+213:    localStorage.setItem("ttsSettings", JSON.stringify(ttsSettings));
+214:  }, [ttsSettings]);
+221:    const saved = localStorage.getItem("sidebarVisible");
+226:    localStorage.setItem("sidebarVisible", String(sidebarVisible));
+230:    const saved = localStorage.getItem("fontSize");
+236:    localStorage.setItem("fontSize", String(fontSize));
+245:  const sanitizeMessageForStorage = (message) => {
+259:  const sanitizeConversationForStorage = (conversation) => ({
+262:      ? conversation.messages.map(sanitizeMessageForStorage)
+267:    const compactConversation = sanitizeConversationForStorage(conversation);
+281:      const legacySaved = localStorage.getItem("chat_conversations");
+286:          localStorage.removeItem("chat_conversations");
+294:          .map(sanitizeConversationForStorage)
+304:        if (legacySaved) localStorage.removeItem("chat_conversations");
+308:          setConversations(legacyConversations.map(sanitizeConversationForStorage));
+464:        setTextSettings((prev) => ({
+478:      const [healthInfo, candidates] = await Promise.all([
+479:        getHealth(),
+482:      setHealth(healthInfo);
+534:  // Save active model configuration to localStorage for persistence across reloads
+537:      localStorage.setItem("active-model", activeModel);
+539:      localStorage.removeItem("active-model");
+553:        const savedModel = localStorage.getItem("active-model");
+560:            if (status && status.settings && status.settings.model) {
+561:              const modelName = status.settings.model.split(/[\\/]/).pop();
+571:          const savedModel = localStorage.getItem("active-model");
+615:  // Sync active model settings default parameters
+747:          <Home setActiveTab={setActiveTab} specs={specs} health={health} activeModel={activeModel} isLlmLoaded={isLlmLoaded} />
+763:            generationProgress={generationProgress}
+764:            setGenerationProgress={setGenerationProgress}
+769:            textSettings={textSettings}
+791:            textSettings={textSettings}
+792:            setTextSettings={setTextSettings}
+801:            textSettings={textSettings}
+802:            setTextSettings={setTextSettings}
+822:            speechSettings={speechSettings}
+823:            setSpeechSettings={setSpeechSettings}
+833:            ttsSettings={ttsSettings}
+834:            setTtsSettings={setTtsSettings}
+838:        <div style={{ display: activeTab === "settings" ? "flex" : "none", flex: 1, flexDirection: "column", overflow: "hidden" }}>
+839:          <Settings
+851:            textSettings={textSettings}
+852:            setTextSettings={setTextSettings}
+853:            speechSettings={speechSettings}
+854:            setSpeechSettings={setSpeechSettings}
+855:            ttsSettings={ttsSettings}
+856:            setTtsSettings={setTtsSettings}
+857:            health={health}
+
+--- app/frontend/src/components/Generator.jsx
+2:import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus } from "lucide-react";
+10:  getGenerationProgress, 
+51:  generationProgress,
+52:  setGenerationProgress,
+57:  textSettings,
+70:  const [restartLoadProgress, setRestartLoadProgress] = useState(null);
+77:      return JSON.parse(localStorage.getItem("image-generator-references") || "[]");
+82:  const [referenceSettings, setReferenceSettings] = useState(() => {
+84:      return JSON.parse(localStorage.getItem("image-generator-reference-settings") || "{}");
+89:  const normalizedReferenceSettings = {
+101:    ...referenceSettings,
+110:      localStorage.setItem("image-generator-references", JSON.stringify(referenceImages));
+118:      localStorage.setItem("image-generator-reference-settings", JSON.stringify(normalizedReferenceSettings));
+120:      console.warn("Could not persist reference settings", err);
+122:  }, [normalizedReferenceSettings]);
+174:      let targetModel = status.settings?.model;
+181:            message: "You haven't downloaded any text models yet. Please go to the 'Model Manager' or 'Text Chat' tab to download a GGUF model first.",
+188:        const savedLlm = localStorage.getItem("selectedLlmModel") || models[0]?.filename;
+203:        const cores = textSettings?.threads || specs?.cpu_cores_physical || 4;
+204:        const context = textSettings?.contextSize || 2048;
+209:          preferredBackend: textSettings?.preferredBackend
+219:      const temp = textSettings?.temperature || 0.7;
+268:    setRestartLoadProgress(null);
+273:      if (status && status.settings) {
+274:        const settings = status.settings;
+275:        const currentModelName = settings.model ? settings.model.split(/[\\/]/).pop() : null;
+278:        const currentBackend = settings.backendType || (settings.useGpu === false ? "cpu" : "auto");
+283:            (!isCoreMLBackend && parseInt(settings.steps) !== parseInt(constraints.steps)) ||
+284:            (!isCoreMLBackend && Math.abs(parseFloat(settings.cfgScale) - parseFloat(constraints.cfgScale)) > 0.05) ||
+285:            (!isCoreMLBackend && settings.sampler !== constraints.sampler) ||
+286:            (!isCoreMLBackend && parseInt(settings.threads) !== parseInt(constraints.threads)) ||
+287:            Boolean(settings.useGpu) !== (constraints.useGpu !== false) ||
+288:            parseInt(settings.width || 512) !== parseInt(constraints.width || 512) ||
+289:            parseInt(settings.height || 512) !== parseInt(constraints.height || 512) ||
+302:        console.log("Settings out of sync, restarting backend...");
+310:            setRestartLoadProgress({
+311:              progress: status.loading.progress || 0,
+316:              backendMode: status.loading.backendMode || status.settings?.backendMode || "",
+317:              device: status.loading.device || status.settings?.backendDevice || "",
+340:        setErrorMsg(err.message || "Failed to sync settings with backend.");
+346:    setRestartLoadProgress(null);
+350:    setGenerationProgress(0);
+369:    let fallbackProgress = 0;
+379:        const progress = await getGenerationProgress();
+380:        if (progress && progress.active) {
+381:          const decoding = progress.decoding || false;
+384:          const step = decoding ? (progress.steps || constraints.steps || 20) : (progress.step || 0);
+385:          const steps = progress.steps || constraints.steps || 20;
+386:          const speed = decoding ? "" : (progress.speed || "");
+388:          const backendMode = String(progress.backendMode || "").toLowerCase();
+389:          const backendDevice = String(progress.backendDevice || "").toLowerCase();
+401:          if (decoding || progress.steps > 0) {
+411:          // Calculate progress percentage
+412:          let progressPercent = 0;
+414:            progressPercent = 99;
+416:            progressPercent = Math.round((step / steps) * 100);
+418:          progressPercent = Math.min(99, progressPercent);
+419:          if (decoding || progress.steps > 0) {
+420:            setGenerationProgress(progressPercent);
+422:            setGenerationProgress((prev) => Math.max(prev, progressPercent));
+456:          setGenerationProgress((prev) => Math.min(15, prev + 1));
+460:        console.warn("Failed to get generation progress, running simulation fallback:", e);
+468:          fallbackProgress = Math.min(95, Math.round((elapsedSeconds / (constraints.steps * baseGpuStepTime)) * 100));
+482:        let progressPercent = 0;
+484:          const remainingProgress = 99 - fallbackProgress;
+489:              progressPercent = Math.round(fallbackProgress + ratio * remainingProgress);
+493:              progressPercent = Math.min(99, Math.round(fallbackProgress + 0.85 * remainingProgress + (0.14 * remainingProgress) * decay));
+496:            progressPercent = 99;
+500:            progressPercent = Math.round((elapsedSeconds / expectedTotal) * 100);
+504:            progressPercent = Math.min(99, Math.round(85 + 14 * decay));
+508:          setGenerationProgress((p) => Math.max(p, progressPercent));
+522:        (prog) => setGenerationProgress((prev) => Math.max(prev, prog)),
+525:        normalizedReferenceSettings
+529:      setGenerationProgress(100);
+548:        referenceSettings: normalizedReferenceSettings,
+600:      // Set cancelling state first to keep the progress overlay active in cancelling mode
+628:        setGenerationProgress(0);
+670:  // Download generated image
+671:  const handleDownload = () => {
+675:    link.download = `diffusion-${outputSeed || Date.now()}.png`;
+681:  const downloadImageUrl = (url, filename = `diffusion-${Date.now()}.png`) => {
+685:    link.download = filename;
+691:  // Reuse prompt settings from history
+734:  const downloadSelectedGalleryItems = () => {
+737:      downloadImageUrl(item.url, `diffusion-${seed}-${index + 1}.png`);
+870:                referenceSettings={normalizedReferenceSettings}
+871:                setReferenceSettings={setReferenceSettings}
+916:              <div className="progress-overlay">
+919:                    <div className="progress-spinner"></div>
+920:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700, textAlign: "center" }}>
+921:                      Syncing Settings & Initializing...
+923:                    {restartLoadProgress ? (
+927:                            {restartLoadProgress.phase}
+928:                            {restartLoadProgress.speed ? ` (${restartLoadProgress.speed})` : ""}
+931:                            {restartLoadProgress.total > 0
+932:                              ? `Loaded ${restartLoadProgress.current} / ${restartLoadProgress.total} tensors`
+933:                              : `${Math.round(restartLoadProgress.progress)}%`}
+936:                        <div className="progress-bar-container" style={{ margin: 0 }}>
+938:                            className="progress-bar-fill"
+939:                            style={{ width: `${Math.min(100, Math.max(0, restartLoadProgress.progress))}%`, transition: "width 0.25s ease" }}
+942:                        {(restartLoadProgress.backendMode || restartLoadProgress.device) && (
+944:                            Loading on {restartLoadProgress.backendMode || "backend"}{restartLoadProgress.device ? ` • ${restartLoadProgress.device}` : ""}
+950:                        Adjusting inference settings and restarting the local model server.
+956:                    <div className="progress-spinner"></div>
+957:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700, textAlign: "center" }}>
+966:                    <div className="progress-spinner"></div>
+967:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+987:                    <div className="progress-bar-container" style={{ margin: "4px 0 10px 0" }}>
+989:                        className="progress-bar-fill"
+990:                        style={{ width: `${generationProgress}%`, transition: "width 1s linear" }}
+995:                      <span>Progress: {generationProgress}%</span>
+1024:                  Hint: Try lowering the resolution in the <strong>Image Constraints</strong> settings (e.g., to 512x512).
+1051:                <button className="m3-btn m3-btn-outlined" onClick={handleDownload}>
+1052:                  <Download size={16} />
+1072:              <button className="m3-btn m3-btn-outlined" onClick={downloadSelectedGalleryItems}>
+1073:                <Download size={14} />
+1074:                <span>Download</span>
+
+--- app/frontend/src/components/Home.jsx
+10:  { id: "models", icon: Boxes, title: "AI Library", description: "Download and manage Text, Vision, Image, and Video models." },
+13:export default function Home({ setActiveTab, specs, health, activeModel, isLlmLoaded }) {
+14:  const ready = health?.ok !== false;
+23:        <p>Choose a task. LUKE AI will select the safest settings for this computer automatically.</p>
+48:        <span>Advanced model, memory, and performance settings remain available when needed.</span>
+
+--- app/frontend/src/components/ImageToVideo.jsx
+2:import { Film, Upload, Play, CheckCircle2, AlertTriangle, Cpu, HardDrive, Plus, Trash2, Sparkles, ShieldCheck, Download, Wrench } from "lucide-react";
+3:import { getImageToVideoCompatibility, generateImageToVideo, getImageToVideoCapabilityStatus, installImageToVideoCapability } from "../services/api";
+21:  const [capability, setCapability] = useState({ state: "checking", installed: false });
+22:  const [installing, setInstalling] = useState(false);
+34:      setInstalling(data.state === "installing");
+37:      setCapability({ state: "error", installed: false, message: error.message });
+45:      if (data?.state === "installing") timer = setInterval(refreshCapability, 1500);
+51:    if (!installing) return undefined;
+54:      if (data && data.state !== "installing") {
+56:        if (data.state === "ready") showAlert?.({ title: "Image-to-Video Ready", message: "Runtime installed successfully." });
+60:  }, [installing, showAlert]);
+62:  const installCapability = async (repair = false) => {
+63:    setInstalling(true);
+64:    setCapability((prev) => ({ ...prev, state: "installing", message: repair ? "Repairing Image-to-Video…" : "Installing Image-to-Video…" }));
+66:      await installImageToVideoCapability(repair);
+68:      setInstalling(false);
+69:      setCapability({ state: "error", installed: false, message: error.message });
+70:      showAlert?.({ title: "Installation Failed", message: error.message, danger: true });
+119:  const runtimeReady = capability.installed === true || capability.state === "ready";
+120:  const blocked = !runtimeReady || !automaticModel || automaticModel.compatibility.status === "blocked";
+127:    <div className="settings-card" style={{ padding: 18, marginBottom: 18, border: "1px solid var(--border-color)" }}>
+133:      <section className="settings-card" style={{ padding: 18 }}>
+152:      <section className="settings-card" style={{ padding: 18 }}>
+163:        {!runtimeReady && <div style={{ marginTop:16, padding:14, border:"1px solid var(--border-color)", borderRadius:12 }}>
+164:          <div style={{display:"flex", alignItems:"center", gap:8, fontWeight:700}}><Download size={18}/> Image-to-Video is not installed</div>
+165:          <p style={{opacity:.76}}>{capability.message || "Install the isolated runtime and required AI components. The video model downloads automatically on first generation."}</p>
+166:          <button type="button" onClick={()=>installCapability(capability.state === "error")} disabled={installing} style={{width:"100%", padding:12, display:"flex", justifyContent:"center", gap:8}}>
+167:            {capability.state === "error" ? <Wrench size={18}/> : <Download size={18}/>}
+168:            {installing ? (capability.message || "Installing…") : capability.state === "error" ? "Repair Image-to-Video" : "Install Image-to-Video"}
+170:          {installing && <p style={{fontSize:12, opacity:.7}}>Keep LUKE AI open. Installation progress is checked automatically.</p>}
+172:        {runtimeReady && <div style={{marginTop:16, display:"flex", gap:8, alignItems:"center"}}><CheckCircle2 size={18}/> Image-to-Video runtime ready</div>}
+
+--- app/frontend/src/components/ModelManager.jsx
+2:import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
+9:  downloadModel, 
+10:  downloadOpenVinoModel, 
+11:  cancelModelDownload, 
+12:  getDownloadProgress, 
+20:  downloadLlmModel,
+28:  downloadSpeechModel,
+35:  downloadTtsModel,
+41:  installImageToVideoCapability,
+52:  { id: "installed", label: "Installed" },
+62:    notes: "Official native multimodal Kimi model. This repository is not a single GGUF file, so LUKE AI opens the official model page instead of pretending it can perform a one-click local install.",
+77:    approxSize: "No local download",
+78:    notes: "Claude is connected through the Anthropic API. Model weights are not distributed as a downloadable local model.",
+206:        notes: "Multimodal model capable of understanding images. Downloads companion vision projector automatically.",
+247:        url: "kokoro://install/kokoro-onnx-q8",
+259:        url: "kokoro://install/kokoro-onnx-fp32",
+277:        notes: "Apple Silicon ANE (Neural Engine) optimized 6-bit palettized Stable Diffusion 1.5 model. Unzips automatically on download completion and runs extremely fast on Mac NPUs.",
+329:  textSettings,
+330:  setTextSettings,
+334:  const [videoCapability, setVideoCapability] = useState({ state: "checking", installed: false });
+339:  const [downloadingModelId, setDownloadingModelId] = useState(null);
+340:  const [downloadProgress, setDownloadProgress] = useState(0);
+341:  const [downloadSpeed, setDownloadSpeed] = useState("");
+342:  const [downloadJobs, setDownloadJobs] = useState({});
+343:  const downloadPollingRef = React.useRef(null);
+345:  const [modelLoadProgress, setModelLoadProgress] = useState(null);
+346:  const [importProgress, setImportProgress] = useState(null); // null when not importing
+348:  const [downloadUrl, setDownloadUrl] = useState("");
+351:  const [unloadProgress, setUnloadProgress] = useState({ progress: 0, phase: "" });
+371:  const pendingCompanionDownloadRef = React.useRef(null);
+380:      setVideoCapability(status || { state: "not-installed", installed: false });
+383:      setVideoCapability({ state: "error", installed: false, message: error.message || String(error) });
+399:      await installImageToVideoCapability(repair);
+402:      await showAlert({ title: repair ? "Repair Failed" : "Installation Failed", message: error.message || String(error), danger: true });
+408:  const activeDownloadJobs = Object.values(downloadJobs).filter((job) => job?.active);
+409:  const getDownloadJob = useCallback((...ids) => {
+411:    return Object.values(downloadJobs).find((job) => wanted.includes(String(job.filename)) || wanted.includes(String(job.id)));
+412:  }, [downloadJobs]);
+414:  const contextWindow = Math.max(0, Math.min(20000, Number(textSettings?.contextSize ?? 0)));
+417:    if (typeof setTextSettings === "function") {
+418:      setTextSettings((prev) => ({ ...(prev || {}), contextSize: value }));
+438:    ? normalizedLocalModels.filter((model) => model.installed)
+463:  const getRuntimeForType = (type) => {
+479:  const getActiveHeavyRuntime = () => (
+480:    getRuntimeForType("image") ||
+481:    getRuntimeForType("text")
+484:  const blockLoadIfOtherRuntimeActive = (modelId, targetType) => {
+489:    const runtime = getActiveHeavyRuntime();
+490:    if (!runtime || (runtime.type === targetType && runtime.model === modelId)) {
+496:      activeRuntime: runtime,
+521:    } else if (textLibraryMode === "installed") {
+643:      checkActiveDownload();
+649:    checkActiveDownload();
+665:          backendMode: sdStatus.settings?.backendMode || sdStatus.loading?.backendMode || "",
+666:          backendBinary: sdStatus.settings?.backendBinary || sdStatus.loading?.backendBinary || "",
+667:          backendDevice: sdStatus.settings?.backendDevice || sdStatus.loading?.device || "",
+668:          llmBackendMode: llmStatus.settings?.backendMode || llmStatus.settings?.backendBinary || "",
+669:          speechBackendMode: speechStatus.settings?.backendMode || speechStatus.backendMode || "",
+670:          ttsBackendMode: ttsStatus.settings?.backendMode || ttsStatus.backendMode || "",
+674:          setActiveLlmModel(llmStatus.settings?.model || null);
+681:          setActiveSpeechModel(speechStatus.settings?.model || null);
+688:          setActiveTtsModel(ttsStatus.settings?.model || null);
+705:  const checkActiveDownload = async () => {
+707:      const status = await getDownloadProgress();
+709:        startProgressPolling(status.filename);
+712:      console.error("Check active download failed:", e);
+716:  const downloadByUrl = async (url, expectedFilename, companion = null, options = {}) => {
+720:        message: `"${expectedFilename}" is already downloaded. Do you want to download and overwrite it?`,
+730:      showAlert({ title: "Server Required", message: "Model download requires the local server.", danger: true });
+735:      pendingCompanionDownloadRef.current = companion;
+738:        res = await downloadModel(url);
+740:        res = await downloadLlmModel(url, expectedFilename, companion);
+742:        res = await downloadSpeechModel(url, expectedFilename);
+744:        res = await downloadTtsModel(url, expectedFilename);
+748:          pendingCompanionDownloadRef.current = {
+753:        startProgressPolling(expectedFilename);
+755:        pendingCompanionDownloadRef.current = null;
+756:        showAlert({ title: "Download Failed", message: res.error || "Unknown error", danger: true });
+759:      pendingCompanionDownloadRef.current = null;
+760:      showAlert({ title: "Download Error", message: err.message, danger: true });
+764:  const startProgressPolling = (modelId = "") => {
+765:    if (modelId) setDownloadingModelId(modelId);
+766:    if (downloadPollingRef.current) return;
+768:    downloadPollingRef.current = setInterval(async () => {
+770:        const status = await getDownloadProgress();
+771:        const jobs = Array.isArray(status.downloads) ? status.downloads : (status.filename ? [status] : []);
+777:        setDownloadJobs(byKey);
+782:          setDownloadingModelId(first.filename || modelId || null);
+783:          setDownloadProgress(status.progress === -1 ? 0 : (Number(status.progress) || Number(first.progress) || 0));
+784:          setDownloadSpeed(status.speed || `${activeJobs.length} active`);
+786:          clearInterval(downloadPollingRef.current);
+787:          downloadPollingRef.current = null;
+788:          setDownloadingModelId(null);
+789:          setDownloadProgress(status.progress === -1 ? 0 : (Number(status.progress) || 0));
+790:          setDownloadSpeed(status.speed || "");
+792:            showAlert({ title: "Download Failed", message: status.error, danger: true });
+795:            const companion = pendingCompanionDownloadRef.current;
+796:            pendingCompanionDownloadRef.current = null;
+799:                downloadByUrl(
+815:  const handleUrlDownloadSubmit = async (e) => {
+817:    if (!downloadUrl.trim()) return;
+821:      const parsed = new URL(downloadUrl.trim());
+828:    await downloadByUrl(downloadUrl.trim(), modelName);
+829:    setDownloadUrl("");
+832:  const handleLibraryDownload = async (model) => {
+835:        title: "Download Speech Model?",
+836:        message: `Download "${model.name}" (${model.size || model.approxSize})?`,
+837:        confirmLabel: "Download",
+840:        await downloadByUrl(model.url, model.filename);
+847:        title: "Download TTS Model?",
+848:        message: `Install "${model.name}"? Kokoro model files are cached on first generation.`,
+849:        confirmLabel: "Install",
+852:        await downloadByUrl(model.id || model.url, model.filename);
+859:        title: "Download OpenVINO Model?",
+860:        message: `Download "${model.name}" (~${model.approxSize})? OpenVINO models are downloaded folder-by-folder via python script.`,
+861:        confirmLabel: "Download",
+865:        await downloadOpenVinoModel(model.id);
+866:        startProgressPolling(model.name);
+868:        showAlert({ title: "Download Failed", message: err.message, danger: true });
+877:        title: "Download Vision Projector?",
+
+--- app/frontend/src/components/ReferenceManager.jsx
+13:  Download,
+150:  referenceSettings,
+151:  setReferenceSettings,
+225:      settings: { ...referenceSettings, mode: "Appearance Lock" },
+229:    const saved = JSON.parse(localStorage.getItem("reference-manager-presets") || "[]");
+230:    localStorage.setItem("reference-manager-presets", JSON.stringify([preset, ...saved].slice(0, 50)));
+231:  }, [unifiedReferences, referenceSettings]);
+238:      settings: { ...referenceSettings, mode: "Appearance Lock" },
+245:    link.download = `appearance-reference-manager-${Date.now()}.json`;
+250:  }, [unifiedReferences, referenceSettings]);
+257:      if (payload.settings) setReferenceSettings((prev) => ({ ...prev, ...payload.settings, mode: "Appearance Lock", lockIdentity: true }));
+266:  }, [setReferenceImages, setReferenceSettings]);
+279:    setReferenceSettings((prev) => ({
+291:  }, [setReferenceImages, setReferenceSettings]);
+298:    setReferenceSettings((prev) => ({ ...prev, ...patch, mode: "Appearance Lock", lockIdentity: true }));
+299:  }, [setReferenceSettings]);
+323:            <Download size={15} /> Export
+339:          Face Similarity <span>{Number(referenceSettings.similarityBoost ?? 1).toFixed(2)}</span>
+340:          <input type="range" min="0" max="1" step="0.05" value={referenceSettings.similarityBoost ?? 1} onChange={(e) => updateSetting({ similarityBoost: Number(e.target.value) })} />
+343:          Reference Strength <span>{Number(referenceSettings.strength ?? 1.35).toFixed(2)}</span>
+344:          <input type="range" min="0" max="1.5" step="0.05" value={referenceSettings.strength ?? 1.35} onChange={(e) => updateSetting({ strength: Number(e.target.value) })} />
+347:          Denoise Guidance <span>{Number(referenceSettings.denoiseGuidance ?? 0.38).toFixed(2)}</span>
+348:          <input type="range" min="0.15" max="0.85" step="0.05" value={referenceSettings.denoiseGuidance ?? 0.38} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
+351:          <label><input type="checkbox" checked={referenceSettings.faceLock !== false} onChange={(e) => updateSetting({ faceLock: e.target.checked })} /> Face</label>
+352:          <label><input type="checkbox" checked={referenceSettings.hairLock !== false} onChange={(e) => updateSetting({ hairLock: e.target.checked })} /> Hair</label>
+353:          <label><input type="checkbox" checked={referenceSettings.clothingLock !== false} onChange={(e) => updateSetting({ clothingLock: e.target.checked })} /> Clothing</label>
+354:          <label><input type="checkbox" checked={referenceSettings.bodyLock !== false} onChange={(e) => updateSetting({ bodyLock: e.target.checked })} /> Body</label>
+
+--- app/frontend/src/components/Settings.jsx
+4:  ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
+7:  DownloadCloud, RefreshCw
+18:  downloadBackend,
+19:  getDownloadProgress,
+43:    const saved = localStorage.getItem(`settings_card_${id}`);
+50:    localStorage.setItem(`settings_card_${id}`, String(newState));
+110:  const rec = specs.recommended_text_settings;
+165:      className="settings-section-header"
+186:        <div className="settings-section-icon" style={{ background: color + "15", color }}>
+189:        <div className="settings-section-title">{title}</div>
+193:          <span className="settings-section-count">{count} settings</span>
+217:// ─── Main Settings Component ───
+218:function Settings({
+228:  textSettings,
+229:  setTextSettings,
+230:  speechSettings,
+231:  setSpeechSettings,
+232:  ttsSettings,
+233:  setTtsSettings,
+236:  health,
+248:  const [llmStatus, setLlmStatus] = useState({ ready: false, settings: {} });
+252:  const [backendDownload, setBackendDownload] = useState({
+255:    progress: 0,
+260:  const [pendingTextSettings, setPendingTextSettings] = useState(textSettings || {});
+263:    if (textSettings) {
+264:      setPendingTextSettings(textSettings);
+266:  }, [textSettings]);
+274:  const hasPendingChanges = textSettings && pendingTextSettings && EDITABLE_TEXT_KEYS.some(key => {
+275:    return pendingTextSettings[key] !== textSettings[key];
+278:  const handleSaveTextSettings = async () => {
+280:      setTextSettings(pendingTextSettings);
+285:          title: "Settings Saved & Applied",
+286:          message: "Text settings saved successfully. The running text model has been unloaded to apply these changes."
+290:          title: "Settings Saved",
+291:          message: "Text settings saved successfully."
+305:      appearance: localStorage.getItem("settings_section_appearance") === "true",
+306:      image: localStorage.getItem("settings_section_image") === "true",
+307:      text: localStorage.getItem("settings_section_text") === "true",
+308:      speech: localStorage.getItem("settings_section_speech") === "true",
+309:      tts: localStorage.getItem("settings_section_tts") === "true",
+316:      localStorage.setItem(`settings_section_${section}`, String(nextState));
+346:  const supportsThinking = Boolean(llmStatus.ready && llmStatus.settings?.supportsThinking);
+376:    if (!backendDownload.active) return undefined;
+381:        const progress = await getDownloadProgress();
+383:        setBackendDownload((prev) => ({
+385:          active: Boolean(progress.active),
+386:          progress: Number(progress.progress ?? prev.progress ?? 0),
+387:          speed: progress.speed || prev.speed || "",
+388:          error: progress.error || null,
+391:        if (!progress.active && !progress.error) {
+396:          setBackendDownload((prev) => ({
+399:            error: err.message || "Download failed",
+411:  }, [backendDownload.active, refreshBackendOptions]);
+426:    setPendingTextSettings((prev) => {
+431:        const presets = specs?.recommended_text_settings;
+471:    setSpeechSettings((prev) => ({
+478:    setTtsSettings((prev) => ({
+484:  const buildTextStartOptions = (settings) => ({
+485:    threads: settings?.threads || specs?.cpu_cores_physical || 4,
+486:    contextSize: settings?.contextSize ?? 0,
+487:    gpuLayers: settings?.gpuLayers ?? -1,
+488:    enableThinking: settings?.enableThinking === true,
+489:    flashAttn: settings?.flashAttn,
+490:    cacheTypeK: settings?.cacheTypeK,
+491:    cacheTypeV: settings?.cacheTypeV,
+492:    mlock: settings?.mlock,
+493:    mmap: settings?.mmap,
+494:    cachePrompt: settings?.cachePrompt,
+495:    defragThold: settings?.defragThold,
+496:    batchSize: settings?.batchSize,
+497:    ubatchSize: settings?.ubatchSize,
+498:    performanceProfile: settings?.performanceProfile,
+499:    preferredBackend: settings?.preferredBackend,
+503:    const model = llmStatus.settings?.model;
+511:        contextSize: Math.min(2048, Number(pendingTextSettings?.contextSize) || 2048),
+512:        gpuLayers: pendingTextSettings?.gpuLayers ?? -1,
+534:    const nextSettings = { ...pendingTextSettings, enableThinking: enabled };
+540:    if (!status?.ready || !status?.settings?.model) {
+541:      setPendingTextSettings(nextSettings);
+542:      setTextSettings(nextSettings);
+555:      setPendingTextSettings(nextSettings);
+556:      setTextSettings(nextSettings);
+558:      await startLlm(status.settings.model, buildTextStartOptions(nextSettings));
+646:  const handleBackendDownload = async (backend) => {
+647:    if (!backend?.id || backendDownload.active) return;
+649:      setBackendDownload({
+652:        progress: 0,
+656:      await downloadBackend(backend.id);
+658:      setBackendDownload({
+661:        progress: 0,
+663:        error: err.message || "Download failed",
+666:        title: "Backend Download Failed",
+667:        message: err.message || "Could not start backend download.",
+673:  // ─── Image Settings ───
+674:  const renderImageSettings = () => (
+686:        <div className="settings-expanded-content">
+687:          <div className="settings-two-column">
+689:        <div className="settings-column">
+691:          <div className="settings-subsection">
+692:            <div className="settings-subsection-title">
+700:                  <span className="settings-value-badge">
+783:          <div className="settings-subsection">
+784:            <div className="settings-subsection-title">
+792:                  <span className="settings-value-badge">{constraints.steps}</span>
+803:                <span className="settings-option-desc">
+834:        <div className="settings-column">
+836:          <div className="settings-subsection">
+837:            <div className="settings-subsection-title">
+864:          <div className="settings-subsection">
+865:            <div className="settings-subsection-title">
+877:                    const isDownloading = backendDownload.active && backendDownload.backendId === b.id;
+887:                      {isDownloading ? `${Math.max(0, Math.min(100, Math.round(backendDownload.progress)))}%` : b.label}
+895:                      const isDownloading = backendDownload.active && backendDownload.backendId === backend.id;
+896:                      const progress = Math.max(0, Math.min(100, Math.round(backendDownload.progress || 0)));
+899:                          key={`download-${backend.id}`}
+915:                            <div className="settings-option-desc" title={backendDownload.error || backend.reason}>
+916:                              {isDownloading
+917:                                ? `${progress}% ${backendDownload.speed ? `- ${backendDownload.speed}` : ""}`
+918:                                : backendDownload.error && backendDownload.backendId === backend.id
+919:                                  ? backendDownload.error
+
+--- app/frontend/src/components/Sidebar.jsx
+2:import { Image, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film } from "lucide-react";
+433:            className={`nav-item ${activeTab === "settings" ? "active" : ""}`}
+434:            onClick={() => setActiveTab("settings")}
+436:            <Settings size={20} />
+437:            <span>Settings</span>
+
+--- app/frontend/src/components/SpeechTranscriber.jsx
+94:function downloadBlob(filename, content, type) {
+99:  link.download = filename;
+140:  speechSettings,
+141:  setSpeechSettings,
+143:  const [status, setStatus] = useState({ ready: false, running: false, backendInstalled: false, settings: {} });
+147:  const language = speechSettings?.language || "auto";
+148:  const threads = speechSettings?.threads || 4;
+149:  const backendPreference = speechSettings?.backendPreference || "auto";
+150:  const translate = speechSettings?.translate === true;
+152:  const setLanguage = (val) => setSpeechSettings((prev) => ({ ...prev, language: val }));
+153:  const setThreads = (val) => setSpeechSettings((prev) => ({ ...prev, threads: val }));
+154:  const setBackendPreference = (val) => setSpeechSettings((prev) => ({ ...prev, backendPreference: val }));
+168:  const installedModels = useMemo(() => models.filter((model) => model.installed), [models]);
+169:  const isSelectedRuntimeLoaded = status.ready &&
+170:    status.settings?.model === selectedModel &&
+171:    (status.settings?.backendPreference || "auto") === backendPreference;
+187:      const installed = nextModels.filter((model) => model.installed);
+188:      if (current && installed.some((model) => model.filename === current || model.id === current)) return current;
+189:      const active = nextStatus.settings?.model;
+190:      if (active && installed.some((model) => model.filename === active)) return active;
+191:      return installed.find((model) => model.recommended)?.filename ||
+192:        installed[0]?.filename ||
+246:      if (!isSelectedRuntimeLoaded) {
+309:      if (!isSelectedRuntimeLoaded) {
+334:          message: "The loaded model is English-only and cannot transcribe non-English speech. Please download and load a Multilingual model (e.g. Whisper Base Multilingual) from the Model Manager to transcribe this audio.",
+355:    downloadBlob("transcription.txt", resultText, "text/plain;charset=utf-8");
+360:    downloadBlob("transcription.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+375:            <h3>Runtime</h3>
+376:            <span className={`status-chip ${status.backendInstalled ? "" : "offline"}`}>
+377:              {status.backendInstalled ? (status.ready ? "Ready" : "Installed") : "Backend missing"}
+381:          {status.error && <div className="text-progress error">{status.error}</div>}
+386:              {installedModels.length === 0 && <option value="">No downloaded speech models</option>}
+387:              {installedModels.map((model) => (
+399:                <option value="auto">Auto (GPU if installed)</option>
+402:                    {backend.label}{backend.installed ? " - installed" : " - missing"}
+430:                onChange={(event) => setSpeechSettings((prev) => ({ ...prev, translate: event.target.checked }))}
+441:              disabled={!selectedModel || isLoadingModel || isTranscribing || isSelectedRuntimeLoaded}
+443:              {isLoadingModel ? <LoaderCircle className="progress-spinner" size={14} /> : <Play size={14} />}
+444:              <span>{isSelectedRuntimeLoaded ? "Loaded" : isLoadingModel ? "Loading" : "Load"}</span>
+452:          {installedModels.length === 0 && (
+453:            <div className="text-progress">
+454:              Download a Whisper model from Model Manager, Speech Models first.
+510:                disabled={!audioBlob || !selectedModel || !status.backendInstalled}
+516:            {isTranscribing && <span className="text-progress"><LoaderCircle className="progress-spinner" size={14} /> Transcribing locally...</span>}
+545:                <span>Stop Runtime</span>
+
+--- app/frontend/src/components/TextChat.jsx
+4:  getDownloadProgress,
+112:  textSettings, 
+113:  setTextSettings, 
+132:  const [status, setStatus] = useState({ ready: false, running: false, settings: {} });
+149:      setIsLlmLoaded(status.ready ? (status.settings?.model || true) : false);
+151:  }, [status.ready, status.settings?.model, setIsLlmLoaded]);
+224:      ...unique(decisions, 12).map((item) => `Prior decision/progress: ${item}`),
+236:    const contextLimit = Number(status.settings?.contextSize || textSettings?.contextSize || 4096);
+246:  const completedDownloadRef = useRef("");
+260:  const supportsVision = Boolean(status.ready && status.settings?.supportsVision);
+261:  const supportsThinking = Boolean(status.ready && status.settings?.supportsThinking);
+263:    ? status.settings?.enableThinking === true
+264:    : textSettings?.enableThinking === true;
+265:  const visionStatus = status.settings?.visionStatus || "Image input requires a matching mmproj projector file.";
+378:  const buildTextStartOptions = (settings) => ({
+379:    threads: settings?.threads || specs?.cpu_cores_physical || 4,
+380:    contextSize: settings?.contextSize ?? 0,
+381:    gpuLayers: settings?.gpuLayers ?? -1,
+382:    enableThinking: settings?.enableThinking === true,
+383:    flashAttn: settings?.flashAttn,
+384:    cacheTypeK: settings?.cacheTypeK,
+385:    cacheTypeV: settings?.cacheTypeV,
+386:    mlock: settings?.mlock,
+387:    mmap: settings?.mmap,
+388:    cachePrompt: settings?.cachePrompt,
+389:    defragThold: settings?.defragThold,
+390:    batchSize: settings?.batchSize,
+391:    ubatchSize: settings?.ubatchSize,
+392:    performanceProfile: settings?.performanceProfile,
+393:    preferredBackend: settings?.preferredBackend,
+398:    const nextSettings = { ...textSettings, enableThinking: enabled };
+400:    if (!status.ready || !status.settings?.model) {
+401:      setTextSettings(nextSettings);
+415:      setTextSettings(nextSettings);
+417:      const result = await startLlm(status.settings.model, buildTextStartOptions(nextSettings));
+418:      setStatus({ ...status, ...result, ready: true, running: true, settings: result.settings });
+465:    const active = nextStatus.settings?.model;
+467:      const saved = localStorage.getItem("selectedLlmModel");
+479:        if (nextStatus.ready && nextStatus.settings?.model) {
+480:          setSelectedModel(nextStatus.settings.model);
+484:      getDownloadProgress().then((state) => {
+485:        if (state.kind === "text" && (state.active || state.error || state.progress === 100)) {
+486:          const completionKey = `${state.filename || ""}:${state.downloadedBytes || 0}`;
+487:          if (!state.active && !state.error && completedDownloadRef.current !== completionKey) {
+488:            completedDownloadRef.current = completionKey;
+546:    localStorage.setItem("selectedLlmModel", filename);
+555:        threads: textSettings?.threads || specs?.cpu_cores_physical || 4,
+556:        contextSize: textSettings?.contextSize ?? 0,
+557:        gpuLayers: textSettings?.gpuLayers ?? -1,
+558:        enableThinking: textSettings?.enableThinking === true,
+559:        flashAttn: textSettings?.flashAttn,
+560:        cacheTypeK: textSettings?.cacheTypeK,
+561:        cacheTypeV: textSettings?.cacheTypeV,
+562:        mlock: textSettings?.mlock,
+563:        mmap: textSettings?.mmap,
+564:        cachePrompt: textSettings?.cachePrompt,
+565:        defragThold: textSettings?.defragThold,
+566:        batchSize: textSettings?.batchSize,
+567:        ubatchSize: textSettings?.ubatchSize,
+568:        performanceProfile: textSettings?.performanceProfile,
+569:        preferredBackend: textSettings?.preferredBackend,
+571:      setStatus({ ...status, ...result, ready: true, running: true, settings: result.settings });
+688:      const systemPrompt = textSettings?.systemPrompt || "You are a helpful local AI assistant.";
+693:      const contextLimit = Number(status.settings?.contextSize || textSettings?.contextSize || 4096);
+722:      const manualMaxTokens = textSettings?.maxTokens || 1024;
+723:      const effectiveMaxTokens = textSettings?.responseTokenMode === "manual"
+728:        temperature: textSettings?.temperature || 0.7,
+730:        topP: textSettings?.topP,
+731:        topK: textSettings?.topK,
+732:        minP: textSettings?.minP,
+733:        repeatPenalty: textSettings?.repeatPenalty,
+734:        seed: textSettings?.seed,
+964:                    const isActive = m.filename === status.settings?.model && status.ready;
+984:            {selectedModel && (!status.ready || status.settings?.model !== selectedModel) && !loadingModel && (
+1006:              const maxTokens = status.settings?.contextSize || 4096;
+1058:              <LoaderCircle className="progress-spinner" size={48} style={{ color: "var(--md-sys-color-primary)", marginBottom: "16px" }} />
+1201:                            <><LoaderCircle size={11} className="progress-spinner" /> {message.generationStats.web ? "Searching web..." : message.generationStats.vision ? "Processing image..." : "Waiting for first token..."}</>
+
+--- app/frontend/src/components/TextToSpeech.jsx
+26:function downloadUrl(url, filename) {
+29:  link.download = filename;
+39:  ttsSettings,
+40:  setTtsSettings,
+42:  const [status, setStatus] = useState({ ready: false, running: false, runtimeInstalled: false, settings: {}, voices: [] });
+51:  const installedModels = useMemo(() => models.filter((model) => model.installed), [models]);
+53:  const selectedVoice = ttsSettings?.voice || "af_heart";
+54:  const speed = ttsSettings?.speed || 1;
+57:    setTtsSettings((prev) => ({ ...prev, [key]: value }));
+68:      const installed = nextModels.filter((model) => model.installed);
+69:      if (current && installed.some((model) => model.filename === current || model.id === current)) return current;
+70:      const active = nextStatus.settings?.model;
+71:      if (active && installed.some((model) => model.filename === active)) return active;
+72:      const preferred = ttsSettings?.model;
+73:      if (preferred && installed.some((model) => model.filename === preferred)) return preferred;
+74:      return installed.find((model) => model.recommended)?.filename || installed[0]?.filename || "";
+76:  }, [ttsSettings?.model]);
+128:      if (!status.ready || status.settings?.model !== selectedModel) {
+162:  const isLoaded = status.ready && status.settings?.model === selectedModel;
+176:            <h3>Runtime</h3>
+177:            <span className={`status-chip ${status.runtimeInstalled ? "" : "offline"}`}>
+178:              {status.runtimeInstalled ? (status.ready ? "Ready" : "Installed") : "Runtime missing"}
+182:          {status.error && <div className="text-progress error">{status.error}</div>}
+187:              {installedModels.length === 0 && <option value="">No downloaded TTS models</option>}
+188:              {installedModels.map((model) => (
+227:              {isLoadingModel ? <LoaderCircle className="progress-spinner" size={14} /> : <Play size={14} />}
+237:                <span>Stop Runtime</span>
+242:          {installedModels.length === 0 && (
+243:            <div className="text-progress">
+244:              Download a Kokoro model from Model Manager, TTS Models first.
+273:                disabled={!text.trim() || !selectedModel || !status.runtimeInstalled}
+279:            {isGenerating && <span className="text-progress"><LoaderCircle className="progress-spinner" size={14} /> Generating locally...</span>}
+288:            <button className="m3-btn m3-btn-outlined" onClick={() => output?.url && downloadUrl(output.url, output.audioFile || "tts.wav")} disabled={!output?.url}>
+297:            <div className="text-progress">
+
+--- app/frontend/src/components/TopStatusBar.jsx
+152:            {isStoppingServer ? <RefreshCw className="progress-spinner" size={14} /> : <Square size={14} />}
+
+--- app/frontend/src/services/api.js
+176:function buildReferencePromptBoost(references = [], settings = {}) {
+185:  const globalStrength = clampReferenceNumber(settings.strength, 0, 1.5, 1.35);
+186:  const similarityBoost = clampReferenceNumber(settings.similarityBoost, 0, 1, 1);
+189:  if (settings.faceLock !== false) keep.push("same face structure, facial proportions, expression, eye shape and recognizable identity");
+190:  if (settings.hairLock !== false) keep.push("same hairstyle, hair volume, hairline and hair color");
+191:  if (settings.clothingLock !== false) keep.push("same clothing style, silhouette, color placement and visible outfit details");
+192:  if (settings.bodyLock !== false) keep.push("same body proportions, age impression, pose cues and overall subject shape");
+230:export async function getHealth() {
+232:    const res = await fetch("/api/health");
+234:    if (!res.ok) throw new Error(data.error || `Health request failed (HTTP ${res.status})`);
+358:export async function downloadBackend(backendId) {
+359:  const res = await fetch("/api/download-backend", {
+364:  return await readJsonResponse(res, "The local server returned an invalid backend download response.");
+382:  let saved = localStorage.getItem("imported-models");
+384:    localStorage.setItem("imported-models", JSON.stringify([]));
+463:// Get current backend status and active settings
+469:    return { ready: false, settings: {} };
+478:    return { ready: false, running: false, backendInstalled: false, error: err.message, settings: {} };
+489:  return await readJsonResponse(res, "The local server returned invalid text runtime stats.");
+794:export async function downloadLlmModel(url, filename = null, companion = null) {
+795:  const res = await fetch("/api/llm/download-model", {
+805:  return await readJsonResponse(res, "The local server returned an invalid text download response.");
+808:export async function importLlmModel(file, onProgress, signal) {
+809:  return await uploadModelFileToEndpoint(file, "/api/llm/import-model", onProgress, signal);
+826:    return { ready: false, running: false, backendInstalled: false, error: err.message, settings: {} };
+874:export async function downloadSpeechModel(modelIdOrUrl, filename = null) {
+876:  const res = await fetch("/api/speech/download-model", {
+885:  return await readJsonResponse(res, "The local server returned an invalid speech download response.");
+888:export async function importSpeechModel(file, onProgress, signal) {
+889:  return await uploadModelFileToEndpoint(file, "/api/speech/import-model", onProgress, signal);
+919:    return await readJsonResponse(res, "The local server returned invalid TTS runtime status.");
+921:    return { ready: false, running: false, runtimeInstalled: false, error: err.message, settings: {}, voices: [] };
+965:export async function downloadTtsModel(modelIdOrUrl, filename = null) {
+966:  const res = await fetch("/api/tts/download-model", {
+974:  return await readJsonResponse(res, "The local server returned an invalid TTS download response.");
+977:export async function importTtsModel(file, onProgress, signal) {
+978:  return await uploadModelFileToEndpoint(file, "/api/tts/import-model", onProgress, signal);
+1055:      ? (openvino.models || []).filter((model) => model.installed).map((model) => normalizeModel({
+1079:export async function generateImage(prompt, negativePrompt, constraints, activeModelName, inputImageBase64, onProgress, signal, referenceImages = [], referenceSettings = {}) {
+1083:  const referenceBoost = buildReferencePromptBoost(referenceImages, referenceSettings);
+1099:      ? Math.min(0.75, Math.max(0.15, Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? 0.38)))
+1102:    reference_settings: referenceSettings,
+1161:    reference_settings: payload.reference_settings || {},
+1185:      reference_settings: payload.reference_settings || {},
+1186:      reference_mode:     normalizeReferenceMode(referenceSettings.mode),
+1244:export async function importModelFile(sourcePath, onProgress, signal) {
+1252:    await uploadModelFile(file, onProgress, signal);
+1260:    if (onProgress) {
+1261:      unlisten = await listen("import-progress", (event) => {
+1262:        onProgress(event.payload);
+1287:    const progress = (i / totalSteps) * 100;
+1292:    if (onProgress) {
+1293:      onProgress({
+1295:        progress,
+1303:  // Save to localStorage
+1304:  const saved = localStorage.getItem("imported-models");
+1308:    localStorage.setItem("imported-models", JSON.stringify(imported));
+1314:function uploadModelFile(file, onProgress, signal) {
+1315:  return uploadModelFileToEndpoint(file, "/api/import-model", onProgress, signal);
+1318:function uploadModelFileToEndpoint(file, endpoint, onProgress, signal) {
+1339:    xhr.upload.onprogress = (event) => {
+1340:      if (!event.lengthComputable || !onProgress) return;
+1345:      onProgress({
+1347:        progress: (event.loaded / event.total) * 100,
+1361:        if (onProgress) {
+1362:          onProgress({
+1364:            progress: 100,
+1382:// Delete model file (Tauri disk deletion or localStorage cleanup)
+1407:  const saved = localStorage.getItem("imported-models");
+1410:  localStorage.setItem("imported-models", JSON.stringify(imported));
+1442:// Start model file download from a URL on the server
+1443:export async function downloadModel(url) {
+1445:    const res = await fetch("/api/download-model", {
+1452:    console.error("Failed to start model download:", e);
+1457:export async function downloadOpenVinoModel(modelId) {
+1459:    const res = await fetch("/api/download-openvino-model", {
+1464:    return await readJsonResponse(res, "The local server returned an invalid OpenVINO download response.");
+1466:    console.error("Failed to start OpenVINO model download:", e);
+1471:export async function cancelModelDownload(filename = "") {
+1473:    const res = await fetch("/api/cancel-download", {
+1480:    console.error("Failed to cancel model download:", e);
+1485:// Get the server-side model download progress
+1486:export async function getDownloadProgress() {
+1488:    const res = await fetch("/api/download-progress");
+1491:    console.error("Failed to get download progress:", e);
+1496:// Get the server-side image generation progress
+1497:export async function getGenerationProgress() {
+1499:    const res = await fetch("/api/generation-progress");
+1502:    console.error("Failed to get generation progress:", e);
+1515:export async function installImageToVideoCapability(repair = false) {
+1516:  const res = await fetch("/api/capabilities/image-to-video/install", {
+1519:  return await readJsonResponse(res, "Invalid Image-to-Video installation response.");
+PASS: พบ Component Candidates
+
+[6/10] ตรวจรูปแบบ API Client ที่ Frontend ใช้
+app/frontend/src/components/Generator.jsx:640:        const response = await fetch(outputImage);
+app/frontend/src/services/api.js:2:import { invoke } from "@tauri-apps/api/core";
+app/frontend/src/services/api.js:53:      const response = await fetch(url, { ...fetchOptions, signal: linked.signal });
+app/frontend/src/services/api.js:232:    const res = await fetch("/api/health");
+app/frontend/src/services/api.js:252:  const res = await fetch("/api/diagnostics");
+app/frontend/src/services/api.js:257:  const res = await fetch("/api/cleanup-candidates");
+app/frontend/src/services/api.js:263:  const res = await fetch("/api/cleanup", {
+app/frontend/src/services/api.js:286:      const res = await fetch("/api/hardware-specs");
+app/frontend/src/services/api.js:321:      const res = await fetch("/api/telemetry");
+app/frontend/src/services/api.js:341:      const res = await fetch("/api/backend-options");
+app/frontend/src/services/api.js:359:  const res = await fetch("/api/download-backend", {
+app/frontend/src/services/api.js:415:    const res = await fetch("/api/restart-backend", {
+app/frontend/src/services/api.js:458:    await fetch("/api/stop-backend", { method: "POST" });
+app/frontend/src/services/api.js:466:    const r = await fetch("/api/backend-status");
+app/frontend/src/services/api.js:475:    const res = await fetch("/api/llm/status");
+app/frontend/src/services/api.js:483:  const res = await fetch(`/api/llm/backends${refresh ? "?refresh=1" : ""}`);
+app/frontend/src/services/api.js:488:  const res = await fetch("/api/llm/stats");
+app/frontend/src/services/api.js:493:  const res = await fetch("/api/llm/benchmark", {
+app/frontend/src/services/api.js:509:  const res = await fetch("/api/llm/models");
+app/frontend/src/services/api.js:515:  const res = await fetch("/api/llm/conversations");
+app/frontend/src/services/api.js:521:  const res = await fetch("/api/llm/save-conversation", {
+app/frontend/src/services/api.js:531:  const res = await fetch("/api/llm/delete-conversation", {
+app/frontend/src/services/api.js:544:  const res = await fetch(`/api/huggingface/models?${params.toString()}`);
+app/frontend/src/services/api.js:556:  const res = await fetch("/api/llm/start", {
+app/frontend/src/services/api.js:582:  const res = await fetch("/api/llm/stop", { method: "POST" });
+app/frontend/src/services/api.js:587:  const res = await fetchWithTimeoutAndRetry("/api/llm/chat", {
+app/frontend/src/services/api.js:643:    res = await fetchWithTimeoutAndRetry("/api/llm/chat", fetchOpts, {
+app/frontend/src/services/api.js:781:  const res = await fetch("/api/web-search", {
+app/frontend/src/services/api.js:795:  const res = await fetch("/api/llm/download-model", {
+app/frontend/src/services/api.js:809:  return await uploadModelFileToEndpoint(file, "/api/llm/import-model", onProgress, signal);
+app/frontend/src/services/api.js:813:  const res = await fetch("/api/llm/delete-model", {
+app/frontend/src/services/api.js:823:    const res = await fetch("/api/speech/status");
+app/frontend/src/services/api.js:831:  const res = await fetch("/api/speech/models");
+app/frontend/src/services/api.js:837:  const res = await fetch("/api/speech/start", {
+app/frontend/src/services/api.js:851:  const res = await fetch("/api/speech/stop", { method: "POST" });
+app/frontend/src/services/api.js:864:  const res = await fetch(`/api/speech/transcribe?${params.toString()}`, {
+app/frontend/src/services/api.js:876:  const res = await fetch("/api/speech/download-model", {
+app/frontend/src/services/api.js:889:  return await uploadModelFileToEndpoint(file, "/api/speech/import-model", onProgress, signal);
+app/frontend/src/services/api.js:893:  const res = await fetch("/api/speech/delete-model", {
+app/frontend/src/services/api.js:902:  const res = await fetch("/api/speech/transcriptions");
+app/frontend/src/services/api.js:908:  const res = await fetch("/api/speech/delete-transcription", {
+app/frontend/src/services/api.js:918:    const res = await fetch("/api/tts/status");
+app/frontend/src/services/api.js:926:  const res = await fetch("/api/tts/models");
+app/frontend/src/services/api.js:932:  const res = await fetch("/api/tts/start", {
+app/frontend/src/services/api.js:945:  const res = await fetch("/api/tts/stop", { method: "POST" });
+app/frontend/src/services/api.js:950:  const res = await fetch("/api/tts/speak", {
+app/frontend/src/services/api.js:966:  const res = await fetch("/api/tts/download-model", {
+app/frontend/src/services/api.js:978:  return await uploadModelFileToEndpoint(file, "/api/tts/import-model", onProgress, signal);
+app/frontend/src/services/api.js:982:  const res = await fetch("/api/tts/delete-model", {
+app/frontend/src/services/api.js:991:  const res = await fetch("/api/tts/outputs");
+app/frontend/src/services/api.js:997:  const res = await fetch("/api/tts/delete-output", {
+app/frontend/src/services/api.js:1007:    const res = await fetch(`/api/llm/recommend?useCase=${encodeURIComponent(useCase)}&limit=${limit}`);
+app/frontend/src/services/api.js:1018:    const res = await fetch("/api/outputs");
+app/frontend/src/services/api.js:1027:  const res = await fetch("/api/save-output", {
+app/frontend/src/services/api.js:1037:  const res = await fetch("/api/delete-outputs", {
+app/frontend/src/services/api.js:1049:      fetch("/api/models"),
+app/frontend/src/services/api.js:1072:  const res = await fetch("/api/openvino-models");
+app/frontend/src/services/api.js:1109:    const response = await fetch("/api/openvino-generate", {
+app/frontend/src/services/api.js:1257:    const { listen } = await import("@tauri-apps/api/event");
+app/frontend/src/services/api.js:1315:  return uploadModelFileToEndpoint(file, "/api/import-model", onProgress, signal);
+app/frontend/src/services/api.js:1390:      const res = await fetch("/api/delete-model", {
+app/frontend/src/services/api.js:1418:    const response = await fetch(`${baseUrl}/v1/models`, { method: "GET" });
+app/frontend/src/services/api.js:1445:    const res = await fetch("/api/download-model", {
+app/frontend/src/services/api.js:1459:    const res = await fetch("/api/download-openvino-model", {
+app/frontend/src/services/api.js:1473:    const res = await fetch("/api/cancel-download", {
+app/frontend/src/services/api.js:1488:    const res = await fetch("/api/download-progress");
+app/frontend/src/services/api.js:1499:    const res = await fetch("/api/generation-progress");
+app/frontend/src/services/api.js:1511:  const res = await fetch("/api/capabilities/image-to-video/status");
+app/frontend/src/services/api.js:1516:  const res = await fetch("/api/capabilities/image-to-video/install", {
+app/frontend/src/services/api.js:1523:  const res = await fetch("/api/image-to-video/compatibility");
+app/frontend/src/services/api.js:1528:  const res = await fetch("/api/image-to-video/generate", {
+PASS: พบ Frontend API Patterns
+
+[7/10] ตรวจ CSS, Theme และ Component Styling
+app/frontend/src/App.css
+app/frontend/src/App.jsx
+app/frontend/src/components/Generator.jsx
+app/frontend/src/components/Home.jsx
+app/frontend/src/components/ImageToVideo.jsx
+app/frontend/src/components/ModelManager.jsx
+app/frontend/src/components/ReferenceManager.jsx
+app/frontend/src/components/Settings.jsx
+app/frontend/src/components/Sidebar.jsx
+app/frontend/src/components/SpeechTranscriber.jsx
+app/frontend/src/components/TextChat.jsx
+app/frontend/src/components/TextToSpeech.jsx
+app/frontend/src/components/TopStatusBar.jsx
+app/frontend/src/main.jsx
+
+Style tokens and reusable classes:
+app/frontend/src/App.css:3:  --app-font-size: 16px;
+app/frontend/src/App.css:11:  --md-shape-corner-small: 8px;
+app/frontend/src/App.css:12:  --md-shape-corner-medium: 12px;
+app/frontend/src/App.css:13:  --md-shape-corner-large: 16px;
+app/frontend/src/App.css:14:  --md-shape-corner-extra-large: 22px;
+app/frontend/src/App.css:15:  --md-shape-corner-full: 9999px;
+app/frontend/src/App.css:16:  --md-transition-duration: 0.25s;
+app/frontend/src/App.css:17:  --md-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+app/frontend/src/App.css:20:  --md-sys-color-primary: #4f46e5;
+app/frontend/src/App.css:21:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:22:  --md-sys-color-primary-container: rgba(79, 70, 229, 0.06);
+app/frontend/src/App.css:23:  --md-sys-color-on-primary-container: #4338ca;
+app/frontend/src/App.css:24:  --md-sys-color-secondary: #0ea5e9;
+app/frontend/src/App.css:25:  --md-sys-color-on-secondary: #ffffff;
+app/frontend/src/App.css:26:  --md-sys-color-secondary-container: rgba(14, 165, 233, 0.06);
+app/frontend/src/App.css:27:  --md-sys-color-on-secondary-container: #0369a1;
+app/frontend/src/App.css:28:  --md-sys-color-tertiary: #d946ef;
+app/frontend/src/App.css:29:  --md-sys-color-on-tertiary: #ffffff;
+app/frontend/src/App.css:30:  --md-sys-color-background: #f8fafc;
+app/frontend/src/App.css:31:  --md-sys-color-on-background: #0f172a;
+app/frontend/src/App.css:32:  --md-sys-color-surface: rgba(255, 255, 255, 0.75);
+app/frontend/src/App.css:33:  --md-sys-color-on-surface: #0f172a;
+app/frontend/src/App.css:34:  --md-sys-color-surface-variant: rgba(241, 245, 249, 0.8);
+app/frontend/src/App.css:35:  --md-sys-color-on-surface-variant: #475569;
+app/frontend/src/App.css:38:  --md-sys-color-outline: #64748b;            /* Used for description texts in JSX */
+app/frontend/src/App.css:39:  --md-sys-color-outline-variant: #94a3b8;    /* Used for sub-description texts in JSX */
+app/frontend/src/App.css:42:  --border-color: rgba(15, 23, 42, 0.08);
+app/frontend/src/App.css:43:  --border-color-muted: rgba(15, 23, 42, 0.05);
+app/frontend/src/App.css:45:  --md-sys-color-error: #ef4444;
+app/frontend/src/App.css:46:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:47:  --md-sys-color-success: #10b981;
+app/frontend/src/App.css:48:  --md-sys-color-on-success: #ffffff;
+app/frontend/src/App.css:49:  --md-sys-color-card-border: rgba(15, 23, 42, 0.06);
+app/frontend/src/App.css:50:  --glass-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.04);
+app/frontend/src/App.css:51:  --glass-blur: blur(16px);
+app/frontend/src/App.css:60:  --md-sys-color-primary: #6366f1;
+app/frontend/src/App.css:61:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:62:  --md-sys-color-primary-container: rgba(99, 102, 241, 0.12);
+app/frontend/src/App.css:63:  --md-sys-color-on-primary-container: #c7d2fe;
+app/frontend/src/App.css:64:  --md-sys-color-secondary: #38bdf8;
+app/frontend/src/App.css:65:  --md-sys-color-on-secondary: #0f172a;
+app/frontend/src/App.css:66:  --md-sys-color-secondary-container: rgba(56, 189, 248, 0.08);
+app/frontend/src/App.css:67:  --md-sys-color-on-secondary-container: #bae6fd;
+app/frontend/src/App.css:68:  --md-sys-color-tertiary: #f472b6;
+app/frontend/src/App.css:69:  --md-sys-color-on-tertiary: #0f172a;
+app/frontend/src/App.css:70:  --md-sys-color-background: #090a0f;
+app/frontend/src/App.css:71:  --md-sys-color-on-background: #f4f4f5;
+app/frontend/src/App.css:72:  --md-sys-color-surface: rgba(18, 20, 29, 0.65);
+app/frontend/src/App.css:73:  --md-sys-color-on-surface: #f4f4f5;
+app/frontend/src/App.css:74:  --md-sys-color-surface-variant: rgba(26, 29, 41, 0.55);
+app/frontend/src/App.css:75:  --md-sys-color-on-surface-variant: #a1a1aa;
+app/frontend/src/App.css:78:  --md-sys-color-outline: #a1a1aa;            /* Used for description texts in JSX */
+app/frontend/src/App.css:79:  --md-sys-color-outline-variant: #71717a;    /* Used for sub-description texts in JSX */
+app/frontend/src/App.css:82:  --border-color: rgba(255, 255, 255, 0.09);
+app/frontend/src/App.css:83:  --border-color-muted: rgba(255, 255, 255, 0.05);
+app/frontend/src/App.css:85:  --md-sys-color-error: #f87171;
+app/frontend/src/App.css:86:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:87:  --md-sys-color-success: #34d399;
+app/frontend/src/App.css:88:  --md-sys-color-on-success: #090a0f;
+app/frontend/src/App.css:89:  --md-sys-color-card-border: rgba(255, 255, 255, 0.04);
+app/frontend/src/App.css:90:  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+app/frontend/src/App.css:91:  --glass-blur: blur(16px);
+app/frontend/src/App.css:96:  --md-sys-color-primary: #5e81ac;
+app/frontend/src/App.css:97:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:98:  --md-sys-color-primary-container: rgba(94, 129, 172, 0.08);
+app/frontend/src/App.css:99:  --md-sys-color-on-primary-container: #4c566a;
+app/frontend/src/App.css:100:  --md-sys-color-secondary: #88c0d0;
+app/frontend/src/App.css:101:  --md-sys-color-on-secondary: #2e3440;
+app/frontend/src/App.css:102:  --md-sys-color-secondary-container: rgba(136, 192, 208, 0.08);
+app/frontend/src/App.css:103:  --md-sys-color-on-secondary-container: #3b4252;
+app/frontend/src/App.css:104:  --md-sys-color-tertiary: #b48ead;
+app/frontend/src/App.css:105:  --md-sys-color-on-tertiary: #ffffff;
+app/frontend/src/App.css:106:  --md-sys-color-background: #eceff4;
+app/frontend/src/App.css:107:  --md-sys-color-on-background: #2e3440;
+app/frontend/src/App.css:108:  --md-sys-color-surface: rgba(242, 244, 248, 0.85);
+app/frontend/src/App.css:109:  --md-sys-color-on-surface: #2e3440;
+app/frontend/src/App.css:110:  --md-sys-color-surface-variant: rgba(229, 233, 240, 0.85);
+app/frontend/src/App.css:111:  --md-sys-color-on-surface-variant: #4c566a;
+app/frontend/src/App.css:112:  --md-sys-color-outline: #4c566a;
+app/frontend/src/App.css:113:  --md-sys-color-outline-variant: #d8dee9;
+app/frontend/src/App.css:114:  --border-color: rgba(46, 52, 64, 0.09);
+app/frontend/src/App.css:115:  --border-color-muted: rgba(46, 52, 64, 0.05);
+app/frontend/src/App.css:116:  --md-sys-color-error: #bf616a;
+app/frontend/src/App.css:117:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:118:  --md-sys-color-success: #a3be8c;
+app/frontend/src/App.css:119:  --md-sys-color-on-success: #2e3440;
+app/frontend/src/App.css:120:  --md-sys-color-card-border: rgba(46, 52, 64, 0.06);
+app/frontend/src/App.css:121:  --glass-shadow: 0 8px 32px 0 rgba(46, 52, 64, 0.03);
+app/frontend/src/App.css:122:  --glass-blur: blur(16px);
+app/frontend/src/App.css:127:  --md-sys-color-primary: #d05a74;
+app/frontend/src/App.css:128:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:129:  --md-sys-color-primary-container: rgba(208, 90, 116, 0.06);
+app/frontend/src/App.css:130:  --md-sys-color-on-primary-container: #8c354a;
+app/frontend/src/App.css:131:  --md-sys-color-secondary: #e597a7;
+app/frontend/src/App.css:132:  --md-sys-color-on-secondary: #ffffff;
+app/frontend/src/App.css:133:  --md-sys-color-secondary-container: rgba(229, 151, 167, 0.08);
+app/frontend/src/App.css:134:  --md-sys-color-on-secondary-container: #8c354a;
+app/frontend/src/App.css:135:  --md-sys-color-tertiary: #a278b5;
+app/frontend/src/App.css:136:  --md-sys-color-on-tertiary: #ffffff;
+app/frontend/src/App.css:137:  --md-sys-color-background: #fdf6f6;
+app/frontend/src/App.css:138:  --md-sys-color-on-background: #5c2a39;
+app/frontend/src/App.css:139:  --md-sys-color-surface: rgba(255, 250, 250, 0.85);
+app/frontend/src/App.css:140:  --md-sys-color-on-surface: #5c2a39;
+app/frontend/src/App.css:141:  --md-sys-color-surface-variant: rgba(250, 235, 235, 0.9);
+app/frontend/src/App.css:142:  --md-sys-color-on-surface-variant: #8c5264;
+app/frontend/src/App.css:143:  --md-sys-color-outline: #8c5264;
+app/frontend/src/App.css:144:  --md-sys-color-outline-variant: #dbb2bc;
+app/frontend/src/App.css:145:  --border-color: rgba(92, 42, 57, 0.08);
+app/frontend/src/App.css:146:  --border-color-muted: rgba(92, 42, 57, 0.04);
+app/frontend/src/App.css:147:  --md-sys-color-error: #e05c5c;
+app/frontend/src/App.css:148:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:149:  --md-sys-color-success: #5cbe8a;
+app/frontend/src/App.css:150:  --md-sys-color-on-success: #ffffff;
+app/frontend/src/App.css:151:  --md-sys-color-card-border: rgba(92, 42, 57, 0.06);
+app/frontend/src/App.css:152:  --glass-shadow: 0 8px 32px 0 rgba(92, 42, 57, 0.03);
+app/frontend/src/App.css:153:  --glass-blur: blur(16px);
+app/frontend/src/App.css:158:  --md-sys-color-primary: #ff007f;
+app/frontend/src/App.css:159:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:160:  --md-sys-color-primary-container: rgba(255, 0, 127, 0.15);
+app/frontend/src/App.css:161:  --md-sys-color-on-primary-container: #ff9ebb;
+app/frontend/src/App.css:162:  --md-sys-color-secondary: #00f0ff;
+app/frontend/src/App.css:163:  --md-sys-color-on-secondary: #0d0714;
+app/frontend/src/App.css:164:  --md-sys-color-secondary-container: rgba(0, 240, 255, 0.1);
+app/frontend/src/App.css:165:  --md-sys-color-on-secondary-container: #a6f5ff;
+app/frontend/src/App.css:166:  --md-sys-color-tertiary: #9d4edd;
+app/frontend/src/App.css:167:  --md-sys-color-on-tertiary: #ffffff;
+app/frontend/src/App.css:168:  --md-sys-color-background: #0d0714;
+app/frontend/src/App.css:169:  --md-sys-color-on-background: #e0e0ff;
+app/frontend/src/App.css:170:  --md-sys-color-surface: rgba(26, 12, 38, 0.7);
+app/frontend/src/App.css:171:  --md-sys-color-on-surface: #e0e0ff;
+app/frontend/src/App.css:172:  --md-sys-color-surface-variant: rgba(37, 18, 54, 0.6);
+app/frontend/src/App.css:173:  --md-sys-color-on-surface-variant: #b5a8cc;
+app/frontend/src/App.css:174:  --md-sys-color-outline: #00f0ff;
+app/frontend/src/App.css:175:  --md-sys-color-outline-variant: #ff007f;
+app/frontend/src/App.css:176:  --border-color: rgba(0, 240, 255, 0.2);
+app/frontend/src/App.css:177:  --border-color-muted: rgba(255, 0, 127, 0.15);
+app/frontend/src/App.css:178:  --md-sys-color-error: #ff3333;
+app/frontend/src/App.css:179:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:180:  --md-sys-color-success: #00ff66;
+app/frontend/src/App.css:181:  --md-sys-color-on-success: #0d0714;
+app/frontend/src/App.css:182:  --md-sys-color-card-border: rgba(0, 240, 255, 0.1);
+app/frontend/src/App.css:183:  --glass-shadow: 0 8px 32px 0 rgba(255, 0, 127, 0.15);
+app/frontend/src/App.css:184:  --glass-blur: blur(16px);
+app/frontend/src/App.css:189:  --md-sys-color-primary: #10b981;
+app/frontend/src/App.css:190:  --md-sys-color-on-primary: #040a09;
+app/frontend/src/App.css:191:  --md-sys-color-primary-container: rgba(16, 185, 129, 0.12);
+app/frontend/src/App.css:192:  --md-sys-color-on-primary-container: #a7f3d0;
+app/frontend/src/App.css:193:  --md-sys-color-secondary: #34d399;
+app/frontend/src/App.css:194:  --md-sys-color-on-secondary: #040a09;
+app/frontend/src/App.css:195:  --md-sys-color-secondary-container: rgba(52, 211, 153, 0.08);
+app/frontend/src/App.css:196:  --md-sys-color-on-secondary-container: #d1fae5;
+app/frontend/src/App.css:197:  --md-sys-color-tertiary: #6ee7b7;
+app/frontend/src/App.css:198:  --md-sys-color-on-tertiary: #040a09;
+app/frontend/src/App.css:199:  --md-sys-color-background: #060f0e;
+app/frontend/src/App.css:200:  --md-sys-color-on-background: #e2ebe9;
+app/frontend/src/App.css:201:  --md-sys-color-surface: rgba(13, 28, 25, 0.65);
+app/frontend/src/App.css:202:  --md-sys-color-on-surface: #e2ebe9;
+app/frontend/src/App.css:203:  --md-sys-color-surface-variant: rgba(20, 41, 37, 0.55);
+app/frontend/src/App.css:204:  --md-sys-color-on-surface-variant: #94a8a4;
+app/frontend/src/App.css:205:  --md-sys-color-outline: #86efac;
+app/frontend/src/App.css:206:  --md-sys-color-outline-variant: #15803d;
+app/frontend/src/App.css:207:  --border-color: rgba(52, 211, 153, 0.15);
+app/frontend/src/App.css:208:  --border-color-muted: rgba(52, 211, 153, 0.08);
+app/frontend/src/App.css:209:  --md-sys-color-error: #f87171;
+app/frontend/src/App.css:210:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:211:  --md-sys-color-success: #34d399;
+app/frontend/src/App.css:212:  --md-sys-color-on-success: #040a09;
+app/frontend/src/App.css:213:  --md-sys-color-card-border: rgba(52, 211, 153, 0.06);
+app/frontend/src/App.css:214:  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+app/frontend/src/App.css:215:  --glass-blur: blur(16px);
+app/frontend/src/App.css:220:  --md-sys-color-primary: #bd93f9;
+app/frontend/src/App.css:221:  --md-sys-color-on-primary: #282a36;
+app/frontend/src/App.css:222:  --md-sys-color-primary-container: rgba(189, 147, 249, 0.15);
+app/frontend/src/App.css:223:  --md-sys-color-on-primary-container: #d6bbfb;
+app/frontend/src/App.css:224:  --md-sys-color-secondary: #ff79c6;
+app/frontend/src/App.css:225:  --md-sys-color-on-secondary: #282a36;
+app/frontend/src/App.css:226:  --md-sys-color-secondary-container: rgba(255, 121, 198, 0.1);
+app/frontend/src/App.css:227:  --md-sys-color-on-secondary-container: #ffb3db;
+app/frontend/src/App.css:228:  --md-sys-color-tertiary: #50fa7b;
+app/frontend/src/App.css:229:  --md-sys-color-on-tertiary: #282a36;
+app/frontend/src/App.css:230:  --md-sys-color-background: #282a36;
+app/frontend/src/App.css:231:  --md-sys-color-on-background: #f8f8f2;
+app/frontend/src/App.css:232:  --md-sys-color-surface: rgba(33, 34, 44, 0.7);
+app/frontend/src/App.css:233:  --md-sys-color-on-surface: #f8f8f2;
+app/frontend/src/App.css:234:  --md-sys-color-surface-variant: rgba(40, 42, 54, 0.6);
+app/frontend/src/App.css:235:  --md-sys-color-on-surface-variant: #6272a4;
+app/frontend/src/App.css:236:  --md-sys-color-outline: #ff79c6;
+app/frontend/src/App.css:237:  --md-sys-color-outline-variant: #6272a4;
+app/frontend/src/App.css:238:  --border-color: rgba(189, 147, 249, 0.18);
+app/frontend/src/App.css:239:  --border-color-muted: rgba(255, 121, 198, 0.1);
+app/frontend/src/App.css:240:  --md-sys-color-error: #ff5555;
+app/frontend/src/App.css:241:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:242:  --md-sys-color-success: #50fa7b;
+app/frontend/src/App.css:243:  --md-sys-color-on-success: #282a36;
+app/frontend/src/App.css:244:  --md-sys-color-card-border: rgba(189, 147, 249, 0.08);
+app/frontend/src/App.css:245:  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+app/frontend/src/App.css:246:  --glass-blur: blur(16px);
+app/frontend/src/App.css:251:  --md-sys-color-primary: #3b82f6;
+app/frontend/src/App.css:252:  --md-sys-color-on-primary: #ffffff;
+app/frontend/src/App.css:253:  --md-sys-color-primary-container: rgba(59, 130, 246, 0.15);
+app/frontend/src/App.css:254:  --md-sys-color-on-primary-container: #93c5fd;
+app/frontend/src/App.css:255:  --md-sys-color-secondary: #60a5fa;
+app/frontend/src/App.css:256:  --md-sys-color-on-secondary: #000000;
+app/frontend/src/App.css:257:  --md-sys-color-secondary-container: rgba(96, 165, 250, 0.1);
+app/frontend/src/App.css:258:  --md-sys-color-on-secondary-container: #bfdbfe;
+app/frontend/src/App.css:259:  --md-sys-color-tertiary: #38bdf8;
+app/frontend/src/App.css:260:  --md-sys-color-on-tertiary: #000000;
+app/frontend/src/App.css:261:  --md-sys-color-background: #000000;
+app/frontend/src/App.css:262:  --md-sys-color-on-background: #ffffff;
+app/frontend/src/App.css:263:  --md-sys-color-surface: rgba(10, 10, 10, 0.95);
+app/frontend/src/App.css:264:  --md-sys-color-on-surface: #ffffff;
+app/frontend/src/App.css:265:  --md-sys-color-surface-variant: rgba(20, 20, 20, 0.98);
+app/frontend/src/App.css:266:  --md-sys-color-on-surface-variant: #cccccc;
+app/frontend/src/App.css:267:  --md-sys-color-outline: #888888;
+app/frontend/src/App.css:268:  --md-sys-color-outline-variant: #444444;
+app/frontend/src/App.css:269:  --border-color: rgba(255, 255, 255, 0.15);
+app/frontend/src/App.css:270:  --border-color-muted: rgba(255, 255, 255, 0.08);
+app/frontend/src/App.css:271:  --md-sys-color-error: #ef4444;
+app/frontend/src/App.css:272:  --md-sys-color-on-error: #ffffff;
+app/frontend/src/App.css:273:  --md-sys-color-success: #10b981;
+app/frontend/src/App.css:274:  --md-sys-color-on-success: #ffffff;
+app/frontend/src/App.css:275:  --md-sys-color-card-border: rgba(255, 255, 255, 0.1);
+app/frontend/src/App.css:276:  --glass-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+app/frontend/src/App.css:277:  --glass-blur: none;
+app/frontend/src/components/ReferenceManager.jsx:78:    <div className={`reference-card appearance-reference-card ${selected ? "selected" : ""} ${!item.enabled ? "disabled" : ""}`}>
+app/frontend/src/components/ReferenceManager.jsx:79:      <div className="reference-card-media appearance-card-media">
+app/frontend/src/components/ReferenceManager.jsx:81:        <button className="reference-index" type="button" onClick={() => onSelect(item.id)} title="Select reference">
+app/frontend/src/components/ReferenceManager.jsx:85:        <span className="reference-role-badge appearance-lock-badge">Face / Appearance</span>
+app/frontend/src/components/ReferenceManager.jsx:88:      <div className="reference-card-body">
+app/frontend/src/components/ReferenceManager.jsx:89:        <div className="reference-card-title" title={item.name}>{item.name || `Reference ${index + 1}`}</div>
+app/frontend/src/components/ReferenceManager.jsx:106:        <div className="appearance-lock-grid">
+app/frontend/src/components/ReferenceManager.jsx:129:      <div className="reference-card-actions">
+app/frontend/src/components/ReferenceManager.jsx:313:          <button type="button" className="m3-btn m3-btn-tonal" onClick={() => fileInputRef.current?.click()} disabled={disabled || referenceImages.length >= MAX_REFERENCES}>
+app/frontend/src/components/ReferenceManager.jsx:316:          <button type="button" className="m3-btn m3-btn-filled" onClick={optimizeForFace} disabled={disabled || referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:319:          <button type="button" className="m3-btn m3-btn-outlined" onClick={savePreset} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:322:          <button type="button" className="m3-btn m3-btn-outlined" onClick={exportJson} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:325:          <button type="button" className="m3-btn m3-btn-outlined" onClick={() => importInputRef.current?.click()}>
+app/frontend/src/components/ReferenceManager.jsx:328:          <button type="button" className="m3-btn m3-btn-error" onClick={() => { setReferenceImages([]); setSelectedIds([]); }} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:375:          <button type="button" onClick={bulkRemove} className="danger">Delete</button>
+app/frontend/src/components/ReferenceManager.jsx:389:          <div className="reference-grid appearance-reference-grid">
+app/frontend/src/components/ReferenceManager.jsx:414:          <button type="button" className="m3-btn m3-btn-outlined" onClick={selectAllVisible}>Select Visible</button>
+app/frontend/src/components/ImageToVideo.jsx:127:    <div className="settings-card" style={{ padding: 18, marginBottom: 18, border: "1px solid var(--border-color)" }}>
+app/frontend/src/components/ImageToVideo.jsx:133:      <section className="settings-card" style={{ padding: 18 }}>
+app/frontend/src/components/ImageToVideo.jsx:152:      <section className="settings-card" style={{ padding: 18 }}>
+app/frontend/src/components/SpeechTranscriber.jsx:372:      <div className="speech-grid">
+app/frontend/src/components/SpeechTranscriber.jsx:373:        <section className="m3-card speech-panel">
+app/frontend/src/components/SpeechTranscriber.jsx:374:          <div className="speech-panel-header">
+app/frontend/src/components/SpeechTranscriber.jsx:376:            <span className={`status-chip ${status.backendInstalled ? "" : "offline"}`}>
+app/frontend/src/components/SpeechTranscriber.jsx:381:          {status.error && <div className="text-progress error">{status.error}</div>}
+app/frontend/src/components/SpeechTranscriber.jsx:437:          <div className="speech-button-row">
+app/frontend/src/components/SpeechTranscriber.jsx:439:              className="m3-btn m3-btn-filled"
+app/frontend/src/components/SpeechTranscriber.jsx:443:              {isLoadingModel ? <LoaderCircle className="progress-spinner" size={14} /> : <Play size={14} />}
+app/frontend/src/components/SpeechTranscriber.jsx:446:            <button className="m3-btn m3-btn-outlined" onClick={refresh}>
+app/frontend/src/components/SpeechTranscriber.jsx:453:            <div className="text-progress">
+app/frontend/src/components/SpeechTranscriber.jsx:459:        <section className="m3-card speech-panel">
+app/frontend/src/components/SpeechTranscriber.jsx:460:          <div className="speech-panel-header">
+app/frontend/src/components/SpeechTranscriber.jsx:462:            <span className="status-chip">{audioName || "No audio selected"}</span>
+app/frontend/src/components/SpeechTranscriber.jsx:475:          <div className="speech-button-row">
+app/frontend/src/components/SpeechTranscriber.jsx:477:              <button className="m3-btn m3-btn-error" onClick={stopRecording}>
+app/frontend/src/components/SpeechTranscriber.jsx:482:              <button className="m3-btn m3-btn-filled" onClick={startRecording} disabled={isTranscribing}>
+app/frontend/src/components/SpeechTranscriber.jsx:487:            <label className="m3-btn m3-btn-outlined">
+app/frontend/src/components/SpeechTranscriber.jsx:493:              <button className="m3-btn m3-btn-error" onClick={clearCurrentAudio} disabled={isTranscribing || isRecording}>
+app/frontend/src/components/SpeechTranscriber.jsx:500:          <div className="speech-button-row">
+app/frontend/src/components/SpeechTranscriber.jsx:502:              <button className="m3-btn m3-btn-error" onClick={handleCancel}>
+app/frontend/src/components/SpeechTranscriber.jsx:508:                className="m3-btn m3-btn-filled"
+app/frontend/src/components/SpeechTranscriber.jsx:516:            {isTranscribing && <span className="text-progress"><LoaderCircle className="progress-spinner" size={14} /> Transcribing locally...</span>}
+app/frontend/src/components/SpeechTranscriber.jsx:521:      <section className="m3-card speech-result-panel">
+app/frontend/src/components/SpeechTranscriber.jsx:522:        <div className="speech-panel-header">
+app/frontend/src/components/SpeechTranscriber.jsx:524:          <div className="speech-button-row">
+app/frontend/src/components/SpeechTranscriber.jsx:534:            <button className="m3-btn m3-btn-outlined" onClick={saveText} disabled={!resultText.trim()}>
+app/frontend/src/components/SpeechTranscriber.jsx:538:            <button className="m3-btn m3-btn-outlined" onClick={saveJson} disabled={!resultText.trim()}>
+app/frontend/src/components/SpeechTranscriber.jsx:543:              <button className="m3-btn m3-btn-error" onClick={() => stopSpeech().then(refresh)}>
+app/frontend/src/components/Generator.jsx:31:        <div className="gallery-select-badge">
+app/frontend/src/components/Generator.jsx:785:          <div className="m3-card">
+app/frontend/src/components/Generator.jsx:786:            <h3 className="m3-card-title">
+app/frontend/src/components/Generator.jsx:816:                      <button type="button" className="m3-btn m3-btn-error" style={{ height: "34px", flexShrink: 0 }} onClick={handleClearBaseImage} disabled={isGenerating}>
+app/frontend/src/components/Generator.jsx:880:                  <div className="status-chip">
+app/frontend/src/components/Generator.jsx:884:                  <div className="status-chip">
+app/frontend/src/components/Generator.jsx:888:                  <div className="status-chip">
+app/frontend/src/components/Generator.jsx:892:                  <div className="status-chip">
+app/frontend/src/components/Generator.jsx:900:                className="m3-btn m3-btn-filled"
+app/frontend/src/components/Generator.jsx:913:        <div className="m3-card output-panel">
+app/frontend/src/components/Generator.jsx:916:              <div className="progress-overlay">
+app/frontend/src/components/Generator.jsx:919:                    <div className="progress-spinner"></div>
+app/frontend/src/components/Generator.jsx:920:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700, textAlign: "center" }}>
+app/frontend/src/components/Generator.jsx:936:                        <div className="progress-bar-container" style={{ margin: 0 }}>
+app/frontend/src/components/Generator.jsx:938:                            className="progress-bar-fill"
+app/frontend/src/components/Generator.jsx:956:                    <div className="progress-spinner"></div>
+app/frontend/src/components/Generator.jsx:957:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700, textAlign: "center" }}>
+app/frontend/src/components/Generator.jsx:966:                    <div className="progress-spinner"></div>
+app/frontend/src/components/Generator.jsx:967:                    <div className="progress-text" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+app/frontend/src/components/Generator.jsx:987:                    <div className="progress-bar-container" style={{ margin: "4px 0 10px 0" }}>
+app/frontend/src/components/Generator.jsx:989:                        className="progress-bar-fill"
+app/frontend/src/components/Generator.jsx:1001:                      className="m3-btn m3-btn-error" 
+app/frontend/src/components/Generator.jsx:1047:                <button className="m3-btn m3-btn-tonal" onClick={handleCopyImage}>
+app/frontend/src/components/Generator.jsx:1051:                <button className="m3-btn m3-btn-outlined" onClick={handleDownload}>
+app/frontend/src/components/Generator.jsx:1064:          <h3 className="m3-card-title" style={{ marginBottom: 0 }}>Recent Outputs Gallery</h3>
+app/frontend/src/components/Generator.jsx:1068:              <button className="m3-btn m3-btn-tonal" onClick={useSelectedGalleryItem}>
+app/frontend/src/components/Generator.jsx:1072:              <button className="m3-btn m3-btn-outlined" onClick={downloadSelectedGalleryItems}>
+app/frontend/src/components/Generator.jsx:1076:              <button className="m3-btn m3-btn-error" onClick={deleteSelectedGalleryItems}>
+
+[8/10] ตรวจ API Runtime ที่ Frontend อ้างถึงแล้ว
+PASS: ยังไม่มี Runtime Dashboard Integration ซ้ำ
+
+[9/10] Build Frontend Baseline
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 117 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-DeJ1E7Pf.css   88.95 kB │ gzip:  14.07 kB
+../dist/assets/event-DTB6WObU.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-B4OmJqAl.js   454.35 kB │ gzip: 130.20 kB
+
+✓ built in 117ms
+PASS: Frontend Baseline Build ผ่าน
+
+[10/10] สร้าง Runtime Dashboard Implementation Spec
+PASS: สร้าง Dashboard Specification แล้ว
+Spec: docs/beta7/runtime-download-dashboard-spec.md
+
+============================================================
+ BETA 7 RUNTIME DASHBOARD DISCOVERY PASSED
+============================================================
+Branch : feat/beta7-foundation
+Commit : a5f9083
+Report : validation-reports/beta7-runtime-dashboard-discovery-20260806-115638.txt
+Spec   : docs/beta7/runtime-download-dashboard-spec.md
+Next   : สร้าง Download Progress Dashboard ตาม Frontend Architecture จริง

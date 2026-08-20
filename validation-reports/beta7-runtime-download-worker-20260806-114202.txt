@@ -1,0 +1,65 @@
+============================================================
+ LUKE AI STUDIO - SAFE RUNTIME DOWNLOAD WORKER
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta7-foundation
+Local  : 82cddaf
+Remote : 82cddaf
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/config/runtime-dependencies.json
+PASS: Backup app/runtime-state/install-jobs.json
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/10] เพิ่ม Download Worker, SHA256 และ Rollback
+PASS: เพิ่ม Safe Download Worker แล้ว
+
+[4/10] สร้าง Automated Download, SHA256 และ Rollback Test
+PASS: สร้าง scripts/validation/test-runtime-download-worker.cjs
+
+[5/10] เชื่อม Download Worker Test กับ Validation
+PASS: เชื่อม Download Worker Test แล้ว
+
+[6/10] ตรวจ Syntax และ Worker Routes
+PASS: Syntax, SHA256, Download และ Rollback Logic ผ่าน
+
+[7/10] รัน Safe Download Worker Test
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63692
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1785991326778-127d9106 failed: crypto.createHash is not a function
+Error: Job runtime-1785991326778-127d9106 did not reach completed
+    at waitForJobState (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-download-worker.cjs:192:9)
+    at async main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-download-worker.cjs:397:7)
+Worker Test Exit Code: 1
+FAIL: Safe Download Worker Test ไม่ผ่าน
+
+[8/10] รัน Full Release Validation
+
+[9/10] Commit และ Push
+
+[10/10] ตรวจสถานะสุดท้าย
+Local : 82cddaf
+Remote: 82cddaf
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-download-worker.cjs
+
+============================================================
+ BETA 7 SAFE DOWNLOAD WORKER FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-download-worker-20260806-114202
+Report : validation-reports/beta7-runtime-download-worker-20260806-114202.txt

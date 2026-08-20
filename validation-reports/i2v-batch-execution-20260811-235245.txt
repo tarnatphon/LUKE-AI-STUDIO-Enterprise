@@ -1,0 +1,28 @@
+============================================================
+ LUKE AI STUDIO - I2V PHASE 3A-3
+ PERSISTENT BATCH EXECUTION V1
+============================================================
+
+[1/8] Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+PASS: Certified I2V base intact
+
+[2/8] Add Batch State + Batch Engine
+PASS: Batch execution engine added
+
+[3/8] Add Restart Batch Recovery
+PASS: Batch restart recovery added
+
+[4/8] Add Batch Studio UI
+PASS: Batch Studio UI installed
+
+[5/8] Add Batch Validation
+PASS: Batch contracts validated
+
+[6/8] Register Release Validation
+PASS: Batch validation registered
+
+[7/8] Build + Full Regression
+FAIL: Async UI regression failed

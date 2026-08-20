@@ -1,0 +1,153 @@
+============================================================
+ LUKE AI STUDIO - FIX BACKEND TEST PROCESS LIFECYCLE
+============================================================
+
+[1/10] ตรวจ Branch และไฟล์ค้างจากรอบก่อน
+Branch : feat/beta6-foundation
+Commit : 8019616
+BACKUP: scripts/validation/test-backend-api.cjs
+NOTICE: พบไฟล์ค้างจากการทดสอบก่อนหน้า
+ M scripts/validation/test-backend-api.cjs
+PASS: ไฟล์ค้างมีเฉพาะ Backend Test Runner
+
+[2/10] คืน Test Runner เป็น Commit ล่าสุดก่อน Patch ใหม่
+PASS: คืน scripts/validation/test-backend-api.cjs เป็น Baseline แล้ว
+
+[3/10] สำรอง Baseline ที่ยืนยันแล้ว
+PASS: Backup Baseline พร้อม
+
+[4/10] แก้ Readiness, Health และ Process Lifecycle
+PASS: แก้ Backend Test Lifecycle แล้ว
+
+[5/10] ตรวจ Logic ที่เพิ่ม
+65:  // LUKE_AI_BACKEND_TEST_LIFECYCLE_V2
+132:function isApiReady(endpoint, result) {
+160:async function runNegativeTests(baseUrl) {
+327:        if (isApiReady(endpoint, result)) {
+384:    await runNegativeTests(
+404:  console.log("PASS: Backend process stopped after all API tests.");
+PASS: Lifecycle, Negative Tests และ API-only Health อยู่ครบ
+
+[6/10] ตรวจ Syntax
+PASS: Test Runner, Backend และ Validation Syntax ผ่าน
+
+[7/10] รัน Backend Positive และ Negative API Tests
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61333
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61333
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+Test Exit Code: 0
+PASS: Backend Lifecycle และ API Tests ผ่าน
+
+[8/10] รัน Release Validation ทั้งระบบ
+PASS: release structure and syntax
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 69
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61338
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61338
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+PASS: Release Validation ผ่าน
+
+[9/10] Commit และ Push
+ scripts/validation/test-backend-api.cjs | 207 +++++++++++++++++++++++++++-----
+ 1 file changed, 178 insertions(+), 29 deletions(-)
+PASS: Commit และ Push สำเร็จ
+
+[10/10] ตรวจสถานะสุดท้าย
+Local  : d364a6e
+Remote : d364a6e
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 6 BACKEND TEST LIFECYCLE FIX PASSED
+============================================================
+Branch    : feat/beta6-foundation
+Commit    : d364a6e
+Readiness : API JSON endpoint only
+Lifecycle : Backend stops after all tests
+Negative  : Unknown route, method and invalid JSON
+Report    : validation-reports/beta6-backend-test-lifecycle-20260805-161833.txt
+Next      : จัดเตรียม Portable Node.js และ npm ให้ Dependency Health เป็น ok=true

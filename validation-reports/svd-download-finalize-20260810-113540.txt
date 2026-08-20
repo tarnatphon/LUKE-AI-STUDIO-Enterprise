@@ -1,0 +1,36 @@
+============================================================
+ LUKE AI STUDIO - SVD DOWNLOAD FINALIZE
+ PRESERVE MODEL / CLEAN GENERATED PROJECT STATE
+============================================================
+
+[1/5] Safety
+Branch : feat/text-model-manager-v1
+HEAD   : c93e4d1
+Current Git state:
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/frontend/package-lock.json
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ D app/tools/node-mac/runtime.json
+ M app/update-state/status.json
+?? app/dist/assets/event-CArBGzXJ.js
+?? app/dist/assets/index-Bo2WBXMk.css
+?? app/dist/assets/index-yynnS_eV.js
+PASS: SVD snapshot exists before cleanup
+
+[2/5] Restore Generated / Runtime Project Files
+PASS: Generated project state restored
+
+[3/5] Verify SVD Was NOT Removed
+Offline snapshot:
+/Users/ekky/.cache/huggingface/hub/models--stabilityai--stable-video-diffusion-img2vid/snapshots/9cf024d5bfa8f56622af86c884f26a52f6676f2e
+PASS: SVD weights preserved
+
+[4/5] Runtime Sanity
+PASS: Runtime healthy
+
+[5/5] Final Git Safety

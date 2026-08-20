@@ -1,0 +1,29 @@
+============================================================
+ LUKE AI STUDIO - EXTERNAL DOWNLOAD STORAGE
+============================================================
+
+[1/8] ตรวจ External Drive
+FAIL: ไม่พบ /Volumes/EXTERNAL Drive
+กรุณาเชื่อมต่อ External Drive ก่อนรันใหม่
+
+[2/8] สร้างโครงสร้าง Download Storage
+
+[3/8] ตรวจสิทธิ์เขียน
+
+[4/8] สำรอง Storage Config เดิม
+NOTICE: ยังไม่มี Storage Config เดิม
+
+[5/8] สร้าง Storage Configuration กลาง
+
+[6/8] ตรวจ Storage Config
+
+[7/8] ตรวจ Release Validation
+
+[8/8] Commit และ Push Storage Config
+
+============================================================
+ EXTERNAL DOWNLOAD STORAGE CONFIGURATION FAILED
+ตรวจรายการ FAIL ด้านบน
+ Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-config-20260805-151913
+ Report : validation-reports/storage-config-20260805-151913.txt
+============================================================

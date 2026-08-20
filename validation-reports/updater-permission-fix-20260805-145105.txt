@@ -1,0 +1,40 @@
+============================================================
+ LUKE AI STUDIO - FIX UPDATE FILE PERMISSIONS
+============================================================
+
+[1/8] ตรวจโฟลเดอร์ทดสอบ
+PASS: Test App พร้อม
+
+[2/8] ตรวจ Version ก่อนแก้ไข
+Version: 1.0.0-beta.2
+PASS: ยังอยู่ที่ Beta 2
+
+[3/8] แก้สิทธิ์ไฟล์ใน Test App
+PASS: ปรับสิทธิ์อ่าน เขียน และรันแล้ว
+
+[4/8] ล้าง Rollback ที่สร้างไม่สมบูรณ์
+PASS: ล้าง Update State ที่เสียแล้ว
+
+[5/8] ตรวจไฟล์ whisper-cli
+-rwxr-xr-x  1 ekky  staff  - 672768 Aug  4 11:54 /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/speech-backend/mac/cpu/whisper-cli
+PASS: whisper-cli เขียนทับได้
+
+[6/8] ติดตั้ง Beta 3 ใหม่
+  [Update] Downloading Local AI 1.0.0-beta.3...
+  [Update] Updated successfully to 1.0.0-beta.3. Previous managed version removed.
+PASS: Updater ติดตั้ง Beta 3 สำเร็จ
+
+[7/8] ตรวจ Version และ Package หลังอัปเดต
+Version after update: 1.0.0-beta.3
+PASS: Version เปลี่ยนเป็น Beta 3
+PASS: mac.sh syntax ผ่าน
+PASS: Updater syntax ผ่าน
+
+[8/8] สรุปผล
+============================================================
+ BETA 2 TO BETA 3 PERMISSION FIX TEST PASSED
+ From    : 1.0.0-beta.2
+ To      : 1.0.0-beta.3
+ Test App: /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2
+ Report  : /Users/ekky/Desktop/Luke ai/validation-reports/updater-permission-fix-20260805-145105.txt
+============================================================

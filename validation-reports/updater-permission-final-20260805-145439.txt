@@ -1,0 +1,109 @@
+============================================================
+ LUKE AI STUDIO - PERMANENT UPDATE PERMISSION PATCH
+============================================================
+
+[1/8] สำรอง Updater Source
+PASS: Backup = backups/updater-permission-final-20260805-145439/update.cjs
+
+[2/8] เพิ่ม Permission Handling ในเส้นทางติดตั้งและ Rollback
+PASS: Permission Patch ถูกเพิ่มแล้ว
+
+[3/8] ตรวจตำแหน่งที่แก้ไข
+105:// LUKE_AI_WRITABLE_PATH_FIX
+106:function prepareWritablePath(targetPath) {
+142:function copyFileSafe(source, destination) {
+143:  prepareWritablePath(destination);
+203:    if (fs.existsSync(existing) && fs.statSync(existing).isFile()) copyFileSafe(existing, path.join(backupRoot, rel));
+208:    for (const rel of allPayloadFiles) copyFileSafe(path.join(payload, rel), path.join(ROOT, rel));
+215:          prepareWritablePath(target);
+216:          fs.unlinkSync(target);
+232:      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+233:      else if (fs.existsSync(target) && fs.statSync(target).isFile()) fs.unlinkSync(target);
+PASS: Permission Handling เชื่อมทั้ง Copy และ Delete
+
+[4/8] ตรวจ Node.js Syntax
+PASS: Updater Syntax ผ่าน
+
+[5/8] ตรวจ Git Diff
+diff --git a/scripts/updater/update.cjs b/scripts/updater/update.cjs
+index 567603d..7410720 100755
+--- a/scripts/updater/update.cjs
++++ b/scripts/updater/update.cjs
+@@ -101,7 +101,46 @@ function walkFiles(base, prefix = "") {
+   }
+   return out;
+ }
++
++// LUKE_AI_WRITABLE_PATH_FIX
++function prepareWritablePath(targetPath) {
++  if (!targetPath) return;
++
++  const executableNames = new Set([
++    "node",
++    "npm",
++    "npx",
++    "sd",
++    "whisper-cli",
++    "llama-cli",
++    "llama-server",
++    "ffmpeg",
++    "ffprobe"
++  ]);
++
++  try {
++    fs.mkdirSync(path.dirname(targetPath), {
++      recursive: true,
++      mode: 0o755
++    });
++  } catch {}
++
++  try {
++    fs.chmodSync(path.dirname(targetPath), 0o755);
++  } catch {}
++
++  if (fs.existsSync(targetPath)) {
++    try {
++      const mode = executableNames.has(path.basename(targetPath))
++        ? 0o755
++        : 0o644;
++      fs.chmodSync(targetPath, mode);
++    } catch {}
++  }
++}
++
+ function copyFileSafe(source, destination) {
++  prepareWritablePath(destination);
+   fs.mkdirSync(path.dirname(destination), { recursive: true });
+   fs.copyFileSync(source, destination);
+   try { fs.chmodSync(destination, fs.statSync(source).mode); } catch {}
+@@ -173,6 +212,7 @@ function installPayload(payload, config, nextVersion) {
+         if (newSet.has(rel) || isProtected(rel, protectedPaths)) continue;
+         const target = path.join(ROOT, rel);
+         if (fs.existsSync(target) && fs.statSync(target).isFile()) {
++          prepareWritablePath(target);
+           fs.unlinkSync(target);
+           removeEmptyParents(target, ROOT);
+         }
+PASS: Git Diff Check ผ่าน
+
+[6/8] ทดสอบ Updater Check
+  [Update] LUKE AI STUDIO 1.0.0-beta.3 is up to date.
+PASS: Updater Check ผ่าน
+
+[7/8] รัน Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[8/8] Commit และ Push
+PASS: Commit และ Push สำเร็จ
+
+============================================================
+ PERMANENT UPDATE PERMISSION PATCH PASSED
+ Install : ปรับสิทธิ์ก่อนเขียนทับไฟล์
+ Cleanup : ปรับสิทธิ์ก่อนลบไฟล์เก่า
+ Rollback: ใช้ copyFileSafe ที่แก้สิทธิ์อัตโนมัติ
+ Commit  : 8740691
+ Next    : Build และทดสอบ LUKE AI STUDIO 1.0.0-beta.4
+ Backup  : backups/updater-permission-final-20260805-145439
+ Report  : validation-reports/updater-permission-final-20260805-145439.txt
+============================================================

@@ -1,0 +1,82 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A FINAL RECOVERY
+ DYNAMIC API CONTRACT NORMALIZATION
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+Validator: scripts/validation/check-api-contracts.cjs
+Current dirty state:
+ M app/frontend/src/services/api.js
+ M scripts/server/image-to-video-job-manager.cjs
+ M scripts/server/image-to-video-process-runner.cjs
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-controls.cjs
+PASS: Phase 3A-4A source intact
+
+[2/7] Upgrade API Contract Validator
+PASS: Dynamic endpoint normalization installed
+
+[3/7] Run API Contract Validator
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 175
+Backend endpoints : 208
+
+Frontend endpoints without backend contracts:
+  /api/image-to-video/batches/${encodeURIComponent(
+    - app/frontend/src/services/api.js
+  /api/image-to-video/batches/:param/:param
+    - app/frontend/src/services/api.js
+  /api/image-to-video/batches/:param/jobs/:param/skip
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/cancel
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/retry
+    - app/frontend/src/services/api.js
+  /api/llm/backends${refresh
+    - app/frontend/src/services/api.js
+  /api/llm/backends:param
+    - app/frontend/src/services/api.js
+  /api/text-models/download-queue/${encodeURIComponent(
+    - app/frontend/src/components/TextModelManager.jsx
+  /api/text-models/download-queue/:param/:param
+    - app/frontend/src/components/TextModelManager.jsx
+PASS: API Contract Validator passed
+
+[4/7] Batch Controls Regression
+PASS: Batch Controls regressions passed
+
+[5/7] Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 175
+Backend endpoints : 208
+
+Frontend endpoints without backend contracts:
+  /api/image-to-video/batches/${encodeURIComponent(
+    - app/frontend/src/services/api.js
+  /api/image-to-video/batches/:param/:param
+    - app/frontend/src/services/api.js
+  /api/image-to-video/batches/:param/jobs/:param/skip
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/cancel
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/retry
+    - app/frontend/src/services/api.js
+  /api/llm/backends${refresh
+    - app/frontend/src/services/api.js
+  /api/llm/backends:param
+    - app/frontend/src/services/api.js
+  /api/text-models/download-queue/${encodeURIComponent(
+    - app/frontend/src/components/TextModelManager.jsx
+  /api/text-models/download-queue/:param/:param
+    - app/frontend/src/components/TextModelManager.jsx
+FAIL: Full Release Validation failed

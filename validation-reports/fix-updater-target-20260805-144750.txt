@@ -1,0 +1,130 @@
+============================================================
+ LUKE AI STUDIO - FIX DARWIN ARM64 UPDATE MANIFEST
+============================================================
+
+[1/9] ตรวจไฟล์สำคัญ
+PASS: scripts/updater/update.cjs
+PASS: releases/1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip
+
+[2/9] ตรวจ Schema ที่ Updater ใช้จริง
+88:function sha256(file) {
+89:  const hash = crypto.createHash("sha256");
+182:    if (!health.ok || compareVersions(health.version, nextVersion) !== 0) throw new Error(health.reason || "Installed version did not match manifest");
+204:  const manifestUrl = process.env.LOCAL_AI_UPDATE_MANIFEST || config.manifestUrl || "";
+215:  if (!manifestUrl) {
+222:  let manifest;
+224:    manifest = await fetchJson(manifestUrl, Number(config.timeoutMs) || 2500);
+232:  const release = manifest.channels?.[channel] || manifest;
+233:  if (!release?.version) throw new Error("Update manifest has no version");
+241:  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+242:  if (!asset?.url || !asset?.sha256) {
+261:    const actualHash = sha256(pkg);
+262:    if (actualHash.toLowerCase() !== String(asset.sha256).toLowerCase()) throw new Error("SHA256 verification failed");
+
+[3/9] สร้าง Manifest ที่รองรับ Schema หลายรูปแบบ
+{
+    "product": "LUKE AI STUDIO",
+    "version": "1.0.0-beta.3",
+    "channel": "beta",
+    "releasedAt": "2026-08-05T07:47:50Z",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "target": "darwin-arm64",
+    "targets": [
+        "darwin-arm64"
+    ],
+    "platforms": [
+        "darwin-arm64"
+    ],
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "sizeBytes": 21463343,
+    "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "artifact": {
+        "target": "darwin-arm64",
+        "platform": "darwin",
+        "architecture": "arm64",
+        "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+        "sizeBytes": 21463343,
+        "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+        "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+        "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+    },
+    "artifacts": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "assets": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "packages": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "downloads": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.3",
+    "minimumMacOS": "13.0",
+    "offlineFirst": true,
+    "stagedUpdate": true,
+    "validated": true
+}
+
+[4/9] อัปโหลด Manifest ใหม่
+PASS: อัปโหลด Manifest สำเร็จ
+
+[5/9] ดาวน์โหลด Manifest กลับมาตรวจ
+PASS: Remote Manifest รองรับ darwin-arm64
+
+[6/9] เตรียม Beta 2 Clean Test
+PASS: Beta 2 Test App พร้อม
+
+[7/9] ตรวจหา Beta 3 แบบเข้มงวด
+  [Update] Update 1.0.0-beta.3 is not available for darwin-arm64. Continuing with 1.0.0-beta.2.
+FAIL: Updater ยังไม่ยอมรับ darwin-arm64
+
+[8/9] ติดตั้งและตรวจ Staged Update จริง
+
+[9/9] สรุปผล
+============================================================
+ STRICT STAGED UPDATE TEST FAILED
+ ไม่สรุป PASS จากการพบไฟล์ status.json เพียงอย่างเดียว
+Test folder: /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST
+Report     : validation-reports/fix-updater-target-20260805-144750.txt
+============================================================

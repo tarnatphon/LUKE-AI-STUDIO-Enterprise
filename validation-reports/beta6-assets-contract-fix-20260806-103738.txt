@@ -1,0 +1,85 @@
+============================================================
+ LUKE AI STUDIO - FIX BETA 6 ASSETS CONTRACT
+============================================================
+
+[1/12] ตรวจ Branch และไฟล์ค้างจากรอบก่อน
+Branch : feat/beta6-foundation
+Local  : 81f7f92
+Remote : 81f7f92
+พบไฟล์ค้าง:
+ M releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+PASS: ไฟล์ค้างมีเฉพาะ Manifest จากรอบก่อน
+
+[2/12] คืน Manifest เป็น Commit ล่าสุดก่อนแก้ใหม่
+PASS: Working Tree กลับมาสะอาด
+
+[3/12] ตรวจ Source Contract ของ Updater
+280:  const platformKey = `${process.platform}-${process.arch}`;
+281:  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+283:    status("incompatible", { currentVersion: current.version, latestVersion: release.version, platform: platformKey });
+284:    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+PASS: ยืนยันว่า Updater ต้องการ release.assets
+
+[4/12] ตรวจ Release Assets ในเครื่อง
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.5/LUKE-AI-STUDIO-1.0.0-beta.5.zip
+PASS: ZIP และ SHA256 ถูกต้อง
+SHA256: e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+
+[5/12] เพิ่ม assets.darwin-arm64 ตาม Contract จริง
+PASS: Manifest Assets Contract ถูกสร้างแล้ว
+
+[6/12] ตรวจ assets.darwin-arm64 อย่างเข้มงวด
+PASS: release.assets['darwin-arm64'] contains url and sha256
+PASS: Manifest ตรงกับ Updater Contract จริง
+
+[7/12] อัปโหลด Manifest ใหม่ไป GitHub Release
+PASS: อัปโหลด Manifest ใหม่สำเร็จ
+
+[8/12] ดาวน์โหลด Manifest กลับมาตรวจ
+PASS: GitHub Manifest ตรงกับ Local
+
+[9/12] เตรียม Beta 5 Test App
+Test App: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta5-to-beta6-assets-test-20260806-103738/app/LUKE-AI-STUDIO-1.0.0-beta.5
+Before  : 1.0.0-beta.5
+PASS: Test App เริ่มจาก Beta 5
+
+[10/12] ทดสอบ Auto Update Beta 5 ไป Beta 6
+PASS: Node.js = /usr/local/bin/node
+  [Update] Downloading LUKE AI STUDIO 1.0.0-beta.6...
+  [Update] Updated successfully to 1.0.0-beta.6. Previous managed version removed.
+Updater Exit Code: 0
+PASS: Auto Update Beta 5 ไป Beta 6 สำเร็จ
+
+[11/12] ตรวจ Package และ Updater หลัง Update
+After: 1.0.0-beta.6
+PASS: Version หลัง Update เป็น Beta 6
+PASS: Portable Node.js พร้อม
+PASS: Portable npm พร้อม
+PASS: Portable npx พร้อม
+  [Update] LUKE AI STUDIO 1.0.0-beta.6 is up to date.
+PASS: Updater Check หลัง Update ถูกต้อง
+
+[12/12] Commit และ Push Manifest Fix
+releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+releases/1.0.0-beta.6/latest.json
+ releases/1.0.0-beta.6/latest-1.0.0-beta.6.json | 33 +++++++++++++++-
+ releases/1.0.0-beta.6/latest.json              | 52 ++++++++++++++++++++++++++
+ 2 files changed, 84 insertions(+), 1 deletion(-)
+PASS: Commit Manifest Fix สำเร็จ
+PASS: Push Branch สำเร็จ
+
+============================================================
+ BETA 6 ASSETS CONTRACT AND AUTO UPDATE PASSED
+============================================================
+From    : 1.0.0-beta.5
+To      : 1.0.0-beta.6
+Target  : darwin-arm64
+Contract: release.assets['darwin-arm64']
+Commit  : ec3bfd3
+Test App: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta5-to-beta6-assets-test-20260806-103738/app/LUKE-AI-STUDIO-1.0.0-beta.5
+Report  : validation-reports/beta6-assets-contract-fix-20260806-103738.txt
+Next    : อัปเดต Git Tag และ GitHub Release ให้ชี้ Manifest Fix Commit

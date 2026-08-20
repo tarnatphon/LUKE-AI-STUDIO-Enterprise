@@ -1,0 +1,81 @@
+============================================================
+ LUKE AI STUDIO - FIX BETA 6 UPDATE MANIFEST SCHEMA
+============================================================
+
+[1/11] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Local  : 81f7f92
+Remote : 81f7f92
+PASS: Git State พร้อม
+
+[2/11] ตรวจ Source และ Release Assets
+PASS: scripts/updater/update.cjs
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.5/LUKE-AI-STUDIO-1.0.0-beta.5.zip
+PASS: สำรอง Manifest แล้ว
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-manifest-schema-20260806-103540
+
+[3/11] ตรวจ Manifest Contract จาก Updater Source
+88:function sha256(file) {
+89:  const hash = crypto.createHash("sha256");
+106:function prepareWritablePath(targetPath) {
+107:  if (!targetPath) return;
+122:    fs.mkdirSync(path.dirname(targetPath), {
+129:    fs.chmodSync(path.dirname(targetPath), 0o755);
+132:  if (fs.existsSync(targetPath)) {
+134:      const mode = executableNames.has(path.basename(targetPath))
+137:      fs.chmodSync(targetPath, mode);
+213:        const target = path.join(ROOT, rel);
+214:        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+215:          prepareWritablePath(target);
+216:          fs.unlinkSync(target);
+217:          removeEmptyParents(target, ROOT);
+230:      const target = path.join(ROOT, rel);
+232:      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+233:      else if (fs.existsSync(target) && fs.statSync(target).isFile()) fs.unlinkSync(target);
+281:  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+282:  if (!asset?.url || !asset?.sha256) {
+284:    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+294:  const ext = asset.url.endsWith(".tar.gz") ? ".tar.gz" : asset.url.endsWith(".tgz") ? ".tgz" : ".zip";
+300:    await download(asset.url, pkg, Number(config.timeoutMs) || 2500);
+301:    const actualHash = sha256(pkg);
+302:    if (actualHash.toLowerCase() !== String(asset.sha256).toLowerCase()) throw new Error("SHA256 verification failed");
+
+[4/11] สร้าง Manifest Compatibility Schema จาก Source จริง
+PASS: สร้าง Manifest Schema ใหม่แล้ว
+
+[5/11] ตรวจ Manifest ใหม่
+PASS: Manifest exposes package contract for darwin-arm64
+PASS: Manifest Contract ถูกต้อง
+
+[6/11] อัปโหลด Manifest ใหม่ไป GitHub Release
+PASS: อัปโหลด Manifest ใหม่สำเร็จ
+
+[7/11] ดาวน์โหลด Manifest กลับมาตรวจ
+PASS: ดาวน์โหลด Remote Manifest สำเร็จ
+PASS: Local และ GitHub Manifest ตรงกัน
+
+[8/11] เตรียม Beta 5 Test App
+Test App: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta5-to-beta6-schema-test-20260806-103540/app/LUKE-AI-STUDIO-1.0.0-beta.5
+Before  : 1.0.0-beta.5
+PASS: Test App เริ่มจาก Beta 5
+
+[9/11] ทดสอบ Auto Update Beta 5 ไป Beta 6
+  [Update] Update 1.0.0-beta.6 is not available for darwin-arm64. Continuing with 1.0.0-beta.5.
+Updater Exit Code: 0
+FAIL: Auto Update ยังพบข้อผิดพลาด
+
+[10/11] ตรวจ Package และ Updater หลัง Update
+
+[11/11] Commit และ Push Manifest Fix
+
+============================================================
+ BETA 6 MANIFEST OR AUTO UPDATE FIX FAILED
+============================================================
+โปรเจกต์หลักไม่ได้รับผลกระทบจาก Test App
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-manifest-schema-20260806-103540
+Report : validation-reports/beta6-manifest-schema-fix-20260806-103540.txt
+ M releases/1.0.0-beta.6/latest-1.0.0-beta.6.json

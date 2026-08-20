@@ -1,0 +1,41 @@
+============================================================
+ LUKE AI STUDIO - STORAGE DESTINATION MANAGER PHASE 1
+============================================================
+
+[1/9] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 43b1ed9
+Remote : 43b1ed9
+PASS: Commit 43b1ed9 พร้อมและ Git สะอาด
+
+[2/9] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/9] สร้าง Storage Policy และ State
+PASS: Storage Policy และ State ถูกต้อง
+
+[4/9] สร้าง Storage Destination Manager
+PASS: Storage Destination Manager ถูกสร้างแล้ว
+
+[5/9] เชื่อม Storage Manager API เข้ากับ Backend
+FAIL: Storage Manager API Patch ไม่สำเร็จ
+
+[6/9] สร้าง Automated Test
+
+[7/9] รัน Syntax, Automated Test และ Backend Smoke Test
+FAIL: Syntax หรือ Storage Contracts ไม่ผ่าน
+
+[8/9] รัน Full Release Validation
+
+[9/9] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+?? app/config/storage/
+?? app/runtime-state/storage/
+?? scripts/server/storage-destination-manager.cjs
+
+============================================================
+ STORAGE DESTINATION MANAGER PHASE 1 FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-manager-20260807-003343
+Report : validation-reports/storage-manager-20260807-003343.txt

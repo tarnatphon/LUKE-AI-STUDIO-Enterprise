@@ -1,0 +1,147 @@
+============================================================
+ LUKE AI STUDIO - FIX VERSION AND PLATFORM
+============================================================
+
+[1/8] ค้นหาแหล่งที่ยังใช้เวอร์ชัน 0.2.0
+app/version.json:3:  "version": "0.2.0",
+app/frontend/package-lock.json:621:        "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:2496:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#heapify@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:2498:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:2512:      "purl": "pkg:cargo/heapify@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3653:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#matchers@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3656:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3670:      "purl": "pkg:cargo/matchers@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3843:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#num-conv@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3846:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:3860:      "purl": "pkg:cargo/num-conv@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4041:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#option-ext@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4044:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4058:      "purl": "pkg:cargo/option-ext@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4270:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#powerfmt@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4273:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:4287:      "purl": "pkg:cargo/powerfmt@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6919:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#tracing-log@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6922:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6936:      "purl": "pkg:cargo/tracing-log@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6950:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#tracing-serde@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6953:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:6967:      "purl": "pkg:cargo/tracing-serde@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:7930:        "registry+https://github.com/rust-lang/crates.io-index#heapify@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8306:        "registry+https://github.com/rust-lang/crates.io-index#powerfmt@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8320:        "registry+https://github.com/rust-lang/crates.io-index#option-ext@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8475:      "ref": "registry+https://github.com/rust-lang/crates.io-index#heapify@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8719:      "ref": "registry+https://github.com/rust-lang/crates.io-index#matchers@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8746:      "ref": "registry+https://github.com/rust-lang/crates.io-index#num-conv@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8780:      "ref": "registry+https://github.com/rust-lang/crates.io-index#option-ext@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:8818:      "ref": "registry+https://github.com/rust-lang/crates.io-index#powerfmt@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9304:        "registry+https://github.com/rust-lang/crates.io-index#num-conv@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9313:        "registry+https://github.com/rust-lang/crates.io-index#num-conv@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9314:        "registry+https://github.com/rust-lang/crates.io-index#powerfmt@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9437:      "ref": "registry+https://github.com/rust-lang/crates.io-index#tracing-log@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9445:      "ref": "registry+https://github.com/rust-lang/crates.io-index#tracing-serde@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9454:        "registry+https://github.com/rust-lang/crates.io-index#matchers@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9465:        "registry+https://github.com/rust-lang/crates.io-index#tracing-log@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/hf_xet-1.5.1.dist-info/sboms/hf_xet.cyclonedx.json:9466:        "registry+https://github.com/rust-lang/crates.io-index#tracing-serde@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/utils/import_utils.py:527:{0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install invisible-watermark>=0.2.0`
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/dependency_versions_table.py:17:    "invisible-watermark": "invisible-watermark>=0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers-0.38.0.dist-info/METADATA:54:Requires-Dist: invisible-watermark>=0.2.0; extra == "test"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers-0.38.0.dist-info/METADATA:103:Requires-Dist: invisible-watermark>=0.2.0; extra == "dev"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/safetensors-0.8.0.dist-info/sboms/safetensors-python.cyclonedx.json:305:      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#foldhash@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/safetensors-0.8.0.dist-info/sboms/safetensors-python.cyclonedx.json:308:      "version": "0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/safetensors-0.8.0.dist-info/sboms/safetensors-python.cyclonedx.json:322:      "purl": "pkg:cargo/foldhash@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/safetensors-0.8.0.dist-info/sboms/safetensors-python.cyclonedx.json:1311:      "ref": "registry+https://github.com/rust-lang/crates.io-index#foldhash@0.2.0"
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/safetensors-0.8.0.dist-info/sboms/safetensors-python.cyclonedx.json:1325:        "registry+https://github.com/rust-lang/crates.io-index#foldhash@0.2.0",
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/attr/_make.py:2466:    .. versionchanged:: 20.2.0 *inherited* is not taken into account for
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/transformers/utils/import_utils.py:1178:    return is_available and version.parse(qutlass_version) >= version.parse("0.2.0")
+app/backend/mac/coreml_venv/lib/python3.14/site-packages/transformers/training_args.py:1724:                raise ValueError("lr_scheduler_type reduce_lr_on_plateau requires torch>=0.2.0")
+app/update-state/updater.log:1:[2026-08-05T05:35:37.195Z] Offline or update server unavailable. Continuing with installed version 0.2.0.
+app/update-state/updater.log:2:[2026-08-05T05:42:29.144Z] Offline or update server unavailable. Continuing with installed version 0.2.0.
+app/update-state/updater.log:3:[2026-08-05T05:47:50.147Z] Offline or update server unavailable. Continuing with installed version 0.2.0.
+app/update-state/updater.log:4:[2026-08-05T07:25:39.462Z] Update 1.0.0-beta.1 is not available for darwin-arm64. Continuing with 0.2.0.
+app/update-state/updater.log:5:[2026-08-05T07:25:39.545Z] Offline or update server unavailable. Continuing with installed version 0.2.0.
+app/update-state/managed-files.json:2:  "version": "0.2.0",
+app/update-state/status.json:4:  "currentVersion": "0.2.0",
+
+[2/8] สำรองไฟล์ Version และ Update Config
+BACKUP: app/config/update.json
+BACKUP: app/frontend/package.json
+BACKUP: scripts/updater/update.cjs
+
+[3/8] อัปเดต Version Metadata เป็น 1.0.0-beta.1
+{
+    "enabled": true,
+    "channel": "beta",
+    "manifestUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/latest.json",
+    "checkOnLaunch": true,
+    "timeoutMs": 2500,
+    "autoInstall": true,
+    "cleanupOldVersion": true,
+    "keepConfigBackups": 3,
+    "protectedPaths": [
+        "app/models",
+        "app/llm-models",
+        "app/image-models",
+        "app/video-models",
+        "app/speech-models",
+        "app/tts-models",
+        "app/openvino-models",
+        "app/chat-history",
+        "app/knowledge",
+        "app/projects",
+        "app/outputs",
+        "app/transcriptions",
+        "app/tts-outputs",
+        "app/cache",
+        "app/user-data",
+        "app/config/user-settings.json",
+        "app/update-state"
+    ],
+    "product": "LUKE AI STUDIO",
+    "currentVersion": "1.0.0-beta.1",
+    "offlineFirst": true,
+    "stagedUpdate": true,
+    "version": "1.0.0-beta.1"
+}
+
+[4/8] สร้าง Manifest สำหรับ darwin-arm64
+{
+    "product": "LUKE AI STUDIO",
+    "version": "1.0.0-beta.1",
+    "channel": "beta",
+    "releasedAt": "2026-08-05T07:27:01Z",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "target": "darwin-arm64",
+    "targets": [
+        "darwin-arm64"
+    ],
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.1.zip",
+    "sizeBytes": 68584451,
+    "sha256": "6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/LUKE-AI-STUDIO-1.0.0-beta.1.zip",
+    "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.1",
+    "minimumMacOS": "13.0",
+    "requiresInternetForFirstSetup": true,
+    "validated": true
+}
+
+[5/8] อัปโหลด Manifest ใหม่ไป GitHub Release
+PASS: อัปโหลด latest.json ใหม่แล้ว
+
+[6/8] ตรวจ Manifest จาก GitHub
+
+[7/8] รันทดสอบ Updater อีกครั้ง
+  [Update] Update 1.0.0-beta.1 is not available for darwin-arm64. Continuing with 0.2.0.
+FAIL: Updater ยังอ่านเวอร์ชันเป็น 0.2.0
+
+[8/8] ตรวจ Release Validation
+PASS: release structure and syntax
+
+============================================================
+ UPDATER FIX FOUND ERRORS
+ Updater status   : 1
+ Validation status: 
+ ยังไม่ควรสร้าง Release ใหม่
+Backup : /Users/ekky/Desktop/Luke ai/backups/updater-version-fix-20260805-142658
+Report : /Users/ekky/Desktop/Luke ai/validation-reports/updater-version-fix-20260805-142658.txt
+============================================================

@@ -1,0 +1,43 @@
+============================================================
+ LUKE AI STUDIO - TRACK BETA 5 VERSION FILES
+============================================================
+
+[1/9] ตรวจไฟล์ Version Metadata ในเครื่อง
+app/version.json = 1.0.0-beta.5
+app/config/update.json = 1.0.0-beta.5
+app/frontend/package.json = 1.0.0-beta.5
+app/update-state/status.json = 1.0.0-beta.5
+app/update-state/managed-files.json = 1.0.0-beta.5
+
+[2/9] ตรวจสถานะการติดตามใน Git
+TRACKED  : app/version.json
+TRACKED  : app/config/update.json
+TRACKED  : app/frontend/package.json
+TRACKED  : app/update-state/status.json
+TRACKED  : app/update-state/managed-files.json
+
+[3/9] ตรวจว่าถูก .gitignore ซ่อนหรือไม่
+NOT IGNORED: app/version.json
+NOT IGNORED: app/config/update.json
+NOT IGNORED: app/frontend/package.json
+NOT IGNORED: app/update-state/status.json
+NOT IGNORED: app/update-state/managed-files.json
+
+[4/9] เพิ่ม Version Metadata เข้า Git
+Staged files:
+FAIL: ไม่มีไฟล์ถูก Stage
+
+[5/9] ตรวจ Git Diff และ Source Validation
+
+[6/9] สร้าง Commit Beta 5 ที่มี Version Metadata
+
+[7/9] ตรวจ Version ภายใน Commit ใหม่
+
+[8/9] สำรองและซ่อม Tag Beta 5
+
+[9/9] Push Main และตรวจผลสุดท้าย
+
+============================================================
+ BETA 5 VERSION METADATA REPAIR FAILED
+============================================================
+ตรวจรายการ FAIL ด้านบน

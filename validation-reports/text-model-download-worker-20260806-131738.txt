@@ -1,0 +1,42 @@
+============================================================
+ LUKE AI STUDIO - SEQUENTIAL TEXT MODEL DOWNLOAD WORKER
+============================================================
+
+[1/10] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 320a20d
+Remote : 320a20d
+PASS: Feature Branch พร้อมและ Working Tree สะอาด
+
+[2/10] ยืนยัน Catalog และ Queue API จากขั้นก่อน
+PASS: Text Model Catalog และ Queue API พร้อม
+
+[3/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/runtime-state/text-models/download-queue.json
+PASS: Backup scripts/validation/validate-release.sh
+
+[4/10] เพิ่ม Sequential Download Worker
+FAIL: Patch Backend ไม่สำเร็จ
+
+[5/10] สร้าง Automated Sequential Queue Test
+
+[6/10] เชื่อม Worker Test กับ Release Validation
+
+[7/10] ตรวจ Syntax และ Worker Contracts
+FAIL: Syntax หรือ Worker Contracts ไม่ผ่าน
+
+[8/10] รัน Sequential Worker Test
+
+[9/10] รัน Full Release Validation
+
+[10/10] Commit, Push และตรวจสถานะสุดท้าย
+Local : 320a20d
+Remote: 320a20d
+FAIL: Final Git State ไม่ถูกต้อง
+
+============================================================
+ SEQUENTIAL TEXT MODEL DOWNLOAD WORKER FAILED
+============================================================
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/text-model-worker-20260806-131738
+Report: validation-reports/text-model-download-worker-20260806-131738.txt

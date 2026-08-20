@@ -1,0 +1,42 @@
+============================================================
+ LUKE AI STUDIO - STORAGE DASHBOARD RECOVERY
+============================================================
+
+[1/8] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : c7486bf
+Remote : c7486bf
+ M scripts/server/storage-destination-manager.cjs
+?? scripts/server/storage-folder-picker.cjs
+PASS: Policy Management และ Folder Picker พร้อมใช้งาน
+
+[2/8] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/8] เพิ่ม Storage Settings และ Folder Picker API
+PASS: Storage Settings และ Folder Picker API ถูกเพิ่มแล้ว
+
+[4/8] สร้าง Storage Destination Dashboard
+PASS: สร้าง Storage Destination Dashboard แล้ว
+
+[5/8] เชื่อม Dashboard และเพิ่ม CSS
+FAIL: เชื่อม Storage Dashboard ไม่สำเร็จ
+
+[6/8] สร้าง Automated Test
+
+[7/8] รัน Test, Frontend Build และ Full Validation
+FAIL: Syntax หรือ Contracts ไม่ผ่าน
+
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/server/storage-destination-manager.cjs
+?? app/frontend/src/components/StorageDestinationPanel.jsx
+?? scripts/server/storage-folder-picker.cjs
+
+============================================================
+ STORAGE DASHBOARD RECOVERY FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-dashboard-recovery-20260807-112150
+Report : validation-reports/storage-dashboard-recovery-20260807-112150.txt

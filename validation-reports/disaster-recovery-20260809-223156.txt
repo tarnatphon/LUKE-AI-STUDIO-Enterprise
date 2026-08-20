@@ -1,0 +1,80 @@
+============================================================
+ LUKE AI STUDIO - STORAGE DISASTER RECOVERY DASHBOARD
+============================================================
+[1/9] Preflight Safety
+Branch : feat/text-model-manager-v1
+Local  : 9e00ac5
+Remote : 9e00ac5
+PASS: Preflight contracts พร้อม
+[2/9] Backup
+PASS: Backup สำเร็จ
+[3/9] สร้าง Disaster Recovery State
+PASS: Disaster Recovery State พร้อม
+[4/9] สร้าง Disaster Recovery Aggregator
+PASS: Disaster Recovery Aggregator พร้อม
+[5/9] Safe Patch Backend API
+PASS: Disaster Recovery Backend API พร้อม
+[6/9] สร้าง Disaster Recovery Dashboard UI
+PASS: Disaster Recovery Dashboard UI พร้อม
+[7/9] Automated Tests
+PASS: Automated Test พร้อม
+[8/9] Test / Build / Full Validation
+PASS: Provider health contributes to recovery readiness.
+PASS: Capacity risk contributes to recovery readiness.
+PASS: Archive and restore readiness are summarized.
+PASS: Local, NAS and Cloud integrity risks are summarized.
+PASS: Critical Deep Cloud alerts reduce recovery readiness.
+PASS: Disaster Recovery recommendations are generated from actual subsystem state.
+PASS: Unavailable subsystems degrade gracefully instead of crashing the dashboard.
+PASS: Dashboard remains read-only with automatic repair, deletion and overwrite disabled.
+PASS: Storage Disaster Recovery Dashboard validation completed.
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 144 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-DpgZ9If4.css  158.00 kB │ gzip:  20.80 kB
+../dist/assets/event-Cgj4SAJP.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-DbjSx4l5.js   587.91 kB │ gzip: 155.47 kB
+
+✓ built in 136ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+PASS: Targeted Test + Frontend Build ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 156
+Backend endpoints : 183
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 57712
+Routes : /api/health, /api/status, /health
+[backend] /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:17525
+      storageAvailabilityWatcher,
+      ^
+
+ReferenceError: Cannot access 'storageAvailabilityWatcher' before initialization
+    at Object.<anonymous> (/Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:17525:7)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1892:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v25.2.1
+
+Error: Backend exited before becoming ready. Exit code: 1
+    at main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-backend-api.cjs:316:15)
+FAIL: Full Release Validation ไม่ผ่าน

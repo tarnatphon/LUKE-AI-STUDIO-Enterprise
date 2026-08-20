@@ -1,0 +1,86 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME SUPERVISOR DASHBOARD
+============================================================
+[1/10] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 0063e05
+Remote : 0063e05
+PASS: Commit 0063e05 พร้อมและ Git สะอาด
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/PersistentTextChat.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup app/config/text-chat/runtime-supervisor-policy.json
+PASS: Backup scripts/validation/validate-release.sh
+[3/10] เพิ่ม Runtime Supervisor Settings API
+PASS: เพิ่ม Runtime Supervisor Settings API แล้ว
+[4/10] เพิ่ม Supervisor Policy Reload
+PASS: เพิ่ม Supervisor Policy Reload แล้ว
+[5/10] เพิ่ม Runtime Supervisor Dashboard UI
+PASS: เพิ่ม Runtime Supervisor Dashboard UI แล้ว
+[6/10] เพิ่ม Runtime Supervisor Dashboard Styles
+PASS: เพิ่ม Runtime Supervisor Dashboard CSS แล้ว
+[7/10] สร้าง Runtime Supervisor Dashboard Test
+PASS: สร้าง Runtime Supervisor Dashboard Test แล้ว
+[8/10] ตรวจ Syntax, Test และ Frontend Build
+PASS: Syntax และ Dashboard Contracts ผ่าน
+PASS: Runtime Supervisor Settings API is present.
+PASS: Runtime policy validation is present.
+PASS: Localhost-only Health URL validation is present.
+PASS: Shell command execution remains disabled.
+PASS: Supervisor policy reload is connected.
+PASS: Start, Stop, Restart and Reset controls are connected.
+PASS: Runtime Settings UI is connected.
+PASS: Supervisor event history is displayed.
+PASS: Runtime Supervisor Dashboard validation completed.
+PASS: Runtime Supervisor Dashboard Test ผ่าน
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 131 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-VIiEpEC9.css  124.34 kB │ gzip:  18.00 kB
+../dist/assets/event-BTb5GVPq.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-CSb-DNZd.js   520.17 kB │ gzip: 143.94 kB
+
+✓ built in 131ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+npm notice
+npm notice New minor version of npm available! 11.6.2 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+PASS: Frontend Build ผ่าน
+[9/10] รัน Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 93
+Backend endpoints : 113
+
+Frontend endpoints without backend contracts:
+  /api/text-runtime/supervisor
+    - app/frontend/src/components/PersistentTextChat.jsx
+FAIL: Full Release Validation ไม่ผ่าน
+[10/10] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/frontend/src/App.css
+ M app/frontend/src/components/PersistentTextChat.jsx
+ M scripts/server/serve.cjs
+ M scripts/server/text-runtime-supervisor.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-supervisor-dashboard.cjs
+============================================================
+ RUNTIME SUPERVISOR DASHBOARD FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-dashboard-20260806-234502
+Report: validation-reports/runtime-supervisor-dashboard-20260806-234502.txt

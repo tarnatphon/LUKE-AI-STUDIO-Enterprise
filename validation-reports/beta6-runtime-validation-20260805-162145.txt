@@ -1,0 +1,53 @@
+============================================================
+ LUKE AI STUDIO - FIX PORTABLE RUNTIME VALIDATION
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Commit : 9cbd2e1
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] สำรอง Validation Script
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-20260805-162145/validate-release.sh
+
+[3/10] ตรวจ Runtime และ Validation Logic ปัจจุบัน
+Runtime size:
+262M	app/tools/node-mac
+
+Runtime validation references:
+4:fail(){ echo "FAIL: $*" >&2; exit 1; }
+18:! [ -d "$ROOT/app/tools/node-mac" ] || fail "stale portable Node runtime present"
+25:  echo "FAIL: Node.js is required for API contract validation"
+26:  exit 1
+33:  echo "FAIL: Node.js is required for backend API smoke testing"
+34:  exit 1
+
+[4/10] เพิ่ม Strict Runtime Validation Mode
+PASS: เพิ่ม Strict Runtime Validation แล้ว
+
+[5/10] ตรวจ Bash Syntax และ Runtime Metadata
+PASS: Validation Bash Syntax ผ่าน
+PASS: Runtime Metadata ถูกต้อง
+
+[6/10] ยืนยันว่า Normal Validation Fail จริง
+FAIL: stale portable Node runtime present
+Normal Validation Exit Code: 1
+PASS: Normal Validation ปฏิเสธ Runtime Binary ค้างจริง
+
+[7/10] ยืนยัน Packaging Validation ผ่าน
+FAIL: stale portable Node runtime present
+Packaging Validation Exit Code: 1
+FAIL: Packaging Validation ไม่ผ่าน
+
+[8/10] ลบ Runtime Binary ออกจาก Source Workspace
+
+[9/10] รัน Normal Release Validation หลัง Cleanup
+
+[10/10] Commit และ Push Validation Fix
+
+============================================================
+ BETA 6 PORTABLE RUNTIME VALIDATION FIX FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-20260805-162145
+Report : validation-reports/beta6-runtime-validation-20260805-162145.txt
+ M scripts/validation/validate-release.sh

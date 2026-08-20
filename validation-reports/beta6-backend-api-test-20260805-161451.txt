@@ -1,0 +1,174 @@
+============================================================
+ LUKE AI STUDIO - AUTOMATED BACKEND API TEST RUNNER
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Commit : c585e7a
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] ตรวจ Backend และ Validation Source
+PASS: scripts/server/serve.cjs
+PASS: scripts/validation/validate-release.sh
+
+[3/10] ตรวจ Server Port และ Health Routes จาก Source
+31:const PORT_FRONTEND = readPort(process.env.PORT || process.env.FRONTEND_PORT, 1420);
+32:const PREFERRED_BACKEND_PORT = readPort(process.env.BACKEND_PORT || process.env.SD_BACKEND_PORT, 8080);
+33:const PREFERRED_LLM_PORT = readPort(process.env.LLM_PORT, 10086);
+34:const PREFERRED_SPEECH_PORT = readPort(process.env.SPEECH_PORT, 10088);
+35:const PREFERRED_TTS_PORT = readPort(process.env.TTS_PORT, 10089);
+36:let PORT_BACKEND = PREFERRED_BACKEND_PORT;
+37:let PORT_LLM = PREFERRED_LLM_PORT;
+38:let PORT_SPEECH = PREFERRED_SPEECH_PORT;
+39:let PORT_TTS = PREFERRED_TTS_PORT;
+1770:      .once("listening", () => {
+1773:      .listen(port, "127.0.0.1");
+1788:  const preferred = await checkPort(PREFERRED_BACKEND_PORT);
+1789:  if (preferred.available) return PREFERRED_BACKEND_PORT;
+1794:      console.log(`  [backend] Preferred port ${PREFERRED_BACKEND_PORT} is busy; using ${port} instead.`);
+1799:  throw new Error(`No free backend port found. Tried ${PREFERRED_BACKEND_PORT} and 28088-28120.`);
+1803:  const preferred = await checkPort(PREFERRED_LLM_PORT);
+1804:  if (preferred.available) return PREFERRED_LLM_PORT;
+1809:      console.log(`  [llm] Preferred port ${PREFERRED_LLM_PORT} is busy; using ${port} instead.`);
+1814:  throw new Error(`No free LLM port found. Tried ${PREFERRED_LLM_PORT} and 28121-28160.`);
+1818:  const preferred = await checkPort(PREFERRED_SPEECH_PORT);
+1819:  if (preferred.available) return PREFERRED_SPEECH_PORT;
+1824:      console.log(`  [speech] Preferred port ${PREFERRED_SPEECH_PORT} is busy; using ${port} instead.`);
+1829:  throw new Error(`No free speech port found. Tried ${PREFERRED_SPEECH_PORT} and 28161-28190.`);
+2220:  PORT_TTS = PREFERRED_TTS_PORT;
+2435:  PORT_SPEECH = await findAvailableSpeechPort();
+2634:    const req = http.get(`http://127.0.0.1:${PORT_LLM}/v1/models`, (res) => {
+2709:    await waitForPortAvailable(PORT_LLM, 1500);
+2714:  const procPort = PORT_LLM;
+2821:    frontend: { ...(await checkPort(PORT_FRONTEND)), expectedInUse: true },
+2822:    backend: { ...(await checkPort(PORT_BACKEND)), expectedInUse: backendProc !== null || openvinoProc !== null },
+2825:  ports.backend.preferred = PREFERRED_BACKEND_PORT;
+2826:  ports.backend.selected = PORT_BACKEND;
+3331:  console.log("  [backend] READY on port", PORT_BACKEND);
+3339:    const req = http.get(`http://127.0.0.1:${PORT_BACKEND}/v1/models`, res => {
+3392:  headers.host = `127.0.0.1:${PORT_BACKEND}`;
+3396:    port: PORT_BACKEND,
+3754:  PORT_BACKEND = openvinoPort;
+4144:  PORT_LLM = await findAvailableLlmPort();
+4248:    "--port", String(PORT_LLM),
+4399:  PORT_BACKEND = Number(settings.backendPort) > 0 ? Number(settings.backendPort) : await findAvailableBackendPort();
+4444:      "--listen-port", String(PORT_BACKEND),
+4451:      "--listen-port", String(PORT_BACKEND),
+4544:    if (cleanOutput.includes("listening on")) {
+4553:      if (cleanLine.includes("listening on")) {
+5846:  // GET /api/health
+5847:  if (req.url === "/api/health" && req.method === "GET") {
+5864:        port: PORT_LLM,
+5901:      port: PORT_BACKEND,
+5902:      preferredPort: PREFERRED_BACKEND_PORT,
+5911:  if (req.url === "/api/llm/status" && req.method === "GET") {
+5917:      port: PORT_LLM,
+5918:      preferredPort: PREFERRED_LLM_PORT,
+6016:      return json(res, 200, { ok: true, ready: llmReady, port: PORT_LLM, settings: llmSettings });
+6042:  if (req.url === "/api/speech/status" && req.method === "GET") {
+6048:      port: PORT_SPEECH,
+6049:      preferredPort: PREFERRED_SPEECH_PORT,
+6071:      return json(res, 200, { ok: true, ready: speechReady, settings: speechSettings, port: PORT_SPEECH });
+6187:  if (req.url === "/api/tts/status" && req.method === "GET") {
+6193:      port: PORT_TTS,
+6194:      preferredPort: PREFERRED_TTS_PORT,
+6216:      return json(res, 200, { ok: true, ready: ttsReady, settings: ttsSettings, port: PORT_TTS });
+6433:        port: PORT_LLM,
+6508:        const result = await requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, JSON.parse(requestData), 300000);
+6554:  const result = await requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, {
+6758:  // GET /api/capabilities/image-to-video/status
+6759:  if (req.url === "/api/capabilities/image-to-video/status" && req.method === "GET") {
+6935:        return json(res, 200, { ok: true, message: "Backend already running with requested settings.", settings: currentSettings, port: PORT_BACKEND });
+6939:        return json(res, 200, { ok: true, message: "Apple NPU backend already running; updated generation defaults.", settings: currentSettings, port: PORT_BACKEND });
+6953:        return json(res, 200, { ok: true, message: "OpenVINO NPU backend starting...", settings: currentSettings, port: PORT_BACKEND });
+6957:        PORT_BACKEND = backendPort;
+6984:      return json(res, 200, { ok: true, message: "Backend restarting...", settings: currentSettings, port: PORT_BACKEND });
+6987:      return json(res, jsonErrorStatus(err), { ok: false, error: backendError, code: err.code || "", activeRuntime: err.activeRuntime || null, port: PORT_BACKEND });
+7282:server.listen(PORT_FRONTEND, "0.0.0.0", () => {
+7287:  console.log("   Frontend : http://localhost:" + PORT_FRONTEND);
+7288:  console.log("   Image API: http://127.0.0.1:" + PORT_BACKEND);
+7289:  console.log("   Text API : starts on http://127.0.0.1:" + PREFERRED_LLM_PORT);
+
+[4/10] สร้าง Backend API Smoke Test Runner
+PASS: สร้าง scripts/validation/test-backend-api.cjs
+
+[5/10] เชื่อม Test Runner กับ Release Validation
+PASS: เชื่อม Backend Test กับ Release Validation แล้ว
+
+[6/10] ตรวจ Syntax
+PASS: Backend Test, Server และ Validation Syntax ผ่าน
+
+[7/10] รัน Backend API Smoke Test
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61249
+Routes : /api/health, /api/status, /health, /status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61249
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Mo
+
+PASS: Backend API smoke test completed using /api/health.
+PASS: Automated Backend API Test ผ่าน
+
+[8/10] รัน Release Validation ทั้งระบบ
+PASS: release structure and syntax
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 69
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61255
+Routes : /api/health, /api/status, /health, /status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61255
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Mo
+
+PASS: Backend API smoke test completed using /api/health.
+PASS: Release Validation ผ่าน
+
+[9/10] Commit และ Push
+ scripts/validation/test-backend-api.cjs | 268 ++++++++++++++++++++++++++++++++
+ scripts/validation/validate-release.sh  |   8 +
+ 2 files changed, 276 insertions(+)
+PASS: Commit และ Push สำเร็จ
+
+[10/10] ตรวจสถานะสุดท้าย
+Local  : 8019616
+Remote : 8019616
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 6 BACKEND API TEST RUNNER PASSED
+============================================================
+Branch : feat/beta6-foundation
+Commit : 8019616
+Runner : scripts/validation/test-backend-api.cjs
+Report : validation-reports/beta6-backend-api-test-20260805-161451.txt
+Next   : เพิ่ม Negative Tests และตรวจ Error Response ของ Backend API

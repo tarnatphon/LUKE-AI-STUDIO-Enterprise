@@ -1,0 +1,37 @@
+============================================================
+ LUKE AI STUDIO - AUTOMATIC WORKLOAD DETECTION
+============================================================
+
+[1/9] ตรวจ Branch / Commit / Git
+Branch : feat/text-model-manager-v1
+Local  : 499e373
+Remote : 499e373
+PASS: Storage Policy Routing พร้อม
+
+[2/9] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/9] สร้าง Workload Detection State
+PASS: Workload Detection State ถูกต้อง
+
+[4/9] สร้าง Automatic Workload Detector
+PASS: Automatic Workload Detector ถูกสร้างแล้ว
+
+[5/9] เชื่อม Detector เข้ากับ Unified Queue
+PASS: Unified Queue ใช้ Automatic Workload Detection แล้ว
+
+[6/9] เชื่อม Detector API เข้ากับ Backend
+FAIL: Workload Detector API Patch ไม่สำเร็จ
+
+[7/9] ปรับ Queue UI + สร้าง Detection Dashboard
+
+[8/9] Automated Test / Build / Full Validation
+
+[9/9] Commit / Push
+
+============================================================
+ AUTOMATIC WORKLOAD DETECTION FAILED
+============================================================
+ไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/workload-detector-20260809-214015
+Report : validation-reports/workload-detector-20260809-214015.txt

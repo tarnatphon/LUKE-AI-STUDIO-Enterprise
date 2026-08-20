@@ -1,0 +1,116 @@
+============================================================
+ LUKE AI STUDIO - I2V FINAL VALIDATION RECOVERY
+ REAL GENERATION ALREADY PASSED
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : c93e4d1
+Remote : c93e4d1
+PASS: Image-to-Video source ยังถูกต้อง
+PASS: Real generation ไม่ต้องรันซ้ำ
+
+[2/6] Inspect Portable Node Runtime
+Portable Node runtime currently exists:
+app/tools/node-mac/runtime.json
+app/tools/node-mac/LICENSE
+app/tools/node-mac/bin
+app/tools/node-mac/bin/node
+app/tools/node-mac/bin/corepack
+app/tools/node-mac/bin/npx
+app/tools/node-mac/bin/npm
+app/tools/node-mac/CHANGELOG.md
+app/tools/node-mac/include
+app/tools/node-mac/include/node
+app/tools/node-mac/include/node/v8-function.h
+app/tools/node-mac/include/node/v8-array-buffer.h
+app/tools/node-mac/include/node/v8-platform.h
+app/tools/node-mac/include/node/v8-persistent-handle.h
+app/tools/node-mac/include/node/v8-snapshot.h
+app/tools/node-mac/include/node/v8-version.h
+app/tools/node-mac/include/node/v8-handle-base.h
+app/tools/node-mac/include/node/v8-microtask.h
+app/tools/node-mac/include/node/node_api_types.h
+app/tools/node-mac/include/node/node_version.h
+app/tools/node-mac/include/node/v8-template.h
+app/tools/node-mac/include/node/v8-value.h
+app/tools/node-mac/include/node/v8-embedder-state-scope.h
+app/tools/node-mac/include/node/v8-container.h
+app/tools/node-mac/include/node/v8-callbacks.h
+app/tools/node-mac/include/node/libplatform
+app/tools/node-mac/include/node/v8-value-serializer.h
+app/tools/node-mac/include/node/node_buffer.h
+app/tools/node-mac/include/node/v8-profiler.h
+app/tools/node-mac/include/node/v8.h
+app/tools/node-mac/include/node/v8-traced-handle.h
+app/tools/node-mac/include/node/v8-message.h
+app/tools/node-mac/include/node/v8-script.h
+app/tools/node-mac/include/node/uv.h
+app/tools/node-mac/include/node/v8-primitive.h
+app/tools/node-mac/include/node/v8-microtask-queue.h
+app/tools/node-mac/include/node/v8-memory-span.h
+app/tools/node-mac/include/node/js_native_api_types.h
+app/tools/node-mac/include/node/v8-function-callback.h
+app/tools/node-mac/include/node/v8-embedder-heap.h
+app/tools/node-mac/include/node/node.h
+app/tools/node-mac/include/node/v8-cppgc.h
+app/tools/node-mac/include/node/v8-maybe.h
+app/tools/node-mac/include/node/v8-context.h
+app/tools/node-mac/include/node/v8-json.h
+app/tools/node-mac/include/node/v8-debug.h
+app/tools/node-mac/include/node/node_api.h
+app/tools/node-mac/include/node/v8-initialization.h
+app/tools/node-mac/include/node/uv
+app/tools/node-mac/include/node/v8-exception.h
+app/tools/node-mac/include/node/v8-promise.h
+app/tools/node-mac/include/node/v8-wasm.h
+app/tools/node-mac/include/node/js_native_api.h
+app/tools/node-mac/include/node/v8-source-location.h
+app/tools/node-mac/include/node/v8-regexp.h
+app/tools/node-mac/include/node/v8-primitive-object.h
+app/tools/node-mac/include/node/v8-statistics.h
+app/tools/node-mac/include/node/v8-data.h
+app/tools/node-mac/include/node/config.gypi
+app/tools/node-mac/include/node/zlib.h
+app/tools/node-mac/include/node/node_object_wrap.h
+app/tools/node-mac/include/node/common.gypi
+app/tools/node-mac/include/node/v8-typed-array.h
+app/tools/node-mac/include/node/v8-date.h
+app/tools/node-mac/include/node/v8-locker.h
+app/tools/node-mac/include/node/v8-object.h
+app/tools/node-mac/include/node/v8-external.h
+app/tools/node-mac/include/node/v8-forward.h
+app/tools/node-mac/include/node/openssl
+app/tools/node-mac/include/node/v8config.h
+app/tools/node-mac/include/node/v8-local-handle.h
+app/tools/node-mac/include/node/v8-weak-callback-info.h
+app/tools/node-mac/include/node/v8-unwinder.h
+app/tools/node-mac/include/node/v8-extension.h
+app/tools/node-mac/include/node/v8-internal.h
+app/tools/node-mac/include/node/v8-proxy.h
+app/tools/node-mac/include/node/cppgc
+app/tools/node-mac/include/node/zconf.h
+app/tools/node-mac/include/node/v8-isolate.h
+app/tools/node-mac/README.md
+app/tools/node-mac/lib
+app/tools/node-mac/lib/node_modules
+app/tools/node-mac/lib/node_modules/corepack
+app/tools/node-mac/lib/node_modules/npm
+app/tools/node-mac/share
+app/tools/node-mac/share/man
+app/tools/node-mac/share/man/man1
+app/tools/node-mac/share/doc
+app/tools/node-mac/share/doc/node
+
+Tracked files inside node runtime:
+app/tools/node-mac/runtime.json
+
+Git status before cleanup:
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M scripts/validation/validate-release.sh
+ M scripts/workers/image_to_video_worker.py
+?? scripts/validation/test-image-to-video-offline-worker.cjs
+
+[3/6] Remove Only Generated Portable Node Artifacts

@@ -1,0 +1,15 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-5A
+ UNIFIED ASSET REGISTRY CORE
+============================================================
+
+[1/8] Safety
+Branch : feat/text-model-manager-v1
+Local  : 60de51a
+Remote : 60de51a
+PASS: Clean certified base
+
+[2/8] Create Asset Registry Core
+PASS: Asset Registry Core created
+
+[3/8] Wire Registry Singleton + REST API

@@ -1,0 +1,67 @@
+============================================================
+ LUKE AI STUDIO - FIX DYNAMIC API CONTRACT VALIDATION
+============================================================
+
+[1/10] ตรวจ Branch และไฟล์ที่ค้างจาก Automatic Update Manager
+Branch : feat/text-model-manager-v1
+Local  : 0319cfd
+Remote : 0319cfd
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/frontend/src/App.css
+ M app/frontend/src/components/TextModelManager.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/dist/assets/event-DPrsa6p6.js
+?? app/dist/assets/index-BUyU3hmT.js
+?? app/dist/assets/index-T65nJ7pp.css
+?? app/runtime-state/text-models/installed-models.json
+?? scripts/validation/test-text-model-update-manager.cjs
+PASS: พบเฉพาะ Automatic Update Manager และ Generated Dist
+
+[2/10] คืน Generated Frontend Dist
+PASS: คืน Generated app/dist สำเร็จ
+
+[3/10] สำรอง Source ที่กำลังพัฒนา
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/TextModelManager.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+PASS: Backup app/runtime-state/text-models/installed-models.json
+PASS: Backup scripts/validation/test-text-model-update-manager.cjs
+
+[4/10] ตรวจหา API Contract Validator จริง
+scripts/validation/check-api-contracts.cjs
+PASS: Contract Validator = scripts/validation/check-api-contracts.cjs
+
+[5/10] แก้ Dynamic Template Endpoint Extraction
+FAIL: แก้ API Contract Validator ไม่สำเร็จ
+
+[6/10] ตรวจ Endpoint และ Syntax
+FAIL: Syntax หรือ Contract Normalizer ไม่ผ่าน
+
+[7/10] รัน Automatic Update Test
+
+[8/10] Build Frontend และรัน Full Validation
+
+[9/10] คืน Generated Dist, Stage และ Commit
+
+[10/10] ตรวจสถานะสุดท้าย
+Local : 0319cfd
+Remote: 0319cfd
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/frontend/src/App.css
+ M app/frontend/src/components/TextModelManager.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/runtime-state/text-models/installed-models.json
+?? scripts/validation/test-text-model-update-manager.cjs
+
+============================================================
+ AUTOMATIC UPDATE CONTRACT FIX FAILED
+============================================================
+Automatic Update Source ยังไม่ถูก Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/api-contract-dynamic-route-fix-20260806-215021
+Report: validation-reports/api-contract-dynamic-route-fix-20260806-215021.txt

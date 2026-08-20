@@ -1,0 +1,9 @@
+============================================================
+ LUKE AI STUDIO - PRODUCTION I2V JOB API FOUNDATION
+============================================================
+
+[1/8] Safety Preflight
+Branch : feat/text-model-manager-v1
+Local  : 53b9445
+Remote : 53b9445
+FAIL: Local HEAD ต้องเป็น 743e653

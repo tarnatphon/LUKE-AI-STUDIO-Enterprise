@@ -1,0 +1,76 @@
+============================================================
+ LUKE AI STUDIO - EXTERNAL DRIVE AVAILABILITY AND FALLBACK
+============================================================
+
+[1/12] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/beta7-foundation
+Local  : 44b00da
+Remote : 44b00da
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/12] ยืนยัน Runtime Dashboard และ Backend Foundation
+PASS: Runtime Backend และ Dashboard พร้อม
+
+[3/12] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/config/runtime-dependencies.json
+PASS: Backup app/frontend/src/components/RuntimeDownloadDashboard.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+
+[4/12] ตรวจและปรับ Runtime Storage Configuration
+PASS: Runtime Storage Policy ถูกต้อง
+
+[5/12] เพิ่ม Storage Availability Helper และ API
+PASS: เพิ่ม Runtime Storage API และ Safe Fallback แล้ว
+
+[6/12] เชื่อม Storage Status เข้ากับ Dashboard
+PASS: Dashboard แสดง External Drive และ Fallback แล้ว
+
+[7/12] เพิ่ม Storage Availability Styling
+PASS: เพิ่ม Storage Availability CSS แล้ว
+
+[8/12] สร้าง Automated Storage Availability Test
+PASS: สร้าง scripts/validation/test-runtime-storage-availability.cjs
+
+[9/12] เชื่อม Storage Test กับ Release Validation
+PASS: เชื่อม Storage Test แล้ว
+
+[10/12] ตรวจ Syntax, API และ Frontend Integration
+PASS: Syntax, Storage APIs และ Dashboard Integration ผ่าน
+
+[11/12] รัน Storage Test, Frontend Build และ Full Validation
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64013
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+Error: Runtime storage resolve API is invalid.
+    at main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-storage-availability.cjs:253:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Storage Test Exit Code: 1
+FAIL: Runtime Storage Availability Test ไม่ผ่าน
+
+[12/12] คืน Generated Dist, Commit, Push และตรวจผลสุดท้าย
+Local : 44b00da
+Remote: 44b00da
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/config/runtime-dependencies.json
+ M app/frontend/src/App.css
+ M app/frontend/src/components/RuntimeDownloadDashboard.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-storage-availability.cjs
+
+============================================================
+ BETA 7 EXTERNAL DRIVE FALLBACK FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-storage-availability-20260806-120536
+Report : validation-reports/beta7-runtime-storage-availability-20260806-120536.txt

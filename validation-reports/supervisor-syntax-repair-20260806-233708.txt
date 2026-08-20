@@ -1,0 +1,35 @@
+============================================================
+ LUKE AI STUDIO - SUPERVISOR SYNTAX REPAIR
+============================================================
+[1/9] ตรวจ Branch และเก็บไฟล์ที่เสียไว้
+Branch : feat/text-model-manager-v1
+Local  : 3c562a8
+Remote : 3c562a8
+PASS: เก็บไฟล์ serve.cjs ที่เสียไว้แล้ว
+[2/9] ค้นหา Backup ล่าสุดที่ Syntax ถูกต้อง
+PASS: พบ Backup ที่ Syntax ถูกต้อง
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-import-cleanup-20260806-233537/scripts/server/serve.cjs
+[3/9] ลบ Import ซ้ำแบบเจาะจงและเพิ่ม Top-Level Import
+PASS: serve.cjs กลับมา Syntax ถูกต้อง
+[4/9] ตรวจจำนวน Import, Bootstrap และ API
+FAIL: Supervisor Contracts ไม่ถูกต้อง
+[5/9] ตรวจไฟล์ทั้งหมดและ Backend Smoke Test
+FAIL: Syntax หรือ JSON ไม่ผ่าน
+[6/9] รัน Runtime Supervisor Automated Test
+[7/9] รัน Full Release Validation
+[8/9] คืน Runtime State และตรวจ Git Diff
+[9/9] Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+?? scripts/validation/test-runtime-supervisor.cjs
+============================================================
+ SUPERVISOR SYNTAX REPAIR FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+ไฟล์ก่อนซ่อม: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/supervisor-syntax-repair-20260806-233708/scripts/server/serve.cjs
+Backup ที่ใช้: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-import-cleanup-20260806-233537/scripts/server/serve.cjs
+Report: validation-reports/supervisor-syntax-repair-20260806-233708.txt

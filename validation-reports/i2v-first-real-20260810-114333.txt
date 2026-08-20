@@ -1,0 +1,16 @@
+============================================================
+ LUKE AI STUDIO - FIRST REAL IMAGE-TO-VIDEO GENERATION
+ LOCAL SVD ONLY / MPS / NO HIDDEN DOWNLOAD
+============================================================
+
+[1/9] Safety Preflight
+Branch : feat/text-model-manager-v1
+Local  : c93e4d1
+Remote : c93e4d1
+PASS: Runtime / MPS / FFmpeg พร้อม
+
+[2/9] Verify Local SVD Snapshot
+PASS: Local SVD = /Users/ekky/.cache/huggingface/hub/models--stabilityai--stable-video-diffusion-img2vid/snapshots/9cf024d5bfa8f56622af86c884f26a52f6676f2e
+
+[3/9] Backup + Patch Worker local_files_only
+FAIL: Patched worker syntax ไม่ผ่าน

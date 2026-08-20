@@ -1,0 +1,16 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-3 REGRESSION RECOVERY
+ SINGLE JOB + BATCH ASYNC CREATE CONTRACT
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+Current dirty state:
+ M app/frontend/src/components/ImageToVideo.jsx
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-execution.cjs
+PASS: Phase 3A-3 state intact
+
+[2/6] Update Async UI Regression Contract

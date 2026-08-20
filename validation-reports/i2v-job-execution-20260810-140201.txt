@@ -1,0 +1,18 @@
+============================================================
+ LUKE AI STUDIO - I2V JOB EXECUTION INTEGRATION
+============================================================
+
+[1/9] Safety Preflight
+Branch : feat/text-model-manager-v1
+Local  : 5c41856
+Remote : 5c41856
+PASS: Git CLEAN
+PASS: Existing I2V safety contracts intact
+
+[2/9] Add Process Runner Import + Singleton
+PASS: Runner bootstrap patched
+
+[3/9] Extract Reusable Legacy Preparation Helper
+PASS: Preparation helper ready
+
+[4/9] Wire POST /jobs To Process Runner

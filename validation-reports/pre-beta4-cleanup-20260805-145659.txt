@@ -1,0 +1,39 @@
+============================================================
+ LUKE AI STUDIO - PREPARE BETA 4 BUILD
+============================================================
+
+[1/7] สำรองไฟล์ Generated State ที่ค้างอยู่
+BACKUP: app/update-state/status.json
+BACKUP: releases/1.0.0-beta.3/latest-1.0.0-beta.3.json
+BACKUP: releases/1.0.0-beta.3/latest.json
+
+[2/7] คืนไฟล์ Beta 3 ให้ตรงกับ Git
+RESTORED: app/update-state/status.json
+RESTORED: releases/1.0.0-beta.3/latest-1.0.0-beta.3.json
+RESTORED: releases/1.0.0-beta.3/latest.json
+
+[3/7] เพิ่มกฎ Ignore สำหรับ Runtime State ชั่วคราว
+ADDED: releases/staging-*/
+
+[4/7] ค้นหา Node.js ที่ใช้งานได้
+PASS: Node.js พร้อม
+Node: /usr/local/bin/node
+v25.2.1
+
+[5/7] ตรวจ Updater Permission Fix
+PASS: Permission Fix และ Node syntax ผ่าน
+
+[6/7] Commit เฉพาะ .gitignore หากมีการเปลี่ยนแปลง
+PASS: Commit และ Push .gitignore สำเร็จ
+
+[7/7] ตรวจ Working Tree รอบสุดท้าย
+PASS: Working Tree สะอาด
+
+============================================================
+ PRE-BETA 4 CHECK PASSED
+ Node   : /usr/local/bin/node
+ Commit : 6368863
+ Next   : Build LUKE AI STUDIO 1.0.0-beta.4
+ Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/pre-beta4-cleanup-20260805-145659
+ Report : validation-reports/pre-beta4-cleanup-20260805-145659.txt
+============================================================

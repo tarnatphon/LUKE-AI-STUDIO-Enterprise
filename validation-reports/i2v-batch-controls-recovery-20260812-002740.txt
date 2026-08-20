@@ -1,0 +1,34 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A RECOVERY
+ FIX BATCH API VALIDATION CONTRACT
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+Current dirty state:
+ M app/frontend/src/services/api.js
+ M scripts/server/image-to-video-job-manager.cjs
+ M scripts/server/image-to-video-process-runner.cjs
+ M scripts/server/serve.cjs
+?? scripts/validation/test-image-to-video-batch-controls.cjs
+PASS: Phase 3A-4A core patch intact
+
+[2/6] Fix Validation Contract
+PASS: Batch Controls lifecycle validation passed
+
+[3/6] Core Regression
+PASS: Core I2V regressions passed
+
+[4/6] Register + Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 166
+Backend endpoints : 195
+
+Frontend endpoints without backend contracts:
+  /api/image-to-video/batches
+    - app/frontend/src/services/api.js
+FAIL: Full Release Validation failed

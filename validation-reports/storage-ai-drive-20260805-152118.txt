@@ -1,0 +1,85 @@
+============================================================
+ LUKE AI STUDIO - CONFIGURE AI DOWNLOAD DRIVE
+============================================================
+
+[1/8] ตรวจไดรฟ์ AI
+PASS: พบ /Volumes/AI
+
+[2/8] สร้างโครงสร้าง ai-downloads
+READY: /Volumes/AI/ai-downloads
+READY: /Volumes/AI/ai-downloads/releases
+READY: /Volumes/AI/ai-downloads/releases/beta
+READY: /Volumes/AI/ai-downloads/releases/stable
+READY: /Volumes/AI/ai-downloads/releases/archive
+READY: /Volumes/AI/ai-downloads/updates
+READY: /Volumes/AI/ai-downloads/models
+READY: /Volumes/AI/ai-downloads/models/llm
+READY: /Volumes/AI/ai-downloads/models/vision
+READY: /Volumes/AI/ai-downloads/models/video
+READY: /Volumes/AI/ai-downloads/models/speech
+READY: /Volumes/AI/ai-downloads/models/embedding
+READY: /Volumes/AI/ai-downloads/assets
+READY: /Volumes/AI/ai-downloads/plugins
+READY: /Volumes/AI/ai-downloads/backups
+READY: /Volumes/AI/ai-downloads/logs
+READY: /Volumes/AI/ai-downloads/temp
+
+[3/8] ตรวจสิทธิ์เขียนและพื้นที่ว่าง
+PASS: เขียนไฟล์ลง /Volumes/AI/ai-downloads ได้
+Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk6s2   953Gi   4.8Gi   948Gi     1%       1     0  100%   /Volumes/AI
+
+[4/8] สำรอง Storage Config เดิม
+NOTICE: ยังไม่มี Storage Config เดิม
+
+[5/8] สร้าง Storage Config กลาง
+PASS: สร้าง app/config/storage.json
+{
+    "version": 1,
+    "product": "LUKE AI STUDIO",
+    "storageMode": "external",
+    "externalVolume": "/Volumes/AI",
+    "downloadRoot": "/Volumes/AI/ai-downloads",
+    "fallbackRoot": "~/Library/Application Support/LUKE AI STUDIO/ai-downloads",
+    "fallbackWhenDriveMissing": true,
+    "createMissingDirectories": true,
+    "directories": {
+        "releases": "releases",
+        "betaReleases": "releases/beta",
+        "stableReleases": "releases/stable",
+        "archivedReleases": "releases/archive",
+        "updates": "updates",
+        "models": "models",
+        "llmModels": "models/llm",
+        "visionModels": "models/vision",
+        "videoModels": "models/video",
+        "speechModels": "models/speech",
+        "embeddingModels": "models/embedding",
+        "assets": "assets",
+        "plugins": "plugins",
+        "backups": "backups",
+        "logs": "logs",
+        "temp": "temp"
+    }
+}
+
+[6/8] ตรวจค่าที่บันทึกใน Config
+PASS: Storage Config ใช้ไดรฟ์ AI ถูกต้อง
+
+[7/8] รัน Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[8/8] Commit และ Push Storage Config
+PASS: Commit และ Push สำเร็จ
+
+============================================================
+ AI DOWNLOAD STORAGE READY
+ Drive  : /Volumes/AI
+ Folder : /Volumes/AI/ai-downloads
+ Config : app/config/storage.json
+ Commit : 904f268
+ Next   : เชื่อม Auto Updater และ Model Manager กับ ai-downloads
+ Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-ai-drive-20260805-152118
+ Report : validation-reports/storage-ai-drive-20260805-152118.txt
+============================================================

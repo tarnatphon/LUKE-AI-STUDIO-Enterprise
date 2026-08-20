@@ -1,0 +1,595 @@
+============================================================
+ LUKE AI STUDIO - STORAGE INTEGRATION DISCOVERY
+============================================================
+
+[1/8] ตรวจ Storage Config
+PASS: app/config/storage.json
+Download Root: /Volumes/AI/ai-downloads
+
+[2/8] ตรวจ External Download Root
+PASS: External Storage พร้อมใช้งาน
+Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk6s2   953Gi   4.8Gi   948Gi     1%       1     0  100%   /Volumes/AI
+
+[3/8] ค้นหา Model Manager Source
+app/frontend/src/components/ModelManager.jsx
+PASS: พบ Model Manager Source
+
+[4/8] ค้นหา Download Logic
+app/frontend/src/components/Generator.jsx:640:        const response = await fetch(outputImage);
+app/frontend/src/components/ModelManager.jsx:9:  downloadModel, 
+app/frontend/src/components/ModelManager.jsx:63:    pageUrl: "https://huggingface.co/moonshotai/Kimi-K3",
+app/frontend/src/components/ModelManager.jsx:101:        url: "https://huggingface.co/RunDiffusion/Juggernaut-XL-Lightning/resolve/main/Juggernaut_RunDiffusionPhoto2_Lightning_4Steps.safetensors",
+app/frontend/src/components/ModelManager.jsx:111:        url: "https://huggingface.co/Lykon/dreamshaper-xl-lightning/resolve/main/DreamShaperXL_Lightning.safetensors",
+app/frontend/src/components/ModelManager.jsx:126:        url: "https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors",
+app/frontend/src/components/ModelManager.jsx:136:        url: "https://huggingface.co/cyberdelia/CyberRealistic/resolve/main/CyberRealistic_V8_FP16.safetensors",
+app/frontend/src/components/ModelManager.jsx:146:        url: "https://huggingface.co/danbrown/RevAnimated-v1-2-2/resolve/main/rev-animated-v1-2-2.safetensors",
+app/frontend/src/components/ModelManager.jsx:164:        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
+app/frontend/src/components/ModelManager.jsx:174:        url: "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
+app/frontend/src/components/ModelManager.jsx:185:        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+app/frontend/src/components/ModelManager.jsx:196:        url: "https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+app/frontend/src/components/ModelManager.jsx:207:        url: "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf",
+app/frontend/src/components/ModelManager.jsx:208:        projectorUrl: "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf",
+app/frontend/src/components/ModelManager.jsx:229:        url: "https://huggingface.co/OpenVINO/LCM_Dreamshaper_v7-fp16-ov",
+app/frontend/src/components/ModelManager.jsx:248:        pageUrl: "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+app/frontend/src/components/ModelManager.jsx:260:        pageUrl: "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+app/frontend/src/components/ModelManager.jsx:278:        url: "https://huggingface.co/apple/coreml-stable-diffusion-v1-5-palettized/resolve/main/coreml-stable-diffusion-v1-5-palettized_split_einsum_v2_compiled.zip",
+app/frontend/src/components/ModelManager.jsx:287:        url: "https://huggingface.co/orailnooor/cyberrealistic-coreml/resolve/main/cyberrealistic-6bit.coreml.zip",
+app/frontend/src/components/ModelManager.jsx:296:        url: "https://huggingface.co/orailnooor/cyberrealistic-coreml/resolve/main/cyberrealistic.coreml.zip",
+app/frontend/src/components/ModelManager.jsx:348:  const [downloadUrl, setDownloadUrl] = useState("");
+app/frontend/src/components/ModelManager.jsx:738:        res = await downloadModel(url);
+app/frontend/src/components/ModelManager.jsx:817:    if (!downloadUrl.trim()) return;
+app/frontend/src/components/ModelManager.jsx:821:      const parsed = new URL(downloadUrl.trim());
+app/frontend/src/components/ModelManager.jsx:828:    await downloadByUrl(downloadUrl.trim(), modelName);
+app/frontend/src/components/ModelManager.jsx:2182:              placeholder="e.g. https://huggingface.co/..."
+app/frontend/src/components/ModelManager.jsx:2183:              value={downloadUrl}
+app/frontend/src/components/TextToSpeech.jsx:26:function downloadUrl(url, filename) {
+app/frontend/src/components/TextToSpeech.jsx:288:            <button className="m3-btn m3-btn-outlined" onClick={() => output?.url && downloadUrl(output.url, output.audioFile || "tts.wav")} disabled={!output?.url}>
+app/frontend/src/services/api.js:53:      const response = await fetch(url, { ...fetchOptions, signal: linked.signal });
+app/frontend/src/services/api.js:232:    const res = await fetch("/api/health");
+app/frontend/src/services/api.js:252:  const res = await fetch("/api/diagnostics");
+app/frontend/src/services/api.js:257:  const res = await fetch("/api/cleanup-candidates");
+app/frontend/src/services/api.js:263:  const res = await fetch("/api/cleanup", {
+app/frontend/src/services/api.js:286:      const res = await fetch("/api/hardware-specs");
+app/frontend/src/services/api.js:321:      const res = await fetch("/api/telemetry");
+app/frontend/src/services/api.js:341:      const res = await fetch("/api/backend-options");
+app/frontend/src/services/api.js:359:  const res = await fetch("/api/download-backend", {
+app/frontend/src/services/api.js:394:export async function startServer(modelPath, constraints) {
+app/frontend/src/services/api.js:398:      model_path: modelPath,
+app/frontend/src/services/api.js:409:  const modelName = modelPath ? modelPath.split(/[\\/]/).pop() : null;
+app/frontend/src/services/api.js:415:    const res = await fetch("/api/restart-backend", {
+app/frontend/src/services/api.js:458:    await fetch("/api/stop-backend", { method: "POST" });
+app/frontend/src/services/api.js:466:    const r = await fetch("/api/backend-status");
+app/frontend/src/services/api.js:475:    const res = await fetch("/api/llm/status");
+app/frontend/src/services/api.js:483:  const res = await fetch(`/api/llm/backends${refresh ? "?refresh=1" : ""}`);
+app/frontend/src/services/api.js:488:  const res = await fetch("/api/llm/stats");
+app/frontend/src/services/api.js:493:  const res = await fetch("/api/llm/benchmark", {
+app/frontend/src/services/api.js:509:  const res = await fetch("/api/llm/models");
+app/frontend/src/services/api.js:515:  const res = await fetch("/api/llm/conversations");
+app/frontend/src/services/api.js:521:  const res = await fetch("/api/llm/save-conversation", {
+app/frontend/src/services/api.js:531:  const res = await fetch("/api/llm/delete-conversation", {
+app/frontend/src/services/api.js:544:  const res = await fetch(`/api/huggingface/models?${params.toString()}`);
+app/frontend/src/services/api.js:548:    source: data.source || "huggingface",
+app/frontend/src/services/api.js:556:  const res = await fetch("/api/llm/start", {
+app/frontend/src/services/api.js:582:  const res = await fetch("/api/llm/stop", { method: "POST" });
+app/frontend/src/services/api.js:781:  const res = await fetch("/api/web-search", {
+app/frontend/src/services/api.js:795:  const res = await fetch("/api/llm/download-model", {
+app/frontend/src/services/api.js:813:  const res = await fetch("/api/llm/delete-model", {
+app/frontend/src/services/api.js:823:    const res = await fetch("/api/speech/status");
+app/frontend/src/services/api.js:831:  const res = await fetch("/api/speech/models");
+app/frontend/src/services/api.js:837:  const res = await fetch("/api/speech/start", {
+app/frontend/src/services/api.js:851:  const res = await fetch("/api/speech/stop", { method: "POST" });
+app/frontend/src/services/api.js:864:  const res = await fetch(`/api/speech/transcribe?${params.toString()}`, {
+app/frontend/src/services/api.js:876:  const res = await fetch("/api/speech/download-model", {
+app/frontend/src/services/api.js:893:  const res = await fetch("/api/speech/delete-model", {
+app/frontend/src/services/api.js:902:  const res = await fetch("/api/speech/transcriptions");
+app/frontend/src/services/api.js:908:  const res = await fetch("/api/speech/delete-transcription", {
+app/frontend/src/services/api.js:918:    const res = await fetch("/api/tts/status");
+app/frontend/src/services/api.js:926:  const res = await fetch("/api/tts/models");
+app/frontend/src/services/api.js:932:  const res = await fetch("/api/tts/start", {
+app/frontend/src/services/api.js:945:  const res = await fetch("/api/tts/stop", { method: "POST" });
+app/frontend/src/services/api.js:950:  const res = await fetch("/api/tts/speak", {
+app/frontend/src/services/api.js:966:  const res = await fetch("/api/tts/download-model", {
+app/frontend/src/services/api.js:982:  const res = await fetch("/api/tts/delete-model", {
+app/frontend/src/services/api.js:991:  const res = await fetch("/api/tts/outputs");
+app/frontend/src/services/api.js:997:  const res = await fetch("/api/tts/delete-output", {
+app/frontend/src/services/api.js:1007:    const res = await fetch(`/api/llm/recommend?useCase=${encodeURIComponent(useCase)}&limit=${limit}`);
+app/frontend/src/services/api.js:1018:    const res = await fetch("/api/outputs");
+app/frontend/src/services/api.js:1027:  const res = await fetch("/api/save-output", {
+app/frontend/src/services/api.js:1037:  const res = await fetch("/api/delete-outputs", {
+app/frontend/src/services/api.js:1049:      fetch("/api/models"),
+app/frontend/src/services/api.js:1072:  const res = await fetch("/api/openvino-models");
+app/frontend/src/services/api.js:1109:    const response = await fetch("/api/openvino-generate", {
+app/frontend/src/services/api.js:1390:      const res = await fetch("/api/delete-model", {
+app/frontend/src/services/api.js:1418:    const response = await fetch(`${baseUrl}/v1/models`, { method: "GET" });
+app/frontend/src/services/api.js:1443:export async function downloadModel(url) {
+app/frontend/src/services/api.js:1445:    const res = await fetch("/api/download-model", {
+app/frontend/src/services/api.js:1459:    const res = await fetch("/api/download-openvino-model", {
+app/frontend/src/services/api.js:1473:    const res = await fetch("/api/cancel-download", {
+app/frontend/src/services/api.js:1488:    const res = await fetch("/api/download-progress");
+app/frontend/src/services/api.js:1499:    const res = await fetch("/api/generation-progress");
+app/frontend/src/services/api.js:1511:  const res = await fetch("/api/capabilities/image-to-video/status");
+app/frontend/src/services/api.js:1516:  const res = await fetch("/api/capabilities/image-to-video/install", {
+app/frontend/src/services/api.js:1523:  const res = await fetch("/api/image-to-video/compatibility");
+app/frontend/src/services/api.js:1528:  const res = await fetch("/api/image-to-video/generate", {
+app/config/storage.json:6:  "downloadRoot": "/Volumes/AI/ai-downloads",
+app/update-state/managed-files.json:19:    "app/backend/mac/coreml_venv/bin/huggingface-cli",
+app/update-state/managed-files.json:4158:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/INSTALLER",
+app/update-state/managed-files.json:4159:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/METADATA",
+app/update-state/managed-files.json:4160:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/RECORD",
+app/update-state/managed-files.json:4161:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/REQUESTED",
+app/update-state/managed-files.json:4162:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/WHEEL",
+app/update-state/managed-files.json:4163:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/entry_points.txt",
+app/update-state/managed-files.json:4164:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/licenses/LICENSE",
+app/update-state/managed-files.json:4165:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub-1.21.0.dist-info/top_level.txt",
+app/update-state/managed-files.json:4166:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__init__.py",
+app/update-state/managed-files.json:4167:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4168:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_buckets.cpython-314.pyc",
+app/update-state/managed-files.json:4169:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_commit_api.cpython-314.pyc",
+app/update-state/managed-files.json:4170:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_commit_scheduler.cpython-314.pyc",
+app/update-state/managed-files.json:4171:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_dataset_viewer.cpython-314.pyc",
+app/update-state/managed-files.json:4172:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_eval_results.cpython-314.pyc",
+app/update-state/managed-files.json:4173:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_inference_endpoints.cpython-314.pyc",
+app/update-state/managed-files.json:4174:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_jobs_api.cpython-314.pyc",
+app/update-state/managed-files.json:4175:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_local_folder.cpython-314.pyc",
+app/update-state/managed-files.json:4176:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_login.cpython-314.pyc",
+app/update-state/managed-files.json:4177:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_oauth.cpython-314.pyc",
+app/update-state/managed-files.json:4178:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_oidc.cpython-314.pyc",
+app/update-state/managed-files.json:4179:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_snapshot_download.cpython-314.pyc",
+app/update-state/managed-files.json:4180:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_space_api.cpython-314.pyc",
+app/update-state/managed-files.json:4181:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_tensorboard_logger.cpython-314.pyc",
+app/update-state/managed-files.json:4182:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_upload_large_folder.cpython-314.pyc",
+app/update-state/managed-files.json:4183:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_upload_pipeline.cpython-314.pyc",
+app/update-state/managed-files.json:4184:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_webhooks_payload.cpython-314.pyc",
+app/update-state/managed-files.json:4185:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/_webhooks_server.cpython-314.pyc",
+app/update-state/managed-files.json:4186:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/community.cpython-314.pyc",
+app/update-state/managed-files.json:4187:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/constants.cpython-314.pyc",
+app/update-state/managed-files.json:4188:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/dataclasses.cpython-314.pyc",
+app/update-state/managed-files.json:4189:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/errors.cpython-314.pyc",
+app/update-state/managed-files.json:4190:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/fastai_utils.cpython-314.pyc",
+app/update-state/managed-files.json:4191:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/file_download.cpython-314.pyc",
+app/update-state/managed-files.json:4192:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/hf_api.cpython-314.pyc",
+app/update-state/managed-files.json:4193:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/hf_file_system.cpython-314.pyc",
+app/update-state/managed-files.json:4194:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/hub_mixin.cpython-314.pyc",
+app/update-state/managed-files.json:4195:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/lfs.cpython-314.pyc",
+app/update-state/managed-files.json:4196:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/repocard.cpython-314.pyc",
+app/update-state/managed-files.json:4197:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/__pycache__/repocard_data.cpython-314.pyc",
+app/update-state/managed-files.json:4198:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_buckets.py",
+app/update-state/managed-files.json:4199:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_commit_api.py",
+app/update-state/managed-files.json:4200:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_commit_scheduler.py",
+app/update-state/managed-files.json:4201:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_dataset_viewer.py",
+app/update-state/managed-files.json:4202:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_eval_results.py",
+app/update-state/managed-files.json:4203:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/__init__.py",
+app/update-state/managed-files.json:4204:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4205:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/__pycache__/client.cpython-314.pyc",
+app/update-state/managed-files.json:4206:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/__pycache__/sse_client.cpython-314.pyc",
+app/update-state/managed-files.json:4207:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/__pycache__/types.cpython-314.pyc",
+app/update-state/managed-files.json:4208:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/client.py",
+app/update-state/managed-files.json:4209:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/sse_client.py",
+app/update-state/managed-files.json:4210:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_hot_reload/types.py",
+app/update-state/managed-files.json:4211:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_inference_endpoints.py",
+app/update-state/managed-files.json:4212:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_jobs_api.py",
+app/update-state/managed-files.json:4213:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_local_folder.py",
+app/update-state/managed-files.json:4214:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_login.py",
+app/update-state/managed-files.json:4215:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_oauth.py",
+app/update-state/managed-files.json:4216:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_oidc.py",
+app/update-state/managed-files.json:4217:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_snapshot_download.py",
+app/update-state/managed-files.json:4218:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_space_api.py",
+app/update-state/managed-files.json:4219:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_tensorboard_logger.py",
+app/update-state/managed-files.json:4220:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_upload_large_folder.py",
+app/update-state/managed-files.json:4221:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_upload_pipeline.py",
+app/update-state/managed-files.json:4222:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_webhooks_payload.py",
+app/update-state/managed-files.json:4223:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/_webhooks_server.py",
+app/update-state/managed-files.json:4224:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__init__.py",
+app/update-state/managed-files.json:4225:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4226:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_city_game.cpython-314.pyc",
+app/update-state/managed-files.json:4227:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_cli_utils.cpython-314.pyc",
+app/update-state/managed-files.json:4228:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_cp.cpython-314.pyc",
+app/update-state/managed-files.json:4229:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_errors.cpython-314.pyc",
+app/update-state/managed-files.json:4230:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_file_listing.cpython-314.pyc",
+app/update-state/managed-files.json:4231:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_help_formatter.cpython-314.pyc",
+app/update-state/managed-files.json:4232:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_output.cpython-314.pyc",
+app/update-state/managed-files.json:4233:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/_skills.cpython-314.pyc",
+app/update-state/managed-files.json:4234:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/auth.cpython-314.pyc",
+app/update-state/managed-files.json:4235:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/buckets.cpython-314.pyc",
+app/update-state/managed-files.json:4236:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/cache.cpython-314.pyc",
+app/update-state/managed-files.json:4237:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/collections.cpython-314.pyc",
+app/update-state/managed-files.json:4238:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/datasets.cpython-314.pyc",
+app/update-state/managed-files.json:4239:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/deprecated_cli.cpython-314.pyc",
+app/update-state/managed-files.json:4240:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/discussions.cpython-314.pyc",
+app/update-state/managed-files.json:4241:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/download.cpython-314.pyc",
+app/update-state/managed-files.json:4242:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/extensions.cpython-314.pyc",
+app/update-state/managed-files.json:4243:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/hf.cpython-314.pyc",
+app/update-state/managed-files.json:4244:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/inference_endpoints.cpython-314.pyc",
+app/update-state/managed-files.json:4245:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/jobs.cpython-314.pyc",
+app/update-state/managed-files.json:4246:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/lfs.cpython-314.pyc",
+app/update-state/managed-files.json:4247:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/models.cpython-314.pyc",
+app/update-state/managed-files.json:4248:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/papers.cpython-314.pyc",
+app/update-state/managed-files.json:4249:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/repo_files.cpython-314.pyc",
+app/update-state/managed-files.json:4250:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/repos.cpython-314.pyc",
+app/update-state/managed-files.json:4251:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/skills.cpython-314.pyc",
+app/update-state/managed-files.json:4252:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/spaces.cpython-314.pyc",
+app/update-state/managed-files.json:4253:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/system.cpython-314.pyc",
+app/update-state/managed-files.json:4254:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/upload.cpython-314.pyc",
+app/update-state/managed-files.json:4255:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/upload_large_folder.cpython-314.pyc",
+app/update-state/managed-files.json:4256:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/__pycache__/webhooks.cpython-314.pyc",
+app/update-state/managed-files.json:4257:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_city_game.py",
+app/update-state/managed-files.json:4258:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_cli_utils.py",
+app/update-state/managed-files.json:4259:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_cp.py",
+app/update-state/managed-files.json:4260:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_errors.py",
+app/update-state/managed-files.json:4261:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_file_listing.py",
+app/update-state/managed-files.json:4262:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_help_formatter.py",
+app/update-state/managed-files.json:4263:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_output.py",
+app/update-state/managed-files.json:4264:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/_skills.py",
+app/update-state/managed-files.json:4265:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/auth.py",
+app/update-state/managed-files.json:4266:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/buckets.py",
+app/update-state/managed-files.json:4267:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/cache.py",
+app/update-state/managed-files.json:4268:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/collections.py",
+app/update-state/managed-files.json:4269:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/datasets.py",
+app/update-state/managed-files.json:4270:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/deprecated_cli.py",
+app/update-state/managed-files.json:4271:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/discussions.py",
+app/update-state/managed-files.json:4272:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/download.py",
+app/update-state/managed-files.json:4273:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/extensions.py",
+app/update-state/managed-files.json:4274:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/hf.py",
+app/update-state/managed-files.json:4275:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/inference_endpoints.py",
+app/update-state/managed-files.json:4276:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/jobs.py",
+app/update-state/managed-files.json:4277:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/lfs.py",
+app/update-state/managed-files.json:4278:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/models.py",
+app/update-state/managed-files.json:4279:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/papers.py",
+app/update-state/managed-files.json:4280:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/repo_files.py",
+app/update-state/managed-files.json:4281:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/repos.py",
+app/update-state/managed-files.json:4282:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/skills.py",
+app/update-state/managed-files.json:4283:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/spaces.py",
+app/update-state/managed-files.json:4284:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/system.py",
+app/update-state/managed-files.json:4285:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/upload.py",
+app/update-state/managed-files.json:4286:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/upload_large_folder.py",
+app/update-state/managed-files.json:4287:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/cli/webhooks.py",
+app/update-state/managed-files.json:4288:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/community.py",
+app/update-state/managed-files.json:4289:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/constants.py",
+app/update-state/managed-files.json:4290:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/dataclasses.py",
+app/update-state/managed-files.json:4291:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/errors.py",
+app/update-state/managed-files.json:4292:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/fastai_utils.py",
+app/update-state/managed-files.json:4293:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/file_download.py",
+app/update-state/managed-files.json:4294:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/hf_api.py",
+app/update-state/managed-files.json:4295:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/hf_file_system.py",
+app/update-state/managed-files.json:4296:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/hub_mixin.py",
+app/update-state/managed-files.json:4297:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/__init__.py",
+app/update-state/managed-files.json:4298:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4299:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/__pycache__/_client.cpython-314.pyc",
+app/update-state/managed-files.json:4300:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/__pycache__/_common.cpython-314.pyc",
+app/update-state/managed-files.json:4301:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_client.py",
+app/update-state/managed-files.json:4302:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_common.py",
+app/update-state/managed-files.json:4303:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/__init__.py",
+app/update-state/managed-files.json:4304:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4305:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/__pycache__/_async_client.cpython-314.pyc",
+app/update-state/managed-files.json:4306:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py",
+app/update-state/managed-files.json:4307:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/types/__init__.py",
+app/update-state/managed-files.json:4308:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/types/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:4309:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/types/__pycache__/audio_classification.cpython-314.pyc",
+PASS: พบ Download Logic
+
+[5/8] ค้นหา Path ที่ Hardcode อยู่
+app/frontend/src/components/ModelManager.jsx:79:    pageUrl: "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+app/frontend/src/components/ModelManager.jsx:534:      notes: model.notes || `${model.language || "Speech"} transcription model. Stored in app/speech-models/.`,
+app/frontend/src/components/ModelManager.jsx:1562:            <span className="status-chip" style={{ cursor: "default" }}>Folder: app/speech-models/</span>
+app/frontend/src/components/ModelManager.jsx:1742:              ? "No image models detected in app/models/. Download from the library below or import a file."
+app/frontend/src/components/ModelManager.jsx:1744:              ? "No text models detected in app/llm-models/. Download from the library below or import a file."
+app/frontend/src/components/ModelManager.jsx:1746:              ? "No speech models detected in app/speech-models/. Download from the library below or import a .bin file."
+app/frontend/src/components/ModelManager.jsx:1747:              : "No TTS models detected in app/tts-models/. Install Kokoro from the library below or import a .json manifest."}
+app/config/storage.json:5:  "externalVolume": "/Volumes/AI",
+app/config/storage.json:6:  "downloadRoot": "/Volumes/AI/ai-downloads",
+app/config/storage.json:7:  "fallbackRoot": "~/Library/Application Support/LUKE AI STUDIO/ai-downloads",
+app/config/storage.json:17:    "llmModels": "models/llm",
+app/config/storage.json:18:    "visionModels": "models/vision",
+app/config/storage.json:19:    "videoModels": "models/video",
+app/config/storage.json:20:    "speechModels": "models/speech",
+app/config/storage.json:21:    "embeddingModels": "models/embedding",
+app/update-state/managed-files.json:1380:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__init__.py",
+app/update-state/managed-files.json:1381:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1382:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/_compiled_model.cpython-314.pyc",
+app/update-state/managed-files.json:1383:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/_deprecation.cpython-314.pyc",
+app/update-state/managed-files.json:1384:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/_feature_management.cpython-314.pyc",
+app/update-state/managed-files.json:1385:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/_interface_management.cpython-314.pyc",
+app/update-state/managed-files.json:1386:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/array_feature_extractor.cpython-314.pyc",
+app/update-state/managed-files.json:1387:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/compute_device.cpython-314.pyc",
+app/update-state/managed-files.json:1388:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/compute_plan.cpython-314.pyc",
+app/update-state/managed-files.json:1389:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/datatypes.cpython-314.pyc",
+app/update-state/managed-files.json:1390:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/feature_vectorizer.cpython-314.pyc",
+app/update-state/managed-files.json:1391:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/model.cpython-314.pyc",
+app/update-state/managed-files.json:1392:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/pipeline.cpython-314.pyc",
+app/update-state/managed-files.json:1393:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/tree_ensemble.cpython-314.pyc",
+app/update-state/managed-files.json:1394:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/__pycache__/utils.cpython-314.pyc",
+app/update-state/managed-files.json:1395:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/_compiled_model.py",
+app/update-state/managed-files.json:1396:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/_deprecation.py",
+app/update-state/managed-files.json:1397:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/_feature_management.py",
+app/update-state/managed-files.json:1398:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/_interface_management.py",
+app/update-state/managed-files.json:1399:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/array_feature_extractor.py",
+app/update-state/managed-files.json:1400:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/compute_device.py",
+app/update-state/managed-files.json:1401:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/compute_plan.py",
+app/update-state/managed-files.json:1402:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/datatypes.py",
+app/update-state/managed-files.json:1403:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/feature_vectorizer.py",
+app/update-state/managed-files.json:1404:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/__init__.py",
+app/update-state/managed-files.json:1405:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1406:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/__pycache__/compression_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1407:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/compression_utils.py",
+app/update-state/managed-files.json:1408:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__init__.py",
+app/update-state/managed-files.json:1409:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1410:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/async_wrapper.cpython-314.pyc",
+app/update-state/managed-files.json:1411:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/compute_plan_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1412:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/debugging_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1413:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/model_structure_path.cpython-314.pyc",
+app/update-state/managed-files.json:1414:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/perf_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1415:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/__pycache__/remote_device.cpython-314.pyc",
+app/update-state/managed-files.json:1416:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/async_wrapper.py",
+app/update-state/managed-files.json:1417:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/compute_plan_utils.py",
+app/update-state/managed-files.json:1418:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/debugging_utils.py",
+app/update-state/managed-files.json:1419:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/model_structure_path.py",
+app/update-state/managed-files.json:1420:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/perf_utils.py",
+app/update-state/managed-files.json:1421:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/remote_device.py",
+app/update-state/managed-files.json:1422:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/__init__.py",
+app/update-state/managed-files.json:1423:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1424:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/__pycache__/debugging_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1425:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/__pycache__/perf_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1426:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/debugging_utils.py",
+app/update-state/managed-files.json:1427:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/ml_program/experimental/torch/perf_utils.py",
+app/update-state/managed-files.json:1428:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/model.py",
+app/update-state/managed-files.json:1429:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/nearest_neighbors/__init__.py",
+app/update-state/managed-files.json:1430:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/nearest_neighbors/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1431:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/nearest_neighbors/__pycache__/builder.cpython-314.pyc",
+app/update-state/managed-files.json:1432:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/nearest_neighbors/builder.py",
+app/update-state/managed-files.json:1433:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__init__.py",
+app/update-state/managed-files.json:1434:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1435:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/builder.cpython-314.pyc",
+app/update-state/managed-files.json:1436:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/flexible_shape_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1437:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/optimization_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1438:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/printer.cpython-314.pyc",
+app/update-state/managed-files.json:1439:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/quantization_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1440:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/spec_inspection_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1441:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/update_optimizer_utils.cpython-314.pyc",
+app/update-state/managed-files.json:1442:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/__pycache__/utils.cpython-314.pyc",
+app/update-state/managed-files.json:1443:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/builder.py",
+app/update-state/managed-files.json:1444:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/flexible_shape_utils.py",
+app/update-state/managed-files.json:1445:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/optimization_utils.py",
+app/update-state/managed-files.json:1446:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/printer.py",
+app/update-state/managed-files.json:1447:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/quantization_utils.py",
+app/update-state/managed-files.json:1448:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/spec_inspection_utils.py",
+app/update-state/managed-files.json:1449:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/update_optimizer_utils.py",
+app/update-state/managed-files.json:1450:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/neural_network/utils.py",
+app/update-state/managed-files.json:1451:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/pipeline.py",
+app/update-state/managed-files.json:1452:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/tree_ensemble.py",
+app/update-state/managed-files.json:1453:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/models/utils.py",
+app/update-state/managed-files.json:1785:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/__init__.py",
+app/update-state/managed-files.json:1786:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:1787:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/__pycache__/mnist.cpython-314.pyc",
+app/update-state/managed-files.json:1788:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/__pycache__/multi_input_net.cpython-314.pyc",
+app/update-state/managed-files.json:1789:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/mnist.py",
+app/update-state/managed-files.json:1790:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/coremltools/test/optimize/torch/models/multi_input_net.py",
+app/update-state/managed-files.json:2052:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__init__.py",
+app/update-state/managed-files.json:2053:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:2054:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/_modeling_parallel.cpython-314.pyc",
+app/update-state/managed-files.json:2055:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/activations.cpython-314.pyc",
+app/update-state/managed-files.json:2056:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/adapter.cpython-314.pyc",
+app/update-state/managed-files.json:2057:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/attention.cpython-314.pyc",
+app/update-state/managed-files.json:2058:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/attention_dispatch.cpython-314.pyc",
+app/update-state/managed-files.json:2059:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/attention_flax.cpython-314.pyc",
+app/update-state/managed-files.json:2060:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/attention_processor.cpython-314.pyc",
+app/update-state/managed-files.json:2061:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/auto_model.cpython-314.pyc",
+app/update-state/managed-files.json:2062:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/cache_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2063:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/downsampling.cpython-314.pyc",
+app/update-state/managed-files.json:2064:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/embeddings.cpython-314.pyc",
+app/update-state/managed-files.json:2065:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/embeddings_flax.cpython-314.pyc",
+app/update-state/managed-files.json:2066:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/lora.cpython-314.pyc",
+app/update-state/managed-files.json:2067:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/model_loading_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2068:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/modeling_flax_pytorch_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2069:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/modeling_flax_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2070:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/modeling_outputs.cpython-314.pyc",
+app/update-state/managed-files.json:2071:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/modeling_pytorch_flax_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2072:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/modeling_utils.cpython-314.pyc",
+app/update-state/managed-files.json:2073:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/normalization.cpython-314.pyc",
+app/update-state/managed-files.json:2074:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/resnet.cpython-314.pyc",
+app/update-state/managed-files.json:2075:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/resnet_flax.cpython-314.pyc",
+app/update-state/managed-files.json:2076:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/upsampling.cpython-314.pyc",
+app/update-state/managed-files.json:2077:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/vae_flax.cpython-314.pyc",
+app/update-state/managed-files.json:2078:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/__pycache__/vq_model.cpython-314.pyc",
+app/update-state/managed-files.json:2079:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/_modeling_parallel.py",
+app/update-state/managed-files.json:2080:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/activations.py",
+app/update-state/managed-files.json:2081:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/adapter.py",
+app/update-state/managed-files.json:2082:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/attention.py",
+app/update-state/managed-files.json:2083:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/attention_dispatch.py",
+app/update-state/managed-files.json:2084:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/attention_flax.py",
+app/update-state/managed-files.json:2085:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/attention_processor.py",
+app/update-state/managed-files.json:2086:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/auto_model.py",
+app/update-state/managed-files.json:2087:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__init__.py",
+app/update-state/managed-files.json:2088:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:2089:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_asym_kl.cpython-314.pyc",
+app/update-state/managed-files.json:2090:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_dc.cpython-314.pyc",
+app/update-state/managed-files.json:2091:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl.cpython-314.pyc",
+app/update-state/managed-files.json:2092:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_allegro.cpython-314.pyc",
+app/update-state/managed-files.json:2093:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_cogvideox.cpython-314.pyc",
+app/update-state/managed-files.json:2094:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_cosmos.cpython-314.pyc",
+app/update-state/managed-files.json:2095:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_flux2.cpython-314.pyc",
+app/update-state/managed-files.json:2096:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_hunyuan_video.cpython-314.pyc",
+app/update-state/managed-files.json:2097:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_hunyuanimage.cpython-314.pyc",
+app/update-state/managed-files.json:2098:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_hunyuanimage_refiner.cpython-314.pyc",
+app/update-state/managed-files.json:2099:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_hunyuanvideo15.cpython-314.pyc",
+app/update-state/managed-files.json:2100:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_kvae.cpython-314.pyc",
+app/update-state/managed-files.json:2101:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_kvae_video.cpython-314.pyc",
+app/update-state/managed-files.json:2102:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_ltx.cpython-314.pyc",
+app/update-state/managed-files.json:2103:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_ltx2.cpython-314.pyc",
+app/update-state/managed-files.json:2104:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_ltx2_audio.cpython-314.pyc",
+app/update-state/managed-files.json:2105:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_magvit.cpython-314.pyc",
+app/update-state/managed-files.json:2106:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_mochi.cpython-314.pyc",
+app/update-state/managed-files.json:2107:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_qwenimage.cpython-314.pyc",
+app/update-state/managed-files.json:2108:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_temporal_decoder.cpython-314.pyc",
+app/update-state/managed-files.json:2109:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_kl_wan.cpython-314.pyc",
+app/update-state/managed-files.json:2110:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_longcat_audio_dit.cpython-314.pyc",
+app/update-state/managed-files.json:2111:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_oobleck.cpython-314.pyc",
+app/update-state/managed-files.json:2112:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_rae.cpython-314.pyc",
+app/update-state/managed-files.json:2113:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_tiny.cpython-314.pyc",
+app/update-state/managed-files.json:2114:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/autoencoder_vidtok.cpython-314.pyc",
+app/update-state/managed-files.json:2115:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/consistency_decoder_vae.cpython-314.pyc",
+app/update-state/managed-files.json:2116:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/vae.cpython-314.pyc",
+app/update-state/managed-files.json:2117:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/__pycache__/vq_model.cpython-314.pyc",
+app/update-state/managed-files.json:2118:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_asym_kl.py",
+app/update-state/managed-files.json:2119:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_dc.py",
+app/update-state/managed-files.json:2120:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl.py",
+app/update-state/managed-files.json:2121:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_allegro.py",
+app/update-state/managed-files.json:2122:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_cogvideox.py",
+app/update-state/managed-files.json:2123:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_cosmos.py",
+app/update-state/managed-files.json:2124:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_flux2.py",
+app/update-state/managed-files.json:2125:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_hunyuan_video.py",
+app/update-state/managed-files.json:2126:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_hunyuanimage.py",
+app/update-state/managed-files.json:2127:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_hunyuanimage_refiner.py",
+app/update-state/managed-files.json:2128:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_hunyuanvideo15.py",
+app/update-state/managed-files.json:2129:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_kvae.py",
+app/update-state/managed-files.json:2130:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_kvae_video.py",
+app/update-state/managed-files.json:2131:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_ltx.py",
+app/update-state/managed-files.json:2132:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_ltx2.py",
+app/update-state/managed-files.json:2133:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_ltx2_audio.py",
+app/update-state/managed-files.json:2134:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_magvit.py",
+app/update-state/managed-files.json:2135:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_mochi.py",
+app/update-state/managed-files.json:2136:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_qwenimage.py",
+app/update-state/managed-files.json:2137:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_temporal_decoder.py",
+app/update-state/managed-files.json:2138:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_kl_wan.py",
+app/update-state/managed-files.json:2139:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_longcat_audio_dit.py",
+app/update-state/managed-files.json:2140:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_oobleck.py",
+app/update-state/managed-files.json:2141:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_rae.py",
+app/update-state/managed-files.json:2142:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_tiny.py",
+app/update-state/managed-files.json:2143:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/autoencoder_vidtok.py",
+app/update-state/managed-files.json:2144:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/consistency_decoder_vae.py",
+app/update-state/managed-files.json:2145:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/vae.py",
+app/update-state/managed-files.json:2146:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/autoencoders/vq_model.py",
+app/update-state/managed-files.json:2147:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/cache_utils.py",
+app/update-state/managed-files.json:2148:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__init__.py",
+app/update-state/managed-files.json:2149:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:2150:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet.cpython-314.pyc",
+app/update-state/managed-files.json:2151:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_cosmos.cpython-314.pyc",
+app/update-state/managed-files.json:2152:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_flax.cpython-314.pyc",
+app/update-state/managed-files.json:2153:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_flux.cpython-314.pyc",
+app/update-state/managed-files.json:2154:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_hunyuan.cpython-314.pyc",
+app/update-state/managed-files.json:2155:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_qwenimage.cpython-314.pyc",
+app/update-state/managed-files.json:2156:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_sana.cpython-314.pyc",
+app/update-state/managed-files.json:2157:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_sd3.cpython-314.pyc",
+app/update-state/managed-files.json:2158:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_sparsectrl.cpython-314.pyc",
+app/update-state/managed-files.json:2159:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_union.cpython-314.pyc",
+app/update-state/managed-files.json:2160:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_xs.cpython-314.pyc",
+app/update-state/managed-files.json:2161:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/controlnet_z_image.cpython-314.pyc",
+app/update-state/managed-files.json:2162:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/multicontrolnet.cpython-314.pyc",
+app/update-state/managed-files.json:2163:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/__pycache__/multicontrolnet_union.cpython-314.pyc",
+app/update-state/managed-files.json:2164:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet.py",
+app/update-state/managed-files.json:2165:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_cosmos.py",
+app/update-state/managed-files.json:2166:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_flax.py",
+app/update-state/managed-files.json:2167:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_flux.py",
+app/update-state/managed-files.json:2168:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_hunyuan.py",
+app/update-state/managed-files.json:2169:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_qwenimage.py",
+app/update-state/managed-files.json:2170:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_sana.py",
+app/update-state/managed-files.json:2171:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_sd3.py",
+app/update-state/managed-files.json:2172:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_sparsectrl.py",
+app/update-state/managed-files.json:2173:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_union.py",
+app/update-state/managed-files.json:2174:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_xs.py",
+app/update-state/managed-files.json:2175:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/controlnet_z_image.py",
+app/update-state/managed-files.json:2176:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/multicontrolnet.py",
+app/update-state/managed-files.json:2177:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/controlnets/multicontrolnet_union.py",
+app/update-state/managed-files.json:2178:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/downsampling.py",
+app/update-state/managed-files.json:2179:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/embeddings.py",
+app/update-state/managed-files.json:2180:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/embeddings_flax.py",
+app/update-state/managed-files.json:2181:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/lora.py",
+app/update-state/managed-files.json:2182:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/model_loading_utils.py",
+app/update-state/managed-files.json:2183:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/modeling_flax_pytorch_utils.py",
+app/update-state/managed-files.json:2184:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/modeling_flax_utils.py",
+app/update-state/managed-files.json:2185:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/modeling_outputs.py",
+app/update-state/managed-files.json:2186:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/modeling_pytorch_flax_utils.py",
+app/update-state/managed-files.json:2187:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/modeling_utils.py",
+app/update-state/managed-files.json:2188:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/normalization.py",
+app/update-state/managed-files.json:2189:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/resnet.py",
+app/update-state/managed-files.json:2190:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/resnet_flax.py",
+app/update-state/managed-files.json:2191:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__init__.py",
+app/update-state/managed-files.json:2192:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/__init__.cpython-314.pyc",
+app/update-state/managed-files.json:2193:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/ace_step_transformer.cpython-314.pyc",
+app/update-state/managed-files.json:2194:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/auraflow_transformer_2d.cpython-314.pyc",
+app/update-state/managed-files.json:2195:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/cogvideox_transformer_3d.cpython-314.pyc",
+app/update-state/managed-files.json:2196:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/consisid_transformer_3d.cpython-314.pyc",
+app/update-state/managed-files.json:2197:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/dit_transformer_2d.cpython-314.pyc",
+app/update-state/managed-files.json:2198:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/dual_transformer_2d.cpython-314.pyc",
+app/update-state/managed-files.json:2199:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/hunyuan_transformer_2d.cpython-314.pyc",
+app/update-state/managed-files.json:2200:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/latte_transformer_3d.cpython-314.pyc",
+app/update-state/managed-files.json:2201:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/lumina_nextdit2d.cpython-314.pyc",
+app/update-state/managed-files.json:2202:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/pixart_transformer_2d.cpython-314.pyc",
+app/update-state/managed-files.json:2203:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/prior_transformer.cpython-314.pyc",
+app/update-state/managed-files.json:2204:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/sana_transformer.cpython-314.pyc",
+app/update-state/managed-files.json:2205:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/stable_audio_transformer.cpython-314.pyc",
+app/update-state/managed-files.json:2206:    "app/backend/mac/coreml_venv/lib/python3.14/site-packages/diffusers/models/transformers/__pycache__/t5_film_transformer.cpython-314.pyc",
+NOTICE: พบ Path ที่ต้องตรวจสอบก่อนเชื่อม Storage Config
+
+[6/8] ตรวจ Auto Updater Storage Logic
+13:const APP = path.join(ROOT, "app");
+14:const CONFIG_FILE = path.join(APP, "config", "update.json");
+15:const VERSION_FILE = path.join(APP, "version.json");
+16:const STATE_DIR = path.join(APP, "update-state");
+17:const STATUS_FILE = path.join(STATE_DIR, "status.json");
+18:const MANAGED_FILE = path.join(STATE_DIR, "managed-files.json");
+19:const LOG_FILE = path.join(STATE_DIR, "updater.log");
+84:async function download(url, destination, timeoutMs) {
+97:    const rel = normalizeRel(path.join(prefix, entry.name));
+98:    const abs = path.join(base, entry.name);
+172:  const direct = path.join(extractDir, "Local AI");
+173:  if (fs.existsSync(path.join(direct, "app"))) return direct;
+174:  if (fs.existsSync(path.join(extractDir, "app"))) return extractDir;
+177:    const candidate = path.join(extractDir, dir.name);
+178:    if (fs.existsSync(path.join(candidate, "app"))) return candidate;
+184:  for (const rel of required) if (!fs.existsSync(path.join(root, rel))) return { ok: false, reason: `Missing ${rel}` };
+186:  const syntax = spawnSync(node, ["--check", path.join(root, "scripts", "server", "serve.cjs")], { encoding: "utf8" });
+188:  const version = readJson(path.join(root, "app", "version.json"), null);
+192:function installPayload(payload, config, nextVersion) {
+193:  const protectedPaths = Array.isArray(config.protectedPaths) ? config.protectedPaths : [];
+196:  const backupRoot = path.join(STATE_DIR, `rollback-${Date.now()}`);
+202:    const existing = path.join(ROOT, rel);
+203:    if (fs.existsSync(existing) && fs.statSync(existing).isFile()) copyFileSafe(existing, path.join(backupRoot, rel));
+205:  writeJsonAtomic(path.join(backupRoot, "rollback.json"), { previousVersion: readJson(VERSION_FILE, {}).version || "unknown", files: [...changed] });
+208:    for (const rel of allPayloadFiles) copyFileSafe(path.join(payload, rel), path.join(ROOT, rel));
+209:    if (config.cleanupOldVersion !== false) {
+213:        const target = path.join(ROOT, rel);
+230:      const target = path.join(ROOT, rel);
+231:      const backup = path.join(backupRoot, rel);
+242:  const config = readJson(CONFIG_FILE, {});
+244:  const manifestUrl = process.env.LOCAL_AI_UPDATE_MANIFEST || config.manifestUrl || "";
+251:  if (config.enabled === false || config.checkOnLaunch === false) {
+256:    status("not-configured", { currentVersion: current.version, message: "Running installed version; update source is not configured." });
+257:    log(`Running installed version ${current.version}; update source is not configured.`);
+264:    manifest = await fetchJson(manifestUrl, Number(config.timeoutMs) || 2500);
+271:  const channel = process.env.LOCAL_AI_UPDATE_CHANNEL || config.channel || "stable";
+287:  if (config.autoInstall === false && !args.has("--install")) {
+293:  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "local-ai-update-"));
+295:  const pkg = path.join(tempRoot, `update${ext}`);
+296:  const extractDir = path.join(tempRoot, "extract");
+298:    status("downloading", { currentVersion: current.version, latestVersion: release.version });
+300:    await download(asset.url, pkg, Number(config.timeoutMs) || 2500);
+308:    installPayload(payload, config, release.version);
+309:    status("updated", { previousVersion: current.version, currentVersion: release.version, oldVersionRemoved: config.cleanupOldVersion !== false });
+315:    fs.rmSync(tempRoot, { recursive: true, force: true });
+PASS: พบ Auto Updater Source
+
+[7/8] ตรวจ Frontend ที่เกี่ยวข้องกับ Storage และ Model Manager
+app/frontend/src/components/SpeechTranscriber.jsx:334:          message: "The loaded model is English-only and cannot transcribe non-English speech. Please download and load a Multilingual model (e.g. Whisper Base Multilingual) from the Model Manager to transcribe this audio.",
+app/frontend/src/components/SpeechTranscriber.jsx:454:              Download a Whisper model from Model Manager, Speech Models first.
+app/frontend/src/components/Generator.jsx:181:            message: "You haven't downloaded any text models yet. Please go to the 'Model Manager' or 'Text Chat' tab to download a GGUF model first.",
+app/frontend/src/components/Generator.jsx:778:          Create high-fidelity images completely locally on your external drive.
+app/frontend/src/components/Generator.jsx:1088:            No images generated in this session yet. Everything will be saved directly on your external drive.
+app/frontend/src/components/ModelManager.jsx:888:      title: "Download Model?",
+app/frontend/src/components/ModelManager.jsx:1826:          {activeModelType === "text" ? "AI Library" : activeModelType === "speech" ? "Speech Model Library" : activeModelType === "tts" ? "TTS Model Library" : "Model Library"}
+app/frontend/src/components/ModelManager.jsx:2139:            Download Model from URL
+app/frontend/src/components/TextToSpeech.jsx:244:              Download a Kokoro model from Model Manager, TTS Models first.
+app/frontend/src/services/api.js:1238:      "Try restarting the backend from Model Manager, or check the terminal for a backend error."
+PASS: พบ Frontend Integration Points
+
+[8/8] ตรวจ Source Syntax และสรุป
+PASS: Updater Syntax ผ่าน
+
+============================================================
+ STORAGE INTEGRATION DISCOVERY PASSED
+ Download Root : /Volumes/AI/ai-downloads
+ Model Sources : FOUND
+ Download Logic: FOUND
+ Next          : เชื่อม Source ที่พบกับ app/config/storage.json
+ Report        : validation-reports/storage-integration-discovery-20260805-152304.txt
+============================================================

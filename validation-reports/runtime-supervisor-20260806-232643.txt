@@ -1,0 +1,32 @@
+============================================================
+ LUKE AI STUDIO - BACKGROUND RUNTIME SUPERVISOR
+============================================================
+[1/9] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 3c562a8
+Remote : 3c562a8
+PASS: Commit 3c562a8 พร้อมและ Git สะอาด
+[2/9] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup scripts/validation/validate-release.sh
+[3/9] สร้าง Runtime Supervisor Policy และ State
+PASS: Runtime Supervisor Policy และ State ถูกต้อง
+[4/9] สร้าง Background Runtime Supervisor
+PASS: สร้าง Background Runtime Supervisor แล้ว
+[5/9] เชื่อม Supervisor เข้ากับ Backend API
+FAIL: Patch Backend ไม่สำเร็จ
+[6/9] สร้าง Runtime Supervisor Automated Test
+[7/9] ตรวจ Syntax และรัน Test
+FAIL: Syntax หรือ Supervisor Contracts ไม่ผ่าน
+[8/9] รัน Full Release Validation
+[9/9] คืน Runtime State, Commit, Push และตรวจสถานะ
+FAIL: Final Git State ไม่ถูกต้อง
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+============================================================
+ BACKGROUND RUNTIME SUPERVISOR FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-20260806-232643
+Report: validation-reports/runtime-supervisor-20260806-232643.txt

@@ -1,0 +1,145 @@
+============================================================
+ LUKE AI STUDIO - FIX UPDATER VERSION STATE
+============================================================
+
+[1/10] สำรอง Version และ Update State
+BACKUP: app/version.json
+BACKUP: app/config/update.json
+BACKUP: app/update-state/status.json
+BACKUP: app/update-state/managed-files.json
+BACKUP: app/update-state/updater.log
+BACKUP: app/frontend/package.json
+
+[2/10] อัปเดต Version Metadata ทุกตำแหน่ง
+UPDATED: app/version.json
+UPDATED: app/config/update.json
+UPDATED: app/update-state/status.json
+UPDATED: app/update-state/managed-files.json
+UPDATED: app/frontend/package.json
+PASS: ล้าง Updater Log เก่าแล้ว
+
+[3/10] ตรวจว่าไม่มี Installed Version 0.2.0 ค้างอยู่
+PASS: ไม่พบ Installed Version 0.2.0
+
+[4/10] ตรวจ Schema ที่ Updater ใช้จริง
+15:const VERSION_FILE = path.join(APP, "version.json");
+17:const STATUS_FILE = path.join(STATE_DIR, "status.json");
+18:const MANAGED_FILE = path.join(STATE_DIR, "managed-files.json");
+120:    if (process.platform === "win32") {
+144:  const required = ["app/version.json", "app/dist/index.html", "scripts/server/serve.cjs"];
+149:  const version = readJson(path.join(root, "app", "version.json"), null);
+174:        const target = path.join(ROOT, rel);
+175:        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+176:          fs.unlinkSync(target);
+177:          removeEmptyParents(target, ROOT);
+190:      const target = path.join(ROOT, rel);
+192:      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+193:      else if (fs.existsSync(target) && fs.statSync(target).isFile()) fs.unlinkSync(target);
+212:    status("disabled", { currentVersion: current.version });
+216:    status("not-configured", { currentVersion: current.version, message: "Running installed version; update source is not configured." });
+221:  status("checking", { currentVersion: current.version });
+226:    status("offline", { currentVersion: current.version, message: error.message });
+235:    status("up-to-date", { currentVersion: current.version, latestVersion: release.version });
+240:  const platformKey = `${process.platform}-${process.arch}`;
+241:  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+243:    status("incompatible", { currentVersion: current.version, latestVersion: release.version, platform: platformKey });
+244:    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+248:    status("available", { currentVersion: current.version, latestVersion: release.version });
+258:    status("downloading", { currentVersion: current.version, latestVersion: release.version });
+267:    status("installing", { currentVersion: current.version, latestVersion: release.version });
+269:    status("updated", { previousVersion: current.version, currentVersion: release.version, oldVersionRemoved: config.cleanupOldVersion !== false });
+272:    status("failed", { currentVersion: current.version, latestVersion: release.version, message: error.message });
+281:  status("failed", { currentVersion: current.version, message: error.message });
+
+[5/10] สร้าง Manifest ใหม่แบบไม่ติด Cache
+{
+    "product": "LUKE AI STUDIO",
+    "version": "1.0.0-beta.1",
+    "channel": "beta",
+    "releasedAt": "2026-08-05T07:28:43Z",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "target": "darwin-arm64",
+    "targets": [
+        "darwin-arm64"
+    ],
+    "platforms": [
+        "darwin-arm64"
+    ],
+    "artifacts": {
+        "darwin-arm64": {
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.1.zip",
+            "sizeBytes": 68584451,
+            "sha256": "6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/LUKE-AI-STUDIO-1.0.0-beta.1.zip"
+        }
+    },
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.1.zip",
+    "sizeBytes": 68584451,
+    "sha256": "6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/LUKE-AI-STUDIO-1.0.0-beta.1.zip",
+    "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.1",
+    "minimumMacOS": "13.0",
+    "requiresInternetForFirstSetup": true,
+    "validated": true
+}
+
+[6/10] อัปโหลด Manifest ชื่อใหม่
+PASS: อัปโหลด latest-1.0.0-beta.1.json
+
+[7/10] เปลี่ยน Update Config ไปใช้ URL ใหม่
+{
+    "enabled": true,
+    "channel": "beta",
+    "manifestUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/latest-1.0.0-beta.1.json",
+    "checkOnLaunch": true,
+    "timeoutMs": 2500,
+    "autoInstall": true,
+    "cleanupOldVersion": true,
+    "keepConfigBackups": 3,
+    "protectedPaths": [
+        "app/models",
+        "app/llm-models",
+        "app/image-models",
+        "app/video-models",
+        "app/speech-models",
+        "app/tts-models",
+        "app/openvino-models",
+        "app/chat-history",
+        "app/knowledge",
+        "app/projects",
+        "app/outputs",
+        "app/transcriptions",
+        "app/tts-outputs",
+        "app/cache",
+        "app/user-data",
+        "app/config/user-settings.json",
+        "app/update-state"
+    ],
+    "product": "LUKE AI STUDIO",
+    "currentVersion": "1.0.0-beta.1",
+    "offlineFirst": true,
+    "stagedUpdate": true,
+    "version": "1.0.0-beta.1"
+}
+
+[8/10] ดาวน์โหลด Manifest กลับจาก GitHub
+PASS: Remote Manifest รองรับ darwin-arm64
+Version: 1.0.0-beta.1
+Target : darwin-arm64
+
+[9/10] ทดสอบ Updater ใหม่
+  [Update] Local AI 1.0.0-beta.1 is up to date.
+PASS: Version และ Platform mismatch ถูกแก้แล้ว
+
+[10/10] Release Validation และสรุป
+PASS: release structure and syntax
+
+============================================================
+ UPDATER VERSION STATE FIX PASSED
+ Installed version : 1.0.0-beta.1
+ Update target     : darwin-arm64
+ Manifest          : https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/latest-1.0.0-beta.1.json
+Backup : /Users/ekky/Desktop/Luke ai/backups/updater-state-fix-20260805-142843
+Report : /Users/ekky/Desktop/Luke ai/validation-reports/updater-state-fix-20260805-142843.txt
+============================================================

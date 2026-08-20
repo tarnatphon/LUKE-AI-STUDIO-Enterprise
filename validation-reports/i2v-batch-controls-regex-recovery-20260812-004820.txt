@@ -1,0 +1,42 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A REGEX EXTRACTOR RECOVERY
+ REPAIR BROKEN VALIDATOR / PRESERVE BATCH CORE
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+Current dirty state:
+ M app/frontend/src/services/api.js
+ M scripts/server/image-to-video-job-manager.cjs
+ M scripts/server/image-to-video-process-runner.cjs
+ M scripts/server/serve.cjs
+ M scripts/validation/check-api-contracts.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-controls.cjs
+PASS: Phase 3A-4A dirty state preserved
+
+[2/7] Repair extractRegexEndpoints()
+PASS: Validator syntax repaired
+
+[3/7] Fix Malformed Frontend Template Fragment
+PASS: Frontend fragment filter installed
+
+[4/7] Direct API Contract Validation
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 170
+Backend endpoints : 206
+
+Frontend endpoints without backend contracts:
+  /api/image-to-video/batches/:param/:param
+    - app/frontend/src/services/api.js
+  /api/image-to-video/batches/:param/jobs/:param/skip
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/cancel
+    - app/frontend/src/services/api.js
+  /api/image-to-video/jobs/:param/retry
+    - app/frontend/src/services/api.js
+  /api/text-models/download-queue/:param/:param
+    - app/frontend/src/components/TextModelManager.jsx
+FAIL: API Contract Validator still fails

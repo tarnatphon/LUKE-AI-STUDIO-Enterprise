@@ -1,0 +1,1008 @@
+============================================================
+ LUKE AI STUDIO - BETA 6 FEATURE DISCOVERY
+============================================================
+
+[1/9] ตรวจ Branch และ Working Tree
+Branch  : feat/beta6-foundation
+Commit  : 9b1abf4
+Upstream: origin/feat/beta6-foundation
+PASS: Beta 6 Branch พร้อมและ Working Tree สะอาด
+
+[2/9] แสดงโครงสร้าง Source หลัก
+app/capabilities/image-to-video/manifest.json
+app/config/update.json
+app/frontend/.agents/task.md
+app/frontend/package-lock.json
+app/frontend/package.json
+app/frontend/src/App.jsx
+app/frontend/src/main.jsx
+app/frontend/src/themes.js
+app/frontend/vite.config.js
+app/tts-runtime/package-lock.json
+app/tts-runtime/package.json
+app/update-state/managed-files.json
+app/update-state/status.json
+app/version.json
+scripts/build/build_from_source.sh
+scripts/config/llm-backends.json
+scripts/reset/reset.sh
+scripts/search/cache.js
+scripts/search/content.js
+scripts/search/core.js
+scripts/search/providers.js
+scripts/server/serve.cjs
+scripts/setup/extract_tar.py
+scripts/setup/setup-coreml-npu.sh
+scripts/setup/setup-llama.sh
+scripts/setup/setup-openvino-npu.sh
+scripts/setup/setup-tts.sh
+scripts/setup/setup-whisper.sh
+scripts/setup/setup.sh
+scripts/updater/update.cjs
+scripts/validation/validate-release.sh
+scripts/workers/coreml_server.py
+scripts/workers/image_to_video_worker.py
+scripts/workers/install_image_to_video_runtime.py
+scripts/workers/openvino_npu_worker.py
+scripts/workers/tts-kokoro-worker.mjs
+
+[3/9] ค้นหา TODO, FIXME และ Feature ที่ยังไม่สมบูรณ์
+app/frontend/src/App.css:951:.chat-composer-textarea::placeholder {
+app/frontend/src/App.css:2260:.output-placeholder-icon {
+app/frontend/src/App.css:2268:.output-placeholder-text {
+app/frontend/src/components/ReferenceManager.jsx:124:          placeholder="Optional details to keep: smile, haircut, shirt color, expression..."
+app/frontend/src/components/ReferenceManager.jsx:361:          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by file name or notes..." />
+app/frontend/src/components/SpeechTranscriber.jsx:554:          placeholder="Transcript output will appear here."
+app/frontend/src/components/Generator.jsx:799:                  placeholder="Enter a descriptive prompt (e.g. 'A futuristic city in cyberpunk aesthetic, high details, cinematic lighting')..."
+app/frontend/src/components/Generator.jsx:1029:                <Sparkles className="output-placeholder-icon" />
+app/frontend/src/components/Generator.jsx:1030:                <p className="output-placeholder-text">
+app/frontend/src/components/TextChat.jsx:1269:                placeholder={status.ready ? "Message your local model... (Shift+Enter for new line)" : "Select and load a GGUF model above to begin"}
+app/frontend/src/components/ModelManager.jsx:1914:              placeholder="Search Hugging Face GGUF models..."
+app/frontend/src/components/ModelManager.jsx:2182:              placeholder="e.g. https://huggingface.co/..."
+app/frontend/src/components/Settings.jsx:818:                    placeholder="-1 for random"
+app/frontend/src/components/Settings.jsx:988:                   placeholder="Enter system prompt..."
+app/frontend/src/components/Settings.jsx:1098:                  placeholder="-1"
+app/frontend/src/components/TextToSpeech.jsx:261:            placeholder="Type text to turn into speech..."
+app/frontend/src/App.jsx:509:      message: `Delete ${cleanupItems.length} temporary/cache item${cleanupItems.length === 1 ? "" : "s"} and free about ${formatBytes(totalBytes)}?\n\nModels and generated outputs are not included.`,
+app/frontend/src/services/api.js:1078:// we surface that error to the UI instead of silently returning a fake placeholder.
+PASS: พบจุดที่ควรพัฒนาต่อ
+
+[4/9] ตรวจ Frontend Modules และ Navigation
+app/frontend/src/App.css:285:.theme-dropdown-menu {
+app/frontend/src/App.css:407:.sidebar {
+app/frontend/src/App.css:422:.sidebar.collapsed {
+app/frontend/src/App.css:432:.sidebar-logo {
+app/frontend/src/App.css:439:.sidebar-logo-icon {
+app/frontend/src/App.css:446:.sidebar-logo-text {
+app/frontend/src/App.css:500:.sidebar-footer {
+app/frontend/src/App.css:1219:.chat-model-dropdown-menu {
+app/frontend/src/App.css:1403:.sidebar-toggle-btn {
+app/frontend/src/App.css:1418:.sidebar-toggle-btn:hover {
+app/frontend/src/App.css:2163:/* Image Generation Output Area */
+app/frontend/src/App.css:2680:.sidebar-specs-header {
+app/frontend/src/App.css:2689:.sidebar-specs-item {
+app/frontend/src/App.css:2698:.sidebar-specs-os {
+app/frontend/src/App.css:2704:/* Chat History Sidebar styling */
+app/frontend/src/App.css:2705:.chat-history-sidebar {
+app/frontend/src/App.css:2875:.sidebar-specs-header {
+app/frontend/src/App.css:2884:.sidebar-specs-item {
+app/frontend/src/App.css:2893:.sidebar-specs-os {
+app/frontend/src/App.css:2899:/* Chat History Sidebar styling */
+app/frontend/src/App.css:2900:.chat-history-sidebar {
+app/frontend/src/App.css:3123:/* --- Section Tabs (Image | Text) --- */
+app/frontend/src/App.css:3417:/* --- Settings Section Header --- */
+app/frontend/src/App.css:3493:/* --- Settings Grid (Single Column) --- */
+app/frontend/src/App.css:3555:/* --- Settings Value Badge --- */
+app/frontend/src/App.css:3572:/* --- Empty State for Settings --- */
+app/frontend/src/App.css:3599:/* --- Settings Two Column Layout --- */
+app/frontend/src/App.css:3661:/* --- Settings Entrance Animation --- */
+app/frontend/src/App.css:3746:/* --- Settings Page Header --- */
+app/frontend/src/App.css:3799:.sidebar-history-delete {
+app/frontend/src/App.css:3805:.sidebar-history-delete:hover {
+app/frontend/src/App.css:3811:.sidebar-history-item:hover .sidebar-history-delete {
+app/frontend/src/App.css:3842:/* Full Reference Manager for Image Generator */
+app/frontend/src/App.css:4297:/* Beginner-friendly Home and navigation refresh */
+app/frontend/src/App.css:4298:.sidebar-logo-text { display:flex; flex-direction:column; line-height:1.05; }
+app/frontend/src/App.css:4299:.sidebar-logo-text b { font-size:1rem; letter-spacing:-0.02em; }
+app/frontend/src/App.css:4300:.sidebar-logo-text small { font-size:.68rem; font-weight:600; color:var(--md-sys-color-outline); margin-top:3px; }
+app/frontend/src/App.css:4301:.sidebar-logo-icon { color:var(--md-sys-color-primary); filter:drop-shadow(0 4px 10px color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent)); }
+app/frontend/src/App.css:4340:/* LUKE AI STUDIO — Video AI Manager */
+app/frontend/src/components/ReferenceManager.jsx:4:  ImagePlus,
+app/frontend/src/components/ReferenceManager.jsx:13:  Download,
+app/frontend/src/components/ReferenceManager.jsx:30:function readImageFile(file) {
+app/frontend/src/components/ReferenceManager.jsx:137:          <ImagePlus size={15} />
+app/frontend/src/components/ReferenceManager.jsx:148:  referenceImages,
+app/frontend/src/components/ReferenceManager.jsx:149:  setReferenceImages,
+app/frontend/src/components/ReferenceManager.jsx:150:  referenceSettings,
+app/frontend/src/components/ReferenceManager.jsx:151:  setReferenceSettings,
+app/frontend/src/components/ReferenceManager.jsx:162:    () => referenceImages.map((item, index) => normalizeReference(item, index)),
+app/frontend/src/components/ReferenceManager.jsx:163:    [referenceImages]
+app/frontend/src/components/ReferenceManager.jsx:178:    const remaining = MAX_REFERENCES - referenceImages.length;
+app/frontend/src/components/ReferenceManager.jsx:182:      src: await readImageFile(file),
+app/frontend/src/components/ReferenceManager.jsx:185:      pinned: referenceImages.length + offset === 0,
+app/frontend/src/components/ReferenceManager.jsx:186:      weight: referenceImages.length + offset === 0 ? 1.35 : 1,
+app/frontend/src/components/ReferenceManager.jsx:187:      influence: referenceImages.length + offset === 0 ? "Locked" : "Strong",
+app/frontend/src/components/ReferenceManager.jsx:188:    }, referenceImages.length + offset)));
+app/frontend/src/components/ReferenceManager.jsx:189:    setReferenceImages((prev) => [...prev.map((item, idx) => normalizeReference(item, idx)), ...items].slice(0, MAX_REFERENCES));
+app/frontend/src/components/ReferenceManager.jsx:190:  }, [disabled, referenceImages, setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:193:    setReferenceImages((prev) => prev.map((item, idx) => item.id === id ? normalizeReference({ ...item, ...patch, role: APPEARANCE_ROLE }, idx) : normalizeReference(item, idx)));
+app/frontend/src/components/ReferenceManager.jsx:194:  }, [setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:197:    setReferenceImages((prev) => prev.filter((item) => item.id !== id).map((item, idx) => normalizeReference(item, idx)));
+app/frontend/src/components/ReferenceManager.jsx:199:  }, [setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:208:    setReferenceImages((prev) => prev.map((item, idx) => selected.has(item.id) ? normalizeReference({ ...item, ...patch, role: APPEARANCE_ROLE }, idx) : normalizeReference(item, idx)));
+app/frontend/src/components/ReferenceManager.jsx:209:  }, [selectedIds, setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:214:    setReferenceImages((prev) => prev.filter((item) => !selected.has(item.id)).map((item, idx) => normalizeReference(item, idx)));
+app/frontend/src/components/ReferenceManager.jsx:216:  }, [selectedIds, setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:225:      settings: { ...referenceSettings, mode: "Appearance Lock" },
+app/frontend/src/components/ReferenceManager.jsx:227:      note: "Image data is not stored in preset metadata. Re-import images when needed.",
+app/frontend/src/components/ReferenceManager.jsx:231:  }, [unifiedReferences, referenceSettings]);
+app/frontend/src/components/ReferenceManager.jsx:238:      settings: { ...referenceSettings, mode: "Appearance Lock" },
+app/frontend/src/components/ReferenceManager.jsx:250:  }, [unifiedReferences, referenceSettings]);
+app/frontend/src/components/ReferenceManager.jsx:257:      if (payload.settings) setReferenceSettings((prev) => ({ ...prev, ...payload.settings, mode: "Appearance Lock", lockIdentity: true }));
+app/frontend/src/components/ReferenceManager.jsx:260:        if (restored.length) setReferenceImages(restored);
+app/frontend/src/components/ReferenceManager.jsx:266:  }, [setReferenceImages, setReferenceSettings]);
+app/frontend/src/components/ReferenceManager.jsx:269:    setReferenceImages((prev) => prev.map((item, idx) => normalizeReference({
+app/frontend/src/components/ReferenceManager.jsx:279:    setReferenceSettings((prev) => ({
+app/frontend/src/components/ReferenceManager.jsx:291:  }, [setReferenceImages, setReferenceSettings]);
+app/frontend/src/components/ReferenceManager.jsx:298:    setReferenceSettings((prev) => ({ ...prev, ...patch, mode: "Appearance Lock", lockIdentity: true }));
+app/frontend/src/components/ReferenceManager.jsx:299:  }, [setReferenceSettings]);
+app/frontend/src/components/ReferenceManager.jsx:313:          <button type="button" className="m3-btn m3-btn-tonal" onClick={() => fileInputRef.current?.click()} disabled={disabled || referenceImages.length >= MAX_REFERENCES}>
+app/frontend/src/components/ReferenceManager.jsx:314:            <ImagePlus size={15} /> Add Images
+app/frontend/src/components/ReferenceManager.jsx:316:          <button type="button" className="m3-btn m3-btn-filled" onClick={optimizeForFace} disabled={disabled || referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:319:          <button type="button" className="m3-btn m3-btn-outlined" onClick={savePreset} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:322:          <button type="button" className="m3-btn m3-btn-outlined" onClick={exportJson} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:323:            <Download size={15} /> Export
+app/frontend/src/components/ReferenceManager.jsx:328:          <button type="button" className="m3-btn m3-btn-error" onClick={() => { setReferenceImages([]); setSelectedIds([]); }} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:339:          Face Similarity <span>{Number(referenceSettings.similarityBoost ?? 1).toFixed(2)}</span>
+app/frontend/src/components/ReferenceManager.jsx:340:          <input type="range" min="0" max="1" step="0.05" value={referenceSettings.similarityBoost ?? 1} onChange={(e) => updateSetting({ similarityBoost: Number(e.target.value) })} />
+app/frontend/src/components/ReferenceManager.jsx:343:          Reference Strength <span>{Number(referenceSettings.strength ?? 1.35).toFixed(2)}</span>
+app/frontend/src/components/ReferenceManager.jsx:344:          <input type="range" min="0" max="1.5" step="0.05" value={referenceSettings.strength ?? 1.35} onChange={(e) => updateSetting({ strength: Number(e.target.value) })} />
+app/frontend/src/components/ReferenceManager.jsx:347:          Denoise Guidance <span>{Number(referenceSettings.denoiseGuidance ?? 0.38).toFixed(2)}</span>
+app/frontend/src/components/ReferenceManager.jsx:348:          <input type="range" min="0.15" max="0.85" step="0.05" value={referenceSettings.denoiseGuidance ?? 0.38} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
+app/frontend/src/components/ReferenceManager.jsx:351:          <label><input type="checkbox" checked={referenceSettings.faceLock !== false} onChange={(e) => updateSetting({ faceLock: e.target.checked })} /> Face</label>
+app/frontend/src/components/ReferenceManager.jsx:352:          <label><input type="checkbox" checked={referenceSettings.hairLock !== false} onChange={(e) => updateSetting({ hairLock: e.target.checked })} /> Hair</label>
+app/frontend/src/components/ReferenceManager.jsx:353:          <label><input type="checkbox" checked={referenceSettings.clothingLock !== false} onChange={(e) => updateSetting({ clothingLock: e.target.checked })} /> Clothing</label>
+app/frontend/src/components/ReferenceManager.jsx:354:          <label><input type="checkbox" checked={referenceSettings.bodyLock !== false} onChange={(e) => updateSetting({ bodyLock: e.target.checked })} /> Body</label>
+app/frontend/src/components/ReferenceManager.jsx:386:        onClick={() => referenceImages.length === 0 && fileInputRef.current?.click()}
+app/frontend/src/components/ImageToVideo.jsx:2:import { Film, Upload, Play, CheckCircle2, AlertTriangle, Cpu, HardDrive, Plus, Trash2, Sparkles, ShieldCheck, Download, Wrench } from "lucide-react";
+app/frontend/src/components/ImageToVideo.jsx:3:import { getImageToVideoCompatibility, generateImageToVideo, getImageToVideoCapabilityStatus, installImageToVideoCapability } from "../services/api";
+app/frontend/src/components/ImageToVideo.jsx:5:function readImage(file) {
+app/frontend/src/components/ImageToVideo.jsx:15:export default function ImageToVideo({ specs, showAlert }) {
+app/frontend/src/components/ImageToVideo.jsx:25:    getImageToVideoCompatibility()
+app/frontend/src/components/ImageToVideo.jsx:32:      const data = await getImageToVideoCapabilityStatus();
+app/frontend/src/components/ImageToVideo.jsx:56:        if (data.state === "ready") showAlert?.({ title: "Image-to-Video Ready", message: "Runtime installed successfully." });
+app/frontend/src/components/ImageToVideo.jsx:64:    setCapability((prev) => ({ ...prev, state: "installing", message: repair ? "Repairing Image-to-Video…" : "Installing Image-to-Video…" }));
+app/frontend/src/components/ImageToVideo.jsx:66:      await installImageToVideoCapability(repair);
+app/frontend/src/components/ImageToVideo.jsx:86:      const items = await Promise.all(accepted.map(readImage));
+app/frontend/src/components/ImageToVideo.jsx:89:      showAlert?.({ title: "Reference Image", message: error.message, danger: true });
+app/frontend/src/components/ImageToVideo.jsx:94:    try { setSource(await readImage(file)); }
+app/frontend/src/components/ImageToVideo.jsx:95:    catch (error) { showAlert?.({ title: "Source Image", message: error.message, danger: true }); }
+app/frontend/src/components/ImageToVideo.jsx:103:      const result = await generateImageToVideo({
+app/frontend/src/components/ImageToVideo.jsx:115:      showAlert?.({ title: "Automatic Image-to-Video", message: error.message, danger: true });
+app/frontend/src/components/ImageToVideo.jsx:124:      <Film size={28}/><div><h2 style={{ margin: 0 }}>Automatic Image to Video</h2><div style={{ opacity: .72 }}>Upload images only. LUKE AI selects and applies every setting automatically.</div></div>
+app/frontend/src/components/ImageToVideo.jsx:164:          <div style={{display:"flex", alignItems:"center", gap:8, fontWeight:700}}><Download size={18}/> Image-to-Video is not installed</div>
+app/frontend/src/components/ImageToVideo.jsx:167:            {capability.state === "error" ? <Wrench size={18}/> : <Download size={18}/>}
+app/frontend/src/components/ImageToVideo.jsx:168:            {installing ? (capability.message || "Installing…") : capability.state === "error" ? "Repair Image-to-Video" : "Install Image-to-Video"}
+app/frontend/src/components/ImageToVideo.jsx:172:        {runtimeReady && <div style={{marginTop:16, display:"flex", gap:8, alignItems:"center"}}><CheckCircle2 size={18}/> Image-to-Video runtime ready</div>}
+app/frontend/src/components/ImageToVideo.jsx:173:        <button onClick={run} disabled={busy || !source || blocked} style={{ width:"100%", marginTop:18, padding:13, display:"flex", justifyContent:"center", gap:8 }}><Play size={18}/>{busy ? "Creating automatically…" : "Create Video Automatically"}</button>
+app/frontend/src/components/SpeechTranscriber.jsx:13:  getSpeechStatus,
+app/frontend/src/components/SpeechTranscriber.jsx:14:  listSpeechModels,
+app/frontend/src/components/SpeechTranscriber.jsx:15:  startSpeech,
+app/frontend/src/components/SpeechTranscriber.jsx:16:  stopSpeech,
+app/frontend/src/components/SpeechTranscriber.jsx:17:  transcribeSpeech,
+app/frontend/src/components/SpeechTranscriber.jsx:135:export default function SpeechTranscriber({
+app/frontend/src/components/SpeechTranscriber.jsx:140:  speechSettings,
+app/frontend/src/components/SpeechTranscriber.jsx:141:  setSpeechSettings,
+app/frontend/src/components/SpeechTranscriber.jsx:147:  const language = speechSettings?.language || "auto";
+app/frontend/src/components/SpeechTranscriber.jsx:148:  const threads = speechSettings?.threads || 4;
+app/frontend/src/components/SpeechTranscriber.jsx:149:  const backendPreference = speechSettings?.backendPreference || "auto";
+app/frontend/src/components/SpeechTranscriber.jsx:150:  const translate = speechSettings?.translate === true;
+app/frontend/src/components/SpeechTranscriber.jsx:152:  const setLanguage = (val) => setSpeechSettings((prev) => ({ ...prev, language: val }));
+app/frontend/src/components/SpeechTranscriber.jsx:153:  const setThreads = (val) => setSpeechSettings((prev) => ({ ...prev, threads: val }));
+app/frontend/src/components/SpeechTranscriber.jsx:154:  const setBackendPreference = (val) => setSpeechSettings((prev) => ({ ...prev, backendPreference: val }));
+app/frontend/src/components/SpeechTranscriber.jsx:181:      getSpeechStatus(),
+app/frontend/src/components/SpeechTranscriber.jsx:182:      listSpeechModels(),
+app/frontend/src/components/SpeechTranscriber.jsx:198:    refresh().catch((err) => showAlert?.({ title: "Speech Status Failed", message: err.message || String(err), danger: true }));
+app/frontend/src/components/SpeechTranscriber.jsx:242:  const handleLoadSpeechModel = async () => {
+app/frontend/src/components/SpeechTranscriber.jsx:247:        await startSpeech(selectedModel, { language, threads, backendPreference });
+app/frontend/src/components/SpeechTranscriber.jsx:251:      showAlert?.({ title: "Speech Model Load Failed", message: err.message || String(err), danger: true });
+app/frontend/src/components/SpeechTranscriber.jsx:312:          await startSpeech(selectedModel, { language, threads, backendPreference });
+app/frontend/src/components/SpeechTranscriber.jsx:318:      const transcription = await transcribeSpeech(audioBlob, {
+app/frontend/src/components/SpeechTranscriber.jsx:334:          message: "The loaded model is English-only and cannot transcribe non-English speech. Please download and load a Multilingual model (e.g. Whisper Base Multilingual) from the Model Manager to transcribe this audio.",
+app/frontend/src/components/SpeechTranscriber.jsx:366:        <h2 className="workspace-title">Speech Transcriber</h2>
+app/frontend/src/components/SpeechTranscriber.jsx:430:                onChange={(event) => setSpeechSettings((prev) => ({ ...prev, translate: event.target.checked }))}
+app/frontend/src/components/SpeechTranscriber.jsx:440:              onClick={handleLoadSpeechModel}
+app/frontend/src/components/SpeechTranscriber.jsx:454:              Download a Whisper model from Model Manager, Speech Models first.
+app/frontend/src/components/SpeechTranscriber.jsx:543:              <button className="m3-btn m3-btn-error" onClick={() => stopSpeech().then(refresh)}>
+app/frontend/src/components/Generator.jsx:2:import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus } from "lucide-react";
+app/frontend/src/components/Generator.jsx:5:  generateImage, 
+app/frontend/src/components/Generator.jsx:47:  generatedImages,
+app/frontend/src/components/Generator.jsx:48:  setGeneratedImages,
+app/frontend/src/components/Generator.jsx:57:  textSettings,
+app/frontend/src/components/Generator.jsx:59:  const [outputImage, setOutputImage] = useState(null);
+app/frontend/src/components/Generator.jsx:74:  const [baseImage, setBaseImage] = useState(null);
+app/frontend/src/components/Generator.jsx:75:  const [referenceImages, setReferenceImages] = useState(() => {
+app/frontend/src/components/Generator.jsx:82:  const [referenceSettings, setReferenceSettings] = useState(() => {
+app/frontend/src/components/Generator.jsx:89:  const normalizedReferenceSettings = {
+app/frontend/src/components/Generator.jsx:101:    ...referenceSettings,
+app/frontend/src/components/Generator.jsx:110:      localStorage.setItem("image-generator-references", JSON.stringify(referenceImages));
+app/frontend/src/components/Generator.jsx:114:  }, [referenceImages]);
+app/frontend/src/components/Generator.jsx:118:      localStorage.setItem("image-generator-reference-settings", JSON.stringify(normalizedReferenceSettings));
+app/frontend/src/components/Generator.jsx:122:  }, [normalizedReferenceSettings]);
+app/frontend/src/components/Generator.jsx:124:  const activeReferences = referenceImages.filter((item) => item.enabled);
+app/frontend/src/components/Generator.jsx:144:    setBaseImage(src);
+app/frontend/src/components/Generator.jsx:181:            message: "You haven't downloaded any text models yet. Please go to the 'Model Manager' or 'Text Chat' tab to download a GGUF model first.",
+app/frontend/src/components/Generator.jsx:203:        const cores = textSettings?.threads || specs?.cpu_cores_physical || 4;
+app/frontend/src/components/Generator.jsx:204:        const context = textSettings?.contextSize || 2048;
+app/frontend/src/components/Generator.jsx:209:          preferredBackend: textSettings?.preferredBackend
+app/frontend/src/components/Generator.jsx:219:      const temp = textSettings?.temperature || 0.7;
+app/frontend/src/components/Generator.jsx:242:      setBaseImage(null);
+app/frontend/src/components/Generator.jsx:246:  const handleBaseImageSelect = (e) => {
+app/frontend/src/components/Generator.jsx:255:    reader.onload = () => setBaseImage(reader.result);
+app/frontend/src/components/Generator.jsx:260:  const handleClearBaseImage = () => setBaseImage(null);
+app/frontend/src/components/Generator.jsx:302:        console.log("Settings out of sync, restarting backend...");
+app/frontend/src/components/Generator.jsx:358:    setOutputImage(null);
+app/frontend/src/components/Generator.jsx:515:      const primaryReferenceSource = baseImage || getBestReferenceSource();
+app/frontend/src/components/Generator.jsx:516:      const result = await generateImage(
+app/frontend/src/components/Generator.jsx:525:        normalizedReferenceSettings
+app/frontend/src/components/Generator.jsx:544:        mode: (baseImage || getBestReferenceSource()) ? "img2img-reference" : "txt2img-reference",
+app/frontend/src/components/Generator.jsx:545:        denoisingStrength: (baseImage || getBestReferenceSource()) ? constraints.denoisingStrength : null,
+app/frontend/src/components/Generator.jsx:548:        referenceSettings: normalizedReferenceSettings,
+app/frontend/src/components/Generator.jsx:562:        throw new Error(`Image generated but could not be saved to USB: ${saveErr.message || saveErr}`);
+app/frontend/src/components/Generator.jsx:565:      setOutputImage(savedUrl);
+app/frontend/src/components/Generator.jsx:575:      setGeneratedImages((prev) => [historyItem, ...prev]);
+app/frontend/src/components/Generator.jsx:635:  const handleCopyImage = async () => {
+app/frontend/src/components/Generator.jsx:636:    if (!outputImage) return;
+app/frontend/src/components/Generator.jsx:638:      if (outputImage.startsWith("data:image")) {
+app/frontend/src/components/Generator.jsx:640:        const response = await fetch(outputImage);
+app/frontend/src/components/Generator.jsx:647:        const img = new Image();
+app/frontend/src/components/Generator.jsx:649:        img.src = outputImage;
+app/frontend/src/components/Generator.jsx:655:          ctx.drawImage(img, 0, 0);
+app/frontend/src/components/Generator.jsx:670:  // Download generated image
+app/frontend/src/components/Generator.jsx:671:  const handleDownload = () => {
+app/frontend/src/components/Generator.jsx:672:    if (!outputImage) return;
+app/frontend/src/components/Generator.jsx:674:    link.href = outputImage;
+app/frontend/src/components/Generator.jsx:681:  const downloadImageUrl = (url, filename = `diffusion-${Date.now()}.png`) => {
+app/frontend/src/components/Generator.jsx:692:  const loadHistoryItem = useCallback((item) => {
+app/frontend/src/components/Generator.jsx:704:    setOutputImage(item.url);
+app/frontend/src/components/Generator.jsx:715:    if (generatedImages[idx]) {
+app/frontend/src/components/Generator.jsx:716:      loadHistoryItem(generatedImages[idx]);
+app/frontend/src/components/Generator.jsx:718:  }, [generatedImages, loadHistoryItem]);
+app/frontend/src/components/Generator.jsx:721:    .map((idx) => generatedImages[idx])
+app/frontend/src/components/Generator.jsx:730:      loadHistoryItem(selectedGalleryItems[0]);
+app/frontend/src/components/Generator.jsx:737:      downloadImageUrl(item.url, `diffusion-${seed}-${index + 1}.png`);
+app/frontend/src/components/Generator.jsx:755:      setGeneratedImages((prev) => prev.filter((_, idx) => !selectedSet.has(idx)));
+app/frontend/src/components/Generator.jsx:758:      if (selectedGalleryItems.some((item) => item.url === outputImage)) {
+app/frontend/src/components/Generator.jsx:759:        setOutputImage(null);
+app/frontend/src/components/Generator.jsx:794:                <label className="m3-text-field-label">Image Prompt</label>
+app/frontend/src/components/Generator.jsx:806:                  <label className="m3-text-field-label">Base Image (Optional)</label>
+app/frontend/src/components/Generator.jsx:807:                  {baseImage ? (
+app/frontend/src/components/Generator.jsx:809:                      <img src={baseImage} alt="Base" style={{ width: "64px", height: "64px", objectFit: "cover", borderRadius: "8px", flexShrink: 0 }} />
+app/frontend/src/components/Generator.jsx:816:                      <button type="button" className="m3-btn m3-btn-error" style={{ height: "34px", flexShrink: 0 }} onClick={handleClearBaseImage} disabled={isGenerating}>
+app/frontend/src/components/Generator.jsx:827:                        onChange={handleBaseImageSelect}
+app/frontend/src/components/Generator.jsx:830:                      <ImagePlus className="import-icon" />
+app/frontend/src/components/Generator.jsx:838:                  {baseImage && (
+app/frontend/src/components/Generator.jsx:868:                referenceImages={referenceImages}
+app/frontend/src/components/Generator.jsx:869:                setReferenceImages={setReferenceImages}
+app/frontend/src/components/Generator.jsx:870:                referenceSettings={normalizedReferenceSettings}
+app/frontend/src/components/Generator.jsx:871:                setReferenceSettings={setReferenceSettings}
+app/frontend/src/components/Generator.jsx:878:                <label className="m3-text-field-label">Active Image Constraints</label>
+app/frontend/src/components/Generator.jsx:906:                <span>{!activeModel ? "Select Model to Generate" : (baseImage || activeReferences.some((item) => item.role === "Source")) ? "Generate with References" : "Generate Local Image"}</span>
+app/frontend/src/components/Generator.jsx:912:        {/* Right Side: Image Output Preview */}
+app/frontend/src/components/Generator.jsx:921:                      Syncing Settings & Initializing...
+app/frontend/src/components/Generator.jsx:1010:            ) : outputImage ? (
+app/frontend/src/components/Generator.jsx:1011:              <img src={outputImage} className="output-image" alt="Generated Output" />
+app/frontend/src/components/Generator.jsx:1024:                  Hint: Try lowering the resolution in the <strong>Image Constraints</strong> settings (e.g., to 512x512).
+app/frontend/src/components/Generator.jsx:1038:          {outputImage && !isGenerating && (
+app/frontend/src/components/Generator.jsx:1047:                <button className="m3-btn m3-btn-tonal" onClick={handleCopyImage}>
+app/frontend/src/components/Generator.jsx:1051:                <button className="m3-btn m3-btn-outlined" onClick={handleDownload}>
+app/frontend/src/components/Generator.jsx:1052:                  <Download size={16} />
+app/frontend/src/components/Generator.jsx:1061:      {/* History / Gallery Grid */}
+app/frontend/src/components/Generator.jsx:1073:                <Download size={14} />
+app/frontend/src/components/Generator.jsx:1074:                <span>Download</span>
+app/frontend/src/components/Generator.jsx:1086:        {generatedImages.length === 0 ? (
+app/frontend/src/components/Generator.jsx:1094:              {generatedImages.map((img, idx) => (
+app/frontend/src/components/Sidebar.jsx:2:import { Image, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film } from "lucide-react";
+app/frontend/src/components/Sidebar.jsx:20:  showHistory,
+app/frontend/src/components/Sidebar.jsx:21:  setShowHistory,
+app/frontend/src/components/Sidebar.jsx:24:  selectedSpeechTranscript,
+app/frontend/src/components/Sidebar.jsx:25:  setSelectedSpeechTranscript,
+app/frontend/src/components/Sidebar.jsx:26:  showSpeechHistory,
+app/frontend/src/components/Sidebar.jsx:27:  setShowSpeechHistory,
+app/frontend/src/components/Sidebar.jsx:28:  onDeleteSpeechTranscription,
+app/frontend/src/components/Sidebar.jsx:32:  showTtsHistory,
+app/frontend/src/components/Sidebar.jsx:33:  setShowTtsHistory,
+app/frontend/src/components/Sidebar.jsx:37:    <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+app/frontend/src/components/Sidebar.jsx:40:        <div className="sidebar-logo">
+app/frontend/src/components/Sidebar.jsx:41:          <Sparkles className="sidebar-logo-icon" />
+app/frontend/src/components/Sidebar.jsx:42:          <span className="sidebar-logo-text"><b>LUKE AI</b><small>Studio</small></span>
+app/frontend/src/components/Sidebar.jsx:56:            <Image size={20} />
+app/frontend/src/components/Sidebar.jsx:57:            <span>Create Image</span>
+app/frontend/src/components/Sidebar.jsx:62:            <span>Animate Image</span>
+app/frontend/src/components/Sidebar.jsx:78:                  setShowHistory(!showHistory);
+app/frontend/src/components/Sidebar.jsx:93:                title={showHistory ? "Hide Chat History" : "Show Chat History"}
+app/frontend/src/components/Sidebar.jsx:95:                {showHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+app/frontend/src/components/Sidebar.jsx:99:            {/* Sidebar Chat History List */}
+app/frontend/src/components/Sidebar.jsx:100:            {showHistory && (
+app/frontend/src/components/Sidebar.jsx:102:                className="sidebar-history-list" 
+app/frontend/src/components/Sidebar.jsx:142:                        className="sidebar-history-item"
+app/frontend/src/components/Sidebar.jsx:169:                          className="sidebar-history-delete"
+app/frontend/src/components/Sidebar.jsx:195:                  setShowSpeechHistory(!showSpeechHistory);
+app/frontend/src/components/Sidebar.jsx:210:                title={showSpeechHistory ? "Hide Transcriptions" : "Show Transcriptions"}
+app/frontend/src/components/Sidebar.jsx:212:                {showSpeechHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+app/frontend/src/components/Sidebar.jsx:216:            {showSpeechHistory && (
+app/frontend/src/components/Sidebar.jsx:218:                className="sidebar-history-list"
+app/frontend/src/components/Sidebar.jsx:238:                    const isActive = selectedSpeechTranscript && (selectedSpeechTranscript.filename || selectedSpeechTranscript.metadata || selectedSpeechTranscript.textFile) === itemId;
+app/frontend/src/components/Sidebar.jsx:245:                          setSelectedSpeechTranscript(item);
+app/frontend/src/components/Sidebar.jsx:262:                        className="sidebar-history-item"
+app/frontend/src/components/Sidebar.jsx:278:                            onDeleteSpeechTranscription?.(item, e);
+app/frontend/src/components/Sidebar.jsx:290:                          className="sidebar-history-delete"
+app/frontend/src/components/Sidebar.jsx:311:                <span>Text to Speech</span>
+app/frontend/src/components/Sidebar.jsx:316:                  setShowTtsHistory(!showTtsHistory);
+app/frontend/src/components/Sidebar.jsx:331:                title={showTtsHistory ? "Hide TTS Outputs" : "Show TTS Outputs"}
+app/frontend/src/components/Sidebar.jsx:333:                {showTtsHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+app/frontend/src/components/Sidebar.jsx:337:            {showTtsHistory && (
+app/frontend/src/components/Sidebar.jsx:339:                className="sidebar-history-list"
+app/frontend/src/components/Sidebar.jsx:383:                        className="sidebar-history-item"
+app/frontend/src/components/Sidebar.jsx:411:                          className="sidebar-history-delete"
+app/frontend/src/components/Sidebar.jsx:436:            <Settings size={20} />
+app/frontend/src/components/Sidebar.jsx:437:            <span>Settings</span>
+app/frontend/src/components/Sidebar.jsx:443:      <div className="sidebar-footer">
+app/frontend/src/components/Sidebar.jsx:444:        <div className="sidebar-specs-header">
+app/frontend/src/components/Sidebar.jsx:448:        <div className="sidebar-specs-item" title={specs.cpu_name}>
+app/frontend/src/components/Sidebar.jsx:451:        <div className="sidebar-specs-item" title={specs.gpu_name}>
+app/frontend/src/components/Sidebar.jsx:454:        <div className="sidebar-specs-item">
+app/frontend/src/components/Sidebar.jsx:457:        <div className="sidebar-specs-os">
+app/frontend/src/components/TextChat.jsx:2:import { Bot, LoaderCircle, Send, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
+app/frontend/src/components/TextChat.jsx:4:  getDownloadProgress,
+app/frontend/src/components/TextChat.jsx:103:const messageContainsImage = (message) => (
+app/frontend/src/components/TextChat.jsx:112:  textSettings, 
+app/frontend/src/components/TextChat.jsx:113:  setTextSettings, 
+app/frontend/src/components/TextChat.jsx:120:  showHistory,
+app/frontend/src/components/TextChat.jsx:121:  setShowHistory,
+app/frontend/src/components/TextChat.jsx:236:    const contextLimit = Number(status.settings?.contextSize || textSettings?.contextSize || 4096);
+app/frontend/src/components/TextChat.jsx:246:  const completedDownloadRef = useRef("");
+app/frontend/src/components/TextChat.jsx:264:    : textSettings?.enableThinking === true;
+app/frontend/src/components/TextChat.jsx:265:  const visionStatus = status.settings?.visionStatus || "Image input requires a matching mmproj projector file.";
+app/frontend/src/components/TextChat.jsx:280:  const isImage = (file) => {
+app/frontend/src/components/TextChat.jsx:288:  const optimizeImageForVision = (file, maxSide = 1024, quality = 0.92) => new Promise((resolve, reject) => {
+app/frontend/src/components/TextChat.jsx:293:      const img = new Image();
+app/frontend/src/components/TextChat.jsx:303:        ctx.drawImage(img, 0, 0, width, height);
+app/frontend/src/components/TextChat.jsx:324:      if (isImage(file)) {
+app/frontend/src/components/TextChat.jsx:325:        optimizeImageForVision(file)
+app/frontend/src/components/TextChat.jsx:344:            showAlert({ title: "Image Error", message: err.message || String(err), danger: true });
+app/frontend/src/components/TextChat.jsx:398:    const nextSettings = { ...textSettings, enableThinking: enabled };
+app/frontend/src/components/TextChat.jsx:401:      setTextSettings(nextSettings);
+app/frontend/src/components/TextChat.jsx:415:      setTextSettings(nextSettings);
+app/frontend/src/components/TextChat.jsx:417:      const result = await startLlm(status.settings.model, buildTextStartOptions(nextSettings));
+app/frontend/src/components/TextChat.jsx:484:      getDownloadProgress().then((state) => {
+app/frontend/src/components/TextChat.jsx:487:          if (!state.active && !state.error && completedDownloadRef.current !== completionKey) {
+app/frontend/src/components/TextChat.jsx:488:            completedDownloadRef.current = completionKey;
+app/frontend/src/components/TextChat.jsx:555:        threads: textSettings?.threads || specs?.cpu_cores_physical || 4,
+app/frontend/src/components/TextChat.jsx:556:        contextSize: textSettings?.contextSize ?? 0,
+app/frontend/src/components/TextChat.jsx:557:        gpuLayers: textSettings?.gpuLayers ?? -1,
+app/frontend/src/components/TextChat.jsx:558:        enableThinking: textSettings?.enableThinking === true,
+app/frontend/src/components/TextChat.jsx:559:        flashAttn: textSettings?.flashAttn,
+app/frontend/src/components/TextChat.jsx:560:        cacheTypeK: textSettings?.cacheTypeK,
+app/frontend/src/components/TextChat.jsx:561:        cacheTypeV: textSettings?.cacheTypeV,
+app/frontend/src/components/TextChat.jsx:562:        mlock: textSettings?.mlock,
+app/frontend/src/components/TextChat.jsx:563:        mmap: textSettings?.mmap,
+app/frontend/src/components/TextChat.jsx:564:        cachePrompt: textSettings?.cachePrompt,
+app/frontend/src/components/TextChat.jsx:565:        defragThold: textSettings?.defragThold,
+app/frontend/src/components/TextChat.jsx:566:        batchSize: textSettings?.batchSize,
+app/frontend/src/components/TextChat.jsx:567:        ubatchSize: textSettings?.ubatchSize,
+app/frontend/src/components/TextChat.jsx:568:        performanceProfile: textSettings?.performanceProfile,
+app/frontend/src/components/TextChat.jsx:569:        preferredBackend: textSettings?.preferredBackend,
+app/frontend/src/components/TextChat.jsx:617:    const conversationHasImage = messages.some(messageContainsImage);
+app/frontend/src/components/TextChat.jsx:618:    const requestHasImage = imageAttachments.length > 0 || conversationHasImage;
+app/frontend/src/components/TextChat.jsx:619:    const visionInstruction = requestHasImage
+app/frontend/src/components/TextChat.jsx:673:    const displayTitleText = text || (imageAttachments.length > 0 ? "Sent Image" : "Sent File");
+app/frontend/src/components/TextChat.jsx:681:      generationStats: { status: "starting", tokens: 0, tokensPerSecond: 0, seconds: 0, vision: requestHasImage, web: useWebSearch },
+app/frontend/src/components/TextChat.jsx:688:      const systemPrompt = textSettings?.systemPrompt || "You are a helpful local AI assistant.";
+app/frontend/src/components/TextChat.jsx:693:      const contextLimit = Number(status.settings?.contextSize || textSettings?.contextSize || 4096);
+app/frontend/src/components/TextChat.jsx:722:      const manualMaxTokens = textSettings?.maxTokens || 1024;
+app/frontend/src/components/TextChat.jsx:723:      const effectiveMaxTokens = textSettings?.responseTokenMode === "manual"
+app/frontend/src/components/TextChat.jsx:728:        temperature: textSettings?.temperature || 0.7,
+app/frontend/src/components/TextChat.jsx:730:        topP: textSettings?.topP,
+app/frontend/src/components/TextChat.jsx:731:        topK: textSettings?.topK,
+app/frontend/src/components/TextChat.jsx:732:        minP: textSettings?.minP,
+app/frontend/src/components/TextChat.jsx:733:        repeatPenalty: textSettings?.repeatPenalty,
+app/frontend/src/components/TextChat.jsx:734:        seed: textSettings?.seed,
+app/frontend/src/components/TextChat.jsx:907:              onClick={() => setShowHistory(!showHistory)}
+app/frontend/src/components/TextChat.jsx:913:                background: showHistory ? "var(--md-sys-color-primary-container)" : "var(--md-sys-color-surface-variant)",
+app/frontend/src/components/TextChat.jsx:914:                color: showHistory ? "var(--md-sys-color-on-primary-container)" : "var(--md-sys-color-on-surface)",
+app/frontend/src/components/TextChat.jsx:917:              title="Toggle Chat History"
+app/frontend/src/components/TextChat.jsx:919:              <History size={17} />
+app/frontend/src/components/TextChat.jsx:953:                <div className="chat-model-dropdown-menu">
+app/frontend/src/components/ModelManager.jsx:2:import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
+app/frontend/src/components/ModelManager.jsx:11:  cancelModelDownload, 
+app/frontend/src/components/ModelManager.jsx:12:  getDownloadProgress, 
+app/frontend/src/components/ModelManager.jsx:25:  listSpeechModels,
+
+[5/9] ตรวจ Backend API และ Feature Routes
+scripts/reset/reset.ps1:2:# Resets portable app dependencies/builds while preserving user models and outputs.
+scripts/reset/reset.ps1:24:    Write-Host "   >> Removing image backend binaries..." -ForegroundColor Cyan
+scripts/reset/reset.ps1:37:$speechBackendDir = Join-Path $appDir "speech-backend"
+scripts/reset/reset.ps1:38:if (Test-Path $speechBackendDir) {
+scripts/reset/reset.ps1:39:    Write-Host "   >> Removing whisper.cpp speech backend binaries..." -ForegroundColor Cyan
+scripts/reset/reset.ps1:40:    Remove-Item $speechBackendDir -Recurse -Force -ErrorAction SilentlyContinue
+scripts/reset/reset.ps1:57:# Preserve image models
+scripts/reset/reset.ps1:58:$modelsDir = Join-Path $appDir "models"
+scripts/reset/reset.ps1:59:if (Test-Path $modelsDir) {
+scripts/reset/reset.ps1:60:    Write-Host "   >> Preserving image models in app/models." -ForegroundColor Cyan
+scripts/reset/reset.ps1:63:# Preserve text models
+scripts/reset/reset.ps1:64:$llmModelsDir = Join-Path $appDir "llm-models"
+scripts/reset/reset.ps1:66:    Write-Host "   >> Preserving text models in app/llm-models." -ForegroundColor Cyan
+scripts/reset/reset.ps1:69:# Preserve speech models
+scripts/reset/reset.ps1:70:$speechModelsDir = Join-Path $appDir "speech-models"
+scripts/reset/reset.ps1:71:if (Test-Path $speechModelsDir) {
+scripts/reset/reset.ps1:72:    Write-Host "   >> Preserving speech models in app/speech-models." -ForegroundColor Cyan
+scripts/reset/reset.ps1:75:# Preserve TTS models
+scripts/reset/reset.ps1:76:$ttsModelsDir = Join-Path $appDir "tts-models"
+scripts/reset/reset.ps1:78:    Write-Host "   >> Preserving TTS models in app/tts-models." -ForegroundColor Cyan
+scripts/reset/reset.ps1:81:# Preserve generated image outputs
+scripts/reset/reset.ps1:84:    Write-Host "   >> Preserving generated image outputs in app/outputs." -ForegroundColor Cyan
+scripts/reset/reset.ps1:87:# Preserve chat history
+scripts/reset/reset.ps1:88:$chatHistoryDir = Join-Path $appDir "chat-history"
+scripts/reset/reset.ps1:90:    Write-Host "   >> Preserving chat history in app/chat-history." -ForegroundColor Cyan
+scripts/reset/reset.ps1:96:    Write-Host "   >> Preserving speech transcripts in app/transcriptions." -ForegroundColor Cyan
+scripts/reset/reset.ps1:106:    Write-Host "   >> Preserving TTS model cache in app/tts-cache." -ForegroundColor Cyan
+scripts/reset/reset.ps1:109:# Preserve OpenVINO models
+scripts/reset/reset.ps1:110:$openVinoModelsDir = Join-Path $appDir "openvino-models"
+scripts/reset/reset.ps1:112:    Write-Host "   >> Preserving OpenVINO models in app/openvino-models." -ForegroundColor Cyan
+scripts/reset/reset.ps1:140:Write-Host "   Reset complete. Models, generated images, chat history, transcripts, TTS outputs, TTS cache, and OpenVINO models were preserved." -ForegroundColor Green
+scripts/reset/reset.sh:4:# Resets portable app dependencies/builds while preserving user models and outputs.
+scripts/reset/reset.sh:27:  echo "   >> Removing image backend binaries..."
+scripts/reset/reset.sh:38:if [[ -d "$APP_DIR/speech-backend" ]]; then
+scripts/reset/reset.sh:39:  echo "   >> Removing whisper.cpp speech backend binaries..."
+scripts/reset/reset.sh:40:  rm -rf "$APP_DIR/speech-backend"
+scripts/reset/reset.sh:55:# Preserve image models
+scripts/reset/reset.sh:56:if [[ -d "$APP_DIR/models" ]]; then
+scripts/reset/reset.sh:57:  echo "   >> Preserving image models in app/models."
+scripts/reset/reset.sh:60:# Preserve text models
+scripts/reset/reset.sh:61:if [[ -d "$APP_DIR/llm-models" ]]; then
+scripts/reset/reset.sh:62:  echo "   >> Preserving text models in app/llm-models."
+scripts/reset/reset.sh:65:# Preserve speech models
+scripts/reset/reset.sh:66:if [[ -d "$APP_DIR/speech-models" ]]; then
+scripts/reset/reset.sh:67:  echo "   >> Preserving speech models in app/speech-models."
+scripts/reset/reset.sh:70:# Preserve TTS models
+scripts/reset/reset.sh:71:if [[ -d "$APP_DIR/tts-models" ]]; then
+scripts/reset/reset.sh:72:  echo "   >> Preserving TTS models in app/tts-models."
+scripts/reset/reset.sh:75:# Preserve generated image outputs
+scripts/reset/reset.sh:77:  echo "   >> Preserving generated image outputs in app/outputs."
+scripts/reset/reset.sh:80:# Preserve chat history
+scripts/reset/reset.sh:81:if [[ -d "$APP_DIR/chat-history" ]]; then
+scripts/reset/reset.sh:82:  echo "   >> Preserving chat history in app/chat-history."
+scripts/reset/reset.sh:87:  echo "   >> Preserving speech transcripts in app/transcriptions."
+scripts/reset/reset.sh:95:  echo "   >> Preserving TTS model cache in app/tts-cache."
+scripts/reset/reset.sh:98:# Preserve OpenVINO models
+scripts/reset/reset.sh:99:if [[ -d "$APP_DIR/openvino-models" ]]; then
+scripts/reset/reset.sh:100:  echo "   >> Preserving OpenVINO models in app/openvino-models."
+scripts/reset/reset.sh:124:echo "   Reset complete. Models, generated images, chat history, transcripts, TTS outputs, TTS cache, and OpenVINO models were preserved."
+scripts/setup/setup.sh:45:SD_BASE_URL="https://github.com/leejet/stable-diffusion.cpp/releases/download/$SD_RELEASE"
+scripts/setup/setup.sh:103:# Rich download with progress bar
+scripts/setup/setup.sh:104:download_file() {
+scripts/setup/setup.sh:251:    print_info "CyberRealistic and other valid models will fail before loading on this OS because the backend binary cannot start."
+scripts/setup/setup.sh:306:    print_fail "Linux setup stopped before downloading incompatible backend binaries."
+scripts/setup/setup.sh:351:  download_file "$NODE_URL" "$NODE_TAR_PATH" "Node.js v${NODE_VERSION} LTS (Portable tarball)"
+scripts/setup/setup.sh:393:    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Darwin-macOS-15.7.7-arm64.zip" "$MAC_ZIP" "stable-diffusion.cpp Metal Backend (macOS arm64)"
+scripts/setup/setup.sh:432:  download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64.zip" "$CPU_ZIP" "stable-diffusion.cpp CPU Backend (Linux x86_64)"
+scripts/setup/setup.sh:448:  download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip" "$VULKAN_ZIP" "stable-diffusion.cpp Vulkan Backend (Linux x86_64)"
+scripts/setup/setup.sh:466:    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64-rocm-7.13.0.zip" "$ROCM_ZIP" "stable-diffusion.cpp ROCm Backend (Linux x86_64)"
+scripts/setup/setup.sh:478:# CUDA backend on Linux: ask user, download prebuilt first, and compile from source as a fallback.
+scripts/setup/setup.sh:487:    echo "   Setting this up can download a prebuilt binary or compile from"
+scripts/setup/setup.sh:504:      PREBUILT_URL="https://github.com/leaxer-ai/leaxer-stable-diffusion/releases/download/v0.1.0/sd-server-x86_64-unknown-linux-gnu-cuda"
+scripts/setup/setup.sh:505:      PREBUILT_CLI_URL="https://github.com/leaxer-ai/leaxer-stable-diffusion/releases/download/v0.1.0/sd-x86_64-unknown-linux-gnu-cuda"
+scripts/setup/setup.sh:509:      print_info "Attempting to download prebuilt CUDA binary..."
+scripts/setup/setup.sh:510:      if download_file "$PREBUILT_URL" "$CUDA_BACKEND_DIR/sd-server-cuda" "Prebuilt Linux CUDA Server" && \
+scripts/setup/setup.sh:511:         download_file "$PREBUILT_CLI_URL" "$CUDA_BACKEND_DIR/sd-cuda" "Prebuilt Linux CUDA CLI"; then
+scripts/setup/setup.sh:515:        print_info "Testing downloaded prebuilt CUDA binary..."
+scripts/setup/setup.sh:524:        print_warn "Failed to download prebuilt CUDA binary."
+scripts/setup/setup.sh:604:print_step 4 $TOTAL_STEPS "Setting up whisper.cpp speech backend"
+scripts/setup/setup.sh:607:print_step 5 $TOTAL_STEPS "Setting up Kokoro ONNX text-to-speech runtime"
+scripts/setup/setup.ps1:129:                Print-Info "Retrying download..."
+scripts/setup/setup.ps1:218:    if (-not $ok) { Print-Fail "Cannot download Node.js."; Read-Host; exit 1 }
+scripts/setup/setup.ps1:283:        -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-avx2-x64.zip" `
+scripts/setup/setup.ps1:287:    if (-not $ok) { Print-Fail "Cannot download CPU backend binaries."; Read-Host; exit 1 }
+scripts/setup/setup.ps1:336:            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-cuda12-x64.zip" `
+scripts/setup/setup.ps1:341:            Print-Warn "Cannot download CUDA backend binaries. Continuing with the Vulkan backend fallback."
+scripts/setup/setup.ps1:386:                -Url  "https://github.com/ggml-org/llama.cpp/releases/download/b9509/cudart-llama-bin-win-cuda-12.4-x64.zip" `
+scripts/setup/setup.ps1:395:                Print-Warn "Could not download portable CUDA runtime DLLs automatically. If the app fails to start in CUDA mode, you may need to install the CUDA Toolkit manually."
+scripts/setup/setup.ps1:413:            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-669-2d40a8b/sd-master-2d40a8b-bin-win-vulkan-x64.zip" `
+scripts/setup/setup.ps1:417:        if (-not $ok) { Print-Fail "Cannot download Vulkan backend binaries."; Read-Host; exit 1 }
+scripts/setup/setup.ps1:463:            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-669-2d40a8b/sd-master-2d40a8b-bin-win-vulkan-x64.zip" `
+scripts/setup/setup.ps1:467:        if (-not $ok) { Print-Fail "Cannot download Vulkan backend binaries."; Read-Host; exit 1 }
+scripts/setup/setup.ps1:511:Print-Step 4 $steps "Setting up whisper.cpp speech backend"
+scripts/setup/setup.ps1:518:Print-Step 5 $steps "Setting up Kokoro ONNX text-to-speech runtime"
+scripts/setup/setup-tts.ps1:11:$modelsDir = Join-Path $appDir "tts-models"
+scripts/setup/setup-tts.ps1:25:New-Item -ItemType Directory -Force -Path $runtimeDir, $modelsDir, $outputsDir, $cacheDir | Out-Null
+scripts/setup/setup-tts.sh:24:MODELS_DIR="$APP_DIR/tts-models"
+scripts/setup/setup-coreml-npu.sh:103:echo "   Restart the launcher (./mac.sh) and download a CoreML model!"
+scripts/setup/setup-llama.ps1:101:                Write-Host "   >>  Retrying download..." -ForegroundColor Cyan
+scripts/setup/setup-llama.ps1:128:    $url = "https://github.com/ggml-org/llama.cpp/releases/download/$Release/$AssetName"
+scripts/setup/setup-llama.ps1:147:        $cudartUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$Release/$cudartAsset"
+scripts/setup/setup-openvino-npu.sh:83:echo "   Run ./linux.sh, then download an OpenVINO NPU model."
+scripts/setup/setup-whisper.ps1:8:$speechWinRoot = Join-Path $appDir "speech-backend\win"
+scripts/setup/setup-whisper.ps1:9:$speechRoot = Join-Path $speechWinRoot "cpu"
+scripts/setup/setup-whisper.ps1:10:$speechVulkanRoot = Join-Path $speechWinRoot "vulkan"
+scripts/setup/setup-whisper.ps1:46:New-Item -ItemType Directory -Force -Path $toolsDir, $speechRoot, $speechVulkanRoot | Out-Null
+scripts/setup/setup-whisper.ps1:48:$cliPath = Join-Path $speechRoot "whisper-cli.exe"
+scripts/setup/setup-whisper.ps1:50:    Write-Host "   OK  whisper.cpp speech backend already ready."
+scripts/setup/setup-whisper.ps1:51:    if (-not (Test-Path (Join-Path $speechVulkanRoot "whisper-cli.exe"))) {
+scripts/setup/setup-whisper.ps1:52:        Write-Host "   ..  Optional Vulkan GPU backend slot: app/speech-backend/win/vulkan"
+scripts/setup/setup-whisper.ps1:57:$legacyCli = Join-Path $speechWinRoot "whisper-cli.exe"
+scripts/setup/setup-whisper.ps1:58:$legacyServer = Join-Path $speechWinRoot "whisper-server.exe"
+scripts/setup/setup-whisper.ps1:62:        Copy-Item $legacyServer (Join-Path $speechRoot "whisper-server.exe") -Force
+scripts/setup/setup-whisper.ps1:64:    Get-ChildItem $speechWinRoot -File -ErrorAction SilentlyContinue |
+scripts/setup/setup-whisper.ps1:66:        ForEach-Object { Copy-Item $_.FullName (Join-Path $speechRoot $_.Name) -Force }
+scripts/setup/setup-whisper.ps1:67:    Write-Host "   OK  migrated existing whisper.cpp CPU backend to app/speech-backend/win/cpu."
+scripts/setup/setup-whisper.ps1:68:    Write-Host "   ..  For GPU transcription, place a Vulkan-enabled whisper.cpp build in app/speech-backend/win/vulkan."
+scripts/setup/setup-whisper.ps1:75:$url = "https://github.com/ggml-org/whisper.cpp/releases/download/$Release/$asset"
+scripts/setup/setup-whisper.ps1:78:Download-File -Url $url -DestPath $archive -Label "whisper.cpp speech backend ($Release)"
+scripts/setup/setup-whisper.ps1:80:Write-Host "   >>  Extracting whisper.cpp speech backend..."
+scripts/setup/setup-whisper.ps1:90:    Copy-Item $_.FullName (Join-Path $speechRoot $_.Name) -Force
+scripts/setup/setup-whisper.ps1:96:    Copy-Item $server (Join-Path $speechRoot "whisper-server.exe") -Force
+scripts/setup/setup-whisper.ps1:103:Write-Host "   OK  whisper.cpp speech backend installed."
+scripts/setup/setup-whisper.ps1:104:Write-Host "   ..  CPU backend path: app/speech-backend/win/cpu"
+scripts/setup/setup-whisper.ps1:105:Write-Host "   ..  Optional Vulkan GPU backend path: app/speech-backend/win/vulkan"
+scripts/setup/setup-llama.sh:12:download_and_extract() {
+scripts/setup/setup-llama.sh:16:  local url="https://github.com/ggml-org/llama.cpp/releases/download/$RELEASE/$asset"
+scripts/setup/setup-llama.sh:42:download_and_extract_optional() {
+scripts/setup/setup-llama.sh:52:  if download_and_extract "$asset" "$dest"; then
+scripts/setup/setup-llama.sh:73:    download_and_extract "llama-$RELEASE-bin-macos-arm64.tar.gz" "$APP_DIR/llm-backend/mac/arm64"
+scripts/setup/setup-llama.sh:75:    download_and_extract "llama-$RELEASE-bin-macos-x64.tar.gz" "$APP_DIR/llm-backend/mac/x64"
+scripts/setup/setup-llama.sh:79:    download_and_extract "llama-$RELEASE-bin-ubuntu-vulkan-arm64.tar.gz" "$APP_DIR/llm-backend/linux/vulkan"
+scripts/setup/setup-llama.sh:80:    download_and_extract "llama-$RELEASE-bin-ubuntu-arm64.tar.gz" "$APP_DIR/llm-backend/linux/cpu"
+scripts/setup/setup-llama.sh:83:      download_and_extract_optional "llama-$RELEASE-bin-ubuntu-cuda-12.4-x64.tar.gz" "$APP_DIR/llm-backend/linux/cuda" "NVIDIA CUDA acceleration"
+scripts/setup/setup-llama.sh:86:      download_and_extract_optional "llama-$RELEASE-bin-ubuntu-rocm-x64.tar.gz" "$APP_DIR/llm-backend/linux/rocm" "AMD ROCm acceleration"
+scripts/setup/setup-llama.sh:89:      download_and_extract_optional "llama-$RELEASE-bin-ubuntu-sycl-fp32-x64.tar.gz" "$APP_DIR/llm-backend/linux/sycl" "Intel SYCL acceleration"
+scripts/setup/setup-llama.sh:91:    download_and_extract "llama-$RELEASE-bin-ubuntu-vulkan-x64.tar.gz" "$APP_DIR/llm-backend/linux/vulkan"
+scripts/setup/setup-llama.sh:92:    download_and_extract "llama-$RELEASE-bin-ubuntu-x64.tar.gz" "$APP_DIR/llm-backend/linux/cpu"
+scripts/setup/setup-whisper.sh:12:download_and_extract() {
+scripts/setup/setup-whisper.sh:16:  local url="https://github.com/ggml-org/whisper.cpp/releases/download/$RELEASE/$asset"
+scripts/setup/setup-whisper.sh:19:    echo "   OK   whisper.cpp speech backend already ready: $dest"
+scripts/setup/setup-whisper.sh:52:  local cpu_dest="$APP_DIR/speech-backend/mac/cpu"
+scripts/setup/setup-whisper.sh:53:  local lib_dest="$APP_DIR/speech-backend/mac/lib"
+scripts/setup/setup-whisper.sh:70:  # application path expected by the local server: app/speech-backend/mac/cpu/whisper-cli.
+scripts/setup/setup-whisper.sh:94:  # it from app/speech-backend/mac/cpu, where ../lib is already in its rpath.
+scripts/setup/setup-whisper.sh:107:  mkdir -p "$APP_DIR/speech-backend/linux/cpu" "$APP_DIR/speech-backend/linux/vulkan"
+scripts/setup/setup-whisper.sh:108:  if [[ ! -x "$APP_DIR/speech-backend/linux/cpu/whisper-cli" && -x "$APP_DIR/speech-backend/linux/whisper-cli" ]]; then
+scripts/setup/setup-whisper.sh:109:    cp "$APP_DIR/speech-backend/linux"/whisper-* "$APP_DIR/speech-backend/linux/cpu/" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:110:    cp "$APP_DIR/speech-backend/linux"/main "$APP_DIR/speech-backend/linux/cpu/" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:111:    cp "$APP_DIR/speech-backend/linux"/server "$APP_DIR/speech-backend/linux/cpu/" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:112:    chmod +x "$APP_DIR/speech-backend/linux/cpu"/whisper-* "$APP_DIR/speech-backend/linux/cpu"/main "$APP_DIR/speech-backend/linux/cpu"/server 2>/dev/null || true
+scripts/setup/setup-whisper.sh:113:    echo "   OK   migrated existing whisper.cpp CPU backend to app/speech-backend/linux/cpu."
+scripts/setup/setup-whisper.sh:116:    download_and_extract "whisper-bin-ubuntu-arm64.tar.gz" "$APP_DIR/speech-backend/linux/cpu"
+scripts/setup/setup-whisper.sh:118:    download_and_extract "whisper-bin-ubuntu-x64.tar.gz" "$APP_DIR/speech-backend/linux/cpu"
+scripts/setup/setup-whisper.sh:120:  echo "   ..   CPU backend path: app/speech-backend/linux/cpu"
+scripts/setup/setup-whisper.sh:121:  echo "   ..   Optional Vulkan GPU backend path: app/speech-backend/linux/vulkan"
+scripts/setup/setup-whisper.sh:123:  mkdir -p "$APP_DIR/speech-backend/mac/cpu" "$APP_DIR/speech-backend/mac/metal"
+scripts/setup/setup-whisper.sh:124:  if [[ ! -x "$APP_DIR/speech-backend/mac/cpu/whisper-cli" ]]; then
+scripts/setup/setup-whisper.sh:125:    if [[ -x "$APP_DIR/speech-backend/mac/whisper-cli" ]]; then
+scripts/setup/setup-whisper.sh:126:      cp "$APP_DIR/speech-backend/mac/whisper-cli" "$APP_DIR/speech-backend/mac/cpu/whisper-cli" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:127:    elif [[ -x "$APP_DIR/speech-backend/mac/whisper-cpp" ]]; then
+scripts/setup/setup-whisper.sh:128:      cp "$APP_DIR/speech-backend/mac/whisper-cpp" "$APP_DIR/speech-backend/mac/cpu/whisper-cli" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:129:    elif [[ -x "$APP_DIR/speech-backend/mac/main" ]]; then
+scripts/setup/setup-whisper.sh:130:      cp "$APP_DIR/speech-backend/mac/main" "$APP_DIR/speech-backend/mac/cpu/whisper-cli" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:132:    cp "$APP_DIR/speech-backend/mac"/whisper-server "$APP_DIR/speech-backend/mac/cpu/" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:133:    cp "$APP_DIR/speech-backend/mac"/server "$APP_DIR/speech-backend/mac/cpu/whisper-server" 2>/dev/null || true
+scripts/setup/setup-whisper.sh:134:    chmod +x "$APP_DIR/speech-backend/mac/cpu"/whisper-* "$APP_DIR/speech-backend/mac/cpu"/main "$APP_DIR/speech-backend/mac/cpu"/server 2>/dev/null || true
+scripts/setup/setup-whisper.sh:135:    if [[ -x "$APP_DIR/speech-backend/mac/cpu/whisper-cli" ]]; then
+scripts/setup/setup-whisper.sh:136:      echo "   OK   migrated existing whisper.cpp backend to app/speech-backend/mac/cpu."
+scripts/setup/setup-whisper.sh:139:  if [[ -x "$APP_DIR/speech-backend/mac/cpu/whisper-cli" || -x "$APP_DIR/speech-backend/mac/metal/whisper-cli" ]]; then
+scripts/setup/setup-whisper.sh:140:    echo "   OK   whisper.cpp macOS speech backend already ready."
+scripts/setup/setup-whisper.sh:146:    echo "        For a distributable fix, bundle whisper-cli + whisper-server into app/speech-backend/mac/cpu"
+scripts/setup/setup-whisper.sh:147:    echo "        during packaging, or add a Lemonade embeddable speech backend integration."
+scripts/setup/setup-whisper.sh:148:    echo "        Manual workaround: install whisper.cpp and copy whisper-cli to app/speech-backend/mac/cpu."
+scripts/setup/setup-openvino-npu.ps1:134:Write-Host "   Restart windows.bat, then download an OpenVINO NPU model."
+scripts/server/serve.cjs:41:const SERVER_BUILD = "text-image-v1";
+scripts/server/serve.cjs:89:const MODELS  = path.join(ROOT, "app", "models");
+scripts/server/serve.cjs:93:const LLM_MODELS = path.join(ROOT, "app", "llm-models");
+scripts/server/serve.cjs:97:const CHAT_HISTORY = path.join(ROOT, "app", "chat-history");
+scripts/server/serve.cjs:116:const LLM_MODEL_SETTINGS_PATH = path.join(LLM_CONFIG_DIR, "llm-model-settings.json");
+scripts/server/serve.cjs:121:const SPEECH_MODELS = path.join(ROOT, "app", "speech-models");
+scripts/server/serve.cjs:129:const TTS_MODELS = path.join(ROOT, "app", "tts-models");
+scripts/server/serve.cjs:147:const SPEECH_BACKEND_ROOT = path.join(ROOT, "app", "speech-backend");
+scripts/server/serve.cjs:153:  winCli: path.join(ROOT, "app", "speech-backend", "win", "whisper-cli.exe"),
+scripts/server/serve.cjs:154:  winServer: path.join(ROOT, "app", "speech-backend", "win", "whisper-server.exe"),
+scripts/server/serve.cjs:159:  linuxCli: path.join(ROOT, "app", "speech-backend", "linux", "whisper-cli"),
+scripts/server/serve.cjs:160:  linuxServer: path.join(ROOT, "app", "speech-backend", "linux", "whisper-server"),
+scripts/server/serve.cjs:167:  macCli: path.join(ROOT, "app", "speech-backend", "mac", "whisper-cli"),
+scripts/server/serve.cjs:168:  macServer: path.join(ROOT, "app", "speech-backend", "mac", "whisper-server"),
+scripts/server/serve.cjs:181:  { id: "thai-base", name: "Whisper Base Thai / ภาษาไทย", filename: "ggml-base.bin", size: "142 MB", language: "Thai", languageCode: "th", recommended: true, notes: "Recommended starter model for Thai speech-to-text. Uses the multilingual Whisper Base weights and sets Thai as the intended language." },
+scripts/server/serve.cjs:184:  { id: "thai-medium-q5_0", name: "Whisper Medium Thai Q5 / ภาษาไทย", filename: "ggml-medium-q5_0.bin", size: "539 MB", language: "Thai", languageCode: "th", recommended: false, notes: "Quantized Thai-capable medium model. Smaller download with good accuracy/speed balance." },
+scripts/server/serve.cjs:191:    modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+scripts/server/serve.cjs:201:    modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+scripts/server/serve.cjs:218:const OPENVINO_MODELS = path.join(ROOT, "app", "openvino-models");
+scripts/server/serve.cjs:235:    notes: "OpenVINO LCM image model. Uses CPU text encoder, NPU UNet, and GPU or CPU VAE decoder.",
+scripts/server/serve.cjs:256:let speechReady = false;
+scripts/server/serve.cjs:257:let speechError = null;
+scripts/server/serve.cjs:258:let speechOperationQueue = Promise.resolve();
+scripts/server/serve.cjs:259:let speechSettings = {
+scripts/server/serve.cjs:260:  model: null,
+scripts/server/serve.cjs:267:let speechTranscriptionState = {
+scripts/server/serve.cjs:271:  model: "",
+scripts/server/serve.cjs:278:  model: null,
+scripts/server/serve.cjs:288:  model: "",
+scripts/server/serve.cjs:293:function modelName(value) {
+scripts/server/serve.cjs:298:  if ((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model) {
+scripts/server/serve.cjs:299:    return { type: "image", label: "Image", model: modelName(currentSettings.model) };
+scripts/server/serve.cjs:301:  if ((llmReady || llmProc) && llmSettings.model) {
+scripts/server/serve.cjs:302:    return { type: "text", label: "Text", model: modelName(llmSettings.model) };
+scripts/server/serve.cjs:308:  if (targetType !== "image" && targetType !== "text") return;
+scripts/server/serve.cjs:311:  const targetName = modelName(targetModel);
+scripts/server/serve.cjs:312:  if (!runtime || (runtime.type === targetType && runtime.model === targetName)) return;
+scripts/server/serve.cjs:314:  const err = new Error(`"${runtime.model}" is already loaded as a ${runtime.label} model. Unload it before loading "${targetName}".`);
+scripts/server/serve.cjs:318:  err.targetRuntime = { type: targetType, model: targetName };
+scripts/server/serve.cjs:326:  model: null,
+scripts/server/serve.cjs:359:  model: "",
+scripts/server/serve.cjs:370:  model:    null,
+scripts/server/serve.cjs:385:  "model",
+scripts/server/serve.cjs:401:  if (key === "model") return path.resolve(String(value));
+scripts/server/serve.cjs:415:  return normalizeBackendSettingValue("model", current.model) === normalizeBackendSettingValue("model", requested.model) &&
+scripts/server/serve.cjs:448:  if (cleanOutput.includes("Loading Core ML models from")) {
+scripts/server/serve.cjs:449:    setBackendLoadStage("Loading Core ML model bundle...", 40);
+scripts/server/serve.cjs:455:    setBackendLoadStage("Loading UNet neural engine model...", 62);
+scripts/server/serve.cjs:467:    setBackendLoadStage("Configuring image resolution...", 97);
+scripts/server/serve.cjs:469:  if (cleanOutput.includes("Core ML models loaded successfully")) {
+scripts/server/serve.cjs:470:    setBackendLoadStage("Core ML models loaded successfully.", 99);
+scripts/server/serve.cjs:493:  // Physical cores typically have the same model but different speeds can indicate HT
+scripts/server/serve.cjs:494:  const uniqueModels = new Set(cpus.map(c => c.model)).size;
+scripts/server/serve.cjs:496:  // If we have very few unique models relative to core count, likely HT
+scripts/server/serve.cjs:942:            const modelMatch = info.match(/Model:\s+(.*)/);
+scripts/server/serve.cjs:943:            if (modelMatch) {
+scripts/server/serve.cjs:944:              const modelName = modelMatch[1].trim();
+scripts/server/serve.cjs:957:                name: modelName,
+scripts/server/serve.cjs:1105:function chooseAutoLayers(modelFilename, freeVramBytes, cacheTypeK = "q8_0", cacheTypeV = "q8_0") {
+scripts/server/serve.cjs:1106:  let modelSizeGb = 4;
+scripts/server/serve.cjs:1110:    const modelPath = path.join(LLM_MODELS, modelFilename);
+scripts/server/serve.cjs:1111:    if (fs.existsSync(modelPath)) {
+scripts/server/serve.cjs:1112:      const stats = fs.statSync(modelPath);
+scripts/server/serve.cjs:1113:      modelSizeGb = stats.size / (1024 * 1024 * 1024);
+scripts/server/serve.cjs:1117:  // Estimate layer count from model size (rough heuristic based on common architectures)
+scripts/server/serve.cjs:1118:  if (modelSizeGb < 2) layerCount = 24;      // Small models (1-2B)
+scripts/server/serve.cjs:1119:  else if (modelSizeGb < 4) layerCount = 32;   // Medium (3-4B)
+scripts/server/serve.cjs:1120:  else if (modelSizeGb < 8) layerCount = 40;   // Large (7-8B)
+scripts/server/serve.cjs:1121:  else if (modelSizeGb < 20) layerCount = 80;    // Very large (13-20B)
+scripts/server/serve.cjs:1122:  else if (modelSizeGb < 40) layerCount = 100;   // Huge (30-40B)
+scripts/server/serve.cjs:1126:  const layerSizeGb = modelSizeGb / layerCount;
+scripts/server/serve.cjs:1142:function getGgufModelSizeGb(modelFilename) {
+scripts/server/serve.cjs:1144:    const modelPath = path.join(LLM_MODELS, modelFilename);
+scripts/server/serve.cjs:1145:    if (fs.existsSync(modelPath)) {
+scripts/server/serve.cjs:1146:      return fs.statSync(modelPath).size / (1024 * 1024 * 1024);
+scripts/server/serve.cjs:1152:function getStableSyclGpuLayers(modelFilename, requestedLayers) {
+scripts/server/serve.cjs:1158:  const modelSizeGb = getGgufModelSizeGb(modelFilename);
+scripts/server/serve.cjs:1159:  if (vramGb > 0 && vramGb <= 8.5 && modelSizeGb >= 2.5) {
+scripts/server/serve.cjs:1162:  if (vramGb > 0 && vramGb <= 12 && modelSizeGb >= 5) {
+scripts/server/serve.cjs:1327:  return readJsonFile(LLM_MODEL_SETTINGS_PATH, { models: {} });
+scripts/server/serve.cjs:1330:function savePersistedLlmModelSettings(settings) {
+scripts/server/serve.cjs:1331:  writeJsonFile(LLM_MODEL_SETTINGS_PATH, settings && typeof settings === "object" ? settings : { models: {} });
+scripts/server/serve.cjs:1337:  const settings = getPersistedLlmModelSettings();
+scripts/server/serve.cjs:1338:  return settings.models?.[safeFilename] || {};
+scripts/server/serve.cjs:1345:  if (!allSettings.models || typeof allSettings.models !== "object") allSettings.models = {};
+scripts/server/serve.cjs:1346:  const previous = allSettings.models[safeFilename] || {};
+scripts/server/serve.cjs:1352:  allSettings.models[safeFilename] = next;
+scripts/server/serve.cjs:1440:  const isAppleSilicon = osPlatform === "darwin" && (os.arch() === "arm64" || String(cpus[0]?.model || "").toLowerCase().includes("apple"));
+scripts/server/serve.cjs:1466:  // Recommended text settings per tier
+scripts/server/serve.cjs:1512:  // Recommended models catalog matching contract exactly
+scripts/server/serve.cjs:1513:  let recommended_models = [];
+scripts/server/serve.cjs:1515:    recommended_models = [
+scripts/server/serve.cjs:1534:    recommended_models = [
+scripts/server/serve.cjs:1553:    recommended_models = [
+scripts/server/serve.cjs:1575:    cpu_name: cpus[0]?.model || "Unavailable",
+scripts/server/serve.cjs:1583:    recommended_models,
+scripts/server/serve.cjs:1584:    recommended_text_settings: recommendedTextSettings[tier] || recommendedTextSettings.mid,
+scripts/server/serve.cjs:1736:  return OPENVINO_NPU_MODELS.map((model) => {
+scripts/server/serve.cjs:1737:    const modelPath = path.join(OPENVINO_MODELS, model.folder);
+scripts/server/serve.cjs:1739:      path.join(modelPath, "model_index.json"),
+scripts/server/serve.cjs:1740:      path.join(modelPath, "text_encoder", "openvino_model.xml"),
+scripts/server/serve.cjs:1741:      path.join(modelPath, "unet", "openvino_model.xml"),
+scripts/server/serve.cjs:1742:      path.join(modelPath, "vae_decoder", "openvino_model.xml"),
+scripts/server/serve.cjs:1746:      ...model,
+scripts/server/serve.cjs:1747:      filename: model.id,
+scripts/server/serve.cjs:1748:      path: modelPath,
+scripts/server/serve.cjs:1750:      sizeBytes: getPathSize(modelPath),
+scripts/server/serve.cjs:1751:      size: formatBytes(getPathSize(modelPath)),
+scripts/server/serve.cjs:1757:function findOpenVinoModel(modelId) {
+scripts/server/serve.cjs:1758:  return getOpenVinoModelInfo().find((model) => model.id === modelId || model.folder === modelId || model.name === modelId);
+scripts/server/serve.cjs:1768:    const tester = net.createServer()
+scripts/server/serve.cjs:1824:      console.log(`  [speech] Preferred port ${PREFERRED_SPEECH_PORT} is busy; using ${port} instead.`);
+scripts/server/serve.cjs:1829:  throw new Error(`No free speech port found. Tried ${PREFERRED_SPEECH_PORT} and 28161-28190.`);
+scripts/server/serve.cjs:1936:    generatedAt: new Date().toISOString(),
+scripts/server/serve.cjs:2046:function getSpeechBackend(preference = speechSettings.backendPreference) {
+scripts/server/serve.cjs:2063:  const catalog = SPEECH_MODEL_CATALOG.map((model) => {
+scripts/server/serve.cjs:2064:    const modelPath = path.join(SPEECH_MODELS, model.filename);
+scripts/server/serve.cjs:2065:    const installed = fs.existsSync(modelPath);
+scripts/server/serve.cjs:2067:      ...model,
+scripts/server/serve.cjs:2069:      sizeBytes: installed ? getPathSize(modelPath) : 0,
+scripts/server/serve.cjs:2070:      localSize: installed ? formatBytes(getPathSize(modelPath)) : "",
+scripts/server/serve.cjs:2071:      url: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${model.filename}`,
+scripts/server/serve.cjs:2075:  const known = new Set(catalog.map((model) => model.filename.toLowerCase()));
+scripts/server/serve.cjs:2101:  const model = getSpeechModels().find((item) => item.id === raw || item.filename === raw) ||
+scripts/server/serve.cjs:2103:  if (!model) throw new Error("Download or import a Whisper model first.");
+scripts/server/serve.cjs:2104:  const modelPath = path.join(SPEECH_MODELS, path.basename(model.filename));
+scripts/server/serve.cjs:2105:  if (!pathInside(modelPath, SPEECH_MODELS) || !fs.existsSync(modelPath)) {
+scripts/server/serve.cjs:2106:    throw new Error(`Speech model is not installed: ${model.filename}`);
+scripts/server/serve.cjs:2108:  return { ...model, path: modelPath };
+scripts/server/serve.cjs:2126:function installTtsCatalogModel(modelIdOrFilename) {
+scripts/server/serve.cjs:2127:  const raw = String(modelIdOrFilename || "").trim();
+scripts/server/serve.cjs:2128:  const catalogModel = TTS_MODEL_CATALOG.find((model) => model.id === raw || model.filename === raw) || TTS_MODEL_CATALOG[0];
+scripts/server/serve.cjs:2129:  if (!catalogModel) throw new Error("Unknown TTS model.");
+scripts/server/serve.cjs:2135:    notes: "Kokoro model files are cached under app/tts-cache by kokoro-js on first generation.",
+scripts/server/serve.cjs:2142:  const catalog = TTS_MODEL_CATALOG.map((model) => {
+scripts/server/serve.cjs:2143:    const manifest = readTtsManifest(model.filename);
+scripts/server/serve.cjs:2145:    const manifestPath = getTtsManifestPath(model.filename);
+scripts/server/serve.cjs:2148:      ...model,
+scripts/server/serve.cjs:2153:      url: `kokoro://install/${model.id}`,
+scripts/server/serve.cjs:2157:  const known = new Set(catalog.map((model) => model.filename.toLowerCase()));
+scripts/server/serve.cjs:2169:          modelId: manifest.modelId || "onnx-community/Kokoro-82M-v1.0-ONNX",
+scripts/server/serve.cjs:2186:  const model = getTtsModels().find((item) => item.id === raw || item.filename === raw) ||
+scripts/server/serve.cjs:2188:  if (!model) throw new Error("Download or import a Kokoro TTS model from Model Manager first.");
+scripts/server/serve.cjs:2189:  const manifestPath = getTtsManifestPath(model.filename);
+scripts/server/serve.cjs:2191:    throw new Error(`TTS model is not installed: ${model.filename}`);
+scripts/server/serve.cjs:2193:  return { ...model, path: manifestPath };
+scripts/server/serve.cjs:2214:async function startTts(settings = {}) {
+scripts/server/serve.cjs:2219:  const model = resolveTtsModel(settings.model || ttsSettings.model);
+scripts/server/serve.cjs:2225:    model: model.filename,
+scripts/server/serve.cjs:2226:    voice: settings.voice || ttsSettings.voice || "af_heart",
+scripts/server/serve.cjs:2227:    speed: Math.max(0.5, Math.min(2, Number(settings.speed) || ttsSettings.speed || 1)),
+scripts/server/serve.cjs:2228:    dtype: model.dtype || settings.dtype || ttsSettings.dtype || "q8",
+scripts/server/serve.cjs:2236:  ttsGenerationState = { active: false, phase: "", progress: 0, model: "", voice: "", output: "" };
+scripts/server/serve.cjs:2249:    model: result.model,
+scripts/server/serve.cjs:2250:    modelName: result.modelName,
+scripts/server/serve.cjs:2315:    const model = resolveTtsModel(options.model || ttsSettings.model);
+scripts/server/serve.cjs:2323:      modelId: model.modelId || "onnx-community/Kokoro-82M-v1.0-ONNX",
+scripts/server/serve.cjs:2324:      dtype: model.dtype || "q8",
+scripts/server/serve.cjs:2333:      phase: "Generating speech...",
+scripts/server/serve.cjs:2335:      model: model.filename,
+scripts/server/serve.cjs:2359:      ttsGenerationState = { active: false, phase: "Failed", progress: 0, model: model.filename, voice, output: "" };
+scripts/server/serve.cjs:2363:      ttsGenerationState = { active: false, phase: code === 0 ? "Complete" : "Failed", progress: code === 0 ? 100 : 0, model: model.filename, voice, output: "" };
+scripts/server/serve.cjs:2378:          model: model.filename,
+scripts/server/serve.cjs:2379:          modelName: model.name,
+scripts/server/serve.cjs:2402:  const run = speechOperationQueue.catch(() => {}).then(operation);
+scripts/server/serve.cjs:2403:  speechOperationQueue = run.catch(() => {});
+scripts/server/serve.cjs:2420:function ensureSpeechBackendInstalled(preference = speechSettings.backendPreference) {
+scripts/server/serve.cjs:2428:  throw new Error(`${backend.label || "Selected"} whisper.cpp backend is not installed. The app tried to repair it automatically but no compatible binary was found at ${backend.pathHint || "app/speech-backend"}.${extra} On macOS, run scripts/setup/setup-whisper.sh or install Homebrew whisper-cpp, then relaunch.`);
+scripts/server/serve.cjs:2431:async function startSpeech(settings = {}) {
+scripts/server/serve.cjs:2432:  const backendPreference = normalizeSpeechBackendPreference(settings.backendPreference || speechSettings.backendPreference);
+scripts/server/serve.cjs:2434:  const model = resolveSpeechModel(settings.model);
+scripts/server/serve.cjs:2436:  speechError = null;
+scripts/server/serve.cjs:2437:  speechReady = true;
+scripts/server/serve.cjs:2438:  speechSettings = {
+scripts/server/serve.cjs:2439:    ...speechSettings,
+scripts/server/serve.cjs:2440:    model: model.filename,
+scripts/server/serve.cjs:2441:    language: settings.language || speechSettings.language || "auto",
+scripts/server/serve.cjs:2442:    threads: Math.max(1, Math.min(32, Number(settings.threads) || speechSettings.threads || 4)),
+scripts/server/serve.cjs:2450:  speechReady = false;
+scripts/server/serve.cjs:2451:  speechError = null;
+scripts/server/serve.cjs:2452:  speechTranscriptionState = { active: false, phase: "", progress: 0, model: "", filename: "" };
+scripts/server/serve.cjs:2533:    const backendPreference = normalizeSpeechBackendPreference(options.backendPreference || speechSettings.backendPreference);
+scripts/server/serve.cjs:2541:    const model = resolveSpeechModel(options.model || speechSettings.model);
+scripts/server/serve.cjs:2542:    const language = String(options.language || speechSettings.language || "auto");
+scripts/server/serve.cjs:2545:    const tempBase = path.join(TRANSCRIPTIONS, `.speech-${stamp}-${sourceFilename.replace(/\.[^.]+$/, "")}`);
+scripts/server/serve.cjs:2550:    speechTranscriptionState = {
+scripts/server/serve.cjs:2554:      model: model.filename,
+scripts/server/serve.cjs:2559:      "-m", model.path,
+scripts/server/serve.cjs:2564:      "-t", String(Math.max(1, Math.min(32, Number(options.threads) || speechSettings.threads || 4))),
+scripts/server/serve.cjs:2576:    console.log("  [speech] Starting:", backend.cli, args.join(" "));
+scripts/server/serve.cjs:2591:      process.stdout.write("  [speech] " + data.toString());
+scripts/server/serve.cjs:2595:      process.stderr.write("  [speech-err] " + data.toString());
+scripts/server/serve.cjs:2599:      speechTranscriptionState = { active: false, phase: code === 0 ? "Complete" : "Failed", progress: code === 0 ? 100 : 0, model: model.filename, filename: sourceFilename };
+scripts/server/serve.cjs:2602:        speechError = message;
+scripts/server/serve.cjs:2617:        model: model.filename,
+scripts/server/serve.cjs:2618:        modelName: model.name,
+scripts/server/serve.cjs:2626:      speechError = null;
+scripts/server/serve.cjs:2634:    const req = http.get(`http://127.0.0.1:${PORT_LLM}/v1/models`, (res) => {
+scripts/server/serve.cjs:2650:            ? parsed.data.map((item) => String(item.id || item.model || ""))
+scripts/server/serve.cjs:2740:      models: MODELS,
+scripts/server/serve.cjs:2752:      models: MODELS,
+scripts/server/serve.cjs:2767:      models: MODELS,
+scripts/server/serve.cjs:2782:    getDirInfo("Models folder", paths.models),
+scripts/server/serve.cjs:2784:    getDirInfo("Chat history folder", paths.chatHistory),
+scripts/server/serve.cjs:2846:      settings: currentSettings,
+scripts/server/serve.cjs:2849:    models: {
+scripts/server/serve.cjs:2864:    speech: {
+scripts/server/serve.cjs:2870:      models: fs.existsSync(TTS_MODELS) ? fs.readdirSync(TTS_MODELS).filter((file) => file.toLowerCase().endsWith(".json")).length : 0,
+scripts/server/serve.cjs:2906:  addCleanupCandidate(candidates, "vite-cache", path.join(frontendDir, "node_modules", ".vite"), "Vite dependency cache; it can be regenerated.");
+scripts/server/serve.cjs:2912:        addCleanupCandidate(candidates, `setup-zip-${item}`, itemPath, "Setup download archive.");
+scripts/server/serve.cjs:2922:        addCleanupCandidate(candidates, `partial-model-${item}`, path.join(MODELS, item), "Incomplete model download/import file.", { allowUserData: true });
+scripts/server/serve.cjs:3115:  const openvinoNpuAvailable = openvinoNpu.supported && openvinoModels.some((model) => model.installed);
+scripts/server/serve.cjs:3152:    unavailable.push({ id: "openvino-npu", label: "NPU (OpenVINO)", reason: "Runtime is ready, but no OpenVINO NPU model is downloaded." });
+scripts/server/serve.cjs:3199:      "--model", path.join(MODELS, "__backend_probe_missing__.safetensors"),
+scripts/server/serve.cjs:3204:        "--model", path.join(MODELS, "__backend_probe_missing__.safetensors"),
+scripts/server/serve.cjs:3227:        "--model", path.join(MODELS, "__backend_probe_missing__.safetensors"),
+scripts/server/serve.cjs:3242:    // A healthy binary prints project-specific log lines when it tries to load the model.
+scripts/server/serve.cjs:3243:    const isOk = lower.includes("stable-diffusion.cpp") || lower.includes("loading model");
+scripts/server/serve.cjs:3253:function selectBackendPath(useGpu, backendType = "auto", modelPath = "") {
+scripts/server/serve.cjs:3254:  const resolvedType = resolveBackendType(useGpu, backendType, modelPath);
+scripts/server/serve.cjs:3289:function resolveBackendType(useGpu, backendType = "auto", modelPath = "") {
+scripts/server/serve.cjs:3293:  if (modelPath && osPlatform === "darwin") {
+scripts/server/serve.cjs:3294:    const lower = modelPath.toLowerCase();
+scripts/server/serve.cjs:3295:    const isDir = fs.existsSync(modelPath) && fs.statSync(modelPath).isDirectory();
+scripts/server/serve.cjs:3298:    } else if (lower.endsWith(".coreml") || lower.endsWith(".mlpackage") || lower.endsWith(".mlmodelc") || isDir) {
+
+[6/9] ตรวจ Feature ที่ Frontend เรียกแต่ Backend อาจยังไม่มี
+Frontend API references:
+/api/backend-options
+/api/backend-status
+/api/cancel-download
+/api/capabilities/image-to-video/install
+/api/capabilities/image-to-video/status
+/api/cleanup
+/api/cleanup-candidates
+/api/delete-model
+/api/delete-outputs
+/api/diagnostics
+/api/download-backend
+/api/download-model
+/api/download-openvino-model
+/api/download-progress
+/api/generation-progress
+/api/hardware-specs
+/api/health
+/api/huggingface/models?${params.toString
+/api/image-to-video/compatibility
+/api/image-to-video/generate
+/api/import-model
+/api/llm/backends${refresh
+/api/llm/benchmark
+/api/llm/chat
+/api/llm/conversations
+/api/llm/delete-conversation
+/api/llm/delete-model
+/api/llm/download-model
+/api/llm/import-model
+/api/llm/models
+/api/llm/recommend?useCase=${encodeURIComponent
+/api/llm/save-conversation
+/api/llm/start
+/api/llm/stats
+/api/llm/status
+/api/llm/stop
+/api/models
+/api/openvino-generate
+/api/openvino-models
+/api/outputs
+/api/restart-backend
+/api/save-output
+/api/speech/delete-model
+/api/speech/delete-transcription
+/api/speech/download-model
+/api/speech/import-model
+/api/speech/models
+/api/speech/start
+/api/speech/status
+/api/speech/stop
+/api/speech/transcribe?${params.toString
+/api/speech/transcriptions
+/api/stop-backend
+/api/telemetry
+/api/tts/delete-model
+/api/tts/delete-output
+/api/tts/download-model
+/api/tts/import-model
+/api/tts/models
+/api/tts/outputs
+/api/tts/speak
+/api/tts/start
+/api/tts/status
+/api/tts/stop
+/api/web-search
+
+Backend API references:
+/api/backend-options
+/api/backend-status
+/api/cancel-download
+/api/capabilities/image-to-video/install
+/api/capabilities/image-to-video/status
+/api/cleanup
+/api/cleanup-candidates
+/api/delete-model
+/api/delete-outputs
+/api/diagnostics
+/api/download-backend
+/api/download-model
+/api/download-openvino-model
+/api/download-progress
+/api/generation-progress
+/api/hardware-specs
+/api/health
+/api/huggingface/models
+/api/image-to-video/compatibility
+/api/image-to-video/generate
+/api/import-model
+/api/llm/backends
+/api/llm/benchmark
+/api/llm/chat
+/api/llm/conversations
+/api/llm/delete-conversation
+/api/llm/delete-model
+/api/llm/download-model
+/api/llm/import-model
+/api/llm/model-settings
+/api/llm/models
+/api/llm/recommend
+/api/llm/save-conversation
+/api/llm/start
+/api/llm/stats
+/api/llm/status
+/api/llm/stop
+/api/models
+/api/openvino-generate
+/api/openvino-models
+/api/output-file
+/api/output-file?filename=${encodeURIComponent
+/api/outputs
+/api/restart-backend
+/api/save-output
+/api/speech/delete-model
+/api/speech/delete-transcription
+/api/speech/download-model
+/api/speech/import-model
+/api/speech/models
+/api/speech/start
+/api/speech/status
+/api/speech/stop
+/api/speech/transcribe
+/api/speech/transcriptions
+/api/stop-backend
+/api/telemetry
+/api/tts/delete-model
+/api/tts/delete-output
+/api/tts/download-model
+/api/tts/import-model
+/api/tts/models
+/api/tts/outputs
+/api/tts/speak
+/api/tts/start
+/api/tts/status
+/api/tts/stop
+/api/web-search
+/api/web-search/config
+
+Potential unmatched Frontend endpoints:
+/api/huggingface/models?${params.toString
+/api/llm/backends${refresh
+/api/llm/recommend?useCase=${encodeURIComponent
+/api/speech/transcribe?${params.toString
+
+[7/9] ตรวจ Tests และ Validation Coverage
+
+[8/9] ตรวจ Baseline Syntax และ Validation
+PASS: Source Syntax ผ่าน
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[9/9] สรุป Candidate Feature สำหรับ Beta 6
+app/frontend/src/App.css:951:.chat-composer-textarea::placeholder {
+app/frontend/src/App.css:2260:.output-placeholder-icon {
+app/frontend/src/App.css:2268:.output-placeholder-text {
+app/frontend/src/components/ReferenceManager.jsx:124:          placeholder="Optional details to keep: smile, haircut, shirt color, expression..."
+app/frontend/src/components/ReferenceManager.jsx:361:          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by file name or notes..." />
+app/frontend/src/components/SpeechTranscriber.jsx:554:          placeholder="Transcript output will appear here."
+app/frontend/src/components/Generator.jsx:799:                  placeholder="Enter a descriptive prompt (e.g. 'A futuristic city in cyberpunk aesthetic, high details, cinematic lighting')..."
+app/frontend/src/components/Generator.jsx:1029:                <Sparkles className="output-placeholder-icon" />
+app/frontend/src/components/Generator.jsx:1030:                <p className="output-placeholder-text">
+app/frontend/src/components/TextChat.jsx:1269:                placeholder={status.ready ? "Message your local model... (Shift+Enter for new line)" : "Select and load a GGUF model above to begin"}
+app/frontend/src/components/ModelManager.jsx:1914:              placeholder="Search Hugging Face GGUF models..."
+app/frontend/src/components/ModelManager.jsx:2182:              placeholder="e.g. https://huggingface.co/..."
+app/frontend/src/components/Settings.jsx:818:                    placeholder="-1 for random"
+app/frontend/src/components/Settings.jsx:988:                   placeholder="Enter system prompt..."
+app/frontend/src/components/Settings.jsx:1098:                  placeholder="-1"
+app/frontend/src/components/TextToSpeech.jsx:261:            placeholder="Type text to turn into speech..."
+app/frontend/src/App.jsx:509:      message: `Delete ${cleanupItems.length} temporary/cache item${cleanupItems.length === 1 ? "" : "s"} and free about ${formatBytes(totalBytes)}?\n\nModels and generated outputs are not included.`,
+app/frontend/src/services/api.js:1078:// we surface that error to the UI instead of silently returning a fake placeholder.
+/api/huggingface/models?${params.toString
+/api/llm/backends${refresh
+/api/llm/recommend?useCase=${encodeURIComponent
+/api/speech/transcribe?${params.toString
+PASS: พบ Candidate สำหรับ Feature แรก
+
+============================================================
+ BETA 6 FEATURE DISCOVERY PASSED
+============================================================
+Branch : feat/beta6-foundation
+Commit : 9b1abf4
+Report : validation-reports/beta6-feature-discovery-20260805-161032.txt
+Source : ยังไม่มีการแก้ไข
+Next   : เลือกและพัฒนา Feature แรกจากผล Discovery

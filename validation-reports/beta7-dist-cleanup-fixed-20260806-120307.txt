@@ -1,0 +1,51 @@
+============================================================
+ LUKE AI STUDIO - FIX GENERATED DIST CLEANUP
+============================================================
+
+[1/6] ตรวจ Branch, Commit และ Remote
+Branch : feat/beta7-foundation
+Local  : 44b00da
+Remote : 44b00da
+PASS: Dashboard Commit และ Remote ถูกต้อง
+
+[2/6] ตรวจว่าไฟล์ค้างทั้งหมดอยู่ใน app/dist
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+?? app/dist/assets/event-DjNW25B_.js
+?? app/dist/assets/index-B-MrsIQm.css
+?? app/dist/assets/index-Dn7oHG2E.js
+PASS: ไฟล์ค้างทั้งหมดเป็น Generated Frontend Dist
+
+[3/6] สำรอง Generated Dist
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/dist-cleanup-fixed-20260806-120307/dist
+
+[4/6] คืน Tracked Dist และลบ Untracked Dist
+PASS: คืน app/dist ให้ตรงกับ Commit ล่าสุดแล้ว
+
+[5/6] ตรวจ Dashboard Source ใน Commit
+PASS: HEAD มี app/frontend/src/components/RuntimeDownloadDashboard.jsx
+PASS: HEAD มี app/frontend/src/App.jsx
+PASS: HEAD มี app/frontend/src/App.css
+PASS: HEAD มี docs/beta7/runtime-download-dashboard-spec.md
+PASS: HEAD มี scripts/validation/test-runtime-dashboard.cjs
+PASS: Dashboard Source สมบูรณ์
+
+[6/6] ตรวจสถานะสุดท้าย
+Local : 44b00da
+Remote: 44b00da
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 RUNTIME DOWNLOAD DASHBOARD PASSED
+============================================================
+Branch   : feat/beta7-foundation
+Commit   : 44b00da
+Dashboard: PASS
+Build    : PASS
+Tests    : PASS
+Git      : CLEAN
+Backup   : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/dist-cleanup-fixed-20260806-120307/dist
+Report   : validation-reports/beta7-dist-cleanup-fixed-20260806-120307.txt
+Next     : เพิ่ม External Drive Availability API และ Safe Fallback อัตโนมัติ

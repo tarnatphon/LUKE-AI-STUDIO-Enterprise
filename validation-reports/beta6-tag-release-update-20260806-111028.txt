@@ -1,0 +1,44 @@
+============================================================
+ LUKE AI STUDIO - UPDATE BETA 6 TAG AND RELEASE
+============================================================
+
+[1/10] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/beta6-foundation
+Local  : ec3bfd3
+Remote : ec3bfd3
+PASS: Branch, Remote และ Working Tree พร้อม
+
+[2/10] ตรวจ Manifest Assets Contract ภายใน HEAD
+FAIL: HEAD Commit ไม่มี /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest.json
+
+[3/10] ตรวจ Release Assets ในเครื่อง
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/RELEASE-NOTES.md
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/BUILD-REPORT.txt
+
+[4/10] ตรวจ Tag Beta 6 เดิม
+Old Tag Commit: 81f7f92
+NOTICE: Tag ต้องย้ายจาก 81f7f92 ไป ec3bfd3
+
+[5/10] สำรอง Tag เดิม
+NOTICE: ไม่จำเป็นต้องสร้าง Backup Tag ใหม่
+
+[6/10] อัปเดต Tag Beta 6 ให้ชี้ HEAD
+
+[7/10] อัปเดต GitHub Release Assets
+
+[8/10] ตรวจ Remote Tag และ GitHub Release
+
+[9/10] ดาวน์โหลด Manifest และ ZIP กลับมาตรวจ
+
+[10/10] ตรวจ Updater อ่าน Manifest จาก GitHub
+FAIL: ไม่พบ Node.js สำหรับ Updater Check
+
+============================================================
+ BETA 6 TAG OR GITHUB RELEASE UPDATE FAILED
+============================================================
+Backup Tag: backup-v1.0.0-beta.6-before-assets-fix-20260806-111028
+Report    : validation-reports/beta6-tag-release-update-20260806-111028.txt

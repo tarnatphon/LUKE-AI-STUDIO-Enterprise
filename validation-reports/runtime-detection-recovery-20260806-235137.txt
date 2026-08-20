@@ -1,0 +1,28 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME AUTO-DETECTION RECOVERY
+============================================================
+[1/8] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : a608d2d
+Remote : a608d2d
+?? scripts/server/text-runtime-detector.cjs
+PASS: Recovery State ถูกต้อง
+[2/8] สำรอง Source
+PASS: Backup สำเร็จ
+[3/8] ตรวจและปรับ Runtime Detector
+PASS: Runtime Detector Syntax ถูกต้อง
+[4/8] เพิ่ม Runtime Detection API แบบปลอดภัย
+FAIL: Runtime Detection API Patch ไม่สำเร็จ
+[5/8] สร้าง Runtime Auto-Detection Test
+[6/8] รัน Syntax, Test และ Backend Smoke Test
+FAIL: Syntax หรือ Contracts ไม่ผ่าน
+[7/8] รัน Full Release Validation
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+?? scripts/server/text-runtime-detector.cjs
+============================================================
+ RUNTIME AUTO-DETECTION RECOVERY FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-detection-recovery-20260806-235137
+Report: validation-reports/runtime-detection-recovery-20260806-235137.txt

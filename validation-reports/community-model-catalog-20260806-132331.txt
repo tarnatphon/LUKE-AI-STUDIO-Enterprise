@@ -1,0 +1,245 @@
+============================================================
+ LUKE AI STUDIO - COMMUNITY TEXT MODEL CATALOG
+============================================================
+
+[1/8] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 320a20d
+Remote : 320a20d
+PASS: Feature Branch พร้อมและ Working Tree สะอาด
+
+[2/8] สำรอง Catalog และ Policy
+PASS: Backup app/config/text-models/signed-catalog.json
+PASS: Backup app/config/text-models/catalog-policy.json
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/8] เพิ่ม Community Model Policy
+PASS: Community Model Policy ถูกต้อง
+
+[4/8] เพิ่ม Dolphin Community Model ลง Signed Catalog
+PASS: Community Model Catalog ถูกต้อง
+
+[5/8] สร้าง Community Catalog Validation
+PASS: สร้าง Community Catalog Test แล้ว
+
+[6/8] ตรวจ Syntax และ Catalog
+PASS: Community Models category is enabled.
+PASS: Dolphin community model is present.
+PASS: One-click in-app download is required.
+PASS: Community models use the unified queue.
+PASS: SHA256 metadata verification is required.
+PASS: Automatic community model update checking is enabled.
+PASS: Community text model catalog validation completed.
+PASS: Community Catalog Validation ผ่าน
+
+[7/8] รัน Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 70
+Backend endpoints : 80
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 64779
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64779
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64784
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64787
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1785997420639-bbd9b805
+Cancelled job: runtime-1785997420648-e1c51aa5
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64792
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1785997424109-22c8071f failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1785997424218-651e14d3 failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64798
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: External drive absence detected.
+PASS: Safe fallback directory selected.
+PASS: Safe fallback directory created.
+PASS: Runtime storage resolve API completed.
+PASS: Missing external volume was not created.
+PASS: External volume mount guard completed.
+PASS: Runtime storage availability test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64803
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+PASS: Signed catalog policy is enabled.
+PASS: Batch selection is limited to three models.
+PASS: Download concurrency is limited to one.
+PASS: Side-by-side installation and rollback policy are enabled.
+PASS: Preferred storage and Local Staging fallback are enabled.
+PASS: Text Model Manager foundation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64807
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Text model catalog API responded.
+PASS: Official Qwen model is present.
+PASS: Maximum queue selection is three.
+PASS: Download concurrency is one.
+PASS: Text model catalog API validation completed.
+PASS: Community Models category is enabled.
+PASS: Dolphin community model is present.
+PASS: One-click in-app download is required.
+PASS: Community models use the unified queue.
+PASS: SHA256 metadata verification is required.
+PASS: Automatic community model update checking is enabled.
+PASS: Community text model catalog validation completed.
+Validation Exit Code: 0
+PASS: Full Release Validation ผ่าน
+
+[8/8] Commit, Push และตรวจสถานะสุดท้าย
+ app/config/text-models/catalog-policy.json         |  72 ++++++++++++
+ app/config/text-models/signed-catalog.json         |  87 +++++++++++++-
+ .../test-community-text-model-catalog.cjs          | 130 +++++++++++++++++++++
+ scripts/validation/validate-release.sh             |   8 ++
+ 4 files changed, 295 insertions(+), 2 deletions(-)
+PASS: Commit Community Catalog สำเร็จ
+PASS: Push Feature Branch สำเร็จ
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ COMMUNITY TEXT MODEL CATALOG PASSED
+============================================================
+Branch   : feat/text-model-manager-v1
+Commit   : 2945091
+Category : Community Models
+Model    : Dolphin 3.0 Llama 3.2 3B
+Variant  : Q4_K_M
+Download : One-click inside LUKE AI STUDIO
+Update   : Automatic version checking enabled
+Queue    : Unified Model Manager Download Queue
+Report   : validation-reports/community-model-catalog-20260806-132331.txt
+Next     : เพิ่ม Sequential Download Worker และ Model Manager UI

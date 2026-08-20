@@ -1,0 +1,360 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-5B.2
+ GENERATED IMAGE AUTO-REGISTRATION
+============================================================
+
+[1/7] Safety
+Branch : feat/text-model-manager-v1
+Local  : 9511389
+Remote : 9511389
+PASS: Certified base intact
+
+[2/7] Probe Exact saveGeneratedOutput Return Shape
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+  } catch (_) {
+    return [];
+  }
+}
+
+function deleteChatConversation(id) {
+  const filePath = getChatConversationPath(id);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return true;
+  }
+  return false;
+}
+
+function saveGeneratedOutput(imageDataUrl, metadata = {}) {
+  const match = String(imageDataUrl || "").match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/);
+  if (!match) {
+    throw new Error("Expected a real base64 PNG, JPEG, or WebP image data URL");
+  }
+
+  const mime = match[1];
+  const extByMime = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+  };
+  const ext = extByMime[mime] || ".png";
+  const imageBuffer = Buffer.from(match[2], "base64");
+  const isPng = imageBuffer.length > 8 &&
+    imageBuffer[0] === 0x89 &&
+    imageBuffer[1] === 0x50 &&
+    imageBuffer[2] === 0x4e &&
+    imageBuffer[3] === 0x47;
+  const isJpeg = imageBuffer.length > 3 &&
+    imageBuffer[0] === 0xff &&
+    imageBuffer[1] === 0xd8 &&
+    imageBuffer[2] === 0xff;
+  const isWebp = imageBuffer.length > 12 &&
+    imageBuffer.toString("ascii", 0, 4) === "RIFF" &&
+    imageBuffer.toString("ascii", 8, 12) === "WEBP";
+  if ((mime === "image/png" && !isPng) ||
+      ((mime === "image/jpeg" || mime === "image/jpg") && !isJpeg) ||
+      (mime === "image/webp" && !isWebp)) {
+    throw new Error("Generated image payload did not match its declared image format.");
+  }
+  const createdAt = new Date().toISOString();
+  const stamp = createdAt.replace(/[:.]/g, "-");
+  const seed = metadata.seed !== undefined && metadata.seed !== null ? `-${safeOutputName(metadata.seed)}` : "";
+  const baseName = `output-${stamp}${seed}`;
+  const imageFilename = `${baseName}${ext}`;
+  const metadataFilename = `${baseName}.json`;
+  const imagePath = path.join(OUTPUTS, imageFilename);
+  const metadataPath = path.join(OUTPUTS, metadataFilename);
+
+  fs.writeFileSync(imagePath, imageBuffer);
+  const savedMetadata = {
+    ...metadata,
+    createdAt,
+    image: imageFilename,
+    metadata: metadataFilename,
+  };
+  fs.writeFileSync(metadataPath, JSON.stringify(savedMetadata, null, 2), "utf8");
+  console.log(`  [api] Saved generated output: ${imageFilename}`);
+  return savedMetadata;
+}
+
+function listGeneratedOutputs() {
+  try {
+    return fs.readdirSync(OUTPUTS)
+      .filter(file => file.toLowerCase().endsWith(".json"))
+      .map(file => {
+        try {
+          const metadata = JSON.parse(fs.readFileSync(path.join(OUTPUTS, file), "utf8"));
+          return {
+            ...metadata,
+            url: `/api/output-file?filename=${encodeURIComponent(metadata.image)}`,
+          };
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  } catch (_) {
+    return [];
+  }
+}
+
+function deleteGeneratedOutputs(outputs = []) {
+  const deleted = [];
+  for (const output of outputs) {
+    const imageFilename = path.basename(output?.image || output?.filename || "");
+    const metadataFilename = path.basename(output?.metadata || "");
+    if (!imageFilename && !metadataFilename) continue;
+
+    const targets = new Set();
+    if (imageFilename) targets.add(imageFilename);
+    if (metadataFilename) targets.add(metadataFilename);
+
+    if (!metadataFilename && imageFilename) {
+      const stem = imageFilename.replace(/\.[^.]+$/, "");
+      targets.add(`${stem}.json`);
+    }
+
+    for (const filename of targets) {
+      const filePath = path.join(OUTPUTS, filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        deleted.push(filename);
+      }
+    }
+  }
+  return deleted;
+}
+
+function streamModelUpload(req, filename, targetDir = MODELS, mode = "image") {
+  return new Promise((resolve, reject) => {
+    const safeFilename = path.basename(filename || "");
+    const lowerName = safeFilename.toLowerCase();
+    const valid = mode === "text"
+      ? lowerName.endsWith(".gguf")
+      : mode === "speech"
+        ? lowerName.endsWith(".bin")
+        : mode === "tts"
+          ? lowerName.endsWith(".json")
+        : isModelFile(lowerName);
+    if (!safeFilename || !valid) {
+      reject(new Error(mode === "text"
+        ? "Filename must end with .gguf"
+        : mode === "speech"
+          ? "Filename must end with .bin"
+          : mode === "tts"
+            ? "Filename must end with .json"
+            : "Filename must end with .gguf, .safetensors, or .ckpt"));
+      return;
+    }
+
+    const destPath = path.join(targetDir, safeFilename);
+    const tempPath = `${destPath}.part`;
+    const out = fs.createWriteStream(tempPath);
+    let finished = false;
+
+    const cleanupPartial = () => {
+      if (finished) return;
+      out.destroy();
+      try { fs.unlinkSync(tempPath); } catch (_) {}
+    };
+
+    req.pipe(out);
+    req.on("error", err => {
+      cleanupPartial();
+      reject(err);
+    });
+    req.on("aborted", () => {
+      cleanupPartial();
+      reject(new Error("Import cancelled by user"));
+    });
+    req.on("close", () => {
+      if (!finished && req.aborted) {
+        cleanupPartial();
+      }
+    });
+    out.on("error", err => {
+      cleanupPartial();
+      reject(err);
+    });
+    out.on("finish", () => {
+      try {
+        finished = true;
+        fs.renameSync(tempPath, destPath);
+        console.log(`  [api] Imported model file: ${safeFilename}`);
+        if (mode === "text" || mode === "speech") {
+          const stats = fs.statSync(destPath);
+          resolve({ filename: safeFilename, name: safeFilename, sizeBytes: stats.size, size: formatBytes(stats.size), format: mode === "speech" ? "Whisper GGML" : "GGUF" });
+        } else {
+          resolve(getModelInfo(safeFilename));
+        }
+      } catch (err) {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+        reject(err);
+      }
+    });
+  });
+}
+
+function json(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+  res.end(body);
+}
+
+// ── HTTP Server ───────────────────────────────────────────────────────────────
+
+// LUKE_AI_RUNTIME_DEPENDENCY_API_V2
+
+[3/7] Add Generated Image Asset Registration
+PASS: Generated Image registration hook installed
+
+[4/7] Add Contract Validation
+PASS: Targeted Generated Image registration validation passed
+
+[5/7] Register Validation + Regression
+PASS: Targeted regressions passed
+
+[6/7] Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 171
+Backend endpoints : 207
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 59788
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59788
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59795
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59798
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1786591019133-6cd8d069
+Cancelled job: runtime-1786591019146-2acd13e3
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59803
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1786591022629-813076ab failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1786591022736-381241d3 failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:59809
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 59809
+}
+
+Node.js v25.2.1
+Error: Backend exited with code 1.
+    at waitForServer (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-storage-availability.cjs:102:13)
+    at async main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-storage-availability.cjs:199:5)
+FAIL: Full Release Validation failed

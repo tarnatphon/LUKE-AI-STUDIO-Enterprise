@@ -1,0 +1,70 @@
+============================================================
+ LUKE AI STUDIO - FIX HARDWARE COMPATIBILITY PATCH
+============================================================
+
+[1/11] ตรวจ Branch และไฟล์ค้างจากรอบก่อน
+Branch : feat/text-model-manager-v1
+Local  : ad17818
+Remote : ad17818
+ M app/config/text-models/signed-catalog.json
+PASS: พบเฉพาะ Catalog ที่แก้ค้างจากรอบก่อน
+
+[2/11] คืน Catalog ที่แก้ค้างและสำรอง Source
+PASS: คืน Catalog เป็น Commit ad17818 แล้ว
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/config/text-models/signed-catalog.json
+PASS: Backup app/frontend/src/components/TextModelManager.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/11] ตรวจ Function เลือก Model Variant จริง
+8030:function getCatalogModelVariant(
+8032:  variantId
+8050:    variantId ||
+8051:    model.recommendedVariant;
+8235:async function enqueueTextModel(
+8237:  variantId
+8274:      item.variantId === variantId
+8291:    variantId
+8312:    variantId: variant.id,
+8508:    item.variantId
+9297:        model.variantId === queueItem.variantId
+9302:      `${queueItem.modelId}@${queueItem.version}:${queueItem.variantId}`,
+9307:    variantId: queueItem.variantId,
+9330:          model.variantId === queueItem.variantId
+9398:          latestInstalled?.variantId || null,
+9401:        recommendedVariant:
+9402:          catalogModel.recommendedVariant,
+10030:          updateStatus.recommendedVariant
+10111:          updateStatus.recommendedVariant
+10222:          typeof body.variantId === "string"
+10223:            ? body.variantId.trim()
+PASS: พบ getCatalogModelVariant()
+
+[4/11] เพิ่ม Quantization Variants ที่มี URL จริง
+PASS: Catalog รองรับ Q4, Q5 และ Q8 แล้ว
+
+[5/11] เพิ่ม Hardware Compatibility Backend แบบไม่ยึด Anchor เดิม
+FAIL: Patch Backend ไม่สำเร็จ
+
+[6/11] เพิ่ม Hardware และ Quantization Selector ใน UI
+
+[7/11] เพิ่ม Hardware Compatibility CSS
+
+[8/11] สร้าง Hardware Compatibility Test
+
+[9/11] ตรวจ Syntax และ Contracts
+FAIL: Syntax หรือ Hardware Contracts ไม่ผ่าน
+
+[10/11] รัน Test, Build และ Full Validation
+
+[11/11] คืน Dist, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/config/text-models/signed-catalog.json
+
+============================================================
+ TEXT MODEL HARDWARE COMPATIBILITY FIX FAILED
+============================================================
+Source ยังไม่ถูก Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/text-model-hardware-fix-20260806-220019
+Report: validation-reports/text-model-hardware-fix-20260806-220019.txt

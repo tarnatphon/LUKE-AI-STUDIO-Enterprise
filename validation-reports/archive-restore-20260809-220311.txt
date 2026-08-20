@@ -1,0 +1,16 @@
+============================================================
+ LUKE AI STUDIO - ARCHIVE RESTORE WORKFLOW
+============================================================
+[1/9] ตรวจ Branch / Commit / Git
+Branch : feat/text-model-manager-v1
+Local  : 1a1b7a3
+Remote : 1a1b7a3
+PASS: Safe Archive Workflow พร้อม
+[2/9] Backup Source
+PASS: Backup สำเร็จ
+[3/9] สร้าง Restore State
+PASS: Archive Restore State ถูกต้อง
+[4/9] สร้าง Archive Restore Manager
+PASS: Archive Restore Manager ถูกสร้างแล้ว
+[5/9] เชื่อม Restore Manager และ API
+FAIL: Archive Restore API Patch ไม่สำเร็จ

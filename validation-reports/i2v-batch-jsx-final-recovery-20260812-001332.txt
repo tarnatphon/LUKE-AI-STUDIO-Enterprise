@@ -1,0 +1,54 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-3 JSX FINAL RECOVERY
+ LINE-BASED CONDITIONAL MATCHING
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+Current dirty state:
+ M app/frontend/src/components/ImageToVideo.jsx
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/model-health.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M app/runtime-state/text-models/installed-models.json
+ M scripts/validation/test-image-to-video-async-ui.cjs
+ M scripts/validation/test-image-to-video-runtime-ui-integration.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-execution.cjs
+PASS: Resume state valid
+
+[2/6] Locate + Repair Exact JSX Conditional
+PASS: JSX boundary repaired
+
+[3/6] Frontend Build Gate
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 145 modules transformed.
+✗ Build failed in 44ms
+error during build:
+Build failed with 1 error:
+
+[31m[builtin:vite-transform] [0mUnexpected token. Did you mean `{'}'}` or `&rbrace;`?
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/components/ImageToVideo.jsx:1318:12 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m1318 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m)[0m[38;5;249m}[0m
+ [38;5;240m     │[0m            │ 
+ [38;5;240m     │[0m            ╰─ 
+[38;5;246m──────╯[0m
+
+    at aggregateBindingErrorsIntoJsError (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/rolldown/dist/shared/error-B68YLzl3.mjs:48:18)
+    at unwrapBindingResult (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/rolldown/dist/shared/error-B68YLzl3.mjs:18:128)
+    at #build (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/rolldown/dist/shared/rolldown-build-DR0wzp0V.mjs:3256:34)
+    at async buildEnvironment (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/vite/dist/node/chunks/node.js:32575:66)
+    at async Object.build (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/vite/dist/node/chunks/node.js:32997:19)
+    at async Object.buildApp (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/vite/dist/node/chunks/node.js:32994:153)
+    at async CAC.<anonymous> (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules/vite/dist/node/cli.js:777:3) {
+  errors: [Getter/Setter]
+}
+FAIL: Frontend build still fails

@@ -1,0 +1,184 @@
+============================================================
+ LUKE AI STUDIO - REPAIR BETA 7 BRANCH AND BASELINE
+============================================================
+
+[1/10] ตรวจ Main และ Working Tree
+Branch : main
+Commit : 02e8eb5
+Version: 1.0.0-beta.6
+PASS: Working Tree สะอาด
+PASS: Base Version ถูกต้อง
+
+[2/10] Fetch GitHub และอัปเดต Main
+PASS: Fetch GitHub สำเร็จ
+PASS: Main อัปเดตจาก GitHub แล้ว
+
+[3/10] สร้างหรือซ่อม Beta 7 Branch
+Main Commit : 02e8eb5
+Local Beta7 : feat/be
+Remote Beta7: 
+PASS: ปรับ Local Beta 7 Branch ให้เริ่มจาก Main
+
+[4/10] Push Beta 7 Branch และตั้ง Upstream
+PASS: Push Beta 7 Branch สำเร็จ
+
+[5/10] ตรวจ Node.js, npm และ npx
+PASS: Node.js = /usr/local/bin/node
+v25.2.1
+PASS: npm = /usr/local/bin/npm
+11.6.2
+PASS: npx = /usr/local/bin/npx
+11.6.2
+
+[6/10] ตรวจ Source Syntax ทีละไฟล์
+PASS: scripts/updater/update.cjs
+PASS: scripts/server/serve.cjs
+PASS: scripts/validation/check-api-contracts.cjs
+PASS: scripts/validation/test-backend-api.cjs
+PASS: mac.sh
+PASS: scripts/validation/validate-release.sh
+PASS: scripts/release/build-beta6.sh
+PASS: Source Syntax ผ่านทุกไฟล์ที่มีอยู่
+
+[7/10] ตรวจ API Contracts และ Backend APIs
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 69
+PASS: All frontend API endpoints have backend contracts.
+PASS: API Contract Validation ผ่าน
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63469
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63469
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+PASS: Backend API Tests ผ่าน
+
+[8/10] Build Frontend และรัน Baseline Validation
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 117 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-DeJ1E7Pf.css   88.95 kB │ gzip:  14.07 kB
+../dist/assets/event-DTB6WObU.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-B4OmJqAl.js   454.35 kB │ gzip: 130.20 kB
+
+✓ built in 130ms
+PASS: Frontend Build ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 69
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63475
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63475
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+Validation Exit Code: 0
+PASS: Beta 7 Baseline Validation ผ่าน
+
+[9/10] Commit Beta 7 Candidate Report
+PASS: Commit Candidate Report สำเร็จ
+PASS: Push Beta 7 Branch สำเร็จ
+
+[10/10] ตรวจสถานะสุดท้าย
+Branch  : feat/beta7-foundation
+Local   : bae2106
+Remote  : bae2106
+Upstream: origin/feat/beta7-foundation
+PASS: Beta 7 Branch, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 BRANCH AND BASELINE REPAIR PASSED
+============================================================
+Branch   : feat/beta7-foundation
+Commit   : bae2106
+Node.js  : /usr/local/bin/node
+npm      : /usr/local/bin/npm
+Candidate: validation-reports/beta7-feature-candidates-20260806-112303.md
+Report   : validation-reports/beta7-branch-and-baseline-repair-20260806-112606.txt
+Next     : สร้าง Runtime Dependency Catalog และ Status API

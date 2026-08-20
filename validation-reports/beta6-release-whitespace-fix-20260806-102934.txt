@@ -1,0 +1,76 @@
+============================================================
+ LUKE AI STUDIO - FIX BETA 6 RELEASE METADATA
+============================================================
+
+[1/9] ตรวจ Branch และไฟล์ที่ Stage อยู่
+Branch : feat/beta6-foundation
+Commit : bba0227
+PASS: อยู่บน Branch ที่ถูกต้อง
+Staged files:
+M	app/config/update.json
+M	app/frontend/package.json
+M	app/update-state/managed-files.json
+M	app/update-state/status.json
+M	app/version.json
+A	releases/1.0.0-beta.6/BUILD-REPORT.txt
+A	releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+A	releases/1.0.0-beta.6/RELEASE-NOTES.md
+A	releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+
+[2/9] สำรองและลบ Trailing Whitespace
+PASS: ลบช่องว่างท้ายบรรทัดแล้ว
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/BUILD-REPORT-20260806-102934.txt
+
+[3/9] Stage Release Metadata ใหม่
+PASS: Git Diff Check ผ่าน
+
+[4/9] ตรวจ ZIP, SHA256 และ Manifest ซ้ำ
+PASS: Release Assets ยังถูกต้อง
+SHA256: e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+
+[5/9] ตรวจ Version Metadata
+app/version.json = 1.0.0-beta.6
+app/config/update.json = 1.0.0-beta.6
+app/frontend/package.json = 1.0.0-beta.6
+app/update-state/status.json = 1.0.0-beta.6
+app/update-state/managed-files.json = 1.0.0-beta.6
+PASS: Version Metadata ถูกต้องครบ
+
+[6/9] สร้าง Release Commit
+ app/config/update.json                             |   4 +-
+ app/frontend/package.json                          |   4 +-
+ app/update-state/managed-files.json                |   4 +-
+ app/update-state/status.json                       |   5 +-
+ app/version.json                                   |   4 +-
+ releases/1.0.0-beta.6/BUILD-REPORT.txt             | 146 +++++++++++++++++++++
+ .../LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256         |   1 +
+ releases/1.0.0-beta.6/RELEASE-NOTES.md             |  16 +++
+ releases/1.0.0-beta.6/latest-1.0.0-beta.6.json     |  21 +++
+ 9 files changed, 195 insertions(+), 10 deletions(-)
+PASS: Release Commit = 81f7f92
+
+[7/9] สร้าง Git Tag
+PASS: สร้าง Tag v1.0.0-beta.6
+
+[8/9] Push Commit และ Tag
+PASS: Push Release Commit สำเร็จ
+PASS: Push Tag สำเร็จ
+
+[9/9] ตรวจสถานะสุดท้าย
+Release Commit: 81f7f92
+Remote Branch : 81f7f92
+Local Tag     : 81f7f92
+Remote Tag    : 81f7f92
+PASS: Commit, Branch, Tag และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 6 RELEASE COMMIT AND TAG READY
+============================================================
+Version : 1.0.0-beta.6
+Commit  : 81f7f92
+Branch  : feat/beta6-foundation
+Tag     : v1.0.0-beta.6
+ZIP     : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip
+SHA256  : e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Report  : validation-reports/beta6-release-whitespace-fix-20260806-102934.txt
+Next    : Publish Beta 6 ไป GitHub Release และทดสอบดาวน์โหลด

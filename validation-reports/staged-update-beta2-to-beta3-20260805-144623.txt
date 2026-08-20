@@ -1,0 +1,46 @@
+============================================================
+ LUKE AI STUDIO - STAGED UPDATE BETA 2 TO BETA 3
+============================================================
+
+[1/9] ตรวจ Beta 2 ZIP
+PASS: พบ Beta 2 ZIP และไฟล์ไม่เสียหาย
+
+[2/9] แตก Beta 2 ไปยังพื้นที่ทดสอบ
+PASS: แตกไฟล์สำเร็จ
+Test app: /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-TEST/LUKE-AI-STUDIO-1.0.0-beta.2
+
+[3/9] ตรวจ Version เริ่มต้น
+Installed version: 1.0.0-beta.2
+PASS: เริ่มจาก Beta 2 ถูกต้อง
+
+[4/9] ตั้งค่า Updater ให้ชี้ไป Beta 3
+PASS: Update Config พร้อม
+
+[5/9] ตรวจ Node.js และ Updater
+PASS: Updater syntax ผ่าน
+
+[6/9] ตรวจพบ Beta 3 ก่อนติดตั้ง
+  [Update] Update 1.0.0-beta.3 is not available for darwin-arm64. Continuing with 1.0.0-beta.2.
+PASS: Updater ตรวจพบ Beta 3
+
+[7/9] ดาวน์โหลดและ Stage Beta 3
+  [Update] Update 1.0.0-beta.3 is not available for darwin-arm64. Continuing with 1.0.0-beta.2.
+PASS: Updater จบโดยไม่มี Process ค้าง
+
+[8/9] ตรวจ Version และ Rollback หลัง Update
+Version after updater: 1.0.0-beta.2
+/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/update-state/managed-files.json
+/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/update-state/status.json
+/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/update-state/updater.log
+PASS: Beta 3 ถูก Stage และจะสลับเมื่อเปิดครั้งถัดไป
+NOTICE: ยังไม่พบ Rollback เพราะ Update อาจรอสลับตอนเปิดครั้งถัดไป
+
+[9/9] สรุปผล
+============================================================
+ STAGED UPDATE BETA 2 TO BETA 3 PASSED
+============================================================
+Original project : ไม่ถูกแก้ไข
+Test folder      : /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-TEST/LUKE-AI-STUDIO-1.0.0-beta.2
+From             : 1.0.0-beta.2
+To               : 1.0.0-beta.3
+Report           : /Users/ekky/Desktop/Luke ai/validation-reports/staged-update-beta2-to-beta3-20260805-144623.txt

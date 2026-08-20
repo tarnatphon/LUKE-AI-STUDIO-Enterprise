@@ -1,0 +1,107 @@
+============================================================
+ LUKE AI STUDIO - PREPARE PORTABLE NODE.JS AND NPM
+============================================================
+
+[1/11] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Commit : d364a6e
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/11] ค้นหา Node.js, npm และ npx ที่ใช้งานได้
+PASS: Node.js = /usr/local/bin/node
+v25.2.1
+PASS: npm = /usr/local/bin/npm
+11.6.2
+PASS: npx = /usr/local/bin/npx
+
+[3/11] ค้นหา npm Package Root จริง
+PASS: npm Package = /usr/local/lib/node_modules/npm
+
+[4/11] สำรอง Portable Runtime เดิม
+NOTICE: ยังไม่มี Portable Runtime เดิม
+
+[5/11] สร้าง Portable Node.js Runtime
+PASS: Portable Runtime ถูกสร้างแล้ว
+
+[6/11] ตรวจ Portable Runtime Files
+PASS: app/tools/node-mac/bin/node
+PASS: app/tools/node-mac/bin/npm
+PASS: app/tools/node-mac/bin/npx
+PASS: app/tools/node-mac/lib/node_modules/npm/package.json
+PASS: app/tools/node-mac/lib/node_modules/npm/bin/npm-cli.js
+PASS: app/tools/node-mac/lib/node_modules/npm/bin/npx-cli.js
+
+[7/11] ทดสอบ Portable Node.js, npm และ npx
+Portable Node: v25.2.1
+Portable npm : 11.6.2
+Portable npx : 11.6.2
+PASS: Portable Runtime ทำงานครบ
+
+[8/11] ตรวจ Backend Dependency Health
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61369
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61369
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":true,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":true,"ok":true},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":true,"ok":true},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"directo
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+PASS: Backend process stopped after all API tests.
+Backend Test Exit Code: 0
+PASS: Backend API Tests ผ่าน
+PASS: Health ตรวจพบ Portable Node.js และ npm
+
+[9/11] รัน Release Validation ทั้งระบบ
+FAIL: stale portable Node runtime present
+PASS: Release Validation ผ่าน
+
+[10/11] ตรวจขนาดและ Git Ignore Policy
+Portable Runtime Size: 262M
+NOTICE: Portable Runtime ถูก Ignore ตาม Release Policy
+Runtime จะถูกติดตั้งหรือ Pack ผ่าน Build Pipeline แยกต่างหาก
+
+[11/11] บันทึก Runtime Metadata และ Push Source
+PASS: Runtime Metadata พร้อม
+PASS: Commit และ Push Runtime Metadata สำเร็จ
+
+============================================================
+ BETA 6 PORTABLE NODE.JS AND NPM READY
+============================================================
+Node     : v25.2.1
+npm      : 11.6.2
+npx      : 11.6.2
+Location : app/tools/node-mac
+Commit   : 9cbd2e1
+Report   : validation-reports/beta6-portable-node-20260805-162018.txt
+Next     : เพิ่ม Portable Runtime เข้า Beta 6 Build Package

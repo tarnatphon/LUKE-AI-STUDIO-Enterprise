@@ -1,0 +1,25 @@
+============================================================
+ LUKE AI STUDIO - I2V COMPONENT BODY RECOVERY
+============================================================
+
+[1/7] Recovery Preflight
+Branch : feat/text-model-manager-v1
+Local  : fc09bdd
+Remote : fc09bdd
+Current dirty state:
+ M app/frontend/src/App.css
+ M app/frontend/src/components/ImageToVideo.jsx
+ M app/frontend/src/services/api.js
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M scripts/validation/validate-release.sh
+?? app/frontend/src/components/ImageToVideoRuntimeHealthCard.jsx
+?? scripts/validation/test-image-to-video-runtime-ui-integration.cjs
+PASS: Recovery state confirmed
+
+[2/7] Repair Component Body Position
+PASS: Component body repaired
+
+[3/7] Fast Frontend Syntax / Contract Gate
+FAIL: git diff --check failed

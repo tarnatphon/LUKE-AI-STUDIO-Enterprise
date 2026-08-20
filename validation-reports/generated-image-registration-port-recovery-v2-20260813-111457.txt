@@ -1,0 +1,72 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-5B.2 FINAL RECOVERY V2
+ ROBUST VALIDATION PORT DISCOVERY
+============================================================
+
+[1/8] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9511389
+Remote : 9511389
+Current dirty state:
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/dist/assets/event-DOOn5ZcB.js
+?? app/dist/assets/index-BBihhO55.js
+?? app/dist/assets/index-Bo2WBXMk.css
+?? scripts/validation/test-generated-image-asset-registration.cjs
+PASS: Phase 3A-5B.2 source preserved
+
+[2/8] Discover Validation Ports Robustly
+Validation ports:
+59809
+59838
+
+[3/8] Inspect + Clear Stale LUKE Listeners
+Port 59809 : FREE
+Port 59838 : FREE
+
+Rechecking ports...
+Port 59809 : FREE
+Port 59838 : FREE
+PASS: Validation ports are free
+
+[4/8] Remove Validation-Generated Noise
+State after cleanup:
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-generated-image-asset-registration.cjs
+PASS: Runtime/build noise removed
+
+[5/8] Targeted Regression
+PASS: Targeted regressions passed
+
+[6/8] Frontend Build
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 187 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-Bo2WBXMk.css  162.23 kB │ gzip:  21.14 kB
+../dist/assets/event-DOOn5ZcB.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-BBihhO55.js   668.45 kB │ gzip: 178.15 kB
+
+✓ built in 155ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+PASS: Frontend build passed
+
+[7/8] Full Release Validation

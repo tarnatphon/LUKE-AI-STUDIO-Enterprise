@@ -1,0 +1,97 @@
+============================================================
+ LUKE AI STUDIO - I2V TRAILING WHITESPACE RECOVERY
+============================================================
+
+[1/6] Recovery Preflight
+Branch : feat/text-model-manager-v1
+Local  : fc09bdd
+Remote : fc09bdd
+Current dirty state:
+ M app/frontend/src/App.css
+ M app/frontend/src/components/ImageToVideo.jsx
+ M app/frontend/src/services/api.js
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M scripts/validation/validate-release.sh
+?? app/frontend/src/components/ImageToVideoRuntimeHealthCard.jsx
+?? scripts/validation/test-image-to-video-runtime-ui-integration.cjs
+PASS: Recovery state confirmed
+
+[2/6] Remove Trailing Whitespace Only
+PASS: Trailing whitespace removed
+
+[3/6] Contract Gate
+PASS: Contract Gate passed
+
+[4/6] Build + Backend + Full Validation
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 147 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-Bo2WBXMk.css  162.23 kB │ gzip:  21.14 kB
+../dist/assets/event-CArBGzXJ.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-yynnS_eV.js   596.80 kB │ gzip: 157.21 kB
+
+✓ built in 115ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+PASS: Runtime Health service integration is present.
+PASS: Runtime Health UI displays Torch/MPS/FFmpeg/package state.
+PASS: Generate is guarded by real runtime readiness.
+PASS: Existing Image-to-Video generation payload remains intact.
+PASS: Runtime Health performs no automatic install, repair or model download.
+PASS: Image-to-Video Runtime UI Integration validation completed.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 59347
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59347
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+PASS: Frontend + Targeted + Backend passed

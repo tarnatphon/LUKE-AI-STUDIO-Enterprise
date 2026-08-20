@@ -1,0 +1,37 @@
+============================================================
+ LUKE AI STUDIO - STORAGE POLICY PROFILES
+============================================================
+
+[1/9] ตรวจ Branch / Commit / Git
+Branch : feat/text-model-manager-v1
+Local  : 951c1d7
+Remote : 951c1d7
+PASS: Health Scoring และ Smart Queue พร้อม
+
+[2/9] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/9] สร้าง Storage Policy Profiles
+PASS: Storage Policy Profiles ถูกสร้างแล้ว
+
+[4/9] สร้าง Storage Policy Manager
+PASS: Storage Policy Manager ถูกสร้างแล้ว
+
+[5/9] เชื่อม Workload Routing เข้ากับ Queue
+PASS: Unified Queue รองรับ Workload-Aware Routing แล้ว
+
+[6/9] เชื่อม Policy Manager และ API
+FAIL: Storage Policy API Patch ไม่สำเร็จ
+
+[7/9] สร้าง Storage Policy Dashboard
+
+[8/9] Automated Test / Build / Full Validation
+
+[9/9] Commit / Push
+
+============================================================
+ STORAGE POLICY PROFILES FAILED
+============================================================
+ไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-policy-20260809-212834
+Report : validation-reports/storage-policy-20260809-212834.txt

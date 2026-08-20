@@ -1,0 +1,44 @@
+============================================================
+ LUKE AI STUDIO - HARDWARE BACKEND RECOVERY
+============================================================
+
+[1/8] ตรวจ Branch และสถานะ Git
+Branch : feat/text-model-manager-v1
+Local  : ad17818
+Remote : ad17818
+ M app/config/text-models/signed-catalog.json
+PASS: พบเฉพาะ Catalog ที่ค้างจากรอบก่อน
+
+[2/8] คืน Catalog และสำรอง Source
+PASS: คืน Catalog และสำรอง Source แล้ว
+
+[3/8] เพิ่ม Quantization Q4, Q5 และ Q8
+PASS: Catalog รองรับ Q4, Q5 และ Q8
+
+[4/8] เพิ่ม Hardware Compatibility Backend
+PASS: Backend Hardware Compatibility ถูกเพิ่มแล้ว
+
+[5/8] ตรวจ Syntax และ Marker
+PASS: Backend Syntax และ Hardware Contracts ผ่าน
+
+[6/8] เปิด Backend ชั่วคราวและทดสอบ Hardware API
+PASS: Hardware API ใช้งานได้จริง
+
+[7/8] ตรวจ Diff และ Working Tree
+ app/config/text-models/signed-catalog.json |  68 ++++-
+ scripts/server/serve.cjs                   | 400 ++++++++++++++++++++++++++++-
+ 2 files changed, 454 insertions(+), 14 deletions(-)
+PASS: Diff ถูกต้องและไม่มี Generated Dist
+
+[8/8] สรุปผล
+============================================================
+ HARDWARE BACKEND RECOVERY PASSED
+============================================================
+Branch      : feat/text-model-manager-v1
+Base Commit : ad17818
+Hardware API: GET /api/text-models/hardware
+Variants    : Q4_K_M / Q5_K_M / Q8_0
+Selection   : Automatic by RAM and storage
+Commit      : ยังไม่ Commit รอบนี้
+Report      : validation-reports/hardware-backend-recovery-20260806-220252.txt
+Next        : เชื่อม Hardware UI แล้วรัน Full Validation

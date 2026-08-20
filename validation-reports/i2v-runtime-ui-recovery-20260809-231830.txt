@@ -1,0 +1,102 @@
+============================================================
+ LUKE AI STUDIO - I2V RUNTIME UI WHITESPACE RECOVERY
+============================================================
+
+[1/6] Recovery Preflight
+Branch : feat/text-model-manager-v1
+Local  : fc09bdd
+Remote : fc09bdd
+Current dirty state:
+ M app/frontend/src/App.css
+ M app/frontend/src/components/ImageToVideo.jsx
+ M app/frontend/src/services/api.js
+ M scripts/validation/validate-release.sh
+?? app/frontend/src/components/ImageToVideoRuntimeHealthCard.jsx
+?? scripts/validation/test-image-to-video-runtime-ui-integration.cjs
+PASS: Recovery files พร้อม
+
+[2/6] Fix EOF Whitespace Only
+PASS: Whitespace check ผ่าน
+
+[3/6] Contract Safety Gate
+PASS: Safety gate ผ่าน
+
+[4/6] Backend + Frontend + Full Validation
+PASS: Runtime Health service integration is present.
+PASS: Runtime Health UI displays Torch/MPS/FFmpeg/package state.
+PASS: Generate is guarded by real runtime readiness.
+PASS: Existing Image-to-Video generation payload remains intact.
+PASS: Runtime Health performs no automatic install, repair or model download.
+PASS: Image-to-Video Runtime UI Integration validation completed.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 59269
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:59269
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 145 modules transformed.
+✗ Build failed in 48ms
+error during build:
+Build failed with 1 error:
+
+[31m[builtin:vite-transform] [0mExpected `:` but found `[`
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/components/ImageToVideo.jsx:20:9 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m20 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[
+ [38;5;240m   │[0m         ┬  
+ [38;5;240m   │[0m         ╰── `:` expected
+[38;5;246m────╯[0m
+
+    at aggregateBindingErrorsIntoJsError (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/rolldown/dist/shared/error-B68YLzl3.mjs:48:18)
+    at unwrapBindingResult (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/rolldown/dist/shared/error-B68YLzl3.mjs:18:128)
+    at #build (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/rolldown/dist/shared/rolldown-build-DR0wzp0V.mjs:3256:34)
+    at async buildEnvironment (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/vite/dist/node/chunks/node.js:32575:66)
+    at async Object.build (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/vite/dist/node/chunks/node.js:32997:19)
+    at async Object.buildApp (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/vite/dist/node/chunks/node.js:32994:153)
+    at async CAC.<anonymous> (file:///Users/ekky/Desktop/Luke%20ai/app/frontend/node_modules_mac/vite/dist/node/cli.js:777:3) {
+  errors: [Getter/Setter]
+}
+FAIL: Frontend build failed

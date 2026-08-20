@@ -1,0 +1,35 @@
+============================================================
+ LUKE AI STUDIO - S3 COMPATIBLE STORAGE ADAPTER
+============================================================
+
+[1/9] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 146e8d4
+Remote : 146e8d4
+PASS: Commit 146e8d4 พร้อมและ Git สะอาด
+
+[2/9] ตรวจและสำรอง Source
+FAIL: ไม่พบ package.json
+
+[3/9] ติดตั้ง AWS SDK v3 สำหรับ S3-Compatible Storage
+
+[4/9] สร้าง S3 Transfer State
+
+[5/9] สร้าง S3-Compatible Storage Adapter
+
+[6/9] เชื่อม S3 Adapter API เข้ากับ Backend
+
+[7/9] สร้าง Automated Test
+
+[8/9] รัน Test และ Full Release Validation
+FAIL: Syntax, JSON หรือ S3 Contracts ไม่ผ่าน
+
+[9/9] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+
+============================================================
+ S3 COMPATIBLE STORAGE ADAPTER FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/s3-adapter-20260807-121801
+Report : validation-reports/s3-adapter-20260807-121801.txt

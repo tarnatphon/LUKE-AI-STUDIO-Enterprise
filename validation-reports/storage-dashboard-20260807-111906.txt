@@ -1,0 +1,41 @@
+============================================================
+ LUKE AI STUDIO - STORAGE SETTINGS DASHBOARD
+============================================================
+
+[1/10] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : c7486bf
+Remote : c7486bf
+PASS: Commit c7486bf พร้อมและ Git สะอาด
+
+[2/10] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/10] เพิ่ม Policy Management ใน Storage Manager
+PASS: เพิ่ม Storage Policy Management แล้ว
+
+[4/10] สร้าง macOS Folder Picker
+PASS: สร้าง macOS Folder Picker แล้ว
+
+[5/10] เพิ่ม Storage Settings และ Folder Picker API
+FAIL: Storage Settings API Patch ไม่สำเร็จ
+
+[6/10] สร้าง Storage Destination Dashboard
+
+[7/10] เชื่อม Dashboard เข้ากับ Text UI
+
+[8/10] เพิ่ม Storage Dashboard Styles
+
+[9/10] สร้าง Automated Test และรัน Build
+
+[10/10] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/storage-destination-manager.cjs
+?? scripts/server/storage-folder-picker.cjs
+
+============================================================
+ STORAGE SETTINGS DASHBOARD FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-dashboard-20260807-111906
+Report : validation-reports/storage-dashboard-20260807-111906.txt

@@ -1,0 +1,96 @@
+============================================================
+ LUKE AI STUDIO - CREATE BETA 6 BUILD SCRIPT
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Commit : b1ba787
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] ตรวจ Runtime Metadata และ Validation Policy
+PASS: app/tools/node-mac/runtime.json
+{
+    "product": "LUKE AI STUDIO",
+    "runtime": "portable-node",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "nodeVersion": "v25.2.1",
+    "npmVersion": "11.6.2",
+    "npxVersion": "11.6.2",
+    "sourceNode": "/usr/local/bin/node",
+    "sourceNpmPackage": "/usr/local/lib/node_modules/npm",
+    "generatedAt": "2026-08-05T09:20:26Z",
+    "validated": true
+}
+PASS: Portable Runtime Validation Policy พร้อม
+
+[3/10] ค้นหา Runtime Cache ที่สมบูรณ์ล่าสุด
+PASS: Runtime Cache = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-repair-20260805-162313/node-mac-runtime
+Node: v25.2.1
+npm : 11.6.2
+npx : 11.6.2
+262M	/Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-repair-20260805-162313/node-mac-runtime
+
+[4/10] สำรอง Build Script เดิม
+NOTICE: ยังไม่มี Build Script เดิม
+
+[5/10] สร้าง Beta 6 Build Script
+PASS: สร้าง scripts/release/build-beta6.sh
+
+[6/10] ตรวจ Build Script Syntax
+PASS: Build Script Syntax ผ่าน
+
+[7/10] ทดสอบ Beta 6 Build ใน Cache
+============================================================
+ LUKE AI STUDIO - BUILD 1.0.0-beta.6-test
+============================================================
+
+[1/9] ตรวจ Source Workspace
+FAIL: Working Tree มีไฟล์ค้าง
+?? scripts/release/
+PASS: Runtime Metadata พร้อม
+
+[2/9] ค้นหา Portable Runtime Cache
+PASS: Runtime Cache = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-repair-20260805-162313/node-mac-runtime
+Node: v25.2.1
+npm : 11.6.2
+npx : 11.6.2
+
+[3/9] รัน Source Validation
+
+[4/9] สร้าง Clean Staging Package
+
+[5/9] นำ Portable Runtime เข้า Package
+
+[6/9] อัปเดต Version Metadata ใน Package
+
+[7/9] รัน Packaging Validation
+
+[8/9] สร้าง ZIP, SHA256 และ Manifest
+
+[9/9] สรุปผล
+============================================================
+ BETA 6 BUILD FAILED
+============================================================
+ยังไม่มีการเผยแพร่ Release
+Report: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-build-test-20260805-162630/releases/1.0.0-beta.6-test/BUILD-REPORT.txt
+
+Terminal พร้อมรับคำสั่งถัดไป
+Build Test Exit Code: 1
+FAIL: Beta 6 Test Build ไม่ผ่าน
+
+[8/10] ตรวจ Portable Runtime ภายใน ZIP
+
+[9/10] Commit และ Push Build Script
+
+[10/10] ตรวจสถานะสุดท้าย
+Local  : b1ba787
+Remote : b1ba787
+FAIL: สถานะ Git รอบสุดท้ายไม่ถูกต้อง
+?? scripts/release/
+
+============================================================
+ BETA 6 BUILD SCRIPT SETUP FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-build-script-20260805-162630
+Report : validation-reports/beta6-build-script-20260805-162630.txt

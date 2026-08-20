@@ -1,0 +1,38 @@
+============================================================
+ LUKE AI STUDIO - SUPERVISOR IMPORT CLEANUP
+============================================================
+[1/8] ตรวจสถานะปัจจุบัน
+Branch : feat/text-model-manager-v1
+Local  : 3c562a8
+Remote : 3c562a8
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+?? scripts/validation/test-runtime-supervisor.cjs
+PASS: Recovery State ถูกต้อง
+[2/8] สำรองไฟล์ก่อน Cleanup
+PASS: Backup สำเร็จ
+[3/8] ลบ Import ซ้ำและเพิ่ม Top-Level Import เพียงหนึ่งชุด
+PASS: เหลือ Supervisor Import เพียงหนึ่งชุด
+[4/8] ตรวจ Scope และลำดับของ Import
+PASS: Import Scope และลำดับถูกต้อง
+[5/8] ตรวจ Syntax และ Backend Smoke Test
+FAIL: Syntax หรือ Supervisor Contracts ไม่ผ่าน
+[6/8] รัน Runtime Supervisor Automated Test
+[7/8] รัน Full Release Validation
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+?? scripts/validation/test-runtime-supervisor.cjs
+============================================================
+ SUPERVISOR IMPORT CLEANUP FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-import-cleanup-20260806-233537
+Report: validation-reports/runtime-supervisor-import-cleanup-20260806-233537.txt

@@ -1,0 +1,47 @@
+============================================================
+ LUKE AI STUDIO - TEST AUTO UPDATE BETA 5 TO BETA 6
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Local  : 81f7f92
+Remote : 81f7f92
+PASS: Git State พร้อม
+
+[2/10] ตรวจ Beta 5 Package ต้นทาง
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.5/LUKE-AI-STUDIO-1.0.0-beta.5.zip
+
+[3/10] ตรวจ Beta 6 Manifest บน GitHub
+Version: 1.0.0-beta.6
+Target : darwin-arm64
+PASS: Remote Manifest เป็น Beta 6
+
+[4/10] แตก Beta 5 เป็น Test App
+PASS: Test App = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta5-to-beta6-update-20260806-103346/app/LUKE-AI-STUDIO-1.0.0-beta.5
+
+[5/10] ตรวจ Version ก่อน Update
+Before: 1.0.0-beta.5
+PASS: Test App เริ่มจาก Beta 5
+
+[6/10] ตั้งค่า Auto Update ไป Beta 6
+PASS: Update Config พร้อม
+
+[7/10] ค้นหา Node.js สำหรับรัน Updater
+PASS: Node.js = /usr/local/bin/node
+v25.2.1
+
+[8/10] รัน Auto Update Beta 5 ไป Beta 6
+  [Update] Update 1.0.0-beta.6 is not available for darwin-arm64. Continuing with 1.0.0-beta.5.
+Updater Exit Code: 0
+FAIL: พบข้อผิดพลาดระหว่าง Auto Update
+
+[9/10] ตรวจ Package หลัง Update
+
+[10/10] ทดสอบ Updater Check หลัง Update
+
+============================================================
+ BETA 5 TO BETA 6 AUTO UPDATE TEST FAILED
+============================================================
+โปรเจกต์หลักไม่ได้รับผลกระทบจากการทดสอบ
+Test Root: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta5-to-beta6-update-20260806-103346
+Report   : validation-reports/beta5-to-beta6-auto-update-20260806-103346.txt

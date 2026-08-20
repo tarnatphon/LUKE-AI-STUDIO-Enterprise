@@ -1,0 +1,63 @@
+============================================================
+ LUKE AI STUDIO - FIX RUNTIME STATUS DIRTY STATE
+============================================================
+
+[1/8] ตรวจ Commit และ Working Tree
+Branch : main
+Commit : 9b1abf4
+PASS: Git Repository พร้อม
+
+[2/8] สำรอง Runtime Status ปัจจุบัน
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/status-runtime-fix-20260805-155507/status-before.json
+
+[3/8] แสดงความแตกต่างของ Runtime Status
+Runtime version: 1.0.0-beta.5
+PASS: Runtime Status Version ถูกต้อง
+
+[4/8] คืน Runtime Status ให้ตรงกับ Commit ล่าสุด
+PASS: Runtime Status กลับมาตรงกับ Git
+
+[5/8] ทดสอบ Auto Updater และตรวจผลกระทบ
+  [Update] LUKE AI STUDIO 1.0.0-beta.5 is up to date.
+PASS: Auto Updater ทำงานถูกต้อง
+NOTICE: Updater เปลี่ยน Runtime Status ระหว่าง --check
+diff --git a/app/update-state/status.json b/app/update-state/status.json
+index a4ff333..a6d2629 100644
+--- a/app/update-state/status.json
++++ b/app/update-state/status.json
+@@ -1,6 +1,6 @@
+ {
+   "state": "up-to-date",
+-  "updatedAt": "2026-08-05T08:53:40.595Z",
++  "updatedAt": "2026-08-05T08:55:08.333Z",
+   "currentVersion": "1.0.0-beta.5",
+   "latestVersion": "1.0.0-beta.5"
+ }
+PASS: คืน Runtime Status หลังทดสอบแล้ว
+
+[6/8] ตรวจ Version Metadata ทั้งระบบ
+app/version.json = 1.0.0-beta.5
+app/config/update.json = 1.0.0-beta.5
+app/frontend/package.json = 1.0.0-beta.5
+app/update-state/status.json = 1.0.0-beta.5
+app/update-state/managed-files.json = 1.0.0-beta.5
+PASS: Version Metadata ถูกต้องครบทุกไฟล์
+
+[7/8] รัน Final Release Validation
+PASS: release structure and syntax
+PASS: Final Release Validation ผ่าน
+
+[8/8] ตรวจ Local, Remote และ Working Tree
+Local : 9b1abf4
+Remote: 9b1abf4
+PASS: Local และ Remote Main ตรงกัน
+PASS: Working Tree สะอาด
+
+============================================================
+ BETA 5 RUNTIME STATUS FIX PASSED
+============================================================
+Version : 1.0.0-beta.5
+Commit  : 9b1abf4
+Status  : Runtime changes restored after testing
+Report  : validation-reports/beta5-status-runtime-fix-20260805-155507.txt
+Next    : รัน Full System Audit รอบสุดท้าย

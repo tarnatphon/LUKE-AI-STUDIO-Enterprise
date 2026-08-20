@@ -1,0 +1,68 @@
+============================================================
+ LUKE AI STUDIO - CONNECT AUTO UPDATER
+============================================================
+
+[1/7] ตรวจไฟล์ Updater
+PASS: พบ Update Config และ Updater Source
+
+[2/7] สำรองไฟล์เดิม
+Backup: /Users/ekky/Desktop/Luke ai/backups/updater-config-20260805-142349
+
+[3/7] อัปเดต Manifest URL และข้อมูลผลิตภัณฑ์
+{
+    "enabled": true,
+    "channel": "beta",
+    "manifestUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/latest.json",
+    "checkOnLaunch": true,
+    "timeoutMs": 2500,
+    "autoInstall": true,
+    "cleanupOldVersion": true,
+    "keepConfigBackups": 3,
+    "protectedPaths": [
+        "app/models",
+        "app/llm-models",
+        "app/image-models",
+        "app/video-models",
+        "app/speech-models",
+        "app/tts-models",
+        "app/openvino-models",
+        "app/chat-history",
+        "app/knowledge",
+        "app/projects",
+        "app/outputs",
+        "app/transcriptions",
+        "app/tts-outputs",
+        "app/cache",
+        "app/user-data",
+        "app/config/user-settings.json",
+        "app/update-state"
+    ],
+    "product": "LUKE AI STUDIO",
+    "currentVersion": "1.0.0-beta.1",
+    "offlineFirst": true,
+    "stagedUpdate": true
+}
+
+[4/7] ตรวจว่าไม่มี URL เก่าค้างอยู่
+PASS: ไม่พบ Update URL เก่า
+
+[5/7] ตรวจ Manifest จาก GitHub
+PASS: Manifest ถูกต้อง
+Version: 1.0.0-beta.1
+Channel: beta
+Download: https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/LUKE-AI-STUDIO-1.0.0-beta.1.zip
+
+[6/7] ตรวจ Updater Syntax และ Release Validation
+
+[7/7] สรุปผล
+============================================================
+ AUTO UPDATER CONFIGURATION PASSED
+ Product : LUKE AI STUDIO
+ Channel : beta
+ Manifest: https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.1/latest.json
+ Offline : เปิดเวอร์ชันเดิมต่อเมื่อไม่มีอินเทอร์เน็ต
+ Update  : ดาวน์โหลดไว้ก่อนและสลับหลังปิดโปรแกรม
+============================================================
+Config : /Users/ekky/Desktop/Luke ai/app/config/update.json
+Backup : /Users/ekky/Desktop/Luke ai/backups/updater-config-20260805-142349
+Report : /Users/ekky/Desktop/Luke ai/validation-reports/updater-config-20260805-142349.txt

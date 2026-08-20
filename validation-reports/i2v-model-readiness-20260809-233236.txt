@@ -1,0 +1,178 @@
+============================================================
+ LUKE AI STUDIO - SVD / SVD-XT MODEL READINESS
+ READ ONLY / NO MODEL DOWNLOAD
+============================================================
+
+[1/6] Git + Runtime Safety
+PASS: Runtime READY
+
+[2/6] Extract Exact Worker Model Contract
+Backend auto-model mapping:
+313:    modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+323:    modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+1879:function findOpenVinoModel(modelId) {
+1880:  return getOpenVinoModelInfo().find((model) => model.id === modelId || model.folder === modelId || model.name === modelId);
+2248:function installTtsCatalogModel(modelIdOrFilename) {
+2249:  const raw = String(modelIdOrFilename || "").trim();
+2291:          modelId: manifest.modelId || "onnx-community/Kokoro-82M-v1.0-ONNX",
+2445:      modelId: model.modelId || "onnx-community/Kokoro-82M-v1.0-ONNX",
+4877:function startOpenVinoModelDownload(modelId) {
+4881:  const model = OPENVINO_NPU_MODELS.find((item) => item.id === modelId);
+8153:  modelId,
+8162:        item.id === modelId
+8167:      `Unknown text model: ${modelId}`
+8178:          modelId
+8372:  modelId,
+8409:      item.modelId === modelId &&
+8426:    modelId,
+8432:      modelId
+8487:    modelId: model.id,
+8682:    item.modelId,
+9471:        model.modelId === queueItem.modelId &&
+9478:      `${queueItem.modelId}@${queueItem.version}:${queueItem.variantId}`,
+9479:    modelId: queueItem.modelId,
+9505:          model.modelId === queueItem.modelId &&
+9539:              installedModel.modelId ===
+9561:        modelId: catalogModel.id,
+9624:  modelId
+9631:          model.modelId === modelId
+9890:        modelId: model.id,
+9927:  modelId
+9934:          model.modelId === modelId
+10038:  modelId = null,
+10056:    modelId,
+10088:    modelId = null,
+10148:    modelId,
+10248:      "modelId"
+10251:    conversation.modelId =
+10252:      updates.modelId || null;
+10831:      modelId:
+10832:        conversation.modelId ||
+11500:    conversation.modelId ||
+11513:          model.modelId ===
+11528:    modelId:
+11530:      installedModel?.modelId ||
+11576:        modelId:
+11577:          conversation.modelId ||
+11933:  if (conversation.modelId) {
+11934:    return conversation.modelId;
+11958:      latest?.modelId ||
+11975:      overrides.modelId ||
+12001:                .modelId
+12101:    modelId = null,
+12118:      modelId,
+12210:    modelId:
+12245:      modelId:
+12246:        state.modelId,
+12482:            modelId:
+12483:              state.modelId,
+12554:            modelId:
+12555:              state.modelId,
+12660:    modelId:
+12661:      state.modelId,
+12686:  modelIds
+12700:        Array.isArray(modelIds)
+12701:          ? modelIds
+12705:          (modelId) =>
+12706:            String(modelId || "")
+12873:          candidate.modelId !==
+12874:          response.modelId
+13025:          modelId:
+13026:            model.modelId,
+13029:            model.modelId,
+13042:            model.modelId,
+13052:  modelId,
+13069:        modelId,
+13086:            modelId,
+13101:      `Model ${modelId} returned HTTP ${runtimeResponse.status}`
+13107:      `Model ${modelId} returned no response body.`
+13221:    modelId,
+13233:  modelIds,
+13238:      modelIds
+13295:    modelIds:
+13333:      modelIds:
+13343:        async (modelId) => {
+13348:            modelId,
+13356:                modelId,
+13365:                      modelId,
+13378:                modelId,
+13392:              modelId,
+13467:            modelId:
+13468:              evaluated.modelId,
+13513:            ?.modelId ||
+13564:    modelIds:
+13565:      state.modelIds,
+13606:          modelId:
+13607:            message.modelId ||
+13651:        `Model ID: ${response.modelId}\n` +
+13706:    if (best?.modelId) {
+13707:      return best.modelId;
+13739:        modelId:
+13755:                response.modelId
+13890:            item.modelId
+14167:              fallbackResponse.modelId,
+14181:            fallbackResponse.modelId,
+14496:  const modelId =
+14497:    message.modelId ||
+14511:      modelId
+14513:      modelId,
+14604:    modelId
+14614:    modelId,
+14626:    modelId,
+14687:        modelId
+14693:  modelId
+14700:      modelId
+14727:            response.modelId
+14929:          modelId:
+14930:            model.modelId,
+14933:            model.modelId,
+14956:            model.modelId,
+14966:    model.modelId,
+15014:  modelId
+15023:            modelId
+15035:  modelId
+15040:        modelId
+15187:          (modelId) =>
+15188:            String(modelId || "")
+15207:            model.modelId
+15214:              model.modelId
+15232:                model.modelId
+15236:                model.modelId
+15589:      modelId:
+15599:    routing?.selectedModel?.modelId
+15602:      modelId:
+15603:        routing.selectedModel.modelId,
+15620:        modelId:
+15621:          fallback.modelId,
+15632:      modelId:
+15647:    const modelId =
+15649:        candidate.modelId || ""
+15653:      !modelId ||
+15654:      seen.has(modelId)
+15659:    seen.add(modelId);
+15663:      modelId,
+15686:    modelId,
+15694:      `Model ${modelId} returned no response body.`
+15728:          modelId,
+15825:          modelId,
+15973:        modelId:
+15974:          candidate.modelId,
+16033:                  candidate.modelId,
+16042:                      modelId:
+16043:                        candidate.modelId,
+16063:            `Model ${candidate.modelId} returned HTTP ${runtimeResponse.status}`
+16071:              modelId:
+16072:                candidate.modelId,
+16094:            `Model ${candidate.modelId} returned an empty response.`
+16105:          modelId:
+16106:            candidate.modelId,
+16122:          candidate.modelId;
+16132:              modelId:
+
+[3/6] Check Real Hugging Face Model Snapshots
+
+[4/6] Check Project / External Model Locations
+
+[5/6] Disk / Storage Readiness
+
+[6/6] Generation Download-Risk Gate

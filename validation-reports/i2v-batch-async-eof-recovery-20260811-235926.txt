@@ -1,0 +1,21 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-3 EOF RECOVERY
+ FIX LITERAL BACKSLASH-N / VALIDATE / COMMIT
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+Current dirty state:
+ M app/frontend/src/components/ImageToVideo.jsx
+ M scripts/validation/test-image-to-video-async-ui.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-execution.cjs
+PASS: Resume state valid
+
+[2/6] Repair Literal EOF Backslash-N
+PASS: Async UI syntax and Batch contract valid
+
+[3/6] Complete I2V Regression
+FAIL: Runtime UI regression failed

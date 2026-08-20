@@ -1,0 +1,34 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME INSTALL RECOVERY
+============================================================
+[1/9] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : 621fb91
+Remote : 621fb91
+?? app/config/text-chat/runtime-install-policy.json
+?? app/runtime-state/text-chat/runtime-install-queue.json
+?? scripts/server/text-runtime-installer.cjs
+PASS: Recovery State ถูกต้อง
+[2/9] สำรอง Source ก่อน Recovery
+PASS: Backup Source สำเร็จ
+[3/9] เชื่อม Runtime Installation Queue API
+PASS: เชื่อม Runtime Installation API สำเร็จ
+[4/9] เพิ่ม One-Click Install UI และ Queue Status
+FAIL: Patch Runtime Install UI ไม่สำเร็จ
+[5/9] เพิ่ม Runtime Installation Queue CSS
+[6/9] สร้าง Runtime One-Click Install Test
+[7/9] รัน Test และ Frontend Build
+FAIL: Syntax หรือ Runtime Install Contracts ไม่ผ่าน
+[8/9] รัน Full Release Validation
+[9/9] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+?? app/config/text-chat/runtime-install-policy.json
+?? app/runtime-state/text-chat/runtime-install-queue.json
+?? scripts/server/text-runtime-installer.cjs
+============================================================
+ RUNTIME INSTALL RECOVERY FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-install-recovery-20260807-000703
+Report: validation-reports/runtime-install-recovery-20260807-000703.txt

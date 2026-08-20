@@ -1,0 +1,35 @@
+============================================================
+ LUKE AI STUDIO - HARDENING PHASE 1 FINAL GATE RECOVERY
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : e5bd442
+Remote : e5bd442
+Current dirty state:
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/model-health.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M app/runtime-state/text-models/installed-models.json
+ M scripts/server/image-to-video-job-manager.cjs
+ M scripts/server/image-to-video-process-runner.cjs
+ M scripts/validation/test-image-to-video-async-ui.cjs
+ M scripts/validation/validate-release.sh
+?? app/dist/assets/event-BZX6uTbI.js
+?? app/dist/assets/index-Bo2WBXMk.css
+?? app/dist/assets/index-DEHUddny.js
+?? scripts/validation/test-image-to-video-production-hardening.cjs
+PASS: Recovery state valid
+
+[2/6] Locate Stale Async UI Gate
+
+[3/6] Remove Stale Marker Check
+PASS: Stale Async UI marker gate removed
+
+[4/6] Targeted Regression
+FAIL: git diff --check failed

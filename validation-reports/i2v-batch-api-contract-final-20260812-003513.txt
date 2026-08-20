@@ -1,0 +1,18 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A API CONTRACT FINAL FIX
+ DYNAMIC ROUTE EQUIVALENCE / FRAGMENT FILTER
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+PASS: Resume state valid
+
+[2/7] Harden Endpoint Normalization
+PASS: Endpoint fragment filtering installed
+
+[3/7] Add Dynamic Route Compatibility
+PASS: Dynamic route compatibility installed
+
+[4/7] Replace Missing-Endpoint Comparison

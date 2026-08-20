@@ -1,0 +1,27 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME AUTO-DETECTION PHASE 1
+============================================================
+[1/8] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : a608d2d
+Remote : a608d2d
+PASS: Commit a608d2d พร้อมและ Git สะอาด
+[2/8] สำรอง Source
+PASS: Backup สำเร็จ
+[3/8] สร้าง Runtime Detector
+PASS: Runtime Detector ถูกสร้างแล้ว
+[4/8] เพิ่ม Detection และ Configure API
+FAIL: Detection API Patch ไม่สำเร็จ
+[5/8] สร้าง Automated Test
+[6/8] ตรวจ Syntax, Smoke Test และ Automated Test
+FAIL: Syntax หรือ Contracts ไม่ผ่าน
+[7/8] รัน Full Release Validation
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+?? scripts/server/text-runtime-detector.cjs
+============================================================
+ RUNTIME AUTO-DETECTION PHASE 1 FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-auto-detection-20260806-235006
+Report: validation-reports/runtime-auto-detection-20260806-235006.txt

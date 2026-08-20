@@ -1,0 +1,77 @@
+============================================================
+ LUKE AI STUDIO - FIRST REAL I2V LIVE GENERATION
+ NO NEW PATCH / LIVE OUTPUT / LOCAL MODEL ONLY
+============================================================
+
+[1/7] Resume Safety
+PASS: Current worker patch is valid
+PASS: Hidden model download remains blocked
+
+[2/7] Show Actual Generation Configuration
+55:        result = pipe(
+62:            num_inference_steps=30 if automatic_match else 24,
+74:    ap.add_argument("--prompt", default=""); ap.add_argument("--seconds", type=int, default=5); ap.add_argument("--references", default="")
+108:    frames = pipe(
+110:        num_frames=21 if automatic_match else max(14, min(25, args.seconds * 4)),
+111:        decode_chunk_size=2,
+112:        motion_bucket_id=28 if automatic_match else 70,
+113:        noise_aug_strength=0.01 if automatic_match else 0.02,
+118:    export_to_video(frames, args.output, fps=6)
+
+[3/7] Re-verify Offline SVD + MPS
+PASS: Offline runtime ready
+
+[4/7] Create Fresh Test Image
+PASS: Test image created
+
+[5/7] First Real Generation — LIVE OUTPUT
+PASS: Real Image-to-Video generation completed
+
+[6/7] Validate Generated MP4
+PASS: Generated MP4 verified
+
+[7/7] Backend + Full Validation + Commit
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63735
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63735
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":true,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":true,"ok":true},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":true,"ok":true},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"directo
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+PASS: Backend process stopped after all API tests.
+PASS: release structure and syntax
+FAIL: stale portable Node runtime present
+Set LUKE_AI_PACKAGING_MODE=1 only during validated release packaging
+FAIL: Full Release Validation failed

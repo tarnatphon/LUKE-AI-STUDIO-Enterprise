@@ -1,0 +1,46 @@
+============================================================
+ LUKE AI STUDIO - STORAGE POLICY RECOVERY
+============================================================
+
+[1/7] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : 951c1d7
+Remote : 951c1d7
+ M app/frontend/src/App.css
+ M app/frontend/src/components/PersistentTextChat.jsx
+ M scripts/server/serve.cjs
+ M scripts/server/unified-storage-transfer-queue.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/storage/storage-policy-profiles.json
+?? app/frontend/src/components/StoragePolicyProfilesPanel.jsx
+?? app/runtime-state/storage/storage-policy-state.json
+?? scripts/server/storage-policy-manager.cjs
+?? scripts/validation/test-storage-policy-profiles.cjs
+FAIL: พบไฟล์อื่นเปลี่ยนแปลงโดยไม่คาดหมาย
+ M app/frontend/src/App.css
+ M app/frontend/src/components/PersistentTextChat.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/frontend/src/components/StoragePolicyProfilesPanel.jsx
+?? scripts/validation/test-storage-policy-profiles.cjs
+FAIL: Recovery files ไม่สมบูรณ์
+
+[2/7] สำรองไฟล์ที่จะ Patch
+
+[3/7] เชื่อม Storage Policy Manager และ API
+
+[4/7] สร้าง Storage Policy Dashboard
+
+[5/7] สร้าง Automated Test
+
+[6/7] Test / Build / Full Validation
+FAIL: Syntax หรือ Contracts ไม่ผ่าน
+
+[7/7] คืน Runtime / Commit / Push
+
+============================================================
+ STORAGE POLICY PROFILES RECOVERY FAILED
+============================================================
+ไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-policy-recovery-20260809-213457
+Report : validation-reports/storage-policy-recovery-20260809-213457.txt

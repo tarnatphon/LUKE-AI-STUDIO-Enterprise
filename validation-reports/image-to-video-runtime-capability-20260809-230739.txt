@@ -1,0 +1,9 @@
+============================================================
+ LUKE AI STUDIO - IMAGE-TO-VIDEO RUNTIME CAPABILITY
+============================================================
+
+[1/8] Preflight
+Branch : feat/text-model-manager-v1
+Local  : 5b60186
+Remote : 5b60186
+FAIL: Installer repair contract ไม่พบ

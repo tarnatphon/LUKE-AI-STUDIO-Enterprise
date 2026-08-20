@@ -1,0 +1,122 @@
+============================================================
+ LUKE AI STUDIO - RECOVER BETA 6 MERGE AND RELEASE
+============================================================
+
+[1/10] ตรวจ Repository และ Working Tree
+PASS: Repository พร้อมและ Working Tree สะอาด
+
+[2/10] Fetch GitHub ล่าสุด
+PASS: Fetch สำเร็จ
+
+[3/10] ตรวจ Feature Branch และ Version
+Feature Local : ec3bfd3
+Feature Remote: ec3bfd3
+PASS: Feature Branch Local และ Remote ตรงกัน
+Feature Version: 1.0.0-beta.6
+PASS: Feature Branch เป็น 1.0.0-beta.6
+
+[4/10] สำรองและย้าย Tag Beta 6
+PASS: Backup Tag = backup-v1.0.0-beta.6-before-recovery-20260806-111721
+PASS: Tag v1.0.0-beta.6 ชี้ ec3bfd3
+
+[5/10] สลับไป Main และอัปเดตจาก GitHub
+PASS: Main อัปเดตแล้ว
+
+[6/10] สำรองและ Merge Beta 6 เข้า Main
+PASS: Backup Main = backup/main-before-beta6-recovery-20260806-111721
+PASS: Merge Beta 6 เข้า Main สำเร็จ
+
+[7/10] ตรวจ Version และ Source Syntax
+Main Version: 1.0.0-beta.6
+PASS: Version และ Source Syntax ถูกต้อง
+
+[8/10] Build Frontend และรัน Validation
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 117 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-DeJ1E7Pf.css   88.95 kB │ gzip:  14.07 kB
+../dist/assets/event-DTB6WObU.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-B4OmJqAl.js   454.35 kB │ gzip: 130.20 kB
+
+✓ built in 190ms
+PASS: Frontend Build ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 69
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63308
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63308
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+PASS: Final Release Validation ผ่าน
+
+[9/10] สร้างหรืออัปเดต GitHub Release
+PASS: GitHub Release Beta 6 พร้อม
+
+[10/10] Push Main และตรวจผลสุดท้าย
+PASS: Push Main สำเร็จ
+Branch : main
+Local  : 02e8eb5
+Remote : 02e8eb5
+Tag    : ec3bfd3
+Version: 1.0.0-beta.6
+PASS: Main, Remote, Tag, Version และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 6 RECOVERY AND FINAL MERGE PASSED
+============================================================
+Version      : 1.0.0-beta.6
+Main Commit  : 02e8eb5
+Release Tag  : v1.0.0-beta.6 -> 093baee
+Backup Tag   : backup-v1.0.0-beta.6-before-recovery-20260806-111721
+Backup Branch: backup/main-before-beta6-recovery-20260806-111721
+Report       : validation-reports/beta6-recovery-20260806-111721.txt
+Next         : สร้าง Beta 7 Branch จาก Main

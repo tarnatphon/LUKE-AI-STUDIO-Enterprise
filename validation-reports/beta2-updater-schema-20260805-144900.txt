@@ -1,0 +1,196 @@
+============================================================
+ LUKE AI STUDIO - BETA 2 UPDATER SCHEMA DISCOVERY
+============================================================
+
+[1/7] ตรวจ Beta 2 Updater Source
+PASS: /Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/scripts/updater/update.cjs
+
+[2/7] แสดง Logic เลือก Platform และ Asset ของ Beta 2
+57:function requestBuffer(url, timeoutMs, redirects = 0) {
+60:    const client = url.startsWith("https:") ? https : http;
+61:    const req = client.get(url, { headers: { "User-Agent": "Local-AI-Updater/1.0", Accept: "application/json, application/octet-stream" } }, (res) => {
+64:        const next = new URL(res.headers.location, url).toString();
+79:async function fetchJson(url, timeoutMs) {
+80:  if (url.startsWith("file://")) return readJson(new URL(url), null);
+81:  const buffer = await requestBuffer(url, timeoutMs);
+84:async function download(url, destination, timeoutMs) {
+85:  const buffer = url.startsWith("file://") ? fs.readFileSync(new URL(url)) : await requestBuffer(url, Math.max(timeoutMs, 30000));
+88:function sha256(file) {
+89:  const hash = crypto.createHash("sha256");
+120:    if (process.platform === "win32") {
+232:  const release = manifest.channels?.[channel] || manifest;
+240:  const platformKey = `${process.platform}-${process.arch}`;
+241:  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+242:  if (!asset?.url || !asset?.sha256) {
+243:    status("incompatible", { currentVersion: current.version, latestVersion: release.version, platform: platformKey });
+244:    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+254:  const ext = asset.url.endsWith(".tar.gz") ? ".tar.gz" : asset.url.endsWith(".tgz") ? ".tgz" : ".zip";
+260:    await download(asset.url, pkg, Number(config.timeoutMs) || 2500);
+261:    const actualHash = sha256(pkg);
+262:    if (actualHash.toLowerCase() !== String(asset.sha256).toLowerCase()) throw new Error("SHA256 verification failed");
+
+[3/7] แสดง Source รอบจุดเลือก Asset
+  status("checking", { currentVersion: current.version });
+  let manifest;
+  try {
+    manifest = await fetchJson(manifestUrl, Number(config.timeoutMs) || 2500);
+  } catch (error) {
+    status("offline", { currentVersion: current.version, message: error.message });
+    log(`Offline or update server unavailable. Continuing with installed version ${current.version}.`);
+    return;
+  }
+
+  const channel = process.env.LOCAL_AI_UPDATE_CHANNEL || config.channel || "stable";
+  const release = manifest.channels?.[channel] || manifest;
+  if (!release?.version) throw new Error("Update manifest has no version");
+  if (compareVersions(release.version, current.version) <= 0) {
+    status("up-to-date", { currentVersion: current.version, latestVersion: release.version });
+    log(`Local AI ${current.version} is up to date.`);
+    return;
+  }
+
+  const platformKey = `${process.platform}-${process.arch}`;
+  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+  if (!asset?.url || !asset?.sha256) {
+    status("incompatible", { currentVersion: current.version, latestVersion: release.version, platform: platformKey });
+    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+    return;
+  }
+  if (config.autoInstall === false && !args.has("--install")) {
+    status("available", { currentVersion: current.version, latestVersion: release.version });
+    log(`Update ${release.version} is available.`);
+    return;
+  }
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "local-ai-update-"));
+  const ext = asset.url.endsWith(".tar.gz") ? ".tar.gz" : asset.url.endsWith(".tgz") ? ".tgz" : ".zip";
+  const pkg = path.join(tempRoot, `update${ext}`);
+  const extractDir = path.join(tempRoot, "extract");
+  try {
+    status("downloading", { currentVersion: current.version, latestVersion: release.version });
+    log(`Downloading Local AI ${release.version}...`);
+    await download(asset.url, pkg, Number(config.timeoutMs) || 2500);
+    const actualHash = sha256(pkg);
+    if (actualHash.toLowerCase() !== String(asset.sha256).toLowerCase()) throw new Error("SHA256 verification failed");
+    extractPackage(pkg, extractDir);
+    const payload = findPayload(extractDir);
+    const packageHealth = healthCheck(payload);
+    if (!packageHealth.ok || compareVersions(packageHealth.version, release.version) !== 0) throw new Error(packageHealth.reason || "Update package version mismatch");
+    status("installing", { currentVersion: current.version, latestVersion: release.version });
+    installPayload(payload, config, release.version);
+    status("updated", { previousVersion: current.version, currentVersion: release.version, oldVersionRemoved: config.cleanupOldVersion !== false });
+    log(`Updated successfully to ${release.version}. Previous managed version removed.`);
+  } catch (error) {
+    status("failed", { currentVersion: current.version, latestVersion: release.version, message: error.message });
+    log(`Update failed. Continuing with installed version ${current.version}: ${error.message}`);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+
+[4/7] ดาวน์โหลด Manifest จาก GitHub
+PASS: Manifest HTTP 200
+{
+    "product": "LUKE AI STUDIO",
+    "version": "1.0.0-beta.3",
+    "channel": "beta",
+    "releasedAt": "2026-08-05T07:47:50Z",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "target": "darwin-arm64",
+    "targets": [
+        "darwin-arm64"
+    ],
+    "platforms": [
+        "darwin-arm64"
+    ],
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "sizeBytes": 21463343,
+    "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+    "artifact": {
+        "target": "darwin-arm64",
+        "platform": "darwin",
+        "architecture": "arm64",
+        "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+        "sizeBytes": 21463343,
+        "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+        "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+        "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+    },
+    "artifacts": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "assets": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "packages": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "downloads": {
+        "darwin-arm64": {
+            "target": "darwin-arm64",
+            "platform": "darwin",
+            "architecture": "arm64",
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "sizeBytes": 21463343,
+            "sha256": "679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip",
+            "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip"
+        }
+    },
+    "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.3",
+    "minimumMacOS": "13.0",
+    "offlineFirst": true,
+    "stagedUpdate": true,
+    "validated": true
+}
+
+[5/7] จำลอง Asset Selection ตาม Beta 2
+Release version: 1.0.0-beta.3
+Asset keys: ['darwin-arm64']
+darwin-arm64 : {'target': 'darwin-arm64', 'platform': 'darwin', 'architecture': 'arm64', 'filename': 'LUKE-AI-STUDIO-1.0.0-beta.3.zip', 'sizeBytes': 21463343, 'sha256': '679064feae13a8b742ba66c141f83e2125341497463466718ecd2a4bd735e84d', 'downloadUrl': 'https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip', 'url': 'https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/LUKE-AI-STUDIO-1.0.0-beta.3.zip'}
+darwin : None
+arm64 : None
+
+[6/7] ตรวจ Platform Key ที่ Node.js สร้างจริง
+platform: darwin
+arch: arm64
+platformKey: darwin-arm64
+
+[7/7] ทดสอบ Beta 2 Updater พร้อม Debug Config
+  [Update] Update 1.0.0-beta.3 is available.
+PASS: Updater command จบโดยไม่ Crash
+
+============================================================
+ BETA 2 UPDATER SCHEMA DISCOVERY COMPLETED
+ ขั้นตอนถัดไปจะแก้ Manifest ตาม Schema ของ Beta 2 ที่พบจริง
+Report: validation-reports/beta2-updater-schema-20260805-144900.txt
+============================================================

@@ -1,0 +1,104 @@
+============================================================
+ LUKE AI STUDIO - STORAGE HEALTH SCORING RECOVERY
+============================================================
+
+[1/7] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : 7a5d874
+Remote : 7a5d874
+ M scripts/server/unified-storage-transfer-queue.cjs
+?? app/runtime-state/storage/storage-health-score.json
+?? scripts/server/storage-health-scorer.cjs
+PASS: Health Scorer และ Smart Queue พร้อม
+
+[2/7] สำรองไฟล์ที่จะ Patch
+PASS: Backup สำเร็จ
+
+[3/7] เชื่อม Storage Health API
+PASS: Storage Health API และ Smart Queue ถูกเชื่อมจริงแล้ว
+
+[4/7] สร้าง Health Score Dashboard + CSS
+PASS: Storage Health Dashboard และ CSS ถูกเชื่อมแล้ว
+
+[5/7] สร้าง Automated Test
+PASS: Storage Health Scoring Test ถูกสร้างแล้ว
+
+[6/7] Test / Build / Full Validation
+PASS: Syntax และ Contracts ผ่าน
+PASS: Storage providers receive dynamic health scores.
+PASS: Availability and writable state affect provider selection.
+PASS: Free space and latency affect provider scores.
+PASS: Recent provider failures reduce stability score.
+PASS: Provider priority remains part of Smart Selection.
+PASS: Unified Transfer Queue uses Smart Provider Selection.
+PASS: Storage Health Score Dashboard is connected.
+PASS: Storage Health Scoring validation completed.
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 137 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-BkzTxhxI.css  143.70 kB │ gzip:  19.66 kB
+../dist/assets/event-Bt_p55Jj.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-DaoaZqEC.js   564.78 kB │ gzip: 151.79 kB
+
+✓ built in 127ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+PASS: Health Scoring Test และ Frontend Build ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 130
+Backend endpoints : 154
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 55698
+Routes : /api/health, /api/status, /health
+[backend] /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:17284
+      storageHealthScorer,
+      ^
+
+ReferenceError: Cannot access 'storageHealthScorer' before initialization
+    at Object.<anonymous> (/Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:17284:7)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1892:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v25.2.1
+
+Error: Backend exited before becoming ready. Exit code: 1
+    at main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-backend-api.cjs:316:15)
+FAIL: Full Release Validation ไม่ผ่าน
+
+[7/7] คืน Runtime State / Commit / Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/frontend/src/App.css
+ M app/frontend/src/components/PersistentTextChat.jsx
+ M scripts/server/serve.cjs
+ M scripts/server/unified-storage-transfer-queue.cjs
+ M scripts/validation/validate-release.sh
+?? app/frontend/src/components/StorageHealthScorePanel.jsx
+?? app/runtime-state/storage/storage-health-score.json
+?? scripts/server/storage-health-scorer.cjs
+?? scripts/validation/test-storage-health-scorer.cjs
+
+============================================================
+ STORAGE HEALTH SCORING RECOVERY FAILED
+============================================================
+ไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/storage-health-recovery-20260809-212232
+Report : validation-reports/storage-health-recovery-20260809-212232.txt

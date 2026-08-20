@@ -1,0 +1,97 @@
+============================================================
+ LUKE AI STUDIO - BETA 5 FULL SYSTEM AUDIT
+============================================================
+
+[1/12] ตรวจ Git Repository และ Working Tree
+PASS: Git Repository พร้อม
+Branch : main
+Commit : c216cca
+PASS: อยู่บน Branch main
+PASS: Working Tree สะอาด
+
+[2/12] ตรวจ Local Main กับ GitHub Main
+Local Main : c216cca
+Remote Main: c216cca
+PASS: Local และ GitHub Main ตรงกัน
+
+[3/12] ตรวจ Version Metadata
+app/version.json = 1.0.0-beta.5
+app/config/update.json = 1.0.0-beta.5
+app/frontend/package.json = 1.0.0-beta.5
+app/update-state/status.json = UNKNOWN
+app/update-state/managed-files.json = 1.0.0-beta.5
+FAIL: Version Metadata ผิด 1 จุด
+
+[4/12] ตรวจ Git Tag และ GitHub Release
+Local Tag : 528a281
+Remote Tag: 528a281
+PASS: Local และ Remote Tag ตรงกัน
+Tag: v1.0.0-beta.5
+Name: LUKE AI STUDIO 1.0.0-beta.5
+Prerelease: true
+URL: https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.5
+PASS: GitHub Release พร้อม
+
+[5/12] ตรวจ Release Assets
+latest-1.0.0-beta.5.json
+latest.json
+LUKE-AI-STUDIO-1.0.0-beta.5.zip
+LUKE-AI-STUDIO-1.0.0-beta.5.zip.sha256
+VALIDATION-REPORT.txt
+PASS: LUKE-AI-STUDIO-1.0.0-beta.5.zip
+PASS: LUKE-AI-STUDIO-1.0.0-beta.5.zip.sha256
+PASS: VALIDATION-REPORT.txt
+PASS: latest-1.0.0-beta.5.json
+PASS: latest.json
+
+[6/12] ตรวจ Node.js, npm และ Python
+PASS: Node.js = /usr/local/bin/node
+v25.2.1
+PASS: npm = /usr/local/bin/npm
+11.6.2
+PASS: Python = /opt/homebrew/bin/python3
+Python 3.14.6
+
+[7/12] ตรวจ Source Syntax
+PASS: scripts/updater/update.cjs
+PASS: scripts/server/serve.cjs
+PASS: mac.sh
+PASS: scripts/validation/validate-release.sh
+
+[8/12] Build Frontend
+
+> tauri-app@1.0.0-beta.5 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 117 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-DeJ1E7Pf.css   88.95 kB │ gzip:  14.07 kB
+../dist/assets/event-DTB6WObU.js     1.03 kB │ gzip:   0.53 kB
+../dist/assets/index-B4OmJqAl.js   454.35 kB │ gzip: 130.20 kB
+
+✓ built in 112ms
+PASS: Frontend Build ผ่าน
+
+[9/12] ทดสอบ Auto Updater
+  [Update] LUKE AI STUDIO 1.0.0-beta.5 is up to date.
+PASS: Auto Updater ทำงานถูกต้อง
+
+[10/12] ตรวจ Permanent Permission Fix
+PASS: Permanent Permission Fix อยู่ครบ
+
+[11/12] ตรวจ Security และไฟล์ที่ไม่ควร Commit
+PASS: ไม่พบ Sensitive Files ใน Git
+PASS: ไม่พบไฟล์เกิน 100 MB ใน Git
+
+[12/12] รัน Final Release Validation
+PASS: release structure and syntax
+PASS: Final Release Validation ผ่าน
+
+============================================================
+ LUKE AI STUDIO BETA 5 FULL SYSTEM AUDIT FAILED
+============================================================
+ยังไม่ควรเริ่ม Feature ใหม่จนกว่ารายการ FAIL จะถูกแก้ไข
+Report: validation-reports/beta5-full-system-audit-20260805-155218.txt

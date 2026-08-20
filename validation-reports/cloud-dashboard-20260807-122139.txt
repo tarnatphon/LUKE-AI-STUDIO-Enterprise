@@ -1,0 +1,33 @@
+============================================================
+ LUKE AI STUDIO - CLOUD PROVIDER DASHBOARD
+============================================================
+
+[1/8] ตรวจสถานะ S3-Compatible Adapter
+Branch : feat/text-model-manager-v1
+Commit : 146e8d4
+Last   : feat(storage): add keychain vault and NAS dashboard
+FAIL: ยังไม่พบ S3-Compatible API
+FAIL: ไม่พบ scripts/server/s3-compatible-storage-adapter.cjs
+
+[2/8] สำรอง Frontend และ Validation
+
+[3/8] สร้าง Cloud Provider Dashboard
+
+[4/8] เชื่อม Cloud Dashboard เข้ากับ Text UI
+
+[5/8] เพิ่ม Cloud Dashboard CSS
+
+[6/8] สร้าง Automated Test
+
+[7/8] รัน Test, Frontend Build และ Full Validation
+FAIL: Syntax หรือ Contracts ไม่ผ่าน
+
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+
+============================================================
+ CLOUD PROVIDER DASHBOARD FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/cloud-dashboard-20260807-122139
+Report : validation-reports/cloud-dashboard-20260807-122139.txt

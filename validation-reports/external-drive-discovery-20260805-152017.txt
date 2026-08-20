@@ -1,0 +1,30 @@
+============================================================
+ LUKE AI STUDIO - FIND EXTERNAL AI DRIVE
+============================================================
+
+[1/7] แสดงไดรฟ์ที่เชื่อมต่ออยู่
+/Volumes/.timemachine
+/Volumes/AI
+/Volumes/Backups of Ekkaphon’s MacBook Pro (2)
+/Volumes/Backups of Ekkaphon’s MacBook Pro (2) 1
+/Volumes/com.apple.TimeMachine.localsnapshots
+
+[2/7] ค้นหา External Drive สำหรับ AI
+FAIL: ยังไม่พบไดรฟ์ที่มีคำว่า External
+กรุณาเสียบไดรฟ์ แล้วตรวจว่าปรากฏใน Finder
+
+[3/7] กำหนดโฟลเดอร์ ai-downloads
+
+[4/7] สร้างโครงสร้าง Download Storage
+
+[5/7] ตรวจสิทธิ์เขียน
+
+[6/7] สร้าง Storage Config กลาง
+
+[7/7] Validation, Commit และ Push
+
+============================================================
+ EXTERNAL DRIVE DISCOVERY FAILED
+ยังไม่มีการเปลี่ยนแปลง Storage Config ที่ไม่สมบูรณ์
+ Report : validation-reports/external-drive-discovery-20260805-152017.txt
+============================================================

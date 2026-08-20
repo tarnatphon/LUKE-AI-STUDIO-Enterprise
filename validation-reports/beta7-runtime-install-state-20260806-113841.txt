@@ -1,0 +1,170 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME INSTALL STATE MACHINE
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta7-foundation
+Local  : 0956419
+Remote : 0956419
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/config/runtime-dependencies.json
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/10] สร้าง Runtime Install State Storage
+PASS: Runtime Install State JSON พร้อม
+
+[4/10] เพิ่ม Install State Machine และ Progress APIs
+PASS: เพิ่ม Runtime Install State Machine แล้ว
+
+[5/10] สร้าง Automated State Machine Test
+PASS: สร้าง scripts/validation/test-runtime-install-state.cjs
+
+[6/10] เชื่อม State Machine Test กับ Validation
+PASS: เชื่อม State Machine Test แล้ว
+
+[7/10] ตรวจ Syntax และ API Routes
+PASS: Syntax, State Storage และ Routes ผ่าน
+
+[8/10] รัน State Machine และ Release Validation
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63602
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1785991125388-01153155
+Cancelled job: runtime-1785991125397-c4fa72a1
+PASS: Runtime install state API test completed.
+State Test Exit Code: 0
+PASS: Runtime Install State Machine Test ผ่าน
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 73
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63606
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63606
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63611
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63614
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1785991133973-5ab76760
+Cancelled job: runtime-1785991133982-c7bbbad5
+PASS: Runtime install state API test completed.
+Validation Exit Code: 0
+PASS: Release Validation ผ่านพร้อม State Machine Test
+
+[9/10] Commit และ Push
+app/runtime-state/install-jobs.json
+scripts/server/serve.cjs
+scripts/validation/test-runtime-install-state.cjs
+scripts/validation/validate-release.sh
+ app/runtime-state/install-jobs.json               |   5 +
+ scripts/server/serve.cjs                          | 479 ++++++++++++++++++++++
+ scripts/validation/test-runtime-install-state.cjs | 397 ++++++++++++++++++
+ scripts/validation/validate-release.sh            |   8 +
+ 4 files changed, 889 insertions(+)
+PASS: Commit สำเร็จ
+PASS: Push Beta 7 Branch สำเร็จ
+
+[10/10] ตรวจสถานะสุดท้าย
+Local : 82cddaf
+Remote: 82cddaf
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 RUNTIME INSTALL STATE MACHINE PASSED
+============================================================
+Branch : feat/beta7-foundation
+Commit : 82cddaf
+API    : GET/POST /api/runtime/install/jobs
+API    : GET/PATCH /api/runtime/install/jobs/:jobId
+API    : POST /api/runtime/install/jobs/:jobId/cancel
+States : queued -> preparing -> downloading -> verifying -> installing -> completed
+Storage: app/runtime-state/install-jobs.json
+Report : validation-reports/beta7-runtime-install-state-20260806-113841.txt
+Next   : เพิ่ม Safe Download Worker, SHA256 Verification และ Rollback

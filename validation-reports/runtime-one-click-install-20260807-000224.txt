@@ -1,0 +1,35 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME ONE-CLICK INSTALL
+============================================================
+[1/10] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : 621fb91
+Remote : 621fb91
+PASS: Commit 621fb91 พร้อมและ Git สะอาด
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/PersistentTextChat.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+[3/10] สร้าง Runtime Install Policy และ Queue State
+PASS: Runtime Install Policy และ Queue State ถูกต้อง
+[4/10] สร้าง Runtime Installation Queue Backend
+PASS: Runtime Installation Queue Backend ถูกสร้างแล้ว
+[5/10] เชื่อม Installation Queue API เข้ากับ Backend
+FAIL: Patch Runtime Installation API ไม่สำเร็จ
+[6/10] เพิ่ม One-Click Install UI และ Queue Status
+[7/10] เพิ่ม Runtime Install Queue Styles
+[8/10] สร้าง One-Click Install Automated Test
+[9/10] รัน Test, Frontend Build และ Full Validation
+FAIL: Syntax หรือ Runtime Install Contracts ไม่ผ่าน
+[10/10] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+?? app/config/text-chat/runtime-install-policy.json
+?? app/runtime-state/text-chat/runtime-install-queue.json
+?? scripts/server/text-runtime-installer.cjs
+============================================================
+ RUNTIME ONE-CLICK INSTALL FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-one-click-install-20260807-000224
+Report: validation-reports/runtime-one-click-install-20260807-000224.txt

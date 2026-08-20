@@ -1,0 +1,111 @@
+============================================================
+ LUKE AI STUDIO - BACKEND HEALTH AND NEGATIVE API TESTS
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta6-foundation
+Commit : 8019616
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/10] สำรอง Test Runner
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/backend-negative-tests-20260805-161639/test-backend-api.cjs
+
+[3/10] แก้ Health Validation และเพิ่ม Negative Tests
+PASS: เพิ่ม Semantic Health Check และ Negative Tests แล้ว
+
+[4/10] ตรวจ Source ที่แก้ไข
+129:// LUKE_AI_BACKEND_NEGATIVE_TESTS
+130:function healthResponseIsReady(endpoint, result) {
+139:      result.json.ok === true
+146:async function runNegativeTests(baseUrl) {
+154:    name: "Unknown API route",
+192:    name: "Invalid JSON payload",
+314:        if (healthResponseIsReady(endpoint, result)) {
+378:  await runNegativeTests(
+PASS: Health และ Negative Test Logic อยู่ครบ
+
+[5/10] ตรวจ Syntax
+PASS: Test Runner และ Validation Syntax ผ่าน
+
+[6/10] รัน Backend API Tests
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 61292
+Routes : /api/health, /api/status, /health, /status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:61292
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+NOTICE: /api/health responded but reported ok=false.
+
+PASS: /health
+HTTP: 200
+Body: <!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>LUKE AI STUDIO</title>
+    <script type="module" crossorigin src="/assets/index-B4OmJqAl.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DeJ1E7Pf.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
+
+PASS: Backend API smoke test completed using /health.
+
+Negative API tests:
+FAIL: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 0
+  Body    : fetch failed
+FAIL: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 0
+  Body    : fetch failed
+FAIL: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 0
+  Body    : fetch failed
+
+Error: 3 negative API test(s) failed.
+    at runNegativeTests (/Users/ekky/Desktop/Luke ai/scripts/validation/test-backend-api.cjs:219:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-backend-api.cjs:378:3)
+Test Exit Code: 1
+FAIL: Backend API Tests ไม่ผ่าน
+
+[7/10] ตรวจว่า Health API ไม่เกิด False Pass
+
+[8/10] รัน Release Validation ทั้งระบบ
+
+[9/10] Commit และ Push
+
+[10/10] ตรวจสถานะสุดท้าย
+Local  : 8019616
+Remote : 8019616
+FAIL: สถานะ Git รอบสุดท้ายไม่ถูกต้อง
+ M scripts/validation/test-backend-api.cjs
+
+============================================================
+ BETA 6 BACKEND NEGATIVE API TESTS FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/backend-negative-tests-20260805-161639
+Report : validation-reports/beta6-backend-negative-tests-20260805-161639.txt

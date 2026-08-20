@@ -1,0 +1,74 @@
+============================================================
+ LUKE AI STUDIO - STORAGE USAGE AND SAFE CLEANUP MANAGER
+============================================================
+
+[1/12] ตรวจ Branch, Remote และ Working Tree
+Branch : feat/beta7-foundation
+Local  : 5850c40
+Remote : 5850c40
+PASS: Branch พร้อมและ Working Tree สะอาด
+
+[2/12] ยืนยัน Runtime Storage Foundation
+PASS: Storage, Mount Guard, Install State และ Dashboard พร้อม
+
+[3/12] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/RuntimeDownloadDashboard.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+
+[4/12] เพิ่ม Storage Usage และ Safe Cleanup APIs
+PASS: เพิ่ม Storage Usage และ Safe Cleanup APIs แล้ว
+
+[5/12] เพิ่ม Storage Usage และ Cleanup Manager ใน Dashboard
+PASS: เพิ่ม Storage Cleanup Manager ใน Dashboard แล้ว
+
+[6/12] เพิ่ม Cleanup Manager Styling
+PASS: เพิ่ม Cleanup Manager CSS แล้ว
+
+[7/12] สร้าง Automated Storage Cleanup Test
+PASS: สร้าง scripts/validation/test-runtime-storage-cleanup.cjs
+
+[8/12] เชื่อม Cleanup Test กับ Release Validation
+PASS: เชื่อม Cleanup Test แล้ว
+
+[9/12] ตรวจ Syntax, APIs และ Dashboard Integration
+PASS: Syntax, Cleanup APIs และ Dashboard Integration ผ่าน
+
+[10/12] รัน Storage Cleanup Test
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64132
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+Error: Cleanup dry run failed: {"ok":false,"error":"Cleanup category is currently protected: outputs"}
+    at main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-storage-cleanup.cjs:312:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Cleanup Test Exit Code: 1
+FAIL: Runtime Storage Cleanup Test ไม่ผ่าน
+
+[11/12] Build Frontend และรัน Full Validation
+
+[12/12] คืน Dist, Commit, Push และตรวจสถานะสุดท้าย
+Local : 5850c40
+Remote: 5850c40
+FAIL: Final Git State ไม่ถูกต้อง
+ M app/frontend/src/App.css
+ M app/frontend/src/components/RuntimeDownloadDashboard.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-storage-cleanup.cjs
+
+============================================================
+ BETA 7 STORAGE USAGE OR SAFE CLEANUP FAILED
+============================================================
+Source ยังไม่ถูก Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-storage-cleanup-20260806-121121
+Report: validation-reports/beta7-runtime-storage-cleanup-20260806-121121.txt

@@ -1,0 +1,319 @@
+============================================================
+ LUKE AI STUDIO - UPDATER INSTALL STRUCTURE DISCOVERY
+============================================================
+
+[1/6] ตรวจ Updater Source
+PASS: พบ scripts/updater/update.cjs
+
+[2/6] ตรวจ Node.js Syntax
+PASS: Updater syntax ผ่าน
+
+[3/6] ค้นหาชื่อ Function ทั้งหมด
+23:function now() { return new Date().toISOString(); }
+24:function log(message) {
+29:function readJson(file, fallback) {
+32:function writeJsonAtomic(file, value) {
+37:function status(state, extra = {}) {
+40:function normalizeRel(value) {
+43:function isProtected(rel, protectedPaths) {
+47:function compareVersions(a, b) {
+57:function requestBuffer(url, timeoutMs, redirects = 0) {
+79:async function fetchJson(url, timeoutMs) {
+84:async function download(url, destination, timeoutMs) {
+88:function sha256(file) {
+93:function walkFiles(base, prefix = "") {
+104:function copyFileSafe(source, destination) {
+109:function removeEmptyParents(start, stop) {
+116:function extractPackage(pkg, destination) {
+132:function findPayload(extractDir) {
+143:function healthCheck(root) {
+153:function installPayload(payload, config, nextVersion) {
+200:async function main() {
+
+[4/6] ค้นหาจุด Copy, Install, Rollback และ Health Check
+18:const MANAGED_FILE = path.join(STATE_DIR, "managed-files.json");
+35:  fs.renameSync(tmp, file);
+104:function copyFileSafe(source, destination) {
+106:  fs.copyFileSync(source, destination);
+116:function extractPackage(pkg, destination) {
+130:  if (!result || result.status !== 0) throw new Error("Unable to extract update package");
+132:function findPayload(extractDir) {
+133:  const direct = path.join(extractDir, "Local AI");
+135:  if (fs.existsSync(path.join(extractDir, "app"))) return extractDir;
+136:  const dirs = fs.readdirSync(extractDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+138:    const candidate = path.join(extractDir, dir.name);
+153:function installPayload(payload, config, nextVersion) {
+157:  const backupRoot = path.join(STATE_DIR, `rollback-${Date.now()}`);
+164:    if (fs.existsSync(existing) && fs.statSync(existing).isFile()) copyFileSafe(existing, path.join(backupRoot, rel));
+166:  writeJsonAtomic(path.join(backupRoot, "rollback.json"), { previousVersion: readJson(VERSION_FILE, {}).version || "unknown", files: [...changed] });
+169:    for (const rel of allPayloadFiles) copyFileSafe(path.join(payload, rel), path.join(ROOT, rel));
+187:    log(`Health check failed; rolling back: ${error.message}`);
+192:      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+216:    status("not-configured", { currentVersion: current.version, message: "Running installed version; update source is not configured." });
+217:    log(`Running installed version ${current.version}; update source is not configured.`);
+227:    log(`Offline or update server unavailable. Continuing with installed version ${current.version}.`);
+247:  if (config.autoInstall === false && !args.has("--install")) {
+256:  const extractDir = path.join(tempRoot, "extract");
+263:    extractPackage(pkg, extractDir);
+264:    const payload = findPayload(extractDir);
+267:    status("installing", { currentVersion: current.version, latestVersion: release.version });
+268:    installPayload(payload, config, release.version);
+270:    log(`Updated successfully to ${release.version}. Previous managed version removed.`);
+273:    log(`Update failed. Continuing with installed version ${current.version}: ${error.message}`);
+282:  log(`Updater error. Continuing with installed version: ${error.message}`);
+
+[5/6] แสดง Source รอบข้อความ Health Check Failed
+     1	  try { fs.chmodSync(destination, fs.statSync(source).mode); } catch {}
+     2	}
+     3	function removeEmptyParents(start, stop) {
+     4	  let current = path.dirname(start);
+     5	  while (current.startsWith(stop) && current !== stop) {
+     6	    try { if (fs.readdirSync(current).length === 0) fs.rmdirSync(current); else break; } catch { break; }
+     7	    current = path.dirname(current);
+     8	  }
+     9	}
+    10	function extractPackage(pkg, destination) {
+    11	  fs.mkdirSync(destination, { recursive: true });
+    12	  let result;
+    13	  if (pkg.endsWith(".zip")) {
+    14	    if (process.platform === "win32") {
+    15	      result = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `Expand-Archive -LiteralPath '${pkg.replace(/'/g, "''")}' -DestinationPath '${destination.replace(/'/g, "''")}' -Force`], { stdio: "inherit" });
+    16	    } else {
+    17	      result = spawnSync("unzip", ["-q", "-o", pkg, "-d", destination], { stdio: "inherit" });
+    18	    }
+    19	  } else if (pkg.endsWith(".tar.gz") || pkg.endsWith(".tgz")) {
+    20	    result = spawnSync("tar", ["-xzf", pkg, "-C", destination], { stdio: "inherit" });
+    21	  } else {
+    22	    throw new Error("Unsupported update package format");
+    23	  }
+    24	  if (!result || result.status !== 0) throw new Error("Unable to extract update package");
+    25	}
+    26	function findPayload(extractDir) {
+    27	  const direct = path.join(extractDir, "Local AI");
+    28	  if (fs.existsSync(path.join(direct, "app"))) return direct;
+    29	  if (fs.existsSync(path.join(extractDir, "app"))) return extractDir;
+    30	  const dirs = fs.readdirSync(extractDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+    31	  for (const dir of dirs) {
+    32	    const candidate = path.join(extractDir, dir.name);
+    33	    if (fs.existsSync(path.join(candidate, "app"))) return candidate;
+    34	  }
+    35	  throw new Error("Update package does not contain a valid Local AI payload");
+    36	}
+    37	function healthCheck(root) {
+    38	  const required = ["app/version.json", "app/dist/index.html", "scripts/server/serve.cjs"];
+    39	  for (const rel of required) if (!fs.existsSync(path.join(root, rel))) return { ok: false, reason: `Missing ${rel}` };
+    40	  const node = process.execPath;
+    41	  const syntax = spawnSync(node, ["--check", path.join(root, "scripts", "server", "serve.cjs")], { encoding: "utf8" });
+    42	  if (syntax.status !== 0) return { ok: false, reason: syntax.stderr || "Server syntax check failed" };
+    43	  const version = readJson(path.join(root, "app", "version.json"), null);
+    44	  if (!version?.version) return { ok: false, reason: "Invalid version metadata" };
+    45	  return { ok: true, version: version.version };
+    46	}
+    47	function installPayload(payload, config, nextVersion) {
+    48	  const protectedPaths = Array.isArray(config.protectedPaths) ? config.protectedPaths : [];
+    49	  const allPayloadFiles = walkFiles(payload).filter((rel) => !isProtected(rel, protectedPaths));
+    50	  const oldManaged = readJson(MANAGED_FILE, { files: [] }).files || [];
+    51	  const backupRoot = path.join(STATE_DIR, `rollback-${Date.now()}`);
+    52	  const changed = new Set([...oldManaged, ...allPayloadFiles]);
+    53	  fs.mkdirSync(backupRoot, { recursive: true });
+    54	
+    55	  for (const rel of changed) {
+    56	    if (isProtected(rel, protectedPaths)) continue;
+    57	    const existing = path.join(ROOT, rel);
+    58	    if (fs.existsSync(existing) && fs.statSync(existing).isFile()) copyFileSafe(existing, path.join(backupRoot, rel));
+    59	  }
+    60	  writeJsonAtomic(path.join(backupRoot, "rollback.json"), { previousVersion: readJson(VERSION_FILE, {}).version || "unknown", files: [...changed] });
+    61	
+    62	  try {
+    63	    for (const rel of allPayloadFiles) copyFileSafe(path.join(payload, rel), path.join(ROOT, rel));
+    64	    if (config.cleanupOldVersion !== false) {
+    65	      const newSet = new Set(allPayloadFiles);
+    66	      for (const rel of oldManaged) {
+    67	        if (newSet.has(rel) || isProtected(rel, protectedPaths)) continue;
+    68	        const target = path.join(ROOT, rel);
+    69	        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+    70	          fs.unlinkSync(target);
+    71	          removeEmptyParents(target, ROOT);
+    72	        }
+    73	      }
+    74	    }
+    75	    const health = healthCheck(ROOT);
+    76	    if (!health.ok || compareVersions(health.version, nextVersion) !== 0) throw new Error(health.reason || "Installed version did not match manifest");
+    77	    writeJsonAtomic(MANAGED_FILE, { version: nextVersion, files: allPayloadFiles });
+    78	    fs.rmSync(backupRoot, { recursive: true, force: true });
+    79	    return health;
+    80	  } catch (error) {
+    81	    log(`Health check failed; rolling back: ${error.message}`);
+    82	    for (const rel of changed) {
+    83	      if (isProtected(rel, protectedPaths)) continue;
+    84	      const target = path.join(ROOT, rel);
+    85	      const backup = path.join(backupRoot, rel);
+    86	      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+    87	      else if (fs.existsSync(target) && fs.statSync(target).isFile()) fs.unlinkSync(target);
+    88	    }
+    89	    fs.rmSync(backupRoot, { recursive: true, force: true });
+    90	    throw error;
+    91	  }
+    92	}
+    93	
+    94	async function main() {
+    95	  const args = new Set(process.argv.slice(2));
+    96	  const config = readJson(CONFIG_FILE, {});
+    97	  const current = readJson(VERSION_FILE, { version: "0.0.0" });
+    98	  const manifestUrl = process.env.LOCAL_AI_UPDATE_MANIFEST || config.manifestUrl || "";
+    99	
+   100	  if (args.has("--health-check")) {
+   101	    const health = healthCheck(ROOT);
+   102	    console.log(JSON.stringify(health));
+   103	    process.exit(health.ok ? 0 : 1);
+   104	  }
+   105	  if (config.enabled === false || config.checkOnLaunch === false) {
+   106	    status("disabled", { currentVersion: current.version });
+   107	    return;
+   108	  }
+   109	  if (!manifestUrl) {
+   110	    status("not-configured", { currentVersion: current.version, message: "Running installed version; update source is not configured." });
+   111	    log(`Running installed version ${current.version}; update source is not configured.`);
+   112	    return;
+   113	  }
+   114	
+   115	  status("checking", { currentVersion: current.version });
+   116	  let manifest;
+   117	  try {
+   118	    manifest = await fetchJson(manifestUrl, Number(config.timeoutMs) || 2500);
+   119	  } catch (error) {
+   120	    status("offline", { currentVersion: current.version, message: error.message });
+   121	    log(`Offline or update server unavailable. Continuing with installed version ${current.version}.`);
+   122	    return;
+   123	  }
+   124	
+   125	  const channel = process.env.LOCAL_AI_UPDATE_CHANNEL || config.channel || "stable";
+   126	  const release = manifest.channels?.[channel] || manifest;
+   127	  if (!release?.version) throw new Error("Update manifest has no version");
+   128	  if (compareVersions(release.version, current.version) <= 0) {
+   129	    status("up-to-date", { currentVersion: current.version, latestVersion: release.version });
+   130	    log(`LUKE AI STUDIO ${current.version} is up to date.`);
+   131	    return;
+
+[6/6] แสดง Source รอบคำสั่ง Updated successfully
+     1	    if (config.cleanupOldVersion !== false) {
+     2	      const newSet = new Set(allPayloadFiles);
+     3	      for (const rel of oldManaged) {
+     4	        if (newSet.has(rel) || isProtected(rel, protectedPaths)) continue;
+     5	        const target = path.join(ROOT, rel);
+     6	        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+     7	          fs.unlinkSync(target);
+     8	          removeEmptyParents(target, ROOT);
+     9	        }
+    10	      }
+    11	    }
+    12	    const health = healthCheck(ROOT);
+    13	    if (!health.ok || compareVersions(health.version, nextVersion) !== 0) throw new Error(health.reason || "Installed version did not match manifest");
+    14	    writeJsonAtomic(MANAGED_FILE, { version: nextVersion, files: allPayloadFiles });
+    15	    fs.rmSync(backupRoot, { recursive: true, force: true });
+    16	    return health;
+    17	  } catch (error) {
+    18	    log(`Health check failed; rolling back: ${error.message}`);
+    19	    for (const rel of changed) {
+    20	      if (isProtected(rel, protectedPaths)) continue;
+    21	      const target = path.join(ROOT, rel);
+    22	      const backup = path.join(backupRoot, rel);
+    23	      if (fs.existsSync(backup)) copyFileSafe(backup, target);
+    24	      else if (fs.existsSync(target) && fs.statSync(target).isFile()) fs.unlinkSync(target);
+    25	    }
+    26	    fs.rmSync(backupRoot, { recursive: true, force: true });
+    27	    throw error;
+    28	  }
+    29	}
+    30	
+    31	async function main() {
+    32	  const args = new Set(process.argv.slice(2));
+    33	  const config = readJson(CONFIG_FILE, {});
+    34	  const current = readJson(VERSION_FILE, { version: "0.0.0" });
+    35	  const manifestUrl = process.env.LOCAL_AI_UPDATE_MANIFEST || config.manifestUrl || "";
+    36	
+    37	  if (args.has("--health-check")) {
+    38	    const health = healthCheck(ROOT);
+    39	    console.log(JSON.stringify(health));
+    40	    process.exit(health.ok ? 0 : 1);
+    41	  }
+    42	  if (config.enabled === false || config.checkOnLaunch === false) {
+    43	    status("disabled", { currentVersion: current.version });
+    44	    return;
+    45	  }
+    46	  if (!manifestUrl) {
+    47	    status("not-configured", { currentVersion: current.version, message: "Running installed version; update source is not configured." });
+    48	    log(`Running installed version ${current.version}; update source is not configured.`);
+    49	    return;
+    50	  }
+    51	
+    52	  status("checking", { currentVersion: current.version });
+    53	  let manifest;
+    54	  try {
+    55	    manifest = await fetchJson(manifestUrl, Number(config.timeoutMs) || 2500);
+    56	  } catch (error) {
+    57	    status("offline", { currentVersion: current.version, message: error.message });
+    58	    log(`Offline or update server unavailable. Continuing with installed version ${current.version}.`);
+    59	    return;
+    60	  }
+    61	
+    62	  const channel = process.env.LOCAL_AI_UPDATE_CHANNEL || config.channel || "stable";
+    63	  const release = manifest.channels?.[channel] || manifest;
+    64	  if (!release?.version) throw new Error("Update manifest has no version");
+    65	  if (compareVersions(release.version, current.version) <= 0) {
+    66	    status("up-to-date", { currentVersion: current.version, latestVersion: release.version });
+    67	    log(`LUKE AI STUDIO ${current.version} is up to date.`);
+    68	    return;
+    69	  }
+    70	
+    71	  const platformKey = `${process.platform}-${process.arch}`;
+    72	  const asset = release.assets?.[platformKey] || release.assets?.[process.platform] || release.asset;
+    73	  if (!asset?.url || !asset?.sha256) {
+    74	    status("incompatible", { currentVersion: current.version, latestVersion: release.version, platform: platformKey });
+    75	    log(`Update ${release.version} is not available for ${platformKey}. Continuing with ${current.version}.`);
+    76	    return;
+    77	  }
+    78	  if (config.autoInstall === false && !args.has("--install")) {
+    79	    status("available", { currentVersion: current.version, latestVersion: release.version });
+    80	    log(`Update ${release.version} is available.`);
+    81	    return;
+    82	  }
+    83	
+    84	  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "local-ai-update-"));
+    85	  const ext = asset.url.endsWith(".tar.gz") ? ".tar.gz" : asset.url.endsWith(".tgz") ? ".tgz" : ".zip";
+    86	  const pkg = path.join(tempRoot, `update${ext}`);
+    87	  const extractDir = path.join(tempRoot, "extract");
+    88	  try {
+    89	    status("downloading", { currentVersion: current.version, latestVersion: release.version });
+    90	    log(`Downloading LUKE AI STUDIO ${release.version}...`);
+    91	    await download(asset.url, pkg, Number(config.timeoutMs) || 2500);
+    92	    const actualHash = sha256(pkg);
+    93	    if (actualHash.toLowerCase() !== String(asset.sha256).toLowerCase()) throw new Error("SHA256 verification failed");
+    94	    extractPackage(pkg, extractDir);
+    95	    const payload = findPayload(extractDir);
+    96	    const packageHealth = healthCheck(payload);
+    97	    if (!packageHealth.ok || compareVersions(packageHealth.version, release.version) !== 0) throw new Error(packageHealth.reason || "Update package version mismatch");
+    98	    status("installing", { currentVersion: current.version, latestVersion: release.version });
+    99	    installPayload(payload, config, release.version);
+   100	    status("updated", { previousVersion: current.version, currentVersion: release.version, oldVersionRemoved: config.cleanupOldVersion !== false });
+   101	    log(`Updated successfully to ${release.version}. Previous managed version removed.`);
+   102	  } catch (error) {
+   103	    status("failed", { currentVersion: current.version, latestVersion: release.version, message: error.message });
+   104	    log(`Update failed. Continuing with installed version ${current.version}: ${error.message}`);
+   105	  } finally {
+   106	    fs.rmSync(tempRoot, { recursive: true, force: true });
+   107	  }
+   108	}
+   109	
+   110	main().catch((error) => {
+   111	  const current = readJson(VERSION_FILE, { version: "unknown" });
+   112	  status("failed", { currentVersion: current.version, message: error.message });
+   113	  log(`Updater error. Continuing with installed version: ${error.message}`);
+   114	  process.exitCode = 0;
+   115	});
+============================================================
+ UPDATER STRUCTURE DISCOVERY COMPLETED
+============================================================
+ยังไม่มีการแก้ไข Source
+Report: validation-reports/updater-install-structure-20260805-145317.txt
+Terminal พร้อมรับคำสั่งถัดไป

@@ -1,0 +1,12 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A FINAL CONTRACT RECOVERY
+ DYNAMIC ENDPOINT MATCHING
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+PASS: Resume state valid
+
+[2/7] Replace Legacy endpointMatches()

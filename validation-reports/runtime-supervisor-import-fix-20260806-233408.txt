@@ -1,0 +1,37 @@
+============================================================
+ LUKE AI STUDIO - RUNTIME SUPERVISOR IMPORT FIX
+============================================================
+[1/8] ตรวจสถานะปัจจุบัน
+Branch : feat/text-model-manager-v1
+Local  : 3c562a8
+Remote : 3c562a8
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+?? scripts/validation/test-runtime-supervisor.cjs
+PASS: Recovery State ถูกต้อง
+[2/8] สำรอง Source ก่อนแก้ไข
+PASS: Backup สำเร็จ
+[3/8] แก้ TextRuntimeSupervisor Import และ Scope
+FAIL: แก้ Import ไม่สำเร็จ
+[4/8] ตรวจตำแหน่ง Import และ Bootstrap
+[5/8] ตรวจ Syntax และ Backend Startup
+FAIL: Syntax หรือ Supervisor Contracts ไม่ผ่าน
+[6/8] รัน Runtime Supervisor Test
+[7/8] รัน Full Release Validation
+[8/8] คืน Runtime State, Commit และ Push
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/text-chat/runtime-supervisor-policy.json
+?? app/runtime-state/text-chat/runtime-supervisor.json
+?? scripts/server/text-runtime-supervisor.cjs
+?? scripts/validation/test-runtime-supervisor.cjs
+============================================================
+ RUNTIME SUPERVISOR IMPORT FIX FAILED
+============================================================
+ยังไม่มีการ Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-supervisor-import-fix-20260806-233408
+Report: validation-reports/runtime-supervisor-import-fix-20260806-233408.txt

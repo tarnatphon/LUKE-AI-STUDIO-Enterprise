@@ -1,0 +1,41 @@
+============================================================
+ LUKE AI STUDIO - I2V LOCAL RUNTIME GIT SAFETY
+============================================================
+
+[1/6] Verify Installed Runtime
+PASS: Installed runtime is healthy
+
+[2/6] Inspect Runtime Artifacts
+app/runtimes/image-to-video/installed.json
+app/runtimes/image-to-video/venv
+app/runtimes/image-to-video/venv/bin
+app/runtimes/image-to-video/venv/include
+app/runtimes/image-to-video/venv/pyvenv.cfg
+app/runtimes/image-to-video/venv/.gitignore
+app/runtimes/image-to-video/venv/lib
+app/runtimes/image-to-video/venv/share
+Current Git status:
+?? app/runtimes/
+PASS: No tracked source files currently exist inside app/runtimes/image-to-video
+
+[3/6] Add Precise Local Runtime Ignore Rules
+PASS: Local runtime ignore rules ready
+
+[4/6] Confirm Runtime Is Ignored
+PASS: Runtime venv and manifest are local-only
+
+[5/6] Check Local SVD / SVD-XT Availability
+
+[6/6] Commit Git Ignore Rule Only
+ M .gitignore
+diff --git a/.gitignore b/.gitignore
+index 88b5643..d32fb56 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -31,3 +31,6 @@ runtime-logs/
+ validation-reports/
+ venv/
+ releases/staging-*/
++# LUKE AI STUDIO generated Image-to-Video runtime
++/app/runtimes/image-to-video/venv/
++/app/runtimes/image-to-video/installed.json

@@ -1,0 +1,67 @@
+============================================================
+ LUKE AI STUDIO - CONNECT UPDATER TO EXTERNAL STORAGE
+============================================================
+
+[1/9] ตรวจ Source และ Storage Config
+PASS: scripts/updater/update.cjs
+PASS: app/config/storage.json
+External root: /Volumes/AI/ai-downloads
+Fallback root: ~/Library/Application Support/LUKE AI STUDIO/ai-downloads
+
+[2/9] สำรอง Updater Source
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/updater-external-storage-20260805-152416/update.cjs
+
+[3/9] เพิ่ม Storage Resolver กลางใน Updater
+PASS: เพิ่ม External Update Storage Logic แล้ว
+
+[4/9] ตรวจตำแหน่งที่แก้ไข
+21:// LUKE_AI_EXTERNAL_UPDATE_STORAGE
+22:const STORAGE_CONFIG_FILE = path.join(APP, "config", "storage.json");
+52:function resolveUpdateStorage() {
+53:  const storage = readJson(STORAGE_CONFIG_FILE, {});
+70:  const updatesDirectoryName =
+76:  const tempDirectoryName =
+82:  const updatesDir = path.join(
+84:    updatesDirectoryName
+87:  const tempDir = path.join(
+89:    tempDirectoryName
+92:  fs.mkdirSync(updatesDir, {
+97:  fs.mkdirSync(tempDir, {
+106:    updatesDir,
+107:    tempDir,
+385:  const updateStorage = resolveUpdateStorage();
+387:    path.join(updateStorage.tempDir, "luke-ai-update-")
+391:    `Update storage: ${updateStorage.activeRoot}` +
+396:    updateStorage.updatesDir,
+PASS: Updater เชื่อม Storage Config ครบ
+
+[5/9] ตรวจ Node.js Syntax
+PASS: Updater Syntax ผ่าน
+
+[6/9] ตรวจ External Storage และโฟลเดอร์ปลายทาง
+PASS: External Storage เขียนได้
+Updates: /Volumes/AI/ai-downloads/updates
+Temp   : /Volumes/AI/ai-downloads/temp
+
+[7/9] ทดสอบ Updater Check
+  [Update] LUKE AI STUDIO 1.0.0-beta.5 is up to date.
+PASS: Updater Check ผ่าน
+
+[8/9] รัน Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[9/9] Commit และ Push
+PASS: Commit และ Push สำเร็จ
+
+============================================================
+ AUTO UPDATER EXTERNAL STORAGE CONNECTED
+ Download Root : /Volumes/AI/ai-downloads
+ Updates       : /Volumes/AI/ai-downloads/updates
+ Temporary     : /Volumes/AI/ai-downloads/temp
+ Fallback      : ~/Library/Application Support/LUKE AI STUDIO/ai-downloads
+ Commit        : 488e63c
+ Next          : เชื่อม Model Manager Download API กับ models/*
+ Backup        : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/updater-external-storage-20260805-152416
+ Report        : validation-reports/updater-external-storage-20260805-152416.txt
+============================================================

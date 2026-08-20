@@ -1,0 +1,34 @@
+============================================================
+ LUKE AI STUDIO - STRICT BETA 2 TO BETA 3 INSTALL TEST
+============================================================
+
+[1/8] ตรวจพื้นที่ทดสอบ
+PASS: Test App พร้อม
+
+[2/8] ตรวจ Version ก่อนอัปเดต
+Before: 1.0.0-beta.2
+PASS: เริ่มจาก Beta 2
+
+[3/8] ตั้งค่า Updater สำหรับการทดสอบ
+PASS: Update Config พร้อม
+
+[4/8] ตรวจพบ Beta 3
+  [Update] Update 1.0.0-beta.3 is available.
+PASS: Updater พบ Beta 3
+
+[5/8] ติดตั้ง Beta 3
+  [Update] Downloading Local AI 1.0.0-beta.3...
+  [Update] Health check failed; rolling back: EACCES: permission denied, copyfile '/var/folders/7y/w6l3j_3901j2w0214mq2xm6m0000gn/T/local-ai-update-rDQmlY/extract/LUKE-AI-STUDIO-1.0.0-beta.3/app/speech-backend/mac/cpu/whisper-cli' -> '/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/speech-backend/mac/cpu/whisper-cli'
+  [Update] Update failed. Continuing with installed version 1.0.0-beta.2: EACCES: permission denied, copyfile '/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/update-state/rollback-1785916206114/app/speech-backend/mac/cpu/whisper-cli' -> '/Users/ekky/Desktop/LUKE-AI-STAGED-UPDATE-STRICT-TEST/LUKE-AI-STUDIO-1.0.0-beta.2/app/speech-backend/mac/cpu/whisper-cli'
+FAIL: Updater รายงานข้อผิดพลาด
+
+[6/8] ตรวจ Version หลังอัปเดต
+
+[7/8] ตรวจ Health ของ Package หลังอัปเดต
+
+[8/8] สรุปผล
+============================================================
+ BETA 2 TO BETA 3 INSTALL TEST FAILED
+โปรเจกต์หลักไม่ได้รับผลกระทบ
+ Report  : /Users/ekky/Desktop/Luke ai/validation-reports/beta2-to-beta3-install-20260805-145002.txt
+============================================================

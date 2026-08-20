@@ -1,0 +1,49 @@
+============================================================
+ LUKE AI STUDIO - UPDATER CAPABILITY CHECK
+============================================================
+
+[1/7] ตรวจไฟล์ Updater
+PASS: scripts/updater/update.cjs
+PASS: app/config/update.json
+PASS: app/version.json
+
+[2/7] ตรวจ Version และ Manifest URL
+app/version.json
+  version       : 1.0.0-beta.3
+  currentVersion: 1.0.0-beta.3
+  manifestUrl   : None
+  offlineFirst  : None
+  stagedUpdate  : None
+app/config/update.json
+  version       : 1.0.0-beta.3
+  currentVersion: 1.0.0-beta.3
+  manifestUrl   : https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.3/latest.json
+  offlineFirst  : True
+  stagedUpdate  : True
+
+[3/7] ตรวจ Node.js Syntax
+PASS: Updater syntax ผ่าน
+
+[4/7] แสดงคำสั่งที่ Updater รองรับ
+  [Update] LUKE AI STUDIO 1.0.0-beta.3 is up to date.
+147:  const syntax = spawnSync(node, ["--check", path.join(root, "scripts", "server", "serve.cjs")], { encoding: "utf8" });
+157:  const backupRoot = path.join(STATE_DIR, `rollback-${Date.now()}`);
+166:  writeJsonAtomic(path.join(backupRoot, "rollback.json"), { previousVersion: readJson(VERSION_FILE, {}).version || "unknown", files: [...changed] });
+201:  const args = new Set(process.argv.slice(2));
+247:  if (config.autoInstall === false && !args.has("--install")) {
+
+[5/7] ตรวจโฟลเดอร์ Update State
+app/config/update.json
+app/update-state
+app/update-state/updater.log
+
+[6/7] ทดสอบ Check Update
+  [Update] LUKE AI STUDIO 1.0.0-beta.3 is up to date.
+PASS: Beta 3 เป็นเวอร์ชันล่าสุด
+
+[7/7] สรุปผล
+============================================================
+ UPDATER CAPABILITY CHECK PASSED
+ ขั้นตอนถัดไป: ทดสอบ Staged Update จาก Beta 2 ไป Beta 3
+Report: validation-reports/updater-capability-20260805-144457.txt
+============================================================

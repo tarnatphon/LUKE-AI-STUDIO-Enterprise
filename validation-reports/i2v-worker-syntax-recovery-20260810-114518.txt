@@ -1,0 +1,80 @@
+============================================================
+ LUKE AI STUDIO - I2V WORKER SYNTAX RECOVERY
+ LOCAL MODEL ONLY / NO REDOWNLOAD
+============================================================
+
+[1/9] Recovery Safety
+Branch : feat/text-model-manager-v1
+Local  : c93e4d1
+Remote : c93e4d1
+Current dirty state:
+ M scripts/workers/image_to_video_worker.py
+PASS: Recovery state ปลอดภัย
+
+[2/9] Restore Broken Worker From HEAD
+PASS: Worker กลับสู่ source ที่สะอาด
+
+[3/9] Apply Correct local_files_only Patch
+PASS: Worker syntax + local-only patch ผ่าน
+
+[4/9] Permanent Offline Worker Test
+PASS: Offline Worker safety test ผ่าน
+
+[5/9] Real Offline SVD Load On MPS
+Loading: stabilityai/stable-video-diffusion-img2vid
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]Loading pipeline components...:  20%|██        | 1/5 [00:07<00:29,  7.41s/it]
+Loading weights:   0%|          | 0/520 [00:00<?, ?it/s][A
+Loading weights:   5%|▍         | 25/520 [00:00<00:02, 186.11it/s][A
+Loading weights:  14%|█▍        | 73/520 [00:00<00:01, 275.70it/s][A
+Loading weights:  22%|██▏       | 115/520 [00:00<00:01, 329.85it/s][A
+Loading weights:  29%|██▉       | 153/520 [00:00<00:01, 334.04it/s][A
+Loading weights:  36%|███▌      | 188/520 [00:00<00:01, 330.91it/s][A
+Loading weights:  45%|████▍     | 233/520 [00:00<00:00, 310.89it/s][A
+Loading weights:  54%|█████▍    | 281/520 [00:00<00:00, 343.62it/s][A
+Loading weights:  61%|██████    | 317/520 [00:00<00:00, 347.71it/s][A
+Loading weights:  69%|██████▉   | 361/520 [00:01<00:00, 335.14it/s][A
+Loading weights:  76%|███████▌  | 396/520 [00:01<00:00, 336.52it/s][A
+Loading weights:  85%|████████▍ | 441/520 [00:01<00:00, 349.74it/s][A
+Loading weights:  92%|█████████▏| 477/520 [00:01<00:00, 336.52it/s][A
+Loading weights:  98%|█████████▊| 511/520 [00:01<00:00, 274.23it/s][ALoading weights: 100%|██████████| 520/520 [00:01<00:00, 317.55it/s]
+Loading pipeline components...:  60%|██████    | 3/5 [00:09<00:05,  2.57s/it]Loading pipeline components...:  80%|████████  | 4/5 [00:09<00:01,  1.89s/it]Loading pipeline components...: 100%|██████████| 5/5 [00:09<00:00,  1.96s/it]
+MODEL_LOADED_OFFLINE
+PIPELINE_DEVICE_MPS
+OFFLINE_SVD_MPS_LOAD_PASSED
+PASS: SVD โหลด offline บน MPS
+
+[6/9] Create Temporary Test Image
+PASS: Test input พร้อมใน /tmp
+
+[7/9] First Real Generation
+usage: image_to_video_worker.py [-h] --model MODEL --image IMAGE
+                                --output OUTPUT [--prompt PROMPT]
+                                [--seconds SECONDS] [--references REFERENCES]
+                                [--reference-lock REFERENCE_LOCK]
+                                [--automatic-match AUTOMATIC_MATCH]
+
+options:
+  -h, --help            show this help message and exit
+  --model MODEL
+  --image IMAGE
+  --output OUTPUT
+  --prompt PROMPT
+  --seconds SECONDS
+  --references REFERENCES
+  --reference-lock REFERENCE_LOCK
+  --automatic-match AUTOMATIC_MATCH
+Generation command:
+ app/runtimes/image-to-video/venv/bin/python scripts/workers/image_to_video_worker.py --model svd --image /tmp/luke-i2v-real-input-20260810-114518.png --output /tmp/luke-i2v-real-output-20260810-114518.mp4 --prompt gentle\ cinematic\ movement --seconds 1Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]Loading pipeline components...:  20%|██        | 1/5 [00:00<00:00,  6.15it/s]
+Loading weights:   0%|          | 0/520 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 520/520 [00:00<00:00, 9012.11it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00,  5.12it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 11.88it/s]
+Traceback (most recent call last):
+  File "/Users/ekky/Desktop/Luke ai/scripts/workers/image_to_video_worker.py", line 117, in <module>
+    if __name__ == "__main__": main()
+                               ~~~~^^
+  File "/Users/ekky/Desktop/Luke ai/scripts/workers/image_to_video_worker.py", line 101, in main
+    pipe.enable_vae_slicing(); pipe.enable_vae_tiling()
+    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/ekky/Desktop/Luke ai/app/runtimes/image-to-video/venv/lib/python3.14/site-packages/diffusers/configuration_utils.py", line 176, in __getattr__
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+AttributeError: 'StableVideoDiffusionPipeline' object has no attribute 'enable_vae_slicing'
+FAIL: First Real Generation failed

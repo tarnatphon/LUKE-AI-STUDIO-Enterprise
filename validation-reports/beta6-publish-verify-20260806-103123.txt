@@ -1,0 +1,83 @@
+============================================================
+ LUKE AI STUDIO - PUBLISH AND VERIFY BETA 6
+============================================================
+
+[1/11] ตรวจ Branch, Commit และ Tag
+Branch       : feat/beta6-foundation
+Local Head   : 81f7f92
+Remote Branch: 81f7f92
+Local Tag    : 81f7f92
+Remote Tag   : 81f7f92
+PASS: Branch, Commit, Tag และ Working Tree ถูกต้อง
+
+[2/11] ตรวจ GitHub Login
+PASS: GitHub CLI Login พร้อม
+
+[3/11] ตรวจ Release Assets ในเครื่อง
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/latest-1.0.0-beta.6.json
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/RELEASE-NOTES.md
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.6/BUILD-REPORT.txt
+
+[4/11] ตรวจ ZIP, SHA256 และ Manifest
+Expected SHA: e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Actual SHA  : e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Version     : 1.0.0-beta.6
+Target      : darwin-arm64
+PASS: Local Release Assets ถูกต้อง
+
+[5/11] สร้าง latest.json สำหรับ Auto Update
+PASS: latest.json พร้อม
+
+[6/11] สร้างหรืออัปเดต GitHub Release
+PASS: GitHub Release Beta 6 พร้อม
+
+[7/11] ตรวจ Release Metadata บน GitHub
+Tag: v1.0.0-beta.6
+Name: LUKE AI STUDIO 1.0.0-beta.6
+Prerelease: true
+URL: https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.6
+PASS: อ่าน GitHub Release สำเร็จ
+
+[8/11] ตรวจ Asset Names บน GitHub
+BUILD-REPORT.txt
+latest-1.0.0-beta.6.json
+latest.json
+LUKE-AI-STUDIO-1.0.0-beta.6.zip
+LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: LUKE-AI-STUDIO-1.0.0-beta.6.zip
+PASS: LUKE-AI-STUDIO-1.0.0-beta.6.zip.sha256
+PASS: latest-1.0.0-beta.6.json
+PASS: latest.json
+PASS: BUILD-REPORT.txt
+
+[9/11] ดาวน์โหลด Release กลับมาตรวจ
+PASS: ดาวน์โหลด Release Assets สำเร็จ
+
+[10/11] ตรวจไฟล์ที่ดาวน์โหลดจาก GitHub
+Remote expected SHA: e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Remote actual SHA  : e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Remote version     : 1.0.0-beta.6
+Remote target      : darwin-arm64
+PASS: GitHub Release ZIP, SHA256 และ Manifest ถูกต้อง
+
+[11/11] ตรวจ Portable Runtime ภายใน Release ZIP
+PASS: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123/extracted/LUKE-AI-STUDIO-1.0.0-beta.6/app/tools/node-mac/bin/node
+PASS: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123/extracted/LUKE-AI-STUDIO-1.0.0-beta.6/app/tools/node-mac/bin/npm
+PASS: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123/extracted/LUKE-AI-STUDIO-1.0.0-beta.6/app/tools/node-mac/bin/npx
+PASS: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123/extracted/LUKE-AI-STUDIO-1.0.0-beta.6/app/tools/node-mac/lib/node_modules/npm/package.json
+PASS: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123/extracted/LUKE-AI-STUDIO-1.0.0-beta.6/app/tools/node-mac/runtime.json
+PASS: Portable Runtime จาก GitHub Release ใช้งานได้
+
+============================================================
+ BETA 6 GITHUB RELEASE PUBLISHED AND VERIFIED
+============================================================
+Version : 1.0.0-beta.6
+Commit  : 81f7f92
+Tag     : v1.0.0-beta.6
+Release : https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.6
+SHA256  : e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0
+Verify  : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/beta6-release-verify-20260806-103123
+Report  : validation-reports/beta6-publish-verify-20260806-103123.txt
+Next    : ทดสอบ Auto Update จาก Beta 5 ไป Beta 6

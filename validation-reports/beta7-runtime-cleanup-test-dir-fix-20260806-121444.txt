@@ -1,0 +1,263 @@
+============================================================
+ LUKE AI STUDIO - FIX STORAGE CLEANUP TEST DIRECTORY
+============================================================
+
+[1/9] ตรวจ Branch และไฟล์ Feature ที่ค้าง
+Branch : feat/beta7-foundation
+Local  : 5850c40
+Remote : 5850c40
+ M app/frontend/src/App.css
+ M app/frontend/src/components/RuntimeDownloadDashboard.jsx
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-storage-cleanup.cjs
+PASS: พบเฉพาะ Storage Cleanup Feature ที่คาดไว้
+
+[2/9] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/RuntimeDownloadDashboard.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/test-runtime-storage-cleanup.cjs
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/9] แก้การสร้าง Test Directory ก่อนเขียนไฟล์
+PASS: Test สร้าง Cleanup Directory ก่อนเขียนไฟล์แล้ว
+
+[4/9] ตรวจ Cleanup Protection Logic และ Syntax
+PASS: Syntax, Active Job Protection และ Test Directory ผ่าน
+
+[5/9] รัน Storage Cleanup Test
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64145
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+Cleanup Test Exit Code: 0
+PASS: Runtime Storage Cleanup Test ผ่านครบ
+
+[6/9] Build Frontend
+
+> tauri-app@1.0.0-beta.6 build
+> vite build
+
+vite v8.1.0 building client environment for production...
+[2Ktransforming...✓ 120 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/index.html                   0.72 kB │ gzip:   0.40 kB
+../dist/assets/index-CkvlCpap.css   95.65 kB │ gzip:  14.98 kB
+../dist/assets/event-yItGffdH.js     1.03 kB │ gzip:   0.54 kB
+../dist/assets/index-B511khg9.js   468.29 kB │ gzip: 133.76 kB
+
+✓ built in 91ms
+Build Exit Code: 0
+PASS: Frontend Build ผ่าน
+
+[7/9] รัน Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 70
+Backend endpoints : 78
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 64149
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64149
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64154
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64158
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1785993296509-5166c147
+Cancelled job: runtime-1785993296523-6b39e4b0
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64164
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1785993300000-bea1f17d failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1785993300109-3b553b20 failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64170
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: External drive absence detected.
+PASS: Safe fallback directory selected.
+PASS: Safe fallback directory created.
+PASS: Runtime storage resolve API completed.
+PASS: Missing external volume was not created.
+PASS: External volume mount guard completed.
+PASS: Runtime storage availability test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:64174
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+Validation Exit Code: 0
+PASS: Full Release Validation ผ่านพร้อม Cleanup Manager
+
+[8/9] คืน Generated Dist, Commit และ Push
+PASS: คืน Generated app/dist แล้ว
+app/frontend/src/App.css
+app/frontend/src/components/RuntimeDownloadDashboard.jsx
+scripts/server/serve.cjs
+scripts/validation/test-runtime-storage-cleanup.cjs
+scripts/validation/validate-release.sh
+ app/frontend/src/App.css                           | 113 ++++
+ .../src/components/RuntimeDownloadDashboard.jsx    | 180 ++++++
+ scripts/server/serve.cjs                           | 677 +++++++++++++++++++++
+ .../validation/test-runtime-storage-cleanup.cjs    | 489 +++++++++++++++
+ scripts/validation/validate-release.sh             |   8 +
+ 5 files changed, 1467 insertions(+)
+PASS: Commit Storage Cleanup Feature สำเร็จ
+PASS: Push Beta 7 Branch สำเร็จ
+
+[9/9] ตรวจสถานะสุดท้าย
+Local : 7f8aa74
+Remote: 7f8aa74
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 STORAGE USAGE AND SAFE CLEANUP PASSED
+============================================================
+Branch    : feat/beta7-foundation
+Commit    : 7f8aa74
+Usage API : GET /api/runtime/storage/usage
+Cleanup   : POST /api/runtime/storage/cleanup
+Dry Run   : Required before UI deletion
+Protected : Active runtime files and directories
+Protected : Models, chat history and installed runtimes
+Security  : Path traversal and symlink protection
+Git       : CLEAN
+Report    : validation-reports/beta7-runtime-cleanup-test-dir-fix-20260806-121444.txt
+Next      : เพิ่ม Runtime Installation Catalog URLs และ Signed Manifest สำหรับดาวน์โหลดของจริง

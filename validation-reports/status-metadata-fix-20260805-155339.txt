@@ -1,0 +1,49 @@
+============================================================
+ LUKE AI STUDIO - FIX BETA 5 STATUS METADATA
+============================================================
+
+[1/8] ตรวจไฟล์ Status
+PASS: พบ app/update-state/status.json
+BACKUP: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/status-metadata-fix-20260805-155339/status.json
+
+[2/8] แสดงโครงสร้าง Status ปัจจุบัน
+{
+    "state": "up-to-date",
+    "updatedAt": "2026-08-05T08:52:30.678Z",
+    "currentVersion": "1.0.0-beta.5",
+    "latestVersion": "1.0.0-beta.5"
+}
+PASS: Status JSON อ่านได้
+
+[3/8] เพิ่ม Version Metadata
+version       : 1.0.0-beta.5
+currentVersion: 1.0.0-beta.5
+PASS: Status Metadata เป็น 1.0.0-beta.5
+
+[4/8] ตรวจ Version Metadata ทั้งระบบ
+app/version.json = 1.0.0-beta.5
+app/config/update.json = 1.0.0-beta.5
+app/frontend/package.json = 1.0.0-beta.5
+app/update-state/status.json = 1.0.0-beta.5
+app/update-state/managed-files.json = 1.0.0-beta.5
+PASS: Version Metadata ถูกต้องครบทุกไฟล์
+
+[5/8] ทดสอบ Auto Updater
+  [Update] LUKE AI STUDIO 1.0.0-beta.5 is up to date.
+PASS: Auto Updater ทำงานถูกต้อง
+
+[6/8] รัน Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[7/8] Commit และ Push
+PASS: Commit และ Push สำเร็จ
+
+[8/8] ตรวจผลสุดท้าย
+FAIL: การตรวจผลสุดท้ายไม่ผ่าน
+
+============================================================
+ BETA 5 STATUS METADATA FIX FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/status-metadata-fix-20260805-155339/status.json
+Report : validation-reports/status-metadata-fix-20260805-155339.txt

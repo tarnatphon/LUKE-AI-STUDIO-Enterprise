@@ -1,0 +1,219 @@
+============================================================
+ LUKE AI STUDIO - CONNECT MODEL MANAGER TO EXTERNAL STORAGE
+============================================================
+
+[1/10] ตรวจ Backend Source และ Storage Config
+PASS: scripts/server/serve.cjs
+PASS: app/config/storage.json
+External root: /Volumes/AI/ai-downloads
+Fallback root: ~/Library/Application Support/LUKE AI STUDIO/ai-downloads
+
+[2/10] สำรอง Backend Source
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/model-storage-integration-20260805-152645/serve.cjs
+
+[3/10] ตรวจ Constants ของ Model Paths เดิม
+89:const MODELS  = path.join(ROOT, "app", "models");
+93:const LLM_MODELS = path.join(ROOT, "app", "llm-models");
+121:const SPEECH_MODELS = path.join(ROOT, "app", "speech-models");
+129:const TTS_MODELS = path.join(ROOT, "app", "tts-models");
+218:const OPENVINO_MODELS = path.join(ROOT, "app", "openvino-models");
+
+[4/10] เพิ่ม Model Storage Resolver กลาง
+PASS: เพิ่ม Model Storage Resolver แล้ว
+
+[5/10] ตรวจตำแหน่ง Model Storage ที่แก้ไข
+89:const MODELS = MODEL_STORAGE.modelsRoot;
+93:const LLM_MODELS = MODEL_STORAGE.llm;
+121:const SPEECH_MODELS = MODEL_STORAGE.speech;
+129:const TTS_MODELS = MODEL_STORAGE.speech;
+218:const OPENVINO_MODELS = MODEL_STORAGE.vision;
+224:// LUKE_AI_EXTERNAL_MODEL_STORAGE
+257:function resolveModelStorage() {
+304:    usingFallback: activeRoot !== configuredRoot,
+305:    modelsRoot: resolveDirectory("models", "models"),
+318:const MODEL_STORAGE = resolveModelStorage();
+PASS: Model Paths หลักเชื่อม External Storage แล้ว
+
+[6/10] ตรวจ Node.js Syntax
+PASS: Backend Syntax ผ่าน
+
+[7/10] ตรวจและสร้างโฟลเดอร์ Model Storage
+PASS: /Volumes/AI/ai-downloads/models
+PASS: /Volumes/AI/ai-downloads/models/llm
+PASS: /Volumes/AI/ai-downloads/models/vision
+PASS: /Volumes/AI/ai-downloads/models/video
+PASS: /Volumes/AI/ai-downloads/models/speech
+PASS: /Volumes/AI/ai-downloads/models/embedding
+PASS: /Volumes/AI/ai-downloads/temp
+
+[8/10] ตรวจ Git Diff และ Hardcoded Model Paths
+diff --git a/scripts/server/serve.cjs b/scripts/server/serve.cjs
+index 8e7128c..a0a21dd 100644
+--- a/scripts/server/serve.cjs
++++ b/scripts/server/serve.cjs
+@@ -86,11 +86,11 @@ if (osPlatform === "win32") {
+     BACKEND_PATH = BACKEND_PATHS.linuxVulkan;
+   }
+ }
+-const MODELS  = path.join(ROOT, "app", "models");
++const MODELS = MODEL_STORAGE.modelsRoot;
+ if (!fs.existsSync(MODELS)) {
+   fs.mkdirSync(MODELS, { recursive: true });
+ }
+-const LLM_MODELS = path.join(ROOT, "app", "llm-models");
++const LLM_MODELS = MODEL_STORAGE.llm;
+ if (!fs.existsSync(LLM_MODELS)) {
+   fs.mkdirSync(LLM_MODELS, { recursive: true });
+ }
+@@ -118,7 +118,7 @@ const LLM_BENCHMARK_PATH = path.join(LLM_CONFIG_DIR, "llm-benchmarks.json");
+ if (!fs.existsSync(LLM_CONFIG_DIR)) {
+   fs.mkdirSync(LLM_CONFIG_DIR, { recursive: true });
+ }
+-const SPEECH_MODELS = path.join(ROOT, "app", "speech-models");
++const SPEECH_MODELS = MODEL_STORAGE.speech;
+ if (!fs.existsSync(SPEECH_MODELS)) {
+   fs.mkdirSync(SPEECH_MODELS, { recursive: true });
+ }
+@@ -126,7 +126,7 @@ const TRANSCRIPTIONS = path.join(ROOT, "app", "transcriptions");
+ if (!fs.existsSync(TRANSCRIPTIONS)) {
+   fs.mkdirSync(TRANSCRIPTIONS, { recursive: true });
+ }
+-const TTS_MODELS = path.join(ROOT, "app", "tts-models");
++const TTS_MODELS = MODEL_STORAGE.speech;
+ if (!fs.existsSync(TTS_MODELS)) {
+   fs.mkdirSync(TTS_MODELS, { recursive: true });
+ }
+@@ -215,11 +215,108 @@ const TTS_VOICES = [
+   { id: "bf_emma", name: "Emma", language: "en-gb", gender: "Female", recommended: false },
+   { id: "bm_george", name: "George", language: "en-gb", gender: "Male", recommended: false },
+ ];
+-const OPENVINO_MODELS = path.join(ROOT, "app", "openvino-models");
++const OPENVINO_MODELS = MODEL_STORAGE.vision;
+ if (!fs.existsSync(OPENVINO_MODELS)) {
+   fs.mkdirSync(OPENVINO_MODELS, { recursive: true });
+ }
+ const OUTPUTS = path.join(ROOT, "app", "outputs");
++
++// LUKE_AI_EXTERNAL_MODEL_STORAGE
++const STORAGE_CONFIG_FILE = path.join(APP, "config", "storage.json");
++
++function expandStorageHome(value) {
++  if (typeof value !== "string") return value;
++
++  if (value === "~") {
++    return os.homedir();
++  }
++
++  if (value.startsWith("~/")) {
++    return path.join(os.homedir(), value.slice(2));
++  }
++
++  return value;
++}
++
++function ensureWritableStorageDirectory(directory) {
++  if (!directory) return false;
++
++  try {
++    fs.mkdirSync(directory, {
++      recursive: true,
++      mode: 0o755
++    });
++
++    fs.accessSync(directory, fs.constants.W_OK);
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++function resolveModelStorage() {
++  let storage = {};
++
++  try {
++    storage = JSON.parse(
++      fs.readFileSync(STORAGE_CONFIG_FILE, "utf8")
++    );
++  } catch {}
++
++  const configuredRoot = expandStorageHome(
++    storage.downloadRoot || ""
++  );
++
++  const fallbackRoot = expandStorageHome(
++    storage.fallbackRoot ||
++    path.join(
++      os.homedir(),
++      "Library",
++      "Application Support",
++      "LUKE AI STUDIO",
++      "ai-downloads"
++    )
++  );
++
++  const activeRoot = ensureWritableStorageDirectory(configuredRoot)
++    ? configuredRoot
++    : fallbackRoot;
++
++  ensureWritableStorageDirectory(activeRoot);
++
++  const directories = storage.directories || {};
++
++  const resolveDirectory = (key, fallback) => {
++    const relativePath =
++      typeof directories[key] === "string"
++        ? directories[key]
++        : fallback;
++
++    const resolvedPath = path.join(activeRoot, relativePath);
++    ensureWritableStorageDirectory(resolvedPath);
++    return resolvedPath;
++  };
++
++  return {
++    configuredRoot,
++    fallbackRoot,
++    activeRoot,
++    usingFallback: activeRoot !== configuredRoot,
++    modelsRoot: resolveDirectory("models", "models"),
++    llm: resolveDirectory("llmModels", "models/llm"),
++    vision: resolveDirectory("visionModels", "models/vision"),
++    video: resolveDirectory("videoModels", "models/video"),
++    speech: resolveDirectory("speechModels", "models/speech"),
++    embedding: resolveDirectory(
++      "embeddingModels",
++      "models/embedding"
++    ),
++    temp: resolveDirectory("temp", "temp")
++  };
++}
++
++const MODEL_STORAGE = resolveModelStorage();
++
+ if (!fs.existsSync(OUTPUTS)) {
+   fs.mkdirSync(OUTPUTS, { recursive: true });
+ }
+PASS: Git Diff Check ผ่าน
+PASS: ไม่พบ Model Constants หลักที่ใช้ Path เดิม
+
+[9/10] รัน Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[10/10] Commit และ Push
+PASS: Commit และ Push สำเร็จ
+
+============================================================
+ MODEL MANAGER EXTERNAL STORAGE CONNECTED
+ Root      : /Volumes/AI/ai-downloads/models
+ LLM       : /Volumes/AI/ai-downloads/models/llm
+ Vision    : /Volumes/AI/ai-downloads/models/vision
+ Video     : /Volumes/AI/ai-downloads/models/video
+ Speech    : /Volumes/AI/ai-downloads/models/speech
+ Embedding : /Volumes/AI/ai-downloads/models/embedding
+ Fallback  : ~/Library/Application Support/LUKE AI STUDIO/ai-downloads
+ Commit    : 028d023
+ Next      : ทดสอบ Model Download API ด้วยไฟล์ขนาดเล็ก
+ Backup    : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/model-storage-integration-20260805-152645
+ Report    : validation-reports/model-storage-integration-20260805-152645.txt
+============================================================

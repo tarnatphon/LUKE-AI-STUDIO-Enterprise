@@ -1,0 +1,48 @@
+============================================================
+ LUKE AI STUDIO - BACKEND S3 DEPENDENCY SETUP
+============================================================
+
+[1/7] ตรวจ Branch / Commit / Git
+Branch : feat/text-model-manager-v1
+Local  : 146e8d4
+Remote : 146e8d4
+PASS: Git พร้อม
+
+[2/7] ตรวจ Backend directory
+PASS: พบ scripts/server
+NOTICE: ยังไม่มี Backend package.json
+
+[3/7] สร้าง Backend package scope
+PASS: สร้าง scripts/server/package.json
+
+[4/7] ติดตั้ง AWS SDK ใน Backend scope
+
+added 37 packages, and audited 38 packages in 5s
+
+3 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+PASS: ติดตั้ง AWS SDK สำเร็จ
+
+[5/7] ตรวจ Backend package dependencies
+
+[6/7] ตรวจ Node resolution จาก scripts/server
+PASS: Backend resolve AWS SDK ได้จริง
+
+[7/7] ตรวจ Git Diff
+?? scripts/server/package-lock.json
+?? scripts/server/package.json
+
+
+============================================================
+ BACKEND S3 DEPENDENCY SETUP PASSED
+============================================================
+Backend package : scripts/server/package.json
+Backend lock    : scripts/server/package-lock.json
+AWS Client S3   : READY
+AWS Lib Storage : READY
+Commit          : ยังไม่ Commit
+Push            : ยังไม่ Push
+Report          : validation-reports/backend-s3-dependencies-20260807-122550.txt
+Next            : สร้าง S3-Compatible Adapter และ Validation

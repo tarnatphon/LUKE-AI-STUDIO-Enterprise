@@ -1,0 +1,39 @@
+============================================================
+ LUKE AI STUDIO - FIX UPDATER OUTPUT NAME
+============================================================
+
+[1/8] ตรวจข้อความ Local AI ที่ยังเหลือ
+scripts/updater/update.cjs:133:  const direct = path.join(extractDir, "Local AI");
+scripts/updater/update.cjs:141:  throw new Error("Update package does not contain a valid Local AI payload");
+scripts/updater/update.cjs:236:    log(`Local AI ${current.version} is up to date.`);
+scripts/updater/update.cjs:259:    log(`Downloading Local AI ${release.version}...`);
+app/version.json:2:  "name": "Local AI",
+
+[2/8] สำรอง Updater Source
+PASS: Backup = backups/updater-output-fix-20260805-143710/update.cjs
+
+[3/8] แก้ชื่อใน Updater Source
+PASS: ลบข้อความ Local AI จาก Updater แล้ว
+
+[4/8] ตรวจ Node.js Syntax
+PASS: Updater syntax ผ่าน
+
+[5/8] ทดสอบข้อความ Output จริง
+  [Update] LUKE AI STUDIO 1.0.0-beta.2 is up to date.
+PASS: Output แสดง LUKE AI STUDIO ถูกต้อง
+
+[6/8] ตรวจ Release Validation
+PASS: release structure and syntax
+PASS: Release Validation ผ่าน
+
+[7/8] Commit และ Push
+PASS: Commit และ Push สำเร็จ
+
+[8/8] สรุปผล
+============================================================
+ UPDATER OUTPUT BRANDING FIX PASSED
+ Commit : 768703c
+ Next   : Build LUKE AI STUDIO 1.0.0-beta.3
+ Backup : backups/updater-output-fix-20260805-143710
+ Report : validation-reports/updater-output-fix-20260805-143710.txt
+============================================================

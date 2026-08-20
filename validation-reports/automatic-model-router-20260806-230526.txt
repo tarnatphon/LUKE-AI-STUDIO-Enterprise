@@ -1,0 +1,45 @@
+============================================================
+ LUKE AI STUDIO - AUTOMATIC MODEL ROUTER
+============================================================
+
+[1/10] ตรวจ Branch, Commit และ Working Tree
+Branch : feat/text-model-manager-v1
+Local  : b4e3aa6
+Remote : b4e3aa6
+PASS: Commit b4e3aa6 พร้อมและ Git สะอาด
+
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup app/frontend/src/components/PersistentTextChat.jsx
+PASS: Backup app/frontend/src/App.css
+PASS: Backup scripts/validation/validate-release.sh
+
+[3/10] สร้าง Automatic Model Router Policy
+PASS: Automatic Model Router Policy ถูกต้อง
+
+[4/10] เพิ่ม Automatic Model Router Backend
+PASS: เพิ่ม Automatic Model Router Backend แล้ว
+
+[5/10] เชื่อม Automatic Model Router เข้า Text Chat UI
+FAIL: Patch UI ไม่สำเร็จ
+
+[6/10] เพิ่ม Model Router Styles
+
+[7/10] สร้าง Automatic Model Router Test
+
+[8/10] ตรวจ Syntax, Test และ Frontend Build
+FAIL: Syntax หรือ Automatic Router Contracts ไม่ผ่าน
+
+[9/10] รัน Full Release Validation
+
+[10/10] คืน Runtime State, Commit, Push และตรวจสถานะ
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+?? app/config/text-chat/model-router-policy.json
+
+============================================================
+ AUTOMATIC MODEL ROUTER FAILED
+============================================================
+Source ยังไม่ถูก Commit หาก Validation ไม่ผ่าน
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/model-router-20260806-230526
+Report: validation-reports/automatic-model-router-20260806-230526.txt

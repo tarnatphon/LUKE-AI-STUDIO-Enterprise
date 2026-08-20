@@ -1,0 +1,615 @@
+============================================================
+ LUKE AI STUDIO - STORAGE MANAGER RECOVERY
+============================================================
+
+[1/8] ตรวจ Recovery State
+Branch : feat/text-model-manager-v1
+Local  : 43b1ed9
+Remote : 43b1ed9
+?? app/config/storage/
+?? app/runtime-state/storage/
+?? scripts/server/storage-destination-manager.cjs
+PASS: Recovery State และไฟล์ใหม่ถูกต้อง
+
+[2/8] สำรอง Source
+PASS: Backup สำเร็จ
+
+[3/8] เชื่อม Storage Manager API เข้ากับ Backend
+PASS: Storage Manager API ถูกเชื่อมสำเร็จ
+
+[4/8] สร้าง Storage Manager Automated Test
+PASS: สร้าง Storage Manager Test แล้ว
+
+[5/8] รัน Syntax, Automated Test และ Backend Smoke Test
+PASS: Syntax และ Storage Contracts ผ่าน
+PASS: Local fallback was selected when External Drive was unavailable.
+PASS: External destination was selected when the drive became available.
+PASS: Files were copied from Local fallback to External storage.
+PASS: File size and SHA-256 verification completed.
+PASS: Local copy remained after transfer.
+PASS: Local deletion required explicit confirmation.
+PASS: Confirmed deletion removed only the verified Local source.
+PASS: Cancelled deletion preserved the Local source.
+PASS: Shell and automatic deletion remained disabled.
+PASS: Storage Destination Manager validation completed.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 51744
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51744
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+PASS: Storage Manager Test และ Backend Smoke Test ผ่าน
+
+[6/8] รัน Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 103
+Backend endpoints : 125
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 51750
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51750
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51756
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51759
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1786037742196-3cc76faf
+Cancelled job: runtime-1786037742209-a1078128
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51764
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1786037745696-3b9e65f9 failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1786037745804-84f407ce failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51770
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: External drive absence detected.
+PASS: Safe fallback directory selected.
+PASS: Safe fallback directory created.
+PASS: Runtime storage resolve API completed.
+PASS: Missing external volume was not created.
+PASS: External volume mount guard completed.
+PASS: Runtime storage availability test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51774
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+PASS: Signed catalog policy is enabled.
+PASS: Batch selection is limited to three models.
+PASS: Download concurrency is limited to one.
+PASS: Side-by-side installation and rollback policy are enabled.
+PASS: Preferred storage and Local Staging fallback are enabled.
+PASS: Text Model Manager foundation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51778
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Text model catalog API responded.
+PASS: Official Qwen model is present.
+PASS: Maximum queue selection is three.
+PASS: Download concurrency is one.
+PASS: Text model catalog API validation completed.
+PASS: Community Models category is enabled.
+PASS: Dolphin community model is present.
+PASS: One-click in-app download is required.
+PASS: Community models use the unified queue.
+PASS: SHA256 metadata verification is required.
+PASS: Automatic community model update checking is enabled.
+PASS: Community text model catalog validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51783
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three text models entered the queue.
+PASS: Only one text model downloaded at a time.
+PASS: Queue started the next model automatically.
+PASS: SHA256 verification passed for every model.
+PASS: Models installed into managed storage.
+PASS: Sequential text model download worker validation completed.
+PASS: Text Model Manager cards are present.
+PASS: One-click in-app download is connected.
+PASS: Sequential Download Queue UI is present.
+PASS: Queue actions are connected.
+PASS: Official and Community categories are present.
+PASS: Text Model Manager is connected to the App.
+PASS: Text Model Manager UI validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51788
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Installed Model Registry API responded.
+PASS: Automatic update comparison detected a newer version.
+PASS: Installed and latest versions were reported.
+PASS: Update Available UI is present.
+PASS: One-click Update action is connected.
+PASS: Static Text Model Update endpoint is connected.
+PASS: Text Model Update Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51793
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Hardware profile API responded.
+PASS: Q4, Q5 and Q8 catalog variants are present.
+PASS: Compatible Quantization was selected automatically.
+PASS: Manual Quantization selector is present.
+PASS: Incompatible variants are disabled.
+PASS: Hardware summary UI is connected.
+PASS: Text Model hardware compatibility validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51796
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Conversation was created.
+PASS: Chat message was autosaved.
+PASS: Conversation was restored after refresh.
+PASS: Last opened conversation was remembered.
+PASS: Search, pin and confirmed delete UI are present.
+PASS: Persistent Text Chat validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51800
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Context usage was calculated.
+PASS: Conversation summary was created.
+PASS: Memory snapshot was persisted.
+PASS: Session refreshed without changing the conversation.
+PASS: Raw conversation history was preserved.
+PASS: Restore context contains summary and recent messages.
+PASS: RAM emergency refresh was detected.
+PASS: Context Memory UI is connected.
+PASS: Text Chat Memory Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51805
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime health was checked before refresh.
+PASS: Loaded model was unloaded.
+PASS: Model runtime was loaded again.
+PASS: Runtime health was verified after reload.
+PASS: Conversation ID remained unchanged.
+PASS: Memory summary was injected into the restore prompt.
+PASS: Facts, decisions, tasks and recent messages were restored.
+PASS: Runtime Session UI is connected.
+PASS: Text Runtime Session Refresh validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51812
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: User message was saved before generation.
+PASS: Runtime received an OpenAI-compatible streaming request.
+PASS: Text tokens streamed incrementally.
+PASS: Streaming completion event was emitted.
+PASS: Assistant response was autosaved.
+PASS: Conversation history contains user and assistant messages.
+PASS: Stop Generation UI is connected through Runtime Recovery.
+PASS: Text Generation Streaming validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51818
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three unique models were selected.
+PASS: All three models generated in parallel.
+PASS: Every model streamed its response.
+PASS: All model responses were autosaved.
+PASS: Responses were scored and ranked.
+PASS: Exactly one Best Response was selected.
+PASS: Model ID and evaluation metadata were preserved.
+PASS: Multi-Model Comparison UI is connected.
+PASS: Multi-Model Parallel Generation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51826
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: AI Judge received all model responses.
+PASS: Highest ranked model was selected as Judge.
+PASS: Final Answer streamed incrementally.
+PASS: Final Answer was autosaved.
+PASS: Original model responses were preserved.
+PASS: Source Model IDs were stored in metadata.
+PASS: AI Judge Synthesis UI is connected.
+PASS: AI Judge Synthesis validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51831
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Like feedback was recorded.
+PASS: Dislike and preferred feedback types are supported.
+PASS: Preferred response was marked in conversation history.
+PASS: Model satisfaction scores were persisted.
+PASS: Feedback audit events were preserved.
+PASS: Adaptive model score is available for ranking.
+PASS: Regenerate UI is connected.
+PASS: Text Model Feedback validation completed.
+PASS: Automatic Model Router backend is present.
+PASS: Task classification and scoring are present.
+PASS: Feedback and hardware scoring are connected.
+PASS: Fallback model routing is configured.
+PASS: Automatic Model Router UI is connected.
+PASS: Manual Auto Router toggle is connected.
+PASS: Automatic Model Router validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51836
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Primary model was attempted first.
+PASS: Primary model failure was detected.
+PASS: Automatic fallback model was selected.
+PASS: Fallback response streamed successfully.
+PASS: Only the successful response was autosaved.
+PASS: Recovery attempt history was preserved.
+PASS: Successful fallback Model ID was stored.
+PASS: Runtime Recovery UI is connected.
+PASS: Runtime Failure Recovery validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:51842
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Model failures were recorded.
+PASS: Circuit opened after repeated failures.
+PASS: Open circuit model was excluded from routing.
+PASS: Healthy fallback model remained available.
+PASS: Next half-open probe time was stored.
+PASS: Manual circuit reset closed the circuit.
+PASS: Model Health audit events were persisted.
+PASS: Model Health Dashboard UI is connected.
+PASS: Model Health Circuit Breaker validation completed.
+PASS: Runtime process was started by the supervisor.
+PASS: Runtime PID and ownership were recorded.
+PASS: Runtime crash was detected.
+PASS: Runtime restarted automatically.
+PASS: Restart audit events were persisted.
+PASS: Manual restart replaced the runtime process.
+PASS: Runtime stopped gracefully.
+PASS: Runtime Supervisor validation completed.
+PASS: Runtime Supervisor Settings API is present.
+PASS: Runtime policy validation is present.
+PASS: Localhost-only Health URL validation is present.
+PASS: Shell command execution remains disabled.
+PASS: Supervisor policy reload is connected.
+PASS: Start, Stop, Restart and Reset controls are connected.
+PASS: Runtime Settings UI is connected.
+PASS: Supervisor event history is displayed.
+PASS: Runtime Supervisor Dashboard validation completed.
+PASS: Ollama detection is supported.
+PASS: llama.cpp detection is supported.
+PASS: MLX detection is supported.
+PASS: Runtime presets use localhost endpoints.
+PASS: Detection does not modify Runtime Settings.
+PASS: One-click configuration API is connected.
+PASS: Runtime Auto-Detection validation completed.
+PASS: Runtime Detection Cards are connected.
+PASS: Ollama, llama.cpp and MLX cards are supported.
+PASS: Installed and running states are displayed.
+PASS: Executable, version and health details are displayed.
+PASS: One-click configuration is connected.
+PASS: Missing runtimes cannot be configured.
+PASS: Detection does not change settings without confirmation.
+PASS: Runtime Detection Dashboard validation completed.
+PASS: Runtime install jobs were queued.
+PASS: Runtime installs were processed one at a time.
+PASS: Shell execution remained disabled.
+PASS: One-Click Install UI is connected.
+PASS: Runtime Installation Queue is displayed.
+PASS: Runtime One-Click Install validation completed.
+PASS: Disk space preflight returned available and required bytes.
+PASS: Queued jobs start at zero percent.
+PASS: Installer output updates progress.
+PASS: Completed jobs finish at one hundred percent.
+PASS: Disk preflight is persisted with each install job.
+PASS: Progress and Disk Preflight UI are connected.
+PASS: Runtime Install Progress validation completed.
+PASS: Local fallback was selected when External Drive was unavailable.
+PASS: External destination was selected when the drive became available.
+PASS: Files were copied from Local fallback to External storage.
+PASS: File size and SHA-256 verification completed.
+PASS: Local copy remained after transfer.
+PASS: Local deletion required explicit confirmation.
+PASS: Confirmed deletion removed only the verified Local source.
+PASS: Cancelled deletion preserved the Local source.
+PASS: Shell and automatic deletion remained disabled.
+PASS: Storage Destination Manager validation completed.
+PASS: Full Release Validation ผ่านพร้อม Storage Manager
+
+[7/8] คืน Runtime State และตรวจ Git Diff
+PASS: Git Diff Check ผ่าน
+
+[8/8] Commit และ Push
+ app/config/storage/storage-destination-policy.json |   33 +
+ .../storage/storage-destination-state.json         |    9 +
+ scripts/server/serve.cjs                           |  225 +++++
+ scripts/server/storage-destination-manager.cjs     | 1000 ++++++++++++++++++++
+ .../test-storage-destination-manager.cjs           |  366 +++++++
+ scripts/validation/validate-release.sh             |    8 +
+ 6 files changed, 1641 insertions(+)
+PASS: Commit Storage Destination Manager สำเร็จ
+PASS: Push Feature Branch สำเร็จ
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ STORAGE MANAGER RECOVERY PASSED
+============================================================
+Commit    : c7486bf
+Preferred : EXTERNAL Drive/ai/ai-downloads
+Fallback  : Local Application Support
+Transfer  : Local to External after reconnect
+Verify    : File size and SHA-256
+Deletion  : Explicit confirmation required
+Security  : Shell and automatic deletion disabled
+Git       : CLEAN
+Report    : validation-reports/storage-manager-recovery-20260807-003532.txt
+Next      : Storage Settings UI, Folder Picker และ Transfer Confirmation Dashboard

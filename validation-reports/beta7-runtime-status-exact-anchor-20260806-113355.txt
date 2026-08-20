@@ -1,0 +1,121 @@
+============================================================
+ LUKE AI STUDIO - FIX RUNTIME API WITH EXACT REQ.URL ANCHOR
+============================================================
+
+[1/10] ตรวจ Branch และไฟล์ค้าง
+Branch : feat/beta7-foundation
+Local  : bae2106
+Remote : bae2106
+?? app/config/runtime-dependencies.json
+PASS: ไฟล์ค้างมีเฉพาะ Runtime Catalog
+
+[2/10] สำรอง Source ปัจจุบัน
+PASS: Backup = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-status-exact-anchor-20260806-113355
+
+[3/10] ยืนยัน Health Route แบบ req.url
+  res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+  res.end(body);
+}
+
+// ── HTTP Server ───────────────────────────────────────────────────────────────
+const server = http.createServer(async (req, res) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST" });
+    res.end(); return;
+  }
+
+  if ((req.url.startsWith("/v1/") || req.url.startsWith("/sdapi/")) && ["GET", "POST"].includes(req.method)) {
+    return proxyImageBackendRequest(req, res);
+  }
+  // ── Management API ────────────────────────────────────────────────────────
+  // GET /api/health
+  if (req.url === "/api/health" && req.method === "GET") {
+    return json(res, 200, await getHealth());
+  }
+
+  // GET /api/diagnostics
+  if (req.url === "/api/diagnostics" && req.method === "GET") {
+    return json(res, 200, {
+      generatedAt: new Date().toISOString(),
+      health: await getHealth(),
+      cleanupCandidates: getCleanupCandidates(),
+      download: downloadState,
+      generation: generationState,
+      llm: {
+        ready: llmReady,
+        running: llmProc !== null,
+        error: llmError,
+        settings: llmSettings,
+        port: PORT_LLM,
+      },
+      speech: {
+        ready: speechReady,
+        error: speechError,
+        settings: speechSettings,
+        backend: getSpeechBackend(),
+        transcription: speechTranscriptionState,
+      },
+      hardware: getHardwareSpecs(),
+      telemetry: getTelemetry(),
+    });
+PASS: พบ Exact Health Route Anchor
+
+[4/10] เพิ่ม Runtime Helper และ Route ก่อน Health Route
+PASS: เพิ่ม Runtime Status API สำเร็จ
+
+[5/10] สร้าง Runtime API Test
+PASS: สร้าง scripts/validation/test-runtime-dependencies.cjs
+
+[6/10] เชื่อม Test กับ Release Validation
+PASS: เชื่อม Runtime Test แล้ว
+
+[7/10] ตรวจ Syntax, Route และ Catalog
+PASS: Syntax, Route และ Catalog ผ่าน
+
+[8/10] รัน Runtime API และ Release Validation
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63560
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[backend] /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:6052
+      sendJson(res, 500, {
+      ^
+
+ReferenceError: sendJson is not defined
+    at Server.<anonymous> (/Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs:6052:7)
+    at Server.emit (node:events:508:28)
+    at parserOnIncoming (node:_http_server:1212:12)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)
+
+Node.js v25.2.1
+
+Error: Backend exited with code 1.
+    at main (/Users/ekky/Desktop/Luke ai/scripts/validation/test-runtime-dependencies.cjs:140:15)
+Runtime Test Exit Code: 1
+FAIL: Runtime Dependency API Test ไม่ผ่าน
+
+[9/10] Commit และ Push
+
+[10/10] ตรวจสถานะสุดท้าย
+Local : bae2106
+Remote: bae2106
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/config/runtime-dependencies.json
+?? scripts/validation/test-runtime-dependencies.cjs
+
+============================================================
+ BETA 7 RUNTIME STATUS API FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-status-exact-anchor-20260806-113355
+Report : validation-reports/beta7-runtime-status-exact-anchor-20260806-113355.txt

@@ -1,0 +1,43 @@
+============================================================
+ LUKE AI STUDIO - AUTO UPDATER RUNTIME TEST
+============================================================
+
+[1/8] ตรวจไฟล์ Updater และ Config
+PASS: พบ Updater และ Config
+
+[2/8] สำรอง Config และ Update State
+PASS: Backup = /Users/ekky/Desktop/Luke ai/backups/updater-runtime-test-20260805-142538
+
+[3/8] ตรวจ Node.js ที่ใช้งานได้
+v25.2.1
+PASS: Node.js พร้อม
+
+[4/8] ตรวจ Updater Syntax
+PASS: Updater syntax ผ่าน
+
+[5/8] ตรวจ Manifest และเปรียบเทียบเวอร์ชัน
+Current version: 1.0.0-beta.1
+Remote version : 1.0.0-beta.1
+PASS: Updater ไม่ควรดาวน์โหลดเวอร์ชันเดิมซ้ำ
+
+[6/8] ตรวจคำสั่งของ Updater
+  [Update] Update 1.0.0-beta.1 is not available for darwin-arm64. Continuing with 0.2.0.
+PASS: Updater เรียกใช้งานได้
+
+[7/8] จำลอง Offline-First โดยใช้ Manifest ที่เข้าถึงไม่ได้
+  [Update] Offline or update server unavailable. Continuing with installed version 0.2.0.
+PASS: Offline check จบอย่างปลอดภัย
+
+[8/8] คืน Config เดิมและตรวจ Release
+PASS: คืนค่า Manifest URL สำเร็จ
+PASS: release structure and syntax
+PASS: Release validation ผ่าน
+
+============================================================
+ AUTO UPDATER RUNTIME TEST SUMMARY
+============================================================
+PASS   : 9
+FAIL   : 0
+Report : /Users/ekky/Desktop/Luke ai/validation-reports/updater-runtime-test-20260805-142538.txt
+STATUS : AUTO UPDATER TEST PASSED
+============================================================

@@ -1,0 +1,22 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-4A FINAL REGEX SCANNER FIX
+ CHARACTER CLASS AWARE BACKEND ROUTE EXTRACTION
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : fd0b4af
+Remote : fd0b4af
+PASS: Phase 3A-4A dirty state intact
+
+[2/7] Make Regex Scanner Character-Class Aware
+PASS: Character-class aware scanner installed
+
+[3/7] Verify Backend Dynamic Route Extraction
+LUKE AI STUDIO API Contract Validation
+
+--- DYNAMIC CONTRACT DEBUG ---
+Frontend endpoints: 0
+Backend endpoints : 0
+PASS: All frontend API endpoints have backend contracts.
+FAIL: I2V job dynamic route extraction still missing

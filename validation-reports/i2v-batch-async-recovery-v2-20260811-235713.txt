@@ -1,0 +1,17 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-3 RECOVERY V2
+ EXACT ASYNC UI CONTRACT PATCH
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+Current dirty state:
+ M app/frontend/src/components/ImageToVideo.jsx
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-execution.cjs
+PASS: Resume state valid
+
+[2/6] Fix Async UI Regression Without Regex
+FAIL: Updated Async UI test syntax failed

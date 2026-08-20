@@ -1,0 +1,27 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-5B.2
+ VALIDATION PORT SWEEP / FINALIZE
+============================================================
+
+[1/7] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9511389
+Remote : 9511389
+Current dirty state:
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? app/dist/assets/event-DOOn5ZcB.js
+?? app/dist/assets/index-BBihhO55.js
+?? app/dist/assets/index-Bo2WBXMk.css
+?? scripts/validation/test-generated-image-asset-registration.cjs
+PASS: Phase 3A-5B.2 source intact
+
+[2/7] Discover Validation Ports
+FAIL: No validation ports discovered

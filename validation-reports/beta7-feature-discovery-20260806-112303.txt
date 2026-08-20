@@ -1,0 +1,395 @@
+============================================================
+ LUKE AI STUDIO - BETA 7 FEATURE DISCOVERY
+============================================================
+
+[1/10] ตรวจ Branch, Remote และ Working Tree
+Branch  : main
+Local   : 02e8eb5
+Remote  : 
+Version : 1.0.0-beta.6
+FAIL: Branch, Remote, Version หรือ Working Tree ไม่พร้อม
+
+[2/10] ตรวจโครงสร้าง Source หลัก
+app/capabilities/image-to-video/manifest.json
+app/config/update.json
+app/frontend/.agents/task.md
+app/frontend/package-lock.json
+app/frontend/package.json
+app/frontend/src/App.jsx
+app/frontend/src/components/Generator.jsx
+app/frontend/src/components/Home.jsx
+app/frontend/src/components/ImageToVideo.jsx
+app/frontend/src/components/ModelManager.jsx
+app/frontend/src/components/ReferenceManager.jsx
+app/frontend/src/components/Settings.jsx
+app/frontend/src/components/Sidebar.jsx
+app/frontend/src/components/SpeechTranscriber.jsx
+app/frontend/src/components/TextChat.jsx
+app/frontend/src/components/TextToSpeech.jsx
+app/frontend/src/components/TopStatusBar.jsx
+app/frontend/src/main.jsx
+app/frontend/src/services/api.js
+app/frontend/src/themes.js
+app/frontend/vite.config.js
+app/tools/node-mac/runtime.json
+app/tts-runtime/package-lock.json
+app/tts-runtime/package.json
+app/update-state/managed-files.json
+app/update-state/status.json
+app/version.json
+scripts/build/build_from_source.sh
+scripts/config/llm-backends.json
+scripts/release/build-beta6.sh
+scripts/reset/reset.sh
+scripts/search/cache.js
+scripts/search/content.js
+scripts/search/core.js
+scripts/search/providers.js
+scripts/server/serve.cjs
+scripts/setup/extract_tar.py
+scripts/setup/setup-coreml-npu.sh
+scripts/setup/setup-llama.sh
+scripts/setup/setup-openvino-npu.sh
+scripts/setup/setup-tts.sh
+scripts/setup/setup-whisper.sh
+scripts/setup/setup.sh
+scripts/updater/update.cjs
+scripts/validation/check-api-contracts.cjs
+scripts/validation/test-backend-api.cjs
+scripts/validation/validate-release.sh
+scripts/workers/coreml_server.py
+scripts/workers/image_to_video_worker.py
+scripts/workers/install_image_to_video_runtime.py
+scripts/workers/openvino_npu_worker.py
+scripts/workers/tts-kokoro-worker.mjs
+
+[3/10] ค้นหา TODO, FIXME และงานที่ยังไม่สมบูรณ์
+app/frontend/src/App.jsx:509:      message: `Delete ${cleanupItems.length} temporary/cache item${cleanupItems.length === 1 ? "" : "s"} and free about ${formatBytes(totalBytes)}?\n\nModels and generated outputs are not included.`,
+PASS: พบ Candidate จาก TODO และ FIXME
+
+[4/10] ค้นหา Placeholder และ UI ที่ยังไม่เชื่อมระบบจริง
+app/frontend/src/App.css:951:.chat-composer-textarea::placeholder {
+app/frontend/src/App.css:1001:.chat-composer-send-btn:hover:not(:disabled) {
+app/frontend/src/App.css:1006:.chat-composer-send-btn:active:not(:disabled) {
+app/frontend/src/App.css:1010:.chat-composer-send-btn:disabled {
+app/frontend/src/App.css:1062:.chat-composer-attach-btn:hover:not(:disabled) {
+app/frontend/src/App.css:1068:.chat-composer-attach-btn:disabled {
+app/frontend/src/App.css:1096:.chat-composer-deepthink-btn:hover:not(:disabled) {
+app/frontend/src/App.css:1117:.chat-composer-deepthink-btn.active:hover:not(:disabled) {
+app/frontend/src/App.css:1145:.chat-composer-select:hover:not(:disabled) {
+app/frontend/src/App.css:1184:.chat-model-select-trigger:hover:not(:disabled) {
+app/frontend/src/App.css:1195:.chat-model-select-trigger:disabled {
+app/frontend/src/App.css:1776:.m3-btn:disabled {
+app/frontend/src/App.css:1787:.m3-btn-filled:hover:not(:disabled) {
+app/frontend/src/App.css:1798:.m3-btn-tonal:hover:not(:disabled) {
+app/frontend/src/App.css:1810:.m3-btn-outlined:hover:not(:disabled) {
+app/frontend/src/App.css:1823:.m3-btn-error:hover:not(:disabled) {
+app/frontend/src/App.css:1836:html[data-theme^="dark"] .m3-btn-error:hover:not(:disabled) {
+app/frontend/src/App.css:2064:.m3-segment-item:hover:not(.active):not(.disabled) {
+app/frontend/src/App.css:2069:html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
+app/frontend/src/App.css:2080:.m3-segment-item.disabled {
+app/frontend/src/App.css:2260:.output-placeholder-icon {
+app/frontend/src/App.css:2268:.output-placeholder-text {
+app/frontend/src/App.css:4010:.reference-card.disabled { opacity: 0.48; }
+app/frontend/src/components/ReferenceManager.jsx:78:    <div className={`reference-card appearance-reference-card ${selected ? "selected" : ""} ${!item.enabled ? "disabled" : ""}`}>
+app/frontend/src/components/ReferenceManager.jsx:124:          placeholder="Optional details to keep: smile, haircut, shirt color, expression..."
+app/frontend/src/components/ReferenceManager.jsx:153:  disabled = false,
+app/frontend/src/components/ReferenceManager.jsx:175:    if (disabled) return;
+app/frontend/src/components/ReferenceManager.jsx:190:  }, [disabled, referenceImages, setReferenceImages]);
+app/frontend/src/components/ReferenceManager.jsx:313:          <button type="button" className="m3-btn m3-btn-tonal" onClick={() => fileInputRef.current?.click()} disabled={disabled || referenceImages.length >= MAX_REFERENCES}>
+app/frontend/src/components/ReferenceManager.jsx:316:          <button type="button" className="m3-btn m3-btn-filled" onClick={optimizeForFace} disabled={disabled || referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:319:          <button type="button" className="m3-btn m3-btn-outlined" onClick={savePreset} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:322:          <button type="button" className="m3-btn m3-btn-outlined" onClick={exportJson} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:328:          <button type="button" className="m3-btn m3-btn-error" onClick={() => { setReferenceImages([]); setSelectedIds([]); }} disabled={referenceImages.length === 0}>
+app/frontend/src/components/ReferenceManager.jsx:361:          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by file name or notes..." />
+app/frontend/src/components/ImageToVideo.jsx:166:          <button type="button" onClick={()=>installCapability(capability.state === "error")} disabled={installing} style={{width:"100%", padding:12, display:"flex", justifyContent:"center", gap:8}}>
+app/frontend/src/components/ImageToVideo.jsx:173:        <button onClick={run} disabled={busy || !source || blocked} style={{ width:"100%", marginTop:18, padding:13, display:"flex", justifyContent:"center", gap:8 }}><Play size={18}/>{busy ? "Creating automatically…" : "Create Video Automatically"}</button>
+app/frontend/src/components/SpeechTranscriber.jsx:441:              disabled={!selectedModel || isLoadingModel || isTranscribing || isSelectedRuntimeLoaded}
+app/frontend/src/components/SpeechTranscriber.jsx:482:              <button className="m3-btn m3-btn-filled" onClick={startRecording} disabled={isTranscribing}>
+app/frontend/src/components/SpeechTranscriber.jsx:493:              <button className="m3-btn m3-btn-error" onClick={clearCurrentAudio} disabled={isTranscribing || isRecording}>
+app/frontend/src/components/SpeechTranscriber.jsx:510:                disabled={!audioBlob || !selectedModel || !status.backendInstalled}
+app/frontend/src/components/SpeechTranscriber.jsx:534:            <button className="m3-btn m3-btn-outlined" onClick={saveText} disabled={!resultText.trim()}>
+app/frontend/src/components/SpeechTranscriber.jsx:538:            <button className="m3-btn m3-btn-outlined" onClick={saveJson} disabled={!resultText.trim()}>
+app/frontend/src/components/SpeechTranscriber.jsx:554:          placeholder="Transcript output will appear here."
+app/frontend/src/components/Generator.jsx:799:                  placeholder="Enter a descriptive prompt (e.g. 'A futuristic city in cyberpunk aesthetic, high details, cinematic lighting')..."
+app/frontend/src/components/Generator.jsx:800:                  disabled={isGenerating}
+app/frontend/src/components/Generator.jsx:816:                      <button type="button" className="m3-btn m3-btn-error" style={{ height: "34px", flexShrink: 0 }} onClick={handleClearBaseImage} disabled={isGenerating}>
+app/frontend/src/components/Generator.jsx:828:                        disabled={isGenerating}
+app/frontend/src/components/Generator.jsx:851:                        disabled={isGenerating}
+app/frontend/src/components/Generator.jsx:873:                disabled={isGenerating}
+app/frontend/src/components/Generator.jsx:903:                disabled={isGenerating || !prompt.trim() || !activeModel}
+app/frontend/src/components/Generator.jsx:1029:                <Sparkles className="output-placeholder-icon" />
+app/frontend/src/components/Generator.jsx:1030:                <p className="output-placeholder-text">
+app/frontend/src/components/TextChat.jsx:934:              disabled={isBusy}
+app/frontend/src/components/TextChat.jsx:943:                disabled={isBusy}
+app/frontend/src/components/TextChat.jsx:988:                disabled={isBusy}
+app/frontend/src/components/TextChat.jsx:1037:              disabled={messages.length === 0}
+app/frontend/src/components/TextChat.jsx:1269:                placeholder={status.ready ? "Message your local model... (Shift+Enter for new line)" : "Select and load a GGUF model above to begin"}
+app/frontend/src/components/TextChat.jsx:1270:                disabled={!status.ready || isBusy}
+app/frontend/src/components/TextChat.jsx:1281:                  disabled={!supportsVision || isBusy}
+app/frontend/src/components/TextChat.jsx:1289:                  disabled={!status.ready || isBusy}
+app/frontend/src/components/TextChat.jsx:1321:                    disabled={(!input.trim() && attachments.length === 0) || !status.ready}
+app/frontend/src/components/ModelManager.jsx:1674:              disabled={contextWindow <= 0}
+app/frontend/src/components/ModelManager.jsx:1694:              disabled={contextWindow >= 20000}
+app/frontend/src/components/ModelManager.jsx:1785:                      <button className="m3-btn m3-btn-error" style={{ height: "36px", padding: "0 16px" }} onClick={() => handleUnloadModel()} disabled={isUnloading}>
+app/frontend/src/components/ModelManager.jsx:1795:                          disabled={isBusy}
+app/frontend/src/components/ModelManager.jsx:1808:                          disabled={isBusy}
+app/frontend/src/components/ModelManager.jsx:1867:              <button className="m3-btn m3-btn-tonal" onClick={() => handleVideoCapabilityAction(true)} disabled={videoActionBusy}>
+app/frontend/src/components/ModelManager.jsx:1872:              <button className="m3-btn m3-btn-filled" onClick={() => handleVideoCapabilityAction(videoCapability.state === "error")} disabled={videoActionBusy || videoCapability.state === "installing"}>
+app/frontend/src/components/ModelManager.jsx:1914:              placeholder="Search Hugging Face GGUF models..."
+app/frontend/src/components/ModelManager.jsx:2052:                      disabled={(installed || downloading) && !model.actionType}
+app/frontend/src/components/ModelManager.jsx:2083:            disabled={isLoadingMoreModels}
+app/frontend/src/components/ModelManager.jsx:2127:            disabled={importProgress !== null}
+app/frontend/src/components/ModelManager.jsx:2182:              placeholder="e.g. https://huggingface.co/..."
+app/frontend/src/components/ModelManager.jsx:2185:              disabled={false}
+app/frontend/src/components/ModelManager.jsx:2191:              disabled={false}
+app/frontend/src/components/ModelManager.jsx:2210:              <button className="m3-btn m3-btn-outlined" onClick={() => setPendingLoadModel(null)} disabled={isUnloading}>
+app/frontend/src/components/ModelManager.jsx:2213:              <button className="m3-btn m3-btn-error" onClick={handleUnloadPendingOnly} disabled={isUnloading}>
+app/frontend/src/components/ModelManager.jsx:2217:              <button className="m3-btn m3-btn-filled" onClick={handleUnloadThenLoad} disabled={isUnloading}>
+app/frontend/src/components/Settings.jsx:717:                      disabled={isSD15OrCustom && mode === "sdxl"}
+app/frontend/src/components/Settings.jsx:740:                        disabled={isOpenVinoNpu && ratio.id !== "1:1"}
+app/frontend/src/components/Settings.jsx:818:                    placeholder="-1 for random"
+app/frontend/src/components/Settings.jsx:881:                      className={`m3-segment-item ${constraints.backendType === b.id ? "active" : ""} ${!isAvailable ? "disabled" : ""}`}
+app/frontend/src/components/Settings.jsx:883:                      disabled={!isAvailable}
+app/frontend/src/components/Settings.jsx:937:                            disabled={backendDownload.active}
+app/frontend/src/components/Settings.jsx:988:                   placeholder="Enter system prompt..."
+app/frontend/src/components/Settings.jsx:1098:                  placeholder="-1"
+app/frontend/src/components/TextToSpeech.jsx:225:              disabled={!selectedModel || isLoadingModel || isGenerating || isLoaded}
+app/frontend/src/components/TextToSpeech.jsx:261:            placeholder="Type text to turn into speech..."
+app/frontend/src/components/TextToSpeech.jsx:273:                disabled={!text.trim() || !selectedModel || !status.runtimeInstalled}
+app/frontend/src/components/TextToSpeech.jsx:288:            <button className="m3-btn m3-btn-outlined" onClick={() => output?.url && downloadUrl(output.url, output.audioFile || "tts.wav")} disabled={!output?.url}>
+app/frontend/src/components/TopStatusBar.jsx:149:            disabled={isStoppingServer}
+app/frontend/src/services/api.js:1078:// we surface that error to the UI instead of silently returning a fake placeholder.
+PASS: พบ Candidate จาก UI Placeholder
+
+[5/10] ตรวจ Frontend API References
+/api/backend-options
+/api/backend-status
+/api/cancel-download
+/api/capabilities/image-to-video/install
+/api/capabilities/image-to-video/status
+/api/cleanup
+/api/cleanup-candidates
+/api/delete-model
+/api/delete-outputs
+/api/diagnostics
+/api/download-backend
+/api/download-model
+/api/download-openvino-model
+/api/download-progress
+/api/generation-progress
+/api/hardware-specs
+/api/health
+/api/huggingface/models
+/api/image-to-video/compatibility
+/api/image-to-video/generate
+/api/import-model
+/api/llm/backends
+/api/llm/benchmark
+/api/llm/chat
+/api/llm/conversations
+/api/llm/delete-conversation
+/api/llm/delete-model
+/api/llm/download-model
+/api/llm/import-model
+/api/llm/models
+/api/llm/recommend
+/api/llm/save-conversation
+/api/llm/start
+/api/llm/stats
+/api/llm/status
+/api/llm/stop
+/api/models
+/api/openvino-generate
+/api/openvino-models
+/api/outputs
+/api/restart-backend
+/api/save-output
+/api/speech/delete-model
+/api/speech/delete-transcription
+/api/speech/download-model
+/api/speech/import-model
+/api/speech/models
+/api/speech/start
+/api/speech/status
+/api/speech/stop
+/api/speech/transcribe
+/api/speech/transcriptions
+/api/stop-backend
+/api/telemetry
+/api/tts/delete-model
+/api/tts/delete-output
+/api/tts/download-model
+/api/tts/import-model
+/api/tts/models
+/api/tts/outputs
+/api/tts/speak
+/api/tts/start
+/api/tts/status
+/api/tts/stop
+/api/web-search
+
+[6/10] ตรวจ Backend API Contracts
+/api/backend-options
+/api/backend-status
+/api/cancel-download
+/api/capabilities/image-to-video/install
+/api/capabilities/image-to-video/status
+/api/cleanup
+/api/cleanup-candidates
+/api/delete-model
+/api/delete-outputs
+/api/diagnostics
+/api/download-backend
+/api/download-model
+/api/download-openvino-model
+/api/download-progress
+/api/generation-progress
+/api/hardware-specs
+/api/health
+/api/huggingface/models
+/api/image-to-video/compatibility
+/api/image-to-video/generate
+/api/import-model
+/api/llm/backends
+/api/llm/benchmark
+/api/llm/chat
+/api/llm/conversations
+/api/llm/delete-conversation
+/api/llm/delete-model
+/api/llm/download-model
+/api/llm/import-model
+/api/llm/model-settings
+/api/llm/models
+/api/llm/recommend
+/api/llm/save-conversation
+/api/llm/start
+/api/llm/stats
+/api/llm/status
+/api/llm/stop
+/api/models
+/api/openvino-generate
+/api/openvino-models
+/api/output-file
+/api/outputs
+/api/restart-backend
+/api/save-output
+/api/speech/delete-model
+/api/speech/delete-transcription
+/api/speech/download-model
+/api/speech/import-model
+/api/speech/models
+/api/speech/start
+/api/speech/status
+/api/speech/stop
+/api/speech/transcribe
+/api/speech/transcriptions
+/api/status
+/api/stop-backend
+/api/telemetry
+/api/tts/delete-model
+/api/tts/delete-output
+/api/tts/download-model
+/api/tts/import-model
+/api/tts/models
+/api/tts/outputs
+/api/tts/speak
+/api/tts/start
+/api/tts/status
+/api/tts/stop
+/api/web-search
+/api/web-search/config
+
+Potential unmatched Frontend endpoints:
+PASS: ไม่พบ Frontend Endpoint ที่ขาด Backend Contract
+
+[7/10] ตรวจ Automated Test Coverage
+./scripts/validation/test-backend-api.cjs
+Test Files: 1
+
+[8/10] ตรวจ Feature Modules ปัจจุบัน
+image        24 files
+video        16 files
+speech       21 files
+tts          19 files
+model        30 files
+download     25 files
+history      11 files
+reference    18 files
+memory       11 files
+plugin       4 files
+update       20 files
+settings     18 files
+
+[9/10] รัน Baseline Validation
+FAIL: Baseline Source Syntax ไม่ผ่านหรือไม่พบ Node.js
+
+[10/10] สร้าง Beta 7 Feature Candidate Report
+PASS: สร้าง Candidate Report แล้ว
+Candidate: validation-reports/beta7-feature-candidates-20260806-112303.md
+# LUKE AI STUDIO Beta 7 Feature Candidates
+
+Generated: 2026-08-06 11:23:13
+Branch: feat/beta7-foundation
+Base version: 1.0.0-beta.6
+Base commit: 02e8eb5
+
+## Discovery Summary
+
+- TODO or FIXME findings: 1
+- UI placeholder findings: 92
+- Potential unmatched API endpoints: 0
+- Existing automated test files: 1
+
+## Recommended Beta 7 Feature Order
+
+### 1. Runtime Dependency Manager
+
+Create a user-friendly runtime manager that detects missing optional dependencies, explains what is missing in Thai, installs approved components safely, verifies checksums and supports rollback.
+
+Reason: Beta 6 backend health still reports optional Portable Node.js and npm as unavailable in the source workspace even though release packaging includes them.
+
+### 2. Health Dashboard
+
+Add a visual System Health page showing Node.js, npm, image runtime, video runtime, speech runtime, model storage, available disk space and writable folders.
+
+### 3. Runtime Installation Tests
+
+Add automated tests for dependency detection, install success, checksum failure, interrupted installation and rollback.
+
+### 4. Download Destination Settings
+
+Add a persistent download destination setting with external-drive availability detection and safe fallback when the selected drive is disconnected.
+
+Default preferred destination:
+
+```text
+/Volumes/EXTERNAL Drive/ai/ai-downloads
+```
+
+### 5. Storage and Cleanup Manager
+
+Show model, cache, output and temporary file sizes, with safe cleanup controls that never delete active models or user projects.
+
+## Selected First Feature
+
+**Beta 7 Runtime Dependency Manager Foundation**
+
+Initial scope:
+
+- Runtime status API
+- Dependency catalog
+- Safe installation state machine
+- SHA256 verification
+- Download progress
+- Cancellation
+- Rollback
+- External-drive path support
+- Thai and English status messages
+- Automated validation tests
+
+============================================================
+ BETA 7 FEATURE DISCOVERY FAILED
+============================================================
+ยังไม่มีการแก้ Source หลัก
+Report: validation-reports/beta7-feature-discovery-20260806-112303.txt

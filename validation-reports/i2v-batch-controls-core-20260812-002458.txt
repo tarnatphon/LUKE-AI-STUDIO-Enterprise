@@ -1,0 +1,22 @@
+============================================================
+ LUKE AI STUDIO - I2V PHASE 3A-4A
+ PERSISTENT BATCH CONTROLS CORE
+============================================================
+
+[1/8] Safety + Contract Verification
+PASS: Certified contracts detected
+
+[2/8] Add Persistent Paused Job State
+PASS: Persistent Batch state installed
+
+[3/8] Make FIFO Runner Respect Paused Jobs
+PASS: FIFO pause semantics installed
+
+[4/8] Add Batch Control REST API
+PASS: Batch REST controls installed
+
+[5/8] Add Frontend Batch API
+PASS: Frontend Batch API installed
+
+[6/8] Add Lifecycle Validation
+FAIL: Batch controls validation failed

@@ -1,0 +1,62 @@
+============================================================
+ LUKE AI STUDIO - I2V DIFFUSERS COMPATIBILITY RECOVERY
+============================================================
+
+[1/8] Recovery Preflight
+Branch : feat/text-model-manager-v1
+Local  : c93e4d1
+Remote : c93e4d1
+Current dirty state:
+ M scripts/validation/validate-release.sh
+ M scripts/workers/image_to_video_worker.py
+?? scripts/validation/test-image-to-video-offline-worker.cjs
+PASS: Recovery state confirmed
+
+[2/8] Patch Unsupported VAE Optimizations Safely
+PASS: Diffusers compatibility patch passed
+
+[3/8] Runtime API Compatibility Probe
+PASS: Runtime compatibility contract verified
+
+[4/8] Offline Model Load Smoke Test
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]Loading pipeline components...:  20%|██        | 1/5 [00:00<00:01,  3.22it/s]Loading pipeline components...:  40%|████      | 2/5 [00:05<00:10,  3.33s/it]
+Loading weights:   0%|          | 0/520 [00:00<?, ?it/s][A
+Loading weights:   5%|▍         | 25/520 [00:00<00:02, 234.65it/s][A
+Loading weights:  11%|█         | 57/520 [00:00<00:01, 258.59it/s][A
+Loading weights:  19%|█▉        | 99/520 [00:00<00:01, 327.15it/s][A
+Loading weights:  26%|██▌       | 133/520 [00:00<00:01, 328.75it/s][A
+Loading weights:  32%|███▎      | 169/520 [00:00<00:01, 300.76it/s][A
+Loading weights:  39%|███▊      | 201/520 [00:00<00:01, 301.78it/s][A
+Loading weights:  48%|████▊     | 249/520 [00:00<00:00, 337.65it/s][A
+Loading weights:  57%|█████▋    | 297/520 [00:00<00:00, 331.73it/s][A
+Loading weights:  66%|██████▋   | 345/520 [00:01<00:00, 349.04it/s][A
+Loading weights:  76%|███████▌  | 393/520 [00:01<00:00, 341.45it/s][A
+Loading weights:  85%|████████▍ | 441/520 [00:01<00:00, 361.37it/s][A
+Loading weights:  92%|█████████▏| 478/520 [00:01<00:00, 349.28it/s][A
+Loading weights: 100%|██████████| 520/520 [00:01<00:00, 366.83it/s][ALoading weights: 100%|██████████| 520/520 [00:01<00:00, 337.82it/s]
+Loading pipeline components...:  80%|████████  | 4/5 [00:07<00:01,  1.78s/it]Loading pipeline components...: 100%|██████████| 5/5 [00:07<00:00,  1.50s/it]
+OFFLINE_COMPAT_MODEL_LOAD_PASSED
+PASS: Offline SVD + MPS compatibility passed
+
+[5/8] Create Temporary Test Image
+PASS: Test image ready
+
+[6/8] First Real Generation Retry
+usage: image_to_video_worker.py [-h] --model MODEL --image IMAGE
+                                --output OUTPUT [--prompt PROMPT]
+                                [--seconds SECONDS] [--references REFERENCES]
+                                [--reference-lock REFERENCE_LOCK]
+                                [--automatic-match AUTOMATIC_MATCH]
+
+options:
+  -h, --help            show this help message and exit
+  --model MODEL
+  --image IMAGE
+  --output OUTPUT
+  --prompt PROMPT
+  --seconds SECONDS
+  --references REFERENCES
+  --reference-lock REFERENCE_LOCK
+  --automatic-match AUTOMATIC_MATCH
+Generation command:
+ app/runtimes/image-to-video/venv/bin/python scripts/workers/image_to_video_worker.py --model svd --image /tmp/luke-i2v-real-input-20260810-114745.png --output /tmp/luke-i2v-real-output-20260810-114745.mp4 --prompt gentle\ cinematic\ movement --seconds 1

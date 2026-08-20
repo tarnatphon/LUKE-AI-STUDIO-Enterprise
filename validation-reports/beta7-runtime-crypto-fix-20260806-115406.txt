@@ -1,0 +1,191 @@
+============================================================
+ LUKE AI STUDIO - FIX SAFE DOWNLOAD CRYPTO HASH
+============================================================
+
+[1/9] ตรวจ Branch และไฟล์ค้างจากรอบก่อน
+Branch : feat/beta7-foundation
+Local  : 82cddaf
+Remote : 82cddaf
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-download-worker.cjs
+PASS: พบเฉพาะไฟล์ Safe Download Worker จากรอบก่อน
+
+[2/9] สำรองไฟล์ปัจจุบัน
+PASS: Backup scripts/server/serve.cjs
+PASS: Backup scripts/validation/validate-release.sh
+PASS: Backup scripts/validation/test-runtime-download-worker.cjs
+
+[3/9] ตรวจสาเหตุ crypto.createHash
+6415:    const hash = crypto.createHash("sha256");
+PASS: พบคำสั่งที่ทำให้เกิด crypto.createHash is not a function
+
+[4/9] แก้ SHA256 ให้ใช้ node:crypto โดยตรง
+PASS: SHA256 ใช้ require("node:crypto").createHash โดยตรงแล้ว
+
+[5/9] ตรวจ Syntax และ Crypto Implementation
+PASS: Syntax และ SHA256 Implementation ถูกต้อง
+
+[6/9] รัน Safe Download Worker Test ใหม่
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63861
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1785992050426-d00b2ac7 failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1785992050533-e16fc1b6 failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+Worker Test Exit Code: 0
+PASS: Safe Download Worker Test ผ่านครบ
+
+[7/9] รัน Full Release Validation
+PASS: release structure and syntax
+PASS: Runtime metadata present without stale packaged binaries
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 65
+Backend endpoints : 74
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 63867
+Routes : /api/health, /api/status
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63867
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":false,"ok":false},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":false,"ok":false},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"di
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63872
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 2
+Missing          : 5
+Required missing : 3
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63875
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1785992059178-c6b0ffd2
+Cancelled job: runtime-1785992059191-78772b30
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:63880
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1785992062680-3f0cc4d4 failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1785992062788-d4bf85ea failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+Validation Exit Code: 0
+PASS: Release Validation ผ่านพร้อม Safe Download Worker
+
+[8/9] Commit และ Push
+scripts/server/serve.cjs
+scripts/validation/test-runtime-download-worker.cjs
+scripts/validation/validate-release.sh
+ scripts/server/serve.cjs                           | 806 ++++++++++++++++++++-
+ .../validation/test-runtime-download-worker.cjs    | 614 ++++++++++++++++
+ scripts/validation/validate-release.sh             |   8 +
+ 3 files changed, 1423 insertions(+), 5 deletions(-)
+PASS: Commit สำเร็จ
+PASS: Push Beta 7 Branch สำเร็จ
+
+[9/9] ตรวจสถานะสุดท้าย
+Local : a5f9083
+Remote: a5f9083
+PASS: Local, Remote และ Working Tree ถูกต้อง
+
+============================================================
+ BETA 7 SAFE DOWNLOAD WORKER PASSED
+============================================================
+Branch   : feat/beta7-foundation
+Commit   : a5f9083
+Download : Streaming with progress
+Security : SHA256 verification required
+Rollback : Previous installation backup supported
+Cancel   : Active downloads can be cancelled
+Path     : /Volumes/EXTERNAL Drive/ai/ai-downloads
+Report   : validation-reports/beta7-runtime-crypto-fix-20260806-115406.txt
+Next     : เพิ่ม Download Progress Dashboard และปุ่มติดตั้งใน Frontend

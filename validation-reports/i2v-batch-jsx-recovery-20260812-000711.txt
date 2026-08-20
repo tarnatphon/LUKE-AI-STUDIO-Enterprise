@@ -1,0 +1,23 @@
+============================================================
+ LUKE AI STUDIO - PHASE 3A-3 JSX RECOVERY
+ FIX BATCH PREVIEW CONDITIONAL STRUCTURE
+============================================================
+
+[1/6] Resume Safety
+Branch : feat/text-model-manager-v1
+Local  : 9c43799
+Remote : 9c43799
+Current dirty state:
+ M app/frontend/src/components/ImageToVideo.jsx
+ M app/runtime-state/storage/storage-availability-watcher.json
+ M app/runtime-state/storage/storage-provider-state.json
+ M app/runtime-state/text-chat/model-health.json
+ M app/runtime-state/text-chat/runtime-supervisor.json
+ M app/runtime-state/text-models/installed-models.json
+ M scripts/validation/test-image-to-video-async-ui.cjs
+ M scripts/validation/test-image-to-video-runtime-ui-integration.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-image-to-video-batch-execution.cjs
+PASS: Resume state valid
+
+[2/6] Repair Batch Preview JSX Boundary

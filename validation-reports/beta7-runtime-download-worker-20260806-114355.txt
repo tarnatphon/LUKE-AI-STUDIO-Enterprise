@@ -1,0 +1,43 @@
+============================================================
+ LUKE AI STUDIO - SAFE RUNTIME DOWNLOAD WORKER
+============================================================
+
+[1/10] ตรวจ Branch และ Working Tree
+Branch : feat/beta7-foundation
+Local  : 82cddaf
+Remote : 82cddaf
+FAIL: Branch, Remote หรือ Working Tree ไม่พร้อม
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-download-worker.cjs
+
+[2/10] สำรอง Source ปัจจุบัน
+
+[3/10] เพิ่ม Download Worker, SHA256 และ Rollback
+
+[4/10] สร้าง Automated Download, SHA256 และ Rollback Test
+
+[5/10] เชื่อม Download Worker Test กับ Validation
+
+[6/10] ตรวจ Syntax และ Worker Routes
+FAIL: Syntax หรือ Download Worker Logic ไม่ผ่าน
+
+[7/10] รัน Safe Download Worker Test
+
+[8/10] รัน Full Release Validation
+
+[9/10] Commit และ Push
+
+[10/10] ตรวจสถานะสุดท้าย
+Local : 82cddaf
+Remote: 82cddaf
+FAIL: Final Git State ไม่ถูกต้อง
+ M scripts/server/serve.cjs
+ M scripts/validation/validate-release.sh
+?? scripts/validation/test-runtime-download-worker.cjs
+
+============================================================
+ BETA 7 SAFE DOWNLOAD WORKER FAILED
+============================================================
+Backup : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-download-worker-20260806-114355
+Report : validation-reports/beta7-runtime-download-worker-20260806-114355.txt

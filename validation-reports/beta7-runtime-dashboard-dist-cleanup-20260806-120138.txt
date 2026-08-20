@@ -1,0 +1,50 @@
+============================================================
+ LUKE AI STUDIO - CLEAN GENERATED FRONTEND DIST
+============================================================
+
+[1/7] ตรวจ Branch, Commit และ Remote
+Branch : feat/beta7-foundation
+Local  : 44b00da
+Remote : 44b00da
+PASS: Dashboard Commit และ Remote ถูกต้อง
+
+[2/7] ตรวจไฟล์ค้าง
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+?? app/dist/assets/event-DjNW25B_.js
+?? app/dist/assets/index-B-MrsIQm.css
+?? app/dist/assets/index-Dn7oHG2E.js
+FAIL: พบไฟล์ค้างอื่นนอก app/dist
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+
+[3/7] สำรอง Generated Dist ปัจจุบัน
+
+[4/7] คืน Tracked Dist ให้ตรงกับ Commit ล่าสุด
+
+[5/7] ลบ Untracked Build Assets เท่านั้น
+
+[6/7] ตรวจ Dashboard Source และ Commit
+FAIL: Dashboard Source หรือ Commit ไม่สมบูรณ์
+
+[7/7] ตรวจสถานะสุดท้าย
+Local : 44b00da
+Remote: 44b00da
+ D app/dist/assets/event-DTB6WObU.js
+ D app/dist/assets/index-B4OmJqAl.js
+ D app/dist/assets/index-DeJ1E7Pf.css
+ M app/dist/index.html
+?? app/dist/assets/event-DjNW25B_.js
+?? app/dist/assets/index-B-MrsIQm.css
+?? app/dist/assets/index-Dn7oHG2E.js
+FAIL: Final Git State ยังไม่สะอาด
+
+============================================================
+ BETA 7 DIST CLEANUP FAILED
+============================================================
+Dashboard Commit ยังอยู่บน GitHub และไม่ได้รับผลกระทบ
+Backup: /Users/ekky/Library/Caches/LUKE-AI-STUDIO/dist-cleanup-20260806-120138/dist
+Report: validation-reports/beta7-runtime-dashboard-dist-cleanup-20260806-120138.txt
