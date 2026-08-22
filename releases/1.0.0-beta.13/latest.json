@@ -1,6 +1,5 @@
 {
   "version": "1.0.0-beta.13",
-  "build": "enterprise-text-image-v13",
   "releaseDate": "2026-08-23",
-  "channel": "beta"
+  "status": "ready"
 }
