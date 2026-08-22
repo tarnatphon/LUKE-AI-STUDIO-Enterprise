@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "routingMode": "priority",
+  "providers": [
+    {
+      "id": "external-default",
+      "name": "EXTERNAL Drive",
+      "category": "external",
+      "adapter": "mounted-folder",
+      "enabled": true,
+      "priority": 10,
+      "capabilities": {
+        "read": true,
+        "write": true,
+        "delete": false,
+        "resume": false
+      },
+      "settings": {
+        "rootPath": "/Volumes/EXTERNAL Drive/ai/ai-downloads"
+      },
+      "credentialReference": null
+    },
+    {
+      "id": "local-fallback",
+      "name": "Local Fallback",
+      "category": "local",
+      "adapter": "local-folder",
+      "enabled": true,
+      "priority": 1000,
+      "capabilities": {
+        "read": true,
+        "write": true,
+        "delete": false,
+        "resume": false
+      },
+      "settings": {
+        "rootPath": "~/Library/Application Support/LUKE AI STUDIO/downloads"
+      },
+      "credentialReference": null
+    }
+  ],
+  "supportedAdapters": {
+    "nas": [
+      "mounted-folder",
+      "smb",
+      "nfs",
+      "webdav"
+    ],
+    "cloud": [
+      "s3-compatible",
+      "google-cloud-storage",
+      "azure-blob"
+    ]
+  },
+  "security": {
+    "allowPlaintextCredentials": false,
+    "allowShell": false,
+    "allowAutomaticMount": false,
+    "allowAutomaticDeletion": false,
+    "requireConfirmationBeforeDeletion": true
+  }
+}

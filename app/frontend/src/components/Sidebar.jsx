@@ -1,5 +1,6 @@
-import React, { memo } from "react";
-import { Archive, Image, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film } from "lucide-react";
+import React, { memo, useEffect, useState } from "react";
+import { Archive, BriefcaseBusiness, Image, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film } from "lucide-react";
+import ChatProjects from "./ChatProjects";
 
 function formatSidebarDate(value) {
   const date = new Date(value);
@@ -21,6 +22,7 @@ function Sidebar({
   showHistory,
   setShowHistory,
   onDeleteConversation,
+  onMoveConversationToProject,
   speechTranscriptions = [],
   selectedSpeechTranscript,
   setSelectedSpeechTranscript,
@@ -32,8 +34,23 @@ function Sidebar({
   setSelectedTtsOutput,
   showTtsHistory,
   setShowTtsHistory,
-  onDeleteTtsOutput
+  onDeleteTtsOutput,
+  projects = [],
+  setProjects,
+  activeProjectId,
+  setActiveProjectId,
+  assistantMode = "chat",
+  setAssistantMode,
 }) {
+  const [chatContextMenu, setChatContextMenu] = useState(null);
+
+  useEffect(() => {
+    const closeModeMenu = (event) => {
+      if (!event.target.closest?.(".chat-project-context-menu")) setChatContextMenu(null);
+    };
+    document.addEventListener("mousedown", closeModeMenu);
+    return () => document.removeEventListener("mousedown", closeModeMenu);
+  }, []);
   const prefetchProps = (tab) => ({
     onPointerEnter: () => prefetchWorkspace?.(tab),
     onFocus: () => prefetchWorkspace?.(tab),
@@ -71,9 +88,20 @@ function Sidebar({
     <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <div>
         {/* Sidebar Header */}
-        <div className="sidebar-logo">
-          <Sparkles className="sidebar-logo-icon" />
-          <span className="sidebar-logo-text"><b>LUKE AI</b><small>Studio</small></span>
+        <button type="button" className="sidebar-logo" onClick={() => setActiveTab("home")} aria-label="LUKE AI Studio home">
+          <span className="sidebar-logo-mark"><Sparkles className="sidebar-logo-icon" aria-hidden="true" /></span>
+          <span className="sidebar-logo-text"><b>LUKE AI</b><small>STUDIO</small></span>
+        </button>
+        <div className="sidebar-mode-selector" aria-label="Assistant mode">
+          <div className="sidebar-mode-tabs" role="tablist" aria-label="Choose Chat or Work mode">
+            <button type="button" role="tab" aria-selected={assistantMode === "chat"} className={assistantMode === "chat" ? "active" : ""} onClick={() => setAssistantMode?.("chat")}>
+              <MessageSquare size={18} /><span>Chat</span>
+            </button>
+            <button type="button" role="tab" aria-selected={assistantMode === "work"} className={assistantMode === "work" ? "active" : ""} onClick={() => setAssistantMode?.("work")}>
+              <BriefcaseBusiness size={18} /><span>Work</span>
+            </button>
+          </div>
+          <small>{assistantMode === "work" ? "Projects, files and tools" : "Ask, learn and explore"}</small>
         </div>
 
         {/* Sidebar Navigation Links (Material 3 style) */}
@@ -185,6 +213,15 @@ function Sidebar({
                         }}
                         className="sidebar-history-item"
                         title={conv.title}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setChatContextMenu({
+                            conversationId: conv.id,
+                            x: Math.min(event.clientX, window.innerWidth - 286),
+                            y: Math.min(event.clientY, window.innerHeight - Math.min(360, 112 + projects.length * 41)),
+                          });
+                        }}
                       >
                         <span style={{
                           overflow: "hidden",
@@ -491,6 +528,41 @@ function Sidebar({
             <span>Settings</span>
           </div>
         </div>
+
+        {assistantMode === "work" && <ChatProjects
+          projects={projects}
+          setProjects={setProjects}
+          conversations={conversations}
+          activeProjectId={activeProjectId}
+          setActiveProjectId={setActiveProjectId}
+          setActiveConversationId={setActiveConversationId}
+          setActiveTab={setActiveTab}
+        />}
+        {chatContextMenu && (
+          <div className="chat-project-context-menu" role="menu" style={{ left: chatContextMenu.x, top: chatContextMenu.y }}>
+            <strong>Move to Work project</strong>
+            {projects.length === 0 && <span>No projects yet — switch to Work to create one.</span>}
+            {projects.map((project) => (
+              <button type="button" role="menuitem" key={project.id} onClick={() => {
+                onMoveConversationToProject?.(chatContextMenu.conversationId, project.id);
+                setAssistantMode?.("work");
+                setActiveProjectId(project.id);
+                setActiveConversationId(chatContextMenu.conversationId);
+                setChatContextMenu(null);
+              }}>
+                <BriefcaseBusiness size={15} /> {project.name}
+              </button>
+            ))}
+            {conversations.find((conversation) => conversation.id === chatContextMenu.conversationId)?.projectId && (
+              <button type="button" role="menuitem" onClick={() => {
+                onMoveConversationToProject?.(chatContextMenu.conversationId, null);
+                setChatContextMenu(null);
+              }}>
+                <MessageSquare size={15} /> Move back to Chat
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sidebar Footer with Host Telemetry System Specs */}

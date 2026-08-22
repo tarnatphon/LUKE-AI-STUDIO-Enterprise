@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-17T05:36:08.753Z",
+  "providers": {
+    "external-default": {
+      "providerId": "external-default",
+      "status": "offline",
+      "reachable": false,
+      "writable": false,
+      "rootPath": "/Volumes/EXTERNAL Drive/ai/ai-downloads",
+      "availableBytes": null,
+      "totalBytes": null,
+      "checkedAt": "2026-08-17T05:36:08.752Z",
+      "reason": "path-not-found"
+    },
+    "local-fallback": {
+      "providerId": "local-fallback",
+      "status": "offline",
+      "reachable": false,
+      "writable": false,
+      "rootPath": "/Users/ekky/Library/Application Support/LUKE AI STUDIO/downloads",
+      "availableBytes": null,
+      "totalBytes": null,
+      "checkedAt": "2026-08-17T05:36:08.753Z",
+      "reason": "path-not-found"
+    }
+  },
+  "lastSelectedProviderId": null,
+  "routingHistory": []
+}

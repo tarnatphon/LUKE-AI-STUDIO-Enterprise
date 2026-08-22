@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "intervalMinutes": 360,
+  "verifySha256": true,
+  "verifySize": true,
+  "maxRecordsPerScan": 2000,
+  "automaticRepair": false,
+  "automaticDeletion": false,
+  "automaticOverwrite": false
+}

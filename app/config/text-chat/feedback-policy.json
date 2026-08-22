@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "feedback": {
+    "allowLike": true,
+    "allowDislike": true,
+    "allowSelectPreferred": true,
+    "allowRegenerate": true,
+    "allowFeedbackChange": true
+  },
+  "scoring": {
+    "enabled": true,
+    "baseWeight": 0.85,
+    "feedbackWeight": 0.15,
+    "likePoints": 1,
+    "dislikePoints": -1,
+    "preferredPoints": 3,
+    "regeneratePenalty": -0.25,
+    "minimumFeedbackScore": -10,
+    "maximumFeedbackScore": 10
+  },
+  "history": {
+    "preserveAuditLog": true,
+    "maximumEvents": 10000
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "runtime": {
+    "generationPath": "/v1/chat/completions",
+    "requestTimeoutMs": 300000,
+    "streamFormat": "openai-sse",
+    "allowNonStreamingFallback": true
+  },
+  "generation": {
+    "stream": true,
+    "temperature": 0.7,
+    "topP": 0.9,
+    "maxTokens": 2048,
+    "stopSequences": [],
+    "autosaveAssistantResponse": true,
+    "savePartialResponseWhenStopped": true,
+    "minimumPartialResponseCharacters": 1
+  },
+  "conversation": {
+    "includeRestorePrompt": true,
+    "includeRecentMessages": true,
+    "maximumRecentMessages": 20,
+    "preventConcurrentGeneration": true
+  },
+  "ui": {
+    "showStreamingCursor": true,
+    "allowStopGeneration": true,
+    "autoScrollDuringStreaming": true
+  }
+}

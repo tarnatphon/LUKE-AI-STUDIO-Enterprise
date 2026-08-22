@@ -1,0 +1,35 @@
+============================================================
+ LUKE AI STUDIO - CLEAN ZIP INSTALL TEST
+============================================================
+
+[1/8] ตรวจไฟล์ ZIP และ SHA256
+6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea  /Users/ekky/Desktop/Luke ai/releases/LUKE-AI-STUDIO-20260805-134036.zip
+PASS: พบ ZIP
+
+[2/8] ล้างพื้นที่ทดสอบเดิม
+PASS: เตรียมพื้นที่ทดสอบแล้ว
+
+[3/8] แตก ZIP
+PASS: แตก ZIP สำเร็จ
+
+[4/8] ตรวจโครงสร้าง Release
+PASS: โครงสร้างหลักครบ
+Extracted: /Users/ekky/Desktop/LUKE-AI-STUDIO-CLEAN-TEST/LUKE-AI-STUDIO-20260805-134036
+
+[5/8] ตรวจไฟล์ที่ไม่ควรอยู่ใน Release
+PASS: Release ไม่มี Runtime หรือ Cache เก่าค้างอยู่
+
+[6/8] ตรวจ Shell และ Python Syntax จากไฟล์ที่แตกใหม่
+PASS: Shell และ Python syntax ผ่าน
+
+[7/8] รัน Release Validation จากไฟล์ที่แตกใหม่
+PASS: release structure and syntax
+PASS: Clean Release Validation ผ่าน
+
+[8/8] สรุปผล
+============================================================
+ CLEAN ZIP INSTALL TEST PASSED
+ LUKE AI STUDIO RELEASE พร้อมใช้งาน
+============================================================
+Test folder: /Users/ekky/Desktop/LUKE-AI-STUDIO-CLEAN-TEST/LUKE-AI-STUDIO-20260805-134036
+Report     : /Users/ekky/Desktop/Luke ai/releases/LUKE-AI-STUDIO-20260805-134036-clean-test.txt

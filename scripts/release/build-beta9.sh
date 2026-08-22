@@ -11,6 +11,7 @@ PROJECT_DIR="$(
 cd "$PROJECT_DIR" || exit 1
 
 VERSION="${LUKE_AI_BUILD_VERSION:-1.0.0-beta.9}"
+RELEASE_DOWNLOAD_BASE="${LUKE_AI_RELEASE_DOWNLOAD_BASE:-https://github.com/tarnatphon/LukeAi/releases/download/v$VERSION}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 OUTPUT_ROOT="${LUKE_AI_BUILD_OUTPUT_ROOT:-$PROJECT_DIR/releases}"
@@ -300,9 +301,11 @@ log ""
 log "[7/9] รัน Packaging Validation"
 
 if [ "$STATUS" -eq 0 ]; then
+  PACKAGING_I2V_VALIDATION_PYTHON="${LUKE_AI_I2V_VALIDATION_PYTHON:-$PROJECT_DIR/app/runtimes/image-to-video/venv/bin/python}"
+
   (
     cd "$PACKAGE_DIR" &&
-    LUKE_AI_I2V_VALIDATION_PYTHON="$PROJECT_DIR/app/runtimes/image-to-video/venv/bin/python" \
+    LUKE_AI_I2V_VALIDATION_PYTHON="$PACKAGING_I2V_VALIDATION_PYTHON" \
     LUKE_AI_PACKAGING_MODE=1 \
       bash scripts/validation/validate-release.sh
   ) 2>&1 |
@@ -351,7 +354,8 @@ if [ "$STATUS" -eq 0 ]; then
     "$VERSION" \
     "$ZIP_NAME" \
     "$ZIP_SIZE" \
-    "$ZIP_SHA" <<'PY'
+    "$ZIP_SHA" \
+    "$RELEASE_DOWNLOAD_BASE" <<'PY'
 import json
 import pathlib
 import sys
@@ -362,8 +366,14 @@ version = sys.argv[2]
 filename = sys.argv[3]
 size = int(sys.argv[4])
 sha256 = sys.argv[5]
+download_base = sys.argv[6].rstrip("/")
 
 target = "darwin-arm64"
+asset = {
+    "url": f"{download_base}/{filename}",
+    "sha256": sha256,
+    "sizeBytes": size,
+}
 
 data = {
     "product": "LUKE AI STUDIO",
@@ -380,6 +390,8 @@ data = {
     "filename": filename,
     "sizeBytes": size,
     "sha256": sha256,
+    "asset": asset,
+    "assets": {target: asset},
     "minimumMacOS": "13.0",
     "offlineFirst": True,
     "stagedUpdate": True,

@@ -1,0 +1,38 @@
+============================================================
+ LUKE AI STUDIO - FRONTEND ROUTE FIX
+============================================================
+
+[1/7] ตรวจ Process และ Port ที่กำลังทำงาน
+node      21807 ekky   20u  IPv4 0x476a50473b9eba9b      0t0  TCP *:1420 (LISTEN)
+
+[2/7] ตรวจ URL ที่เป็นไปได้
+http://127.0.0.1:1420/                           HTTP 200
+
+[3/7] Restart Clean Release หาก Frontend ยังไม่ตอบ
+PASS: Frontend กำลังทำงานอยู่แล้ว
+
+[4/7] ตรวจ Frontend HTML และ Branding
+PASS: Frontend URL = http://127.0.0.1:1420/
+PASS: Frontend ส่ง HTML ถูกต้อง
+PASS: Branding เป็น LUKE AI STUDIO
+
+[5/7] ตรวจ API รอบสุดท้าย
+/api/health                                            HTTP 200
+/api/llm/status                                        HTTP 200
+/api/capabilities/image-to-video/status                HTTP 200
+
+[6/7] ตรวจ ZIP และ Runtime
+PASS: ZIP Integrity ผ่าน
+v22.12.0
+10.9.0
+PASS: Portable Node.js และ npm พร้อม
+PASS: Kokoro Runtime พร้อม
+
+[7/7] สรุปผล
+============================================================
+ FINAL ACCEPTANCE TEST PASSED
+ LUKE AI STUDIO RELEASE พร้อมใช้งาน
+ Frontend: http://127.0.0.1:1420/
+============================================================
+Report: /Users/ekky/Desktop/Luke ai/releases/frontend-route-fix-20260805-134718.txt
+Terminal พร้อมรับคำสั่งถัดไป

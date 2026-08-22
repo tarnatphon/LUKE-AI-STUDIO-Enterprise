@@ -1,7 +1,7 @@
 {
   "name": "Local AI",
-  "version": "1.0.0-beta.9",
+  "version": "1.0.0-beta.12",
   "channel": "stable",
   "build": "offline-first-updater-v1",
-  "currentVersion": "1.0.0-beta.9"
+  "currentVersion": "1.0.0-beta.12"
 }

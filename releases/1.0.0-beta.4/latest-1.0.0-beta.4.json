@@ -1,0 +1,60 @@
+{
+  "product": "LUKE AI STUDIO",
+  "version": "1.0.0-beta.4",
+  "channel": "beta",
+  "releasedAt": "2026-08-05T07:58:25Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "target": "darwin-arm64",
+  "targets": [
+    "darwin-arm64"
+  ],
+  "platforms": [
+    "darwin-arm64"
+  ],
+  "filename": "LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+  "sizeBytes": 21463623,
+  "sha256": "23163db91c0c346c9a81037a9ff1818a0ede2271b75f198ceee0f2180c67c3f8",
+  "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+  "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+  "asset": {
+    "target": "darwin-arm64",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+    "sizeBytes": 21463623,
+    "sha256": "23163db91c0c346c9a81037a9ff1818a0ede2271b75f198ceee0f2180c67c3f8",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+    "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip"
+  },
+  "assets": {
+    "darwin-arm64": {
+      "target": "darwin-arm64",
+      "platform": "darwin",
+      "architecture": "arm64",
+      "filename": "LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+      "sizeBytes": 21463623,
+      "sha256": "23163db91c0c346c9a81037a9ff1818a0ede2271b75f198ceee0f2180c67c3f8",
+      "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+      "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip"
+    }
+  },
+  "artifacts": {
+    "darwin-arm64": {
+      "target": "darwin-arm64",
+      "platform": "darwin",
+      "architecture": "arm64",
+      "filename": "LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+      "sizeBytes": 21463623,
+      "sha256": "23163db91c0c346c9a81037a9ff1818a0ede2271b75f198ceee0f2180c67c3f8",
+      "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip",
+      "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.4/LUKE-AI-STUDIO-1.0.0-beta.4.zip"
+    }
+  },
+  "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.4",
+  "minimumMacOS": "13.0",
+  "offlineFirst": true,
+  "stagedUpdate": true,
+  "cleanupOldVersion": true,
+  "validated": true
+}

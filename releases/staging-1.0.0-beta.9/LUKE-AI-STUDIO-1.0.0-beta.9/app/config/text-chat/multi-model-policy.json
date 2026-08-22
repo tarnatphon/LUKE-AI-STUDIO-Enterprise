@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "selection": {
+    "minimumModels": 1,
+    "maximumModels": 3,
+    "defaultModels": 1,
+    "requireUniqueModelIds": true
+  },
+  "generation": {
+    "parallel": true,
+    "stream": true,
+    "autosaveEveryResponse": true,
+    "stopAllOnUserRequest": true,
+    "continueWhenOneModelFails": true,
+    "maximumGenerationTimeMs": 300000
+  },
+  "evaluation": {
+    "enabled": true,
+    "automaticWinnerSelection": true,
+    "minimumResponseCharacters": 1,
+    "weights": {
+      "relevance": 0.35,
+      "completeness": 0.3,
+      "clarity": 0.2,
+      "detail": 0.1,
+      "uniqueness": 0.05
+    },
+    "duplicateSimilarityThreshold": 0.92
+  },
+  "history": {
+    "saveEvaluation": true,
+    "markBestResponse": true,
+    "preserveAllResponses": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "models": {
+    "Qwen3.5-9B-The-Defiant-Fable-Uncnr-Heretic-NEO-MAX-Q8_0.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": -1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "batchSize": 512,
+        "ubatchSize": 512,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-08-22T15:09:01.202Z"
+    }
+  }
+}

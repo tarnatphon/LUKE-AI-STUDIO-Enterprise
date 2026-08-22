@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-06T16:20:52.212Z",
+  "models": {
+    "test-model-1": {
+      "modelId": "test-model-1",
+      "circuitState": "closed",
+      "consecutiveFailures": 0,
+      "consecutiveSuccesses": 0,
+      "totalAttempts": 0,
+      "totalSuccesses": 0,
+      "totalFailures": 0,
+      "lastAttemptAt": null,
+      "lastSuccessAt": null,
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "lastError": null,
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": []
+    },
+    "test-model-2": {
+      "modelId": "test-model-2",
+      "circuitState": "closed",
+      "consecutiveFailures": 0,
+      "consecutiveSuccesses": 0,
+      "totalAttempts": 0,
+      "totalSuccesses": 0,
+      "totalFailures": 0,
+      "lastAttemptAt": null,
+      "lastSuccessAt": null,
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "lastError": null,
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": []
+    },
+    "test-model-3": {
+      "modelId": "test-model-3",
+      "circuitState": "closed",
+      "consecutiveFailures": 0,
+      "consecutiveSuccesses": 0,
+      "totalAttempts": 0,
+      "totalSuccesses": 0,
+      "totalFailures": 0,
+      "lastAttemptAt": null,
+      "lastSuccessAt": null,
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "lastError": null,
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": []
+    },
+    "primary-model": {
+      "modelId": "primary-model",
+      "circuitState": "closed",
+      "consecutiveFailures": 1,
+      "consecutiveSuccesses": 0,
+      "totalAttempts": 1,
+      "totalSuccesses": 0,
+      "totalFailures": 1,
+      "lastAttemptAt": "2026-08-06T16:20:51.811Z",
+      "lastSuccessAt": null,
+      "lastFailureAt": "2026-08-06T16:20:51.811Z",
+      "lastErrorType": "runtime-error",
+      "lastError": "{\"error\":\"Primary runtime failed\"}",
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": [
+        {
+          "success": false,
+          "errorType": "runtime-error",
+          "createdAt": "2026-08-06T16:20:51.811Z"
+        }
+      ]
+    },
+    "fallback-model": {
+      "modelId": "fallback-model",
+      "circuitState": "closed",
+      "consecutiveFailures": 0,
+      "consecutiveSuccesses": 1,
+      "totalAttempts": 1,
+      "totalSuccesses": 1,
+      "totalFailures": 0,
+      "lastAttemptAt": "2026-08-06T16:20:52.212Z",
+      "lastSuccessAt": "2026-08-06T16:20:52.212Z",
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "lastError": null,
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": [
+        {
+          "success": true,
+          "errorType": null,
+          "createdAt": "2026-08-06T16:20:52.212Z"
+        }
+      ]
+    },
+    "third-model": {
+      "modelId": "third-model",
+      "circuitState": "closed",
+      "consecutiveFailures": 0,
+      "consecutiveSuccesses": 0,
+      "totalAttempts": 0,
+      "totalSuccesses": 0,
+      "totalFailures": 0,
+      "lastAttemptAt": null,
+      "lastSuccessAt": null,
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "lastError": null,
+      "openedAt": null,
+      "nextProbeAt": null,
+      "halfOpenAttempts": 0,
+      "recentResults": []
+    }
+  },
+  "events": [
+    {
+      "id": "model-health-1786033251811-07b753fb",
+      "modelId": "primary-model",
+      "success": false,
+      "errorType": "runtime-error",
+      "error": "{\"error\":\"Primary runtime failed\"}",
+      "source": "runtime-recovery",
+      "circuitState": "closed",
+      "createdAt": "2026-08-06T16:20:51.811Z"
+    },
+    {
+      "id": "model-health-1786033252212-23a771ad",
+      "modelId": "fallback-model",
+      "success": true,
+      "errorType": null,
+      "error": null,
+      "source": "runtime-recovery",
+      "circuitState": "closed",
+      "createdAt": "2026-08-06T16:20:52.212Z"
+    }
+  ]
+}

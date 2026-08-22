@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "routing": {
+    "automaticByDefault": true,
+    "allowManualOverride": true,
+    "allowFallback": true,
+    "maximumFallbackModels": 2,
+    "minimumScore": 0.1,
+    "preferInstalledModels": true,
+    "requireHardwareCompatibility": true
+  },
+  "weights": {
+    "taskCapability": 0.38,
+    "userFeedback": 0.22,
+    "hardwareCompatibility": 0.15,
+    "contextFit": 0.1,
+    "languageFit": 0.08,
+    "availability": 0.07
+  },
+  "taskTypes": {
+    "coding": {
+      "keywords": [
+        "code",
+        "coding",
+        "program",
+        "python",
+        "javascript",
+        "typescript",
+        "react",
+        "api",
+        "debug",
+        "error",
+        "terminal",
+        "git",
+        "github",
+        "โค้ด",
+        "โปรแกรม",
+        "แก้บั๊ก",
+        "ข้อผิดพลาด"
+      ]
+    },
+    "analysis": {
+      "keywords": [
+        "analyze",
+        "analysis",
+        "compare",
+        "evaluate",
+        "strategy",
+        "วิเคราะห์",
+        "เปรียบเทียบ",
+        "ประเมิน",
+        "กลยุทธ์",
+        "สรุปข้อดีข้อเสีย"
+      ]
+    },
+    "creative": {
+      "keywords": [
+        "creative",
+        "story",
+        "script",
+        "prompt",
+        "design",
+        "content",
+        "caption",
+        "เขียนเรื่อง",
+        "สคริปต์",
+        "พรอมต์",
+        "ออกแบบ",
+        "คอนเทนต์",
+        "แคปชั่น"
+      ]
+    },
+    "thai": {
+      "keywords": [
+        "ภาษาไทย",
+        "ไทย",
+        "แปลไทย",
+        "เขียนไทย"
+      ]
+    },
+    "reasoning": {
+      "keywords": [
+        "reason",
+        "reasoning",
+        "logic",
+        "solve",
+        "calculate",
+        "คิด",
+        "เหตุผล",
+        "แก้โจทย์",
+        "คำนวณ"
+      ]
+    },
+    "general": {
+      "keywords": []
+    }
+  },
+  "capabilityHints": {
+    "coding": [
+      "coder",
+      "code",
+      "dev",
+      "program",
+      "qwen",
+      "deepseek"
+    ],
+    "analysis": [
+      "reason",
+      "thinking",
+      "analysis",
+      "deepseek",
+      "qwen"
+    ],
+    "creative": [
+      "creative",
+      "writer",
+      "mistral",
+      "llama"
+    ],
+    "thai": [
+      "thai",
+      "multilingual",
+      "qwen",
+      "llama"
+    ],
+    "reasoning": [
+      "reason",
+      "thinking",
+      "r1",
+      "qwen",
+      "deepseek"
+    ],
+    "general": [
+      "instruct",
+      "chat",
+      "llama",
+      "qwen",
+      "mistral"
+    ]
+  }
+}

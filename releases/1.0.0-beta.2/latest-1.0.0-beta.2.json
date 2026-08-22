@@ -1,0 +1,28 @@
+{
+  "product": "LUKE AI STUDIO",
+  "version": "1.0.0-beta.2",
+  "channel": "beta",
+  "releasedAt": "2026-08-05T07:31:14Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "target": "darwin-arm64",
+  "targets": [
+    "darwin-arm64"
+  ],
+  "assets": {
+    "darwin-arm64": {
+      "filename": "LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+      "sizeBytes": 21463222,
+      "sha256": "1090d281557299ca527b18957602f72e38e503fa67d53980b76b8fe0c55a821d",
+      "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.2/LUKE-AI-STUDIO-1.0.0-beta.2.zip"
+    }
+  },
+  "filename": "LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+  "sizeBytes": 21463222,
+  "sha256": "1090d281557299ca527b18957602f72e38e503fa67d53980b76b8fe0c55a821d",
+  "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.2/LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+  "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.2",
+  "minimumMacOS": "13.0",
+  "requiresInternetForFirstSetup": true,
+  "validated": true
+}

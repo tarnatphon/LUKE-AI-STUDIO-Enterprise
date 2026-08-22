@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "automaticDeletion": false,
+  "rules": {
+    "models": {
+      "label": "Models",
+      "reviewAfterDays": 180,
+      "archiveAfterDays": 365,
+      "deleteCandidateAfterDays": 730,
+      "minimumCandidateBytes": 1073741824
+    },
+    "images": {
+      "label": "Images",
+      "reviewAfterDays": 120,
+      "archiveAfterDays": 365,
+      "deleteCandidateAfterDays": 730,
+      "minimumCandidateBytes": 52428800
+    },
+    "video": {
+      "label": "Video",
+      "reviewAfterDays": 90,
+      "archiveAfterDays": 180,
+      "deleteCandidateAfterDays": 540,
+      "minimumCandidateBytes": 536870912
+    },
+    "backups": {
+      "label": "Backups",
+      "reviewAfterDays": 90,
+      "archiveAfterDays": 180,
+      "deleteCandidateAfterDays": 365,
+      "minimumCandidateBytes": 104857600
+    },
+    "temporary": {
+      "label": "Temporary",
+      "reviewAfterDays": 7,
+      "archiveAfterDays": 14,
+      "deleteCandidateAfterDays": 30,
+      "minimumCandidateBytes": 10485760
+    }
+  }
+}

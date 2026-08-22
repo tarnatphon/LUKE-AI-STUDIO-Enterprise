@@ -1,0 +1,91 @@
+============================================================
+ LUKE AI STUDIO - ACTIVATE BETA 2 AUTO UPDATE
+============================================================
+
+[1/8] ตรวจ GitHub Release Beta 2
+PASS: พบ GitHub Release v1.0.0-beta.2
+
+[2/8] ตรวจ Versioned Manifest
+PASS: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.2/latest-1.0.0-beta.2.json
+
+[3/8] สร้าง latest.json สำหรับ Beta 2
+{
+    "product": "LUKE AI STUDIO",
+    "version": "1.0.0-beta.2",
+    "channel": "beta",
+    "releasedAt": "2026-08-05T07:31:14Z",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "target": "darwin-arm64",
+    "targets": [
+        "darwin-arm64"
+    ],
+    "assets": {
+        "darwin-arm64": {
+            "filename": "LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+            "sizeBytes": 21463222,
+            "sha256": "1090d281557299ca527b18957602f72e38e503fa67d53980b76b8fe0c55a821d",
+            "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.2/LUKE-AI-STUDIO-1.0.0-beta.2.zip"
+        }
+    },
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+    "sizeBytes": 21463222,
+    "sha256": "1090d281557299ca527b18957602f72e38e503fa67d53980b76b8fe0c55a821d",
+    "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.2/LUKE-AI-STUDIO-1.0.0-beta.2.zip",
+    "releaseUrl": "https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.2",
+    "minimumMacOS": "13.0",
+    "requiresInternetForFirstSetup": true,
+    "validated": true
+}
+PASS: สร้าง latest.json แล้ว
+
+[4/8] อัปโหลด latest.json ไป GitHub Release
+PASS: อัปโหลด latest.json สำเร็จ
+
+[5/8] อัปเดต Local Updater Config
+{
+    "enabled": true,
+    "channel": "beta",
+    "manifestUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.2/latest.json",
+    "checkOnLaunch": true,
+    "timeoutMs": 2500,
+    "autoInstall": true,
+    "cleanupOldVersion": true,
+    "keepConfigBackups": 3,
+    "protectedPaths": [
+        "app/models",
+        "app/llm-models",
+        "app/image-models",
+        "app/video-models",
+        "app/speech-models",
+        "app/tts-models",
+        "app/openvino-models",
+        "app/chat-history",
+        "app/knowledge",
+        "app/projects",
+        "app/outputs",
+        "app/transcriptions",
+        "app/tts-outputs",
+        "app/cache",
+        "app/user-data",
+        "app/config/user-settings.json",
+        "app/update-state"
+    ],
+    "product": "LUKE AI STUDIO",
+    "currentVersion": "1.0.0-beta.2",
+    "offlineFirst": true,
+    "stagedUpdate": true,
+    "version": "1.0.0-beta.2"
+}
+PASS: Updater Config ใช้ Beta 2 แล้ว
+
+[6/8] ดาวน์โหลด latest.json กลับจาก GitHub
+Remote version: 1.0.0-beta.2
+Remote target : darwin-arm64
+PASS: Remote latest.json ถูกต้อง
+
+[7/8] ทดสอบ Auto Updater
+  [Update] Local AI 1.0.0-beta.2 is up to date.
+PASS: Auto Updater ตรวจ Beta 2 สำเร็จ
+
+[8/8] Commit และ Push Updater Config

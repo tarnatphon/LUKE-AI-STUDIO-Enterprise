@@ -1,0 +1,6 @@
+{
+  "name": "Local AI",
+  "version": "0.2.0",
+  "channel": "stable",
+  "build": "offline-first-updater-v1"
+}

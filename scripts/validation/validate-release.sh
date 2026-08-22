@@ -724,6 +724,21 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
+  node scripts/validation/test-frontend-auto-context.cjs
+else
+  echo "FAIL: Node.js is required for Frontend Automatic Context Refresh validation"
+  exit 1
+fi
+
+if command -v node >/dev/null 2>&1; then
+  node scripts/validation/test-frontend-chat-projects.cjs
+  node scripts/validation/test-work-file-manager.cjs
+else
+  echo "FAIL: Node.js is required for Frontend Chat Projects validation"
+  exit 1
+fi
+
+if command -v node >/dev/null 2>&1; then
   node scripts/validation/test-frontend-bundle-budgets.cjs
 else
   echo "FAIL: Node.js is required for Frontend Bundle Budget validation"

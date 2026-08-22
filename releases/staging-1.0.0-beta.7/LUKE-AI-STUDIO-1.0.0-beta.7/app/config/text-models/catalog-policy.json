@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "luke-text-model-catalog",
+  "catalogMode": "signed",
+  "signatureRequired": true,
+  "downloadPolicy": {
+    "maximumBatchSelection": 3,
+    "maximumConcurrentDownloads": 1,
+    "autoStartNextQueueItem": true,
+    "allowPause": true,
+    "allowResume": true,
+    "allowCancel": true,
+    "allowRetry": true,
+    "allowSkip": true,
+    "allowQueueReordering": true,
+    "persistQueueAcrossRestarts": true
+  },
+  "installationPolicy": {
+    "verifySha256": true,
+    "verifyCatalogSignature": true,
+    "sideBySideInstallation": true,
+    "testBeforeActivation": true,
+    "keepPreviousVersionForRollback": true,
+    "confirmBeforeDeletingPreviousVersion": true
+  },
+  "storagePolicy": {
+    "usePreferredLocation": true,
+    "fallbackToLocalStaging": true,
+    "transferWhenPreferredLocationReturns": "ask",
+    "verifyTransferBeforeCleanup": true,
+    "confirmBeforeDeletingLocalCopy": true
+  },
+  "updatePolicy": {
+    "automaticCheck": true,
+    "automaticCheckIntervalHours": 24,
+    "automaticDownload": false,
+    "automaticActivation": false,
+    "showUpdateInsideModelCard": true
+  },
+  "modelCategories": [
+    {
+      "id": "official",
+      "name": {
+        "en": "Official Models",
+        "th": "โมเดลทางการ"
+      }
+    },
+    {
+      "id": "community",
+      "name": {
+        "en": "Community Models",
+        "th": "โมเดลชุมชน"
+      }
+    },
+    {
+      "id": "coding",
+      "name": {
+        "en": "Coding Models",
+        "th": "โมเดลเขียนโปรแกรม"
+      }
+    },
+    {
+      "id": "reasoning",
+      "name": {
+        "en": "Reasoning Models",
+        "th": "โมเดลการให้เหตุผล"
+      }
+    }
+  ],
+  "safetyProfiles": [
+    {
+      "id": "standard",
+      "name": {
+        "en": "Standard",
+        "th": "มาตรฐาน"
+      }
+    },
+    {
+      "id": "balanced",
+      "name": {
+        "en": "Balanced",
+        "th": "สมดุล"
+      }
+    },
+    {
+      "id": "community",
+      "name": {
+        "en": "Community",
+        "th": "ชุมชน"
+      },
+      "description": {
+        "en": "Model behavior and response policies are defined by the model publisher.",
+        "th": "รูปแบบการตอบและนโยบายของโมเดลขึ้นอยู่กับผู้พัฒนาโมเดล"
+      }
+    }
+  ],
+  "communityModelPolicy": {
+    "enabled": true,
+    "sameDownloadQueueAsOfficialModels": true,
+    "oneClickDownloadRequired": true,
+    "openExternalWebsiteForDownload": false,
+    "automaticUpdateCheck": true,
+    "showUpdateInsideModelCard": true,
+    "verifyPublisher": true,
+    "verifySha256": true,
+    "installSideBySide": true,
+    "keepPreviousVersionForRollback": true,
+    "confirmBeforeDeletingPreviousVersion": true,
+    "showLicenseBeforeFirstInstall": true,
+    "showSafetyProfile": true
+  }
+}

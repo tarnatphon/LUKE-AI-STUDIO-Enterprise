@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-06T14:53:01.094Z",
+  "activeModelId": null,
+  "models": [
+    {
+      "id": "test-model-1@1.0.0:q4",
+      "modelId": "test-model-1",
+      "modelName": "Test Model 1",
+      "publisher": "LUKE-Test",
+      "version": "1.0.0",
+      "variantId": "q4",
+      "quantization": "Q4_K_M",
+      "format": "gguf",
+      "runtime": "llama.cpp",
+      "installedPath": "/var/folders/7y/w6l3j_3901j2w0214mq2xm6m0000gn/T/luke-text-worker-aaT7FG/Downloads/LUKE-AI-STUDIO/models/text/test-model-1/1.0.0/q4/model-1.gguf",
+      "checksum": {
+        "algorithm": "sha256",
+        "expected": "4017b7a27f5d49ed213ab864b83f7d1f706ecc1039001dadcffed8df6bccddd1",
+        "actual": "4017b7a27f5d49ed213ab864b83f7d1f706ecc1039001dadcffed8df6bccddd1",
+        "verified": true
+      },
+      "installedAt": "2026-08-06T14:53:00.947Z",
+      "active": false,
+      "rollbackAvailable": false
+    },
+    {
+      "id": "test-model-2@1.0.0:q4",
+      "modelId": "test-model-2",
+      "modelName": "Test Model 2",
+      "publisher": "LUKE-Test",
+      "version": "1.0.0",
+      "variantId": "q4",
+      "quantization": "Q4_K_M",
+      "format": "gguf",
+      "runtime": "llama.cpp",
+      "installedPath": "/var/folders/7y/w6l3j_3901j2w0214mq2xm6m0000gn/T/luke-text-worker-aaT7FG/Downloads/LUKE-AI-STUDIO/models/text/test-model-2/1.0.0/q4/model-2.gguf",
+      "checksum": {
+        "algorithm": "sha256",
+        "expected": "d5718ec689cff5f1d64d8267fbb9deeefccd0d42dc06399f0345537b69cb64f7",
+        "actual": "d5718ec689cff5f1d64d8267fbb9deeefccd0d42dc06399f0345537b69cb64f7",
+        "verified": true
+      },
+      "installedAt": "2026-08-06T14:53:01.033Z",
+      "active": false,
+      "rollbackAvailable": false
+    },
+    {
+      "id": "test-model-3@1.0.0:q4",
+      "modelId": "test-model-3",
+      "modelName": "Test Model 3",
+      "publisher": "LUKE-Test",
+      "version": "1.0.0",
+      "variantId": "q4",
+      "quantization": "Q4_K_M",
+      "format": "gguf",
+      "runtime": "llama.cpp",
+      "installedPath": "/var/folders/7y/w6l3j_3901j2w0214mq2xm6m0000gn/T/luke-text-worker-aaT7FG/Downloads/LUKE-AI-STUDIO/models/text/test-model-3/1.0.0/q4/model-3.gguf",
+      "checksum": {
+        "algorithm": "sha256",
+        "expected": "3af3f1d870212fe8fcfe6eb321fd14d009bccc953fce3f59f698f0c446a1a39a",
+        "actual": "3af3f1d870212fe8fcfe6eb321fd14d009bccc953fce3f59f698f0c446a1a39a",
+        "verified": true
+      },
+      "installedAt": "2026-08-06T14:53:01.093Z",
+      "active": false,
+      "rollbackAvailable": false
+    }
+  ]
+}

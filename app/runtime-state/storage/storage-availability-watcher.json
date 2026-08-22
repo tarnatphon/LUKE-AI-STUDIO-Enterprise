@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "intervalMs": 10000,
+  "updatedAt": "2026-08-22T20:33:40.868Z",
+  "lastScanAt": "2026-08-22T20:33:40.868Z",
+  "providers": {
+    "external-default": {
+      "status": "offline",
+      "reachable": false,
+      "writable": false,
+      "checkedAt": "2026-08-22T20:33:40.864Z"
+    },
+    "local-fallback": {
+      "status": "offline",
+      "reachable": false,
+      "writable": false,
+      "checkedAt": "2026-08-22T20:33:40.866Z"
+    }
+  },
+  "events": [
+    {
+      "type": "provider-status",
+      "providerId": "external-default",
+      "from": null,
+      "to": "offline",
+      "createdAt": "2026-08-09T14:17:31.294Z"
+    },
+    {
+      "type": "provider-status",
+      "providerId": "local-fallback",
+      "from": null,
+      "to": "offline",
+      "createdAt": "2026-08-09T14:17:31.294Z"
+    }
+  ]
+}

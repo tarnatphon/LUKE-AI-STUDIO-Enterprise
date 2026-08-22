@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": null,
+  "scheduler": {
+    "running": false,
+    "intervalMinutes": 360,
+    "startedAt": null,
+    "lastRunAt": null,
+    "nextRunAt": null
+  },
+  "lastScan": null,
+  "scans": [],
+  "events": []
+}

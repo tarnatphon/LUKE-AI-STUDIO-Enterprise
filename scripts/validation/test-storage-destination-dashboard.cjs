@@ -97,6 +97,14 @@ function main() {
 
   for (const value of [
     "/usr/bin/osascript",
+    "powershell.exe",
+    "pwsh.exe",
+    '"zenity"',
+    '"kdialog"',
+    'process.platform === "darwin"',
+    'process.platform === "win32"',
+    'process.platform === "linux"',
+    "No supported Linux folder picker was found",
     "chooseStorageFolder",
     "shell: false",
   ]) {

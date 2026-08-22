@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "luke-text-model-catalog",
+  "catalogVersion": "1.2.0",
+  "generatedAt": "2026-08-06T00:00:00.000Z",
+  "trust": {
+    "mode": "trusted-source-metadata",
+    "signatureRequiredForProduction": true,
+    "allowedHosts": [
+      "huggingface.co"
+    ],
+    "allowedPublishers": [
+      "Qwen",
+      "bartowski"
+    ]
+  },
+  "models": [
+    {
+      "id": "qwen3-4b",
+      "publisher": "Qwen",
+      "name": {
+        "en": "Qwen3 4B",
+        "th": "Qwen3 4B"
+      },
+      "description": {
+        "en": "Compact multilingual text model for local chat, reasoning and general tasks.",
+        "th": "โมเดลข้อความขนาดกะทัดรัดสำหรับแชท การให้เหตุผล และงานทั่วไปในเครื่อง"
+      },
+      "family": "qwen3",
+      "format": "gguf",
+      "runtime": "llama.cpp",
+      "repository": "Qwen/Qwen3-4B-GGUF",
+      "version": "1.0.0",
+      "contextLength": 32768,
+      "languages": [
+        "th",
+        "en",
+        "zh"
+      ],
+      "recommendedVariant": "q4-k-m",
+      "variants": [
+        {
+          "id": "q4-k-m",
+          "quantization": "Q4_K_M",
+          "filename": "Qwen3-4B-Q4_K_M.gguf",
+          "sizeBytes": 2684354560,
+          "minimumRamBytes": 8589934592,
+          "recommendedRamBytes": 12884901888,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        },
+        {
+          "id": "q5-k-m",
+          "quantization": "Q5_K_M",
+          "filename": "Qwen3-4B-Q5_K_M.gguf",
+          "sizeBytes": 3167538380,
+          "minimumRamBytes": 12884901888,
+          "recommendedRamBytes": 17179869184,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        },
+        {
+          "id": "q8-0",
+          "quantization": "Q8_0",
+          "filename": "Qwen3-4B-Q8_0.gguf",
+          "sizeBytes": 4966055936,
+          "minimumRamBytes": 17179869184,
+          "recommendedRamBytes": 25769803776,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q8_0.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        }
+      ],
+      "license": {
+        "id": "apache-2.0",
+        "requiresAcceptance": false
+      },
+      "status": "available",
+      "category": "official",
+      "safetyProfile": "standard",
+      "updateChannel": {
+        "type": "huggingface-repository",
+        "repository": "Qwen/Qwen3-4B-GGUF",
+        "automaticCheck": true
+      }
+    },
+    {
+      "id": "dolphin3-llama3.2-3b",
+      "publisher": "bartowski",
+      "originalPublisher": "cognitivecomputations",
+      "name": {
+        "en": "Dolphin 3.0 Llama 3.2 3B",
+        "th": "Dolphin 3.0 Llama 3.2 3B"
+      },
+      "description": {
+        "en": "Community-tuned local text model for general chat, coding and tool-oriented tasks.",
+        "th": "โมเดลข้อความจากชุมชนสำหรับแชท งานเขียนโปรแกรม และงานทั่วไปในเครื่อง"
+      },
+      "category": "community",
+      "safetyProfile": "community",
+      "behaviorNotice": {
+        "en": "Responses follow the model publisher's tuning and may differ from standard models.",
+        "th": "ลักษณะการตอบขึ้นอยู่กับการปรับแต่งของผู้พัฒนาและอาจแตกต่างจากโมเดลมาตรฐาน"
+      },
+      "family": "dolphin3",
+      "baseModel": "Llama-3.2-3B",
+      "format": "gguf",
+      "runtime": "llama.cpp",
+      "repository": "bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+      "version": "3.0.0",
+      "contextLength": 131072,
+      "languages": [
+        "en",
+        "multilingual"
+      ],
+      "capabilities": [
+        "chat",
+        "coding",
+        "reasoning",
+        "function-calling"
+      ],
+      "recommendedVariant": "q4-k-m",
+      "variants": [
+        {
+          "id": "q4-k-m",
+          "quantization": "Q4_K_M",
+          "filename": "Dolphin3.0-Llama3.2-3B-Q4_K_M.gguf",
+          "sizeBytes": 2168958484,
+          "minimumRamBytes": 8589934592,
+          "recommendedRamBytes": 12884901888,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/bartowski/Dolphin3.0-Llama3.2-3B-GGUF/resolve/main/Dolphin3.0-Llama3.2-3B-Q4_K_M.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        },
+        {
+          "id": "q5-k-m",
+          "quantization": "Q5_K_M",
+          "filename": "Dolphin3.0-Llama3.2-3B-Q5_K_M.gguf",
+          "sizeBytes": 2559371011,
+          "minimumRamBytes": 12884901888,
+          "recommendedRamBytes": 17179869184,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/bartowski/Dolphin3.0-Llama3.2-3B-GGUF/resolve/main/Dolphin3.0-Llama3.2-3B-Q5_K_M.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        },
+        {
+          "id": "q8-0",
+          "quantization": "Q8_0",
+          "filename": "Dolphin3.0-Llama3.2-3B-Q8_0.gguf",
+          "sizeBytes": 4012573195,
+          "minimumRamBytes": 17179869184,
+          "recommendedRamBytes": 25769803776,
+          "download": {
+            "provider": "huggingface",
+            "url": "https://huggingface.co/bartowski/Dolphin3.0-Llama3.2-3B-GGUF/resolve/main/Dolphin3.0-Llama3.2-3B-Q8_0.gguf",
+            "metadataUrl": "https://huggingface.co/api/models/bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+            "sha256": null,
+            "resolveSha256FromMetadata": true
+          }
+        }
+      ],
+      "license": {
+        "id": "llama3.2",
+        "requiresAcceptance": true,
+        "showBeforeFirstInstall": true
+      },
+      "updateChannel": {
+        "type": "huggingface-repository",
+        "repository": "bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+        "branch": "main",
+        "automaticCheck": true,
+        "checkIntervalHours": 24,
+        "showUpdateInsideModelCard": true
+      },
+      "installation": {
+        "oneClickDownload": true,
+        "openExternalWebsite": false,
+        "sideBySide": true,
+        "testBeforeActivation": true,
+        "rollbackSupported": true
+      },
+      "status": "available"
+    }
+  ]
+}

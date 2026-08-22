@@ -1,0 +1,21 @@
+============================================================
+ LUKE AI STUDIO - CLEAN RELEASE LAUNCH TEST
+============================================================
+
+[1/7] ตรวจโฟลเดอร์ Clean Release
+PASS: พบ Clean Release
+
+[2/7] หยุด LUKE AI STUDIO เดิมชั่วคราว
+PASS: หยุด Process เดิมแล้ว
+
+[3/7] เปิดโปรแกรมจาก Clean Release
+FAIL: Clean Release เปิดไม่สำเร็จ
+
+  ============================================================
+   LUKE AI STUDIO      |  macOS First-Time Setup
+  ============================================================
+
+  This looks like your first run on macOS. Setting up automatically...
+  Reason: Kokoro text-to-speech runtime is missing.
+  Models are not downloaded during setup. Download or import them in the app.
+

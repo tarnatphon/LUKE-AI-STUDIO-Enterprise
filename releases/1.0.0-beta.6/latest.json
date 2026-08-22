@@ -1,0 +1,52 @@
+{
+  "product": "LUKE AI STUDIO",
+  "version": "1.0.0-beta.6",
+  "channel": "beta",
+  "releasedAt": "2026-08-06T03:26:59Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "target": "darwin-arm64",
+  "targets": [
+    "darwin-arm64"
+  ],
+  "filename": "LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+  "sizeBytes": 106285377,
+  "sha256": "e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0",
+  "minimumMacOS": "13.0",
+  "offlineFirst": true,
+  "stagedUpdate": true,
+  "cleanupOldVersion": true,
+  "portableRuntimeIncluded": true,
+  "validated": true,
+  "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+  "downloadUrl": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+  "assets": {
+    "darwin-arm64": {
+      "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+      "sha256": "e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0",
+      "filename": "LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+      "sizeBytes": 106285377,
+      "target": "darwin-arm64",
+      "platform": "darwin",
+      "architecture": "arm64"
+    },
+    "darwin": {
+      "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+      "sha256": "e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0",
+      "filename": "LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+      "sizeBytes": 106285377,
+      "target": "darwin-arm64",
+      "platform": "darwin",
+      "architecture": "arm64"
+    }
+  },
+  "asset": {
+    "url": "https://github.com/tarnatphon/LukeAi/releases/download/v1.0.0-beta.6/LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+    "sha256": "e8b08e68f80a2a6668288457ebdf2c18deca01787868bd9c7616f55036d199a0",
+    "filename": "LUKE-AI-STUDIO-1.0.0-beta.6.zip",
+    "sizeBytes": 106285377,
+    "target": "darwin-arm64",
+    "platform": "darwin",
+    "architecture": "arm64"
+  }
+}

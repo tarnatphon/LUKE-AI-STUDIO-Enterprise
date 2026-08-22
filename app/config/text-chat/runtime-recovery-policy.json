@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "recovery": {
+    "automaticFallback": true,
+    "maximumAttempts": 3,
+    "maximumFallbackModels": 2,
+    "retrySameModel": false,
+    "retryDelayMs": 350,
+    "attemptTimeoutMs": 120000,
+    "continueOnHttpError": true,
+    "continueOnConnectionError": true,
+    "continueOnTimeout": true,
+    "continueOnEmptyResponse": true
+  },
+  "response": {
+    "minimumResponseCharacters": 1,
+    "autosaveSuccessfulResponse": true,
+    "preserveAttemptHistory": true,
+    "includeRecoveryMetadata": true
+  },
+  "routing": {
+    "useAutomaticRouter": true,
+    "useRouterFallbackOrder": true,
+    "respectManualModelFirst": true,
+    "excludeFailedModelsFromReroute": true
+  },
+  "ui": {
+    "showRecoveryStatus": true,
+    "showAttemptHistory": true,
+    "showSuccessfulFallback": true
+  }
+}

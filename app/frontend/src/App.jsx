@@ -2,7 +2,6 @@ import { Component, lazy, Suspense, useState, useEffect, useRef, useCallback, us
 import Sidebar from "./components/Sidebar";
 import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
-import WorkTab from "./components/WorkTab";
 import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
 import "./App.css";
 
@@ -97,7 +96,7 @@ class WorkspaceErrorBoundary extends Component {
 }
 
 const WorkspacePanel = ({ tab, activeTab, onReturnHome, overflow = "hidden", children }) => (
-  <div style={{ display: activeTab === tab ? "flex" : "none", flex: 1, flexDirection: "column", overflow }}>
+  <div className="workspace-panel" style={{ display: activeTab === tab ? "flex" : "none", overflow }}>
     <WorkspaceErrorBoundary onReturnHome={() => onReturnHome(tab)}>
       {children}
     </WorkspaceErrorBoundary>
@@ -107,11 +106,6 @@ const WorkspacePanel = ({ tab, activeTab, onReturnHome, overflow = "hidden", chi
 function App() {
   const dialogResolverRef = useRef(null);
   const [dialog, setDialog] = useState(null);
-
-  // Work Tab State
-  const [workTabVisible, setWorkTabVisible] = useState(false);
-  const [workTabContent, setWorkTabContent] = useState("");
-  const [workTabLanguage, setWorkTabLanguage] = useState("");
 
   const closeDialog = useCallback((value) => {
     const resolver = dialogResolverRef.current;
@@ -336,8 +330,55 @@ function App() {
 
   // Lifted Chat History States
   const [conversations, setConversations] = useState([]);
+  const [conversationHistoryHydrated, setConversationHistoryHydrated] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [showHistory, setShowHistory] = useState(false); // Default hide
+  const [chatProjects, setChatProjects] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("chat_projects") || "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch (_) {
+      return [];
+    }
+  });
+  const [activeProjectId, setActiveProjectId] = useState(() => localStorage.getItem("active_chat_project") || null);
+  const [assistantMode, setAssistantMode] = useState(() => localStorage.getItem("luke_assistant_mode") === "work" ? "work" : "chat");
+
+  useEffect(() => {
+    localStorage.setItem("chat_projects", JSON.stringify(chatProjects));
+  }, [chatProjects]);
+
+  useEffect(() => {
+    if (activeProjectId) localStorage.setItem("active_chat_project", activeProjectId);
+    else localStorage.removeItem("active_chat_project");
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    localStorage.setItem("luke_assistant_mode", assistantMode);
+  }, [assistantMode]);
+
+  const handleAssistantModeChange = useCallback((requestedMode) => {
+    const nextMode = requestedMode === "work" ? "work" : "chat";
+
+    // Clicking the already-selected mode should only reveal Chat. Re-clearing the
+    // conversation remounts the composer and can make a long chat appear frozen.
+    if (nextMode === assistantMode) {
+      if (activeTab !== "chat") setActiveTab("chat");
+      return;
+    }
+
+    setAssistantMode(nextMode);
+    setActiveConversationId((currentId) => {
+      const conversationMode = (conversation) => conversation?.assistantMode
+        || (conversation?.projectId ? "work" : "chat");
+      const matchesTarget = (conversation) => conversationMode(conversation) === nextMode
+        && (nextMode !== "work" || !activeProjectId || conversation.projectId === activeProjectId);
+      const currentConversation = conversations.find((conversation) => conversation.id === currentId);
+      if (matchesTarget(currentConversation)) return currentId;
+      return conversations.find(matchesTarget)?.id || null;
+    });
+    setActiveTab("chat");
+  }, [activeProjectId, activeTab, assistantMode, conversations]);
   const [sidebarVisible, setSidebarVisible] = useState(() => {
     const saved = localStorage.getItem("sidebarVisible");
     return saved !== "false";
@@ -384,16 +425,31 @@ function App() {
       : [],
   });
 
+  const conversationSaveChainsRef = useRef(new Map());
+
   const persistConversation = (conversation) => {
     const compactConversation = sanitizeConversationForStorage(conversation);
-    try {
-      saveLlmConversation(compactConversation).catch((err) => {
-        console.warn("Could not save chat history to app folder:", err);
-      });
-    } catch (err) {
-      console.warn("Could not save chat history:", err);
-    }
+    const previous = conversationSaveChainsRef.current.get(compactConversation.id) || Promise.resolve();
+    const next = previous.catch(() => {}).then(() => saveLlmConversation(compactConversation));
+    conversationSaveChainsRef.current.set(compactConversation.id, next);
+    next.catch((err) => {
+      console.warn("Could not save chat history to app folder:", err);
+    }).finally(() => {
+      if (conversationSaveChainsRef.current.get(compactConversation.id) === next) conversationSaveChainsRef.current.delete(compactConversation.id);
+    });
   };
+
+  useEffect(() => {
+    if (!conversationHistoryHydrated) return;
+    try {
+      const recoverable = conversations
+        .slice(0, 80)
+        .map(sanitizeConversationForStorage);
+      localStorage.setItem("chat_conversations", JSON.stringify(recoverable));
+    } catch (err) {
+      console.warn("Could not update the local chat history mirror:", err);
+    }
+  }, [conversationHistoryHydrated, conversations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,24 +466,29 @@ function App() {
 
       try {
         const diskConversations = await listLlmConversations();
+        const localConversations = legacyConversations.map(sanitizeConversationForStorage);
         const diskIds = new Set(diskConversations.map((conversation) => conversation.id));
-        const missingLegacy = legacyConversations
-          .map(sanitizeConversationForStorage)
-          .filter((conversation) => conversation.id && !diskIds.has(conversation.id));
+        const missingLegacy = localConversations.filter((conversation) => conversation.id && !diskIds.has(conversation.id));
 
         if (missingLegacy.length > 0) {
           await Promise.all(missingLegacy.map((conversation) => saveLlmConversation(conversation)));
         }
 
-        const merged = [...diskConversations, ...missingLegacy]
+        const mergedById = new Map();
+        for (const conversation of [...diskConversations, ...localConversations]) {
+          const current = mergedById.get(conversation.id);
+          if (!current || Number(conversation.timestamp || 0) >= Number(current.timestamp || 0)) mergedById.set(conversation.id, conversation);
+        }
+        const merged = [...mergedById.values()]
           .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
         if (!cancelled) setConversations(merged);
-        if (legacySaved) localStorage.removeItem("chat_conversations");
       } catch (err) {
         console.warn("Could not load chat history from app folder:", err);
         if (!cancelled && legacyConversations.length > 0) {
           setConversations(legacyConversations.map(sanitizeConversationForStorage));
         }
+      } finally {
+        if (!cancelled) setConversationHistoryHydrated(true);
       }
     }
     loadConversations();
@@ -447,7 +508,9 @@ function App() {
           messages: msgs,
           timestamp: Date.now(),
           model: modelName,
-          ...(newTitle ? { title: newTitle } : {})
+          ...(newTitle ? { title: newTitle } : {}),
+          projectId: activeProjectId || list[idx].projectId || null,
+          assistantMode,
         };
         list[idx] = conversation;
       } else {
@@ -456,14 +519,16 @@ function App() {
           title: newTitle || "Chat Session",
           model: modelName,
           messages: msgs,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          projectId: activeProjectId || null,
+          assistantMode,
         };
         list.unshift(conversation);
       }
       persistConversation(conversation);
       return list;
     });
-  }, []);
+  }, [activeProjectId, assistantMode]);
 
   const handleDeleteConversation = useCallback((id, e) => {
     if (e) e.stopPropagation();
@@ -478,6 +543,20 @@ function App() {
       setActiveConversationId(null);
     }
   }, [activeConversationId]);
+
+  const handleMoveConversationToProject = useCallback((conversationId, projectId) => {
+    setConversations((current) => current.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      const updated = {
+        ...conversation,
+        projectId: projectId || null,
+        assistantMode: projectId ? "work" : "chat",
+        timestamp: Date.now(),
+      };
+      persistConversation(updated);
+      return updated;
+    }));
+  }, []);
 
   const refreshSpeechTranscriptions = useCallback(async () => {
     try {
@@ -813,6 +892,7 @@ function App() {
       showHistory={showHistory}
       setShowHistory={setShowHistory}
       onDeleteConversation={handleDeleteConversation}
+      onMoveConversationToProject={handleMoveConversationToProject}
       speechTranscriptions={speechTranscriptions}
       selectedSpeechTranscript={selectedSpeechTranscript}
       setSelectedSpeechTranscript={setSelectedSpeechTranscript}
@@ -825,8 +905,14 @@ function App() {
       showTtsHistory={showTtsHistory}
       setShowTtsHistory={setShowTtsHistory}
       onDeleteTtsOutput={handleDeleteTtsOutput}
+      projects={chatProjects}
+      setProjects={setChatProjects}
+      activeProjectId={activeProjectId}
+      setActiveProjectId={setActiveProjectId}
+      assistantMode={assistantMode}
+      setAssistantMode={handleAssistantModeChange}
     />
-  ), [sidebarVisible, activeTab, specs, conversations, activeConversationId, showHistory, handleDeleteConversation, speechTranscriptions, selectedSpeechTranscript, showSpeechHistory, handleDeleteSpeechTranscription, ttsOutputs, selectedTtsOutput, showTtsHistory, handleDeleteTtsOutput]);
+  ), [sidebarVisible, activeTab, specs, conversations, activeConversationId, showHistory, handleDeleteConversation, handleMoveConversationToProject, speechTranscriptions, selectedSpeechTranscript, showSpeechHistory, handleDeleteSpeechTranscription, ttsOutputs, selectedTtsOutput, showTtsHistory, handleDeleteTtsOutput, chatProjects, activeProjectId, assistantMode, handleAssistantModeChange]);
 
   const handleStopServer = useCallback(async () => {
     if (!serverRunning || isStoppingServer) return;
@@ -930,44 +1016,26 @@ function App() {
 
         {visitedTabs.has("chat") && (
         <WorkspacePanel tab="chat" activeTab={activeTab} onReturnHome={recoverFailedWorkspace}>
-          <div className={workTabVisible ? "split-view-container" : ""} style={{ display: "flex", flex: 1, height: "100%", overflow: "hidden" }}>
-            <div className={workTabVisible ? "split-view-chat" : ""} style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <TextChat
-                specs={specs}
-                showAlert={showAlert}
-                showConfirm={showConfirm}
-                textSettings={textSettings}
-                setTextSettings={setTextSettings}
-                setActiveModel={setActiveModel}
-                setServerRunning={setServerRunning}
-                conversations={conversations}
-                setConversations={setConversations}
-                activeConversationId={activeConversationId}
-                setActiveConversationId={setActiveConversationId}
-                showHistory={showHistory}
-                setShowHistory={setShowHistory}
-                saveConversationState={saveConversationState}
-                setIsLlmLoaded={setIsLlmLoaded}
-                onOpenWorkTab={(content, lang) => {
-                  setWorkTabContent(content);
-                  setWorkTabLanguage(lang);
-                  setWorkTabVisible(true);
-                }}
-              />
-            </div>
-            {workTabVisible && (
-              <div className="split-view-work" style={{ width: "50%", minWidth: "400px" }}>
-                <WorkTab
-                  content={workTabContent}
-                  language={workTabLanguage}
-                  onClose={() => setWorkTabVisible(false)}
-                  onUpdate={setWorkTabContent}
-                  showAlert={showAlert}
-                  showConfirm={showConfirm}
-                />
-              </div>
-            )}
-          </div>
+          <TextChat
+            specs={specs}
+            showAlert={showAlert}
+            showConfirm={showConfirm}
+            textSettings={textSettings}
+            setTextSettings={setTextSettings}
+            setActiveModel={setActiveModel}
+            setServerRunning={setServerRunning}
+            conversations={conversations}
+            setConversations={setConversations}
+            activeConversationId={activeConversationId}
+            setActiveConversationId={setActiveConversationId}
+            showHistory={showHistory}
+            setShowHistory={setShowHistory}
+            saveConversationState={saveConversationState}
+            setIsLlmLoaded={setIsLlmLoaded}
+            assistantMode={assistantMode}
+            activeProject={chatProjects.find((project) => project.id === activeProjectId) || null}
+            speechSettings={speechSettings}
+          />
         </WorkspacePanel>
         )}
 

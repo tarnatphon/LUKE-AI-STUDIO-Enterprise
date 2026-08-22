@@ -1,0 +1,31 @@
+============================================================
+ LUKE AI STUDIO - GITHUB DOWNLOAD VERIFICATION
+============================================================
+
+[1/6] ตรวจ GitHub Release
+PASS: พบ Release v1.0.0-beta.1
+
+[2/6] เตรียมพื้นที่ทดสอบดาวน์โหลด
+PASS: /Users/ekky/Desktop/LUKE-AI-GITHUB-DOWNLOAD-TEST
+
+[3/6] ดาวน์โหลด Assets จาก GitHub
+PASS: ดาวน์โหลด ZIP และ SHA256 สำเร็จ
+
+[4/6] ตรวจ SHA256
+Expected: 6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea
+Actual  : 6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea
+PASS: SHA256 ตรงกัน
+
+[5/6] ตรวจ ZIP Integrity
+PASS: ZIP Integrity ผ่าน
+
+[6/6] สรุปผล
+============================================================
+ GITHUB RELEASE DOWNLOAD TEST PASSED
+============================================================
+Release : https://github.com/tarnatphon/LukeAi/releases/tag/v1.0.0-beta.1
+ZIP     : /Users/ekky/Desktop/LUKE-AI-GITHUB-DOWNLOAD-TEST/LUKE-AI-STUDIO-1.0.0-beta.1.zip
+SHA256  : 6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea
+Report  : /Users/ekky/Desktop/Luke ai/releases/github-download-test-20260805-141803.txt
+
+ไฟล์บน GitHub ดาวน์โหลดได้จริงและไม่เสียหาย

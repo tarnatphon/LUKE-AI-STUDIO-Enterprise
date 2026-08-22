@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "product": "LUKE AI STUDIO",
+  "catalogVersion": "1.0.0-beta.7",
+  "defaultDownloadDirectory": "/Volumes/EXTERNAL Drive/ai/ai-downloads",
+  "fallbackDownloadDirectory": "~/Downloads/LUKE-AI-STUDIO",
+  "dependencies": [
+    {
+      "id": "portable-node",
+      "name": {
+        "en": "Portable Node.js",
+        "th": "Node.js แบบพกพา"
+      },
+      "category": "core-runtime",
+      "required": true,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "executable",
+          "path": "app/tools/node-mac/bin/node",
+          "versionArgument": "--version"
+        }
+      ],
+      "install": {
+        "mode": "release-package",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "portable-npm",
+      "name": {
+        "en": "Portable npm",
+        "th": "npm แบบพกพา"
+      },
+      "category": "core-runtime",
+      "required": true,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "executable",
+          "path": "app/tools/node-mac/bin/npm",
+          "versionArgument": "--version"
+        }
+      ],
+      "install": {
+        "mode": "release-package",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "portable-npx",
+      "name": {
+        "en": "Portable npx",
+        "th": "npx แบบพกพา"
+      },
+      "category": "core-runtime",
+      "required": true,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "executable",
+          "path": "app/tools/node-mac/bin/npx",
+          "versionArgument": "--version"
+        }
+      ],
+      "install": {
+        "mode": "release-package",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "image-runtime",
+      "name": {
+        "en": "Image Generation Runtime",
+        "th": "ระบบสร้างภาพ"
+      },
+      "category": "ai-runtime",
+      "required": false,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "directory",
+          "path": "app/backend/mac"
+        }
+      ],
+      "install": {
+        "mode": "managed-download",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "video-runtime",
+      "name": {
+        "en": "Image-to-Video Runtime",
+        "th": "ระบบสร้างวิดีโอจากภาพ"
+      },
+      "category": "ai-runtime",
+      "required": false,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "python-module",
+          "module": "torch"
+        },
+        {
+          "type": "python-module",
+          "module": "diffusers"
+        },
+        {
+          "type": "python-module",
+          "module": "transformers"
+        }
+      ],
+      "install": {
+        "mode": "managed-download",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "speech-runtime",
+      "name": {
+        "en": "Speech Recognition Runtime",
+        "th": "ระบบถอดเสียง"
+      },
+      "category": "ai-runtime",
+      "required": false,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "directory",
+          "path": "app/transcriptions"
+        }
+      ],
+      "install": {
+        "mode": "managed-download",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    },
+    {
+      "id": "tts-runtime",
+      "name": {
+        "en": "Kokoro TTS Runtime",
+        "th": "ระบบอ่านข้อความ Kokoro"
+      },
+      "category": "ai-runtime",
+      "required": false,
+      "platforms": [
+        "darwin-arm64"
+      ],
+      "checks": [
+        {
+          "type": "file",
+          "path": "app/models/kokoro/model.onnx"
+        }
+      ],
+      "install": {
+        "mode": "managed-download",
+        "requiresChecksum": true,
+        "supportsRollback": true
+      }
+    }
+  ],
+  "storagePolicy": {
+    "preferExternalDrive": true,
+    "createDirectoryWhenWritable": true,
+    "fallbackWhenUnavailable": true,
+    "requireWritableDirectory": true,
+    "minimumFreeBytes": 2147483648,
+    "externalVolumeRoot": "/Volumes/EXTERNAL Drive"
+  }
+}

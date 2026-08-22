@@ -352,6 +352,31 @@ const {
   chooseStorageFolder,
 } = require("./storage-folder-picker.cjs");
 
+// LUKE_AI_WORK_ENVIRONMENT_INSPECTOR_IMPORT_V1
+const {
+  inspectWorkEnvironment,
+} = require("./work-environment-inspector.cjs");
+const {
+  listWorkDirectory,
+  readWorkFile,
+  writeWorkFile,
+} = require("./work-file-manager.cjs");
+
+// LUKE_AI_WORK_ACTION_RUNNER_IMPORT_V1
+const {
+  getWorkTerminalSession,
+  openWorkTarget,
+  runReadOnlyWorkCommand,
+  runTypedWorkCommand,
+  runWorkFileDiff,
+} = require("./work-action-runner.cjs");
+const {
+  assertWorkFolderGrant,
+  grantWorkFolder,
+  revokeWorkFolderGrant,
+} = require("./work-folder-grants.cjs");
+const { invalidateProjectIndex, searchProjectFiles } = require("./work-project-search.cjs");
+
 // LUKE_AI_STORAGE_DESTINATION_MANAGER_IMPORT_V2
 const {
   StorageDestinationManager,
@@ -5977,6 +6002,8 @@ function sanitizeChatConversationForStorage(conversation = {}) {
     model: String(conversation.model || ""),
     messages,
     timestamp,
+    projectId: conversation.projectId ? String(conversation.projectId).slice(0, 160) : null,
+    assistantMode: conversation.assistantMode === "work" ? "work" : "chat",
     createdAt: conversation.createdAt || new Date(timestamp).toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -19959,6 +19986,144 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // POST /api/work/environment
+  if (
+    req.url === "/api/work/environment" &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await readJsonRequestBody(req);
+      for (const root of body.sourceFolders || []) assertWorkFolderGrant({ projectId: body.projectId, root, grantId: body.folderGrants?.[root] });
+      const environment = await inspectWorkEnvironment({
+        sourceFolders: body.sourceFolders,
+        activeRoot: body.activeRoot,
+      });
+      return json(res, 200, { ok: true, environment });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/work/file/read (project-confined text preview)
+  if (req.url === "/api/work/directory" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const directory = await listWorkDirectory({ root: body.root, directoryPath: body.path });
+      return json(res, 200, { ok: true, directory });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/file/read (project-confined text preview)
+  if (req.url === "/api/work/file/read" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const file = await readWorkFile({ root: body.root, filePath: body.path });
+      return json(res, 200, { ok: true, file });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/search (bounded, project-grant-confined lexical RAG)
+  if (req.url === "/api/work/search" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const sources = Array.isArray(body.sources) ? body.sources.slice(0, 20) : [];
+      const results = [];
+      const indexes = [];
+      for (const source of sources) {
+        assertWorkFolderGrant({ projectId: body.projectId, root: source.root, grantId: source.grantId });
+        if (body.refresh === true) await invalidateProjectIndex(source.root);
+        const found = await searchProjectFiles({ root: source.root, query: body.query, limit: body.limit || 8 });
+        indexes.push({ root: found.root, filesIndexed: found.filesIndexed, chunksIndexed: found.chunksIndexed, indexedAt: found.indexedAt });
+        results.push(...found.results.map((item) => ({ ...item, root: found.root })));
+      }
+      results.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+      return json(res, 200, { ok: true, search: { query: String(body.query || ""), indexes, results: results.slice(0, Math.max(1, Math.min(12, Number(body.limit) || 8))) } });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/file/write (project-confined, approved atomic text save)
+  if (req.url === "/api/work/file/write" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await writeWorkFile({ root: body.root, filePath: body.path, content: body.content, approvalGranted: body.approvalGranted, expectedModifiedAt: body.expectedModifiedAt });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/review/diff (bounded, read-only file diff)
+  if (req.url === "/api/work/review/diff" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await runWorkFileDiff({ root: body.root, filePath: body.path });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/command (fixed read-only command palette)
+  if (req.url === "/api/work/command" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await runReadOnlyWorkCommand({ root: body.root, commandId: body.commandId });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/terminal (typed, parsed, read-only; never invokes a shell)
+  if (req.url === "/api/work/terminal/session" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const session = await getWorkTerminalSession({ root: body.root });
+      return json(res, 200, { ok: true, session });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/terminal (typed, parsed, read-only; never invokes a shell)
+  if (req.url === "/api/work/terminal" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await runTypedWorkCommand({ root: body.root, command: body.command });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/open (whitelisted external targets)
+  if (req.url === "/api/work/open" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await openWorkTarget({ root: body.root, target: body.target, url: body.url, approvalGranted: body.approvalGranted });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   // GET /api/storage/settings
   if (
     req.url === "/api/storage/settings" &&
@@ -20045,9 +20210,14 @@ const server = http.createServer(async (req, res) => {
             null,
         });
 
+      const workGrant = body.purpose === "work-project-source"
+        ? grantWorkFolder({ projectId: body.projectId, root: result.selectedPath })
+        : null;
+
       return json(res, 200, {
         ok: true,
         ...result,
+        ...(workGrant ? { selectedPath: workGrant.root, grantId: workGrant.grantId } : {}),
       });
     } catch (error) {
       return json(
@@ -20064,6 +20234,16 @@ const server = http.createServer(async (req, res) => {
               : String(error),
         }
       );
+    }
+  }
+
+  if (req.url === "/api/work/folder/revoke" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      revokeWorkFolderGrant({ projectId: body.projectId, grantId: body.grantId });
+      return json(res, 200, { ok: true });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

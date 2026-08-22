@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "selectionMode": "automatic",
+  "preferredDestination": {
+    "type": "external",
+    "volumeName": "EXTERNAL Drive",
+    "relativePath": "ai/ai-downloads"
+  },
+  "localFallback": {
+    "enabled": true,
+    "path": "~/Library/Application Support/LUKE AI STUDIO/downloads"
+  },
+  "customDestination": {
+    "enabled": false,
+    "path": ""
+  },
+  "transfer": {
+    "automaticallyDetectExternalDrive": true,
+    "automaticallyTransferWhenAvailable": false,
+    "verifyFileSize": true,
+    "verifySha256": true,
+    "preserveLocalCopyAfterTransfer": true,
+    "requireConfirmationBeforeLocalDeletion": true,
+    "maximumConcurrentTransfers": 1,
+    "maximumHistoryItems": 200
+  },
+  "security": {
+    "allowShell": false,
+    "allowPathOutsideApprovedRoots": false,
+    "allowAutomaticDeletion": false
+  }
+}

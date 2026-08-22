@@ -1,0 +1,36 @@
+
+# Downloaded native AI runtimes
+# Generated updater state and local backups
+# Native AI runtimes downloaded during setup
+*.log
+*.part
+*.pyc
+*.pyo
+*.tmp
+.DS_Store
+.env
+.env.*
+.venv/
+Thumbs.db
+__pycache__/
+app/backend/mac/coreml_venv/
+app/backend/mac/libstable-diffusion.dylib
+app/backend/mac/sd
+app/config/*.backup-*
+app/tools/node-mac/
+app/update-state/*.log
+app/update-state/*.tmp
+backups/
+cache/
+models/
+node_modules/
+node_modules_mac/
+outputs/
+releases/
+runtime-logs/
+validation-reports/
+venv/
+releases/staging-*/
+# LUKE AI STUDIO generated Image-to-Video runtime
+/app/runtimes/image-to-video/venv/
+/app/runtimes/image-to-video/installed.json

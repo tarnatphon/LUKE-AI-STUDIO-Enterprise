@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-22T15:08:20.542Z",
+  "status": "stopped",
+  "desiredState": "stopped",
+  "pid": null,
+  "ownedProcess": false,
+  "startedAt": null,
+  "healthySince": null,
+  "lastHealthCheckAt": null,
+  "lastHealthyAt": null,
+  "lastStoppedAt": "2026-08-22T15:08:20.542Z",
+  "lastExitCode": null,
+  "lastSignal": null,
+  "lastError": null,
+  "restartCount": 0,
+  "consecutiveFailures": 0,
+  "restartDelayMs": 0,
+  "suspendedUntil": null,
+  "events": [
+    {
+      "id": "runtime-event-1786034344546-e6b4e55c5d956",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:04.546Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034350577-a0f3d52a2297a",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:10.577Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034351179-4b13f769a71e58",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:11.179Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034354782-be8f3720eaf26",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:14.782Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034358387-c829232e55a53",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:18.387Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034361769-6b7cc2f4dd6e88",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:21.769Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034365129-1ddf5578e81488",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:25.129Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034368517-6c26bb324f506",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:28.517Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034372120-26d71ed2787728",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:32.120Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034375402-e1e2aeb241127",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:35.402Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034378651-e37b1700dae57",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:38.651Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034381900-7532d4b90e38c8",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:41.900Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034385161-ca45458e3c7288",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:45.161Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034388414-7c6312295ab668",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:48.414Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034391742-5c6090ed97e6f",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:51.742Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034395029-0a9d5bebf8dfe",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:55.029Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034398321-cfc143ec12d13",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:39:58.321Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034401557-c8db1e6426bf28",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:40:01.557Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034405243-6e457f42f018e",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:40:05.243Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1786034409654-ee06ef2769313",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-06T16:40:09.654Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787331117524-f790d3644ac9c",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-21T16:51:57.524Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787336144140-eee733a7f457d",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-21T18:15:44.140Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787338478408-8ee8e463fa9c2",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-21T18:54:38.408Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787340074674-2ce7128d831da",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-21T19:21:14.674Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787370748890-d3316cf24a48a",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-22T03:52:28.890Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787370797717-9df73fa735667",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-22T03:53:17.717Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787411300542-09c983c143f16",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-22T15:08:20.542Z",
+      "reason": "supervisor-shutdown"
+    }
+  ]
+}

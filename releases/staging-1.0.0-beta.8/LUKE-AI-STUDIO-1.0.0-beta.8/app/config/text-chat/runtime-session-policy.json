@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "runtime": {
+    "baseUrl": "http://127.0.0.1:10086",
+    "healthPath": "/health",
+    "unloadPath": "/v1/models/unload",
+    "loadPath": "/v1/models/load",
+    "requestTimeoutMs": 15000,
+    "loadTimeoutMs": 120000,
+    "allowOfflinePreparation": true
+  },
+  "refresh": {
+    "unloadBeforeReload": true,
+    "healthCheckBeforeRefresh": true,
+    "healthCheckAfterReload": true,
+    "maximumAttempts": 3,
+    "retryDelayMs": 1000,
+    "preserveConversationId": true
+  },
+  "restorePrompt": {
+    "enabled": true,
+    "includeSystemPrompt": true,
+    "includeSummary": true,
+    "includeFacts": true,
+    "includeDecisions": true,
+    "includeTasks": true,
+    "includeRecentMessages": true,
+    "maximumRecentMessages": 20,
+    "maximumPromptCharacters": 32000
+  }
+}

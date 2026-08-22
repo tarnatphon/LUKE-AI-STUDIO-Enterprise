@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "queue": {
+    "maximumConcurrentInstalls": 1,
+    "maximumQueuedJobs": 20,
+    "continueAfterFailure": true
+  },
+  "installation": {
+    "timeoutMs": 1800000,
+    "maximumLogCharacters": 50000,
+    "allowHomebrew": true,
+    "allowPythonVenv": true,
+    "allowSystemPythonInstall": false,
+    "allowShell": false,
+    "automaticallyConfigureAfterInstall": false,
+    "automaticallyStartAfterInstall": false,
+    "minimumFreeSpaceBufferBytes": 536870912,
+    "rejectWhenDiskSpaceUnknown": false
+  },
+  "paths": {
+    "localRuntimeRoot": "~/Library/Application Support/LUKE AI STUDIO/runtimes",
+    "pythonVenvRoot": "~/Library/Application Support/LUKE AI STUDIO/runtime-venvs"
+  },
+  "supportedRuntimes": {
+    "ollama": {
+      "displayName": "Ollama",
+      "installer": "homebrew",
+      "package": "ollama",
+      "estimatedInstallBytes": 2147483648
+    },
+    "llama.cpp": {
+      "displayName": "llama.cpp",
+      "installer": "homebrew",
+      "package": "llama.cpp",
+      "estimatedInstallBytes": 3221225472
+    },
+    "mlx": {
+      "displayName": "MLX LM Server",
+      "installer": "python-venv",
+      "package": "mlx-lm",
+      "appleSiliconOnly": true,
+      "estimatedInstallBytes": 4294967296
+    }
+  }
+}

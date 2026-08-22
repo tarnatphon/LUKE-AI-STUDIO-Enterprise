@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "circuitBreaker": {
+    "failureThreshold": 3,
+    "successThresholdToClose": 1,
+    "cooldownMs": 300000,
+    "halfOpenMaximumAttempts": 1,
+    "countTimeoutAsFailure": true,
+    "countConnectionErrorAsFailure": true,
+    "countHttpErrorAsFailure": true,
+    "countEmptyResponseAsFailure": true
+  },
+  "health": {
+    "maximumEvents": 10000,
+    "rollingWindowSize": 50,
+    "minimumSamplesForRate": 1,
+    "unhealthySuccessRateThreshold": 0.4
+  },
+  "routing": {
+    "excludeOpenCircuitModels": true,
+    "allowHalfOpenProbe": true
+  },
+  "ui": {
+    "showHealthDashboard": true,
+    "showCircuitState": true,
+    "allowManualReset": true
+  }
+}

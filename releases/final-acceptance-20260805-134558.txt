@@ -1,0 +1,36 @@
+============================================================
+ LUKE AI STUDIO - FINAL ACCEPTANCE TEST
+============================================================
+
+[1/7] Frontend
+FAIL: Frontend HTTP 000
+
+[2/7] Health APIs
+PASS: /api/health
+PASS: /api/llm/status
+PASS: /api/capabilities/image-to-video/status
+
+[3/7] Branding
+PASS: พบชื่อ LUKE AI STUDIO
+
+[4/7] Portable Runtime
+v22.12.0
+10.9.0
+PASS: Portable Node.js และ npm พร้อม
+
+[5/7] Kokoro Runtime
+PASS: Kokoro Runtime พร้อม
+
+[6/7] Release ZIP
+PASS: ZIP Integrity ผ่าน
+6bfc7e5fe3b986b6a81b5220fb9ea251492ce1bd696ce7c17f813472e42dd7ea  /Users/ekky/Desktop/Luke ai/releases/LUKE-AI-STUDIO-20260805-134036.zip
+
+[7/7] สรุป
+============================================================
+PASS: 7
+FAIL: 1
+FINAL ACCEPTANCE TEST FAILED
+ยังไม่ควรเผยแพร่ ZIP
+Report: /Users/ekky/Desktop/Luke ai/releases/final-acceptance-20260805-134558.txt
+Program: http://localhost:1420
+============================================================

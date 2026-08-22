@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "context": {
+    "defaultContextTokens": 32768,
+    "summaryThresholdPercent": 80,
+    "snapshotThresholdPercent": 90,
+    "sessionRefreshThresholdPercent": 95,
+    "recentMessagesToPreserve": 20,
+    "charactersPerEstimatedToken": 4
+  },
+  "memory": {
+    "preserveRawHistory": true,
+    "automaticSummary": true,
+    "automaticSnapshot": true,
+    "maximumFacts": 100,
+    "maximumDecisions": 100,
+    "maximumTasks": 100,
+    "maximumSummaryCharacters": 12000
+  },
+  "ram": {
+    "enabled": true,
+    "prepareRefreshAtUsedPercent": 85,
+    "refreshAtUsedPercent": 92,
+    "emergencyRefreshAtUsedPercent": 95,
+    "minimumFreeBytes": 1073741824
+  },
+  "session": {
+    "automaticRefresh": true,
+    "preserveConversationId": true,
+    "preserveModelSettings": true,
+    "preserveSystemPrompt": true,
+    "preserveAttachments": true,
+    "showRefreshNotice": false
+  }
+}

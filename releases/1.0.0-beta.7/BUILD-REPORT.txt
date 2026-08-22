@@ -1,0 +1,1902 @@
+============================================================
+ LUKE AI STUDIO - BUILD 1.0.0-beta.7
+============================================================
+
+[1/9] ตรวจ Source Workspace
+PASS: Working Tree สะอาด
+PASS: Runtime Metadata พร้อม
+
+[2/9] ค้นหา Portable Runtime Cache
+PASS: Runtime Cache = /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-repair-20260805-162313/node-mac-runtime
+Node: v25.2.1
+npm : 11.6.2
+npx : 11.6.2
+
+[3/9] รัน Source Validation
+PASS: release structure and syntax
+PASS: Portable Node runtime is valid for packaging
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 172
+Backend endpoints : 208
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/scripts/server/serve.cjs
+Port   : 53667
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53667
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":true,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/node","type":"file","exists":true,"ok":true},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/app/tools/node-mac/bin/npm","type":"file","exists":true,"ok":true},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/app/outputs","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Chat history folder","path":"/Users/ekky/Desktop/Luke ai/app/chat-history","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Transcriptions folder","path":"/Users/ekky/Desktop/Luke ai/app/transcriptions","type":"directo
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53673
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 5
+Missing          : 2
+Required missing : 0
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53676
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1786728996767-00e66ed9
+Cancelled job: runtime-1786728996783-3b06261b
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53681
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1786729000268-1da723b3 failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1786729000378-63bafe1f failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53687
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: External drive absence detected.
+PASS: Safe fallback directory selected.
+PASS: Safe fallback directory created.
+PASS: Runtime storage resolve API completed.
+PASS: Missing external volume was not created.
+PASS: External volume mount guard completed.
+PASS: Runtime storage availability test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53691
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+PASS: Signed catalog policy is enabled.
+PASS: Batch selection is limited to three models.
+PASS: Download concurrency is limited to one.
+PASS: Side-by-side installation and rollback policy are enabled.
+PASS: Preferred storage and Local Staging fallback are enabled.
+PASS: Text Model Manager foundation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53695
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Text model catalog API responded.
+PASS: Official Qwen model is present.
+PASS: Maximum queue selection is three.
+PASS: Download concurrency is one.
+PASS: Text model catalog API validation completed.
+PASS: Community Models category is enabled.
+PASS: Dolphin community model is present.
+PASS: One-click in-app download is required.
+PASS: Community models use the unified queue.
+PASS: SHA256 metadata verification is required.
+PASS: Automatic community model update checking is enabled.
+PASS: Community text model catalog validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53700
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three text models entered the queue.
+PASS: Only one text model downloaded at a time.
+PASS: Queue started the next model automatically.
+PASS: SHA256 verification passed for every model.
+PASS: Models installed into managed storage.
+PASS: Sequential text model download worker validation completed.
+PASS: Text Model Manager cards are present.
+PASS: One-click in-app download is connected.
+PASS: Sequential Download Queue UI is present.
+PASS: Queue actions are connected.
+PASS: Official and Community categories are present.
+PASS: Text Model Manager is connected to the App.
+PASS: Text Model Manager UI validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53705
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Installed Model Registry API responded.
+PASS: Automatic update comparison detected a newer version.
+PASS: Installed and latest versions were reported.
+PASS: Update Available UI is present.
+PASS: One-click Update action is connected.
+PASS: Static Text Model Update endpoint is connected.
+PASS: Text Model Update Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53709
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Hardware profile API responded.
+PASS: Q4, Q5 and Q8 catalog variants are present.
+PASS: Compatible Quantization was selected automatically.
+PASS: Manual Quantization selector is present.
+PASS: Incompatible variants are disabled.
+PASS: Hardware summary UI is connected.
+PASS: Text Model hardware compatibility validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53713
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Conversation was created.
+PASS: Chat message was autosaved.
+PASS: Conversation was restored after refresh.
+PASS: Last opened conversation was remembered.
+PASS: Search, pin and confirmed delete UI are present.
+PASS: Persistent Text Chat validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53721
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Context usage was calculated.
+PASS: Conversation summary was created.
+PASS: Memory snapshot was persisted.
+PASS: Session refreshed without changing the conversation.
+PASS: Raw conversation history was preserved.
+PASS: Restore context contains summary and recent messages.
+PASS: RAM emergency refresh was detected.
+PASS: Context Memory UI is connected.
+PASS: Text Chat Memory Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53726
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime health was checked before refresh.
+PASS: Loaded model was unloaded.
+PASS: Model runtime was loaded again.
+PASS: Runtime health was verified after reload.
+PASS: Conversation ID remained unchanged.
+PASS: Memory summary was injected into the restore prompt.
+PASS: Facts, decisions, tasks and recent messages were restored.
+PASS: Runtime Session UI is connected.
+PASS: Text Runtime Session Refresh validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53733
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:53732
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: User message was saved before generation.
+PASS: Runtime received an OpenAI-compatible streaming request.
+PASS: Runtime received normalized JSON schema response_format.
+PASS: Text tokens streamed incrementally.
+PASS: Streaming completion event was emitted.
+PASS: Assistant response was autosaved.
+PASS: Conversation history contains user and assistant messages.
+PASS: Stop Generation UI is connected through Runtime Recovery.
+PASS: Text Generation Streaming validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53739
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three unique models were selected.
+PASS: All three models generated in parallel.
+PASS: All multi-model runtime requests received normalized JSON schema response_format.
+PASS: Every model streamed its response.
+PASS: All model responses were autosaved.
+PASS: Responses were scored and ranked.
+PASS: Exactly one Best Response was selected.
+PASS: Model ID and evaluation metadata were preserved.
+PASS: Multi-Model Comparison UI is connected.
+PASS: Multi-Model Parallel Generation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53747
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: AI Judge received all model responses.
+PASS: Highest ranked model was selected as Judge.
+PASS: AI Judge runtime request received normalized JSON schema response_format.
+PASS: Final Answer streamed incrementally.
+PASS: Final Answer was autosaved.
+PASS: Original model responses were preserved.
+PASS: Source Model IDs were stored in metadata.
+PASS: AI Judge Synthesis UI is connected.
+PASS: AI Judge Synthesis validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53752
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Like feedback was recorded.
+PASS: Dislike and preferred feedback types are supported.
+PASS: Preferred response was marked in conversation history.
+PASS: Model satisfaction scores were persisted.
+PASS: Feedback audit events were preserved.
+PASS: Adaptive model score is available for ranking.
+PASS: Regenerate UI is connected.
+PASS: Text Model Feedback validation completed.
+PASS: Automatic Model Router backend is present.
+PASS: Task classification and scoring are present.
+PASS: Feedback and hardware scoring are connected.
+PASS: Fallback model routing is configured.
+PASS: Automatic Model Router UI is connected.
+PASS: Manual Auto Router toggle is connected.
+PASS: Automatic Model Router validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53771
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Primary model was attempted first.
+PASS: Primary model failure was detected.
+PASS: Automatic fallback model was selected.
+PASS: Runtime Recovery attempts received normalized JSON schema response_format.
+PASS: Fallback response streamed successfully.
+PASS: Only the successful response was autosaved.
+PASS: Recovery attempt history was preserved.
+PASS: Successful fallback Model ID was stored.
+PASS: Runtime Recovery UI is connected.
+PASS: Runtime Failure Recovery validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53777
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Model failures were recorded.
+PASS: Circuit opened after repeated failures.
+PASS: Open circuit model was excluded from routing.
+PASS: Healthy fallback model remained available.
+PASS: Next half-open probe time was stored.
+PASS: Manual circuit reset closed the circuit.
+PASS: Model Health audit events were persisted.
+PASS: Model Health Dashboard UI is connected.
+PASS: Model Health Circuit Breaker validation completed.
+PASS: Runtime process was started by the supervisor.
+PASS: Runtime PID and ownership were recorded.
+PASS: Runtime crash was detected.
+PASS: Runtime restarted automatically.
+PASS: Restart audit events were persisted.
+PASS: Manual restart replaced the runtime process.
+PASS: Runtime stopped gracefully.
+PASS: Runtime Supervisor validation completed.
+PASS: Runtime Supervisor Settings API is present.
+PASS: Runtime policy validation is present.
+PASS: Localhost-only Health URL validation is present.
+PASS: Shell command execution remains disabled.
+PASS: Supervisor policy reload is connected.
+PASS: Start, Stop, Restart and Reset controls are connected.
+PASS: Runtime Settings UI is connected.
+PASS: Supervisor event history is displayed.
+PASS: Runtime Supervisor Dashboard validation completed.
+PASS: Ollama detection is supported.
+PASS: llama.cpp detection is supported.
+PASS: MLX detection is supported.
+PASS: Runtime presets use localhost endpoints.
+PASS: Detection does not modify Runtime Settings.
+PASS: One-click configuration API is connected.
+PASS: Runtime Auto-Detection validation completed.
+PASS: Runtime Detection Cards are connected.
+PASS: Ollama, llama.cpp and MLX cards are supported.
+PASS: Installed and running states are displayed.
+PASS: Executable, version and health details are displayed.
+PASS: One-click configuration is connected.
+PASS: Missing runtimes cannot be configured.
+PASS: Detection does not change settings without confirmation.
+PASS: Runtime Detection Dashboard validation completed.
+PASS: Runtime install jobs were queued.
+PASS: Runtime installs were processed one at a time.
+PASS: Shell execution remained disabled.
+PASS: One-Click Install UI is connected.
+PASS: Runtime Installation Queue is displayed.
+PASS: Runtime One-Click Install validation completed.
+PASS: Disk space preflight returned available and required bytes.
+PASS: Queued jobs start at zero percent.
+PASS: Installer output updates progress.
+PASS: Completed jobs finish at one hundred percent.
+PASS: Disk preflight is persisted with each install job.
+PASS: Progress and Disk Preflight UI are connected.
+PASS: Runtime Install Progress validation completed.
+PASS: Local fallback was selected when External Drive was unavailable.
+PASS: External destination was selected when the drive became available.
+PASS: Files were copied from Local fallback to External storage.
+PASS: File size and SHA-256 verification completed.
+PASS: Local copy remained after transfer.
+PASS: Local deletion required explicit confirmation.
+PASS: Confirmed deletion removed only the verified Local source.
+PASS: Cancelled deletion preserved the Local source.
+PASS: Shell and automatic deletion remained disabled.
+PASS: Storage Destination Manager validation completed.
+PASS: Storage Settings API is connected.
+PASS: Automatic, External, Local and Custom modes are supported.
+PASS: macOS Folder Picker uses shell-disabled execution.
+PASS: Active destination and fallback status are displayed.
+PASS: Local-to-External transfer controls are connected.
+PASS: Transfer history and SHA-256 status are displayed.
+PASS: Local deletion requires explicit confirmation.
+PASS: Cancelling deletion preserves the Local copy.
+PASS: Storage Destination Dashboard validation completed.
+PASS: Local, External, NAS and Cloud provider categories are supported.
+PASS: Mounted NAS folder health and write permissions were checked.
+PASS: NAS priority routing selected the highest healthy provider.
+PASS: SMB, NFS, WebDAV and mounted-folder NAS adapters are registered.
+PASS: S3-compatible, Google Cloud and Azure Cloud adapters are registered.
+PASS: Multiple providers and accounts can be added.
+PASS: SMB without a credential reference requires authentication.
+PASS: Plaintext credential fields were rejected.
+PASS: Shell, automatic mount and automatic deletion remain disabled.
+PASS: Unified Storage Provider Core validation completed.
+PASS: macOS Keychain stores provider credentials.
+PASS: Credential secrets are never returned by the summary API.
+PASS: JSON provider configuration stores only credential references.
+PASS: Keychain commands use argument arrays with shell disabled.
+PASS: Mounted NAS folders can be selected with the native folder picker.
+PASS: NAS read, write and free-space health checks are available.
+PASS: SMB and WebDAV credentials can be saved to Keychain.
+PASS: NAS mounting remains manual and automatic mount remains disabled.
+PASS: Storage Keychain and NAS Dashboard validation completed.
+PASS: AWS S3, Cloudflare R2, Backblaze B2 and MinIO use one S3-compatible adapter.
+PASS: Credentials are loaded through credential references.
+PASS: Bucket connection and list permissions are checked.
+PASS: Upload uses queue size 1.
+PASS: Upload size and SHA-256 metadata are verified.
+PASS: Local source is preserved after upload.
+PASS: Download SHA-256 verification succeeds.
+PASS: Cloud deletion requires explicit confirmation.
+PASS: Cancelled deletion preserves the Cloud object.
+PASS: S3-Compatible Storage Adapter validation completed.
+PASS: AWS S3 Cloud account UI is available.
+PASS: Cloudflare R2 Cloud account UI is available.
+PASS: Backblaze B2 Cloud account UI is available.
+PASS: MinIO and Custom S3 account UI are available.
+PASS: Cloud credentials use macOS Keychain API.
+PASS: Cloud Test Connection UI is connected.
+PASS: Cloud Upload and SHA-256 verification UI is connected.
+PASS: Cloud Download and SHA-256 verification UI is connected.
+PASS: Cloud deletion requires Request and Confirm.
+PASS: Cloud Transfer History is displayed.
+PASS: Cloud Storage Provider Dashboard validation completed.
+PASS: Unified queue supports Local, External, NAS and Cloud.
+PASS: Queue processing defaults to one job at a time.
+PASS: Provider priority routing is connected.
+PASS: Waiting and automatic retry states are supported.
+PASS: Exponential retry backoff is supported.
+PASS: Pause, Resume, Cancel and Retry controls are available.
+PASS: Queue state persists across application restarts.
+PASS: Source files remain preserved.
+PASS: Unified Storage Transfer Queue validation completed.
+PASS: External, NAS and Cloud availability watching is supported.
+PASS: Provider status changes are persisted.
+PASS: Waiting jobs wake automatically when a provider returns online.
+PASS: Automatic and manual scans are supported.
+PASS: Watcher can be started and stopped.
+PASS: Availability Watcher Dashboard is connected.
+PASS: Storage Availability Watcher validation completed.
+PASS: Storage providers receive dynamic health scores.
+PASS: Availability and writable state affect provider selection.
+PASS: Free space and latency affect provider scores.
+PASS: Recent provider failures reduce stability score.
+PASS: Provider priority remains part of Smart Selection.
+PASS: Unified Transfer Queue uses Smart Provider Selection.
+PASS: Storage Health Score Dashboard is connected.
+PASS: Storage Health Scoring validation completed.
+PASS: Models policy profile is available.
+PASS: Images policy profile is available.
+PASS: Video policy profile is available.
+PASS: Backups policy profile is available.
+PASS: Temporary policy profile is available.
+PASS: Health scoring is adjusted per workload.
+PASS: Minimum free-space policy is enforced.
+PASS: Explicit provider selection overrides automatic policy routing.
+PASS: Unified Transfer Queue accepts workloadType.
+PASS: Queue remains sequential by default.
+PASS: Storage Policy Dashboard is connected.
+PASS: Storage Policy Profiles validation completed.
+PASS: GGUF and model extensions route to Models.
+PASS: Image extensions route to Images.
+PASS: Video extensions route to Video.
+PASS: Archive and backup extensions route to Backups.
+PASS: Temporary and cache paths route to Temporary.
+PASS: Queue automatically detects workloadType.
+PASS: Manual workload override remains supported.
+PASS: Detection history is persisted.
+PASS: Automatic Workload Detection validation completed.
+PASS: Required storage bytes are forecast before transfer.
+PASS: Safety reserve varies by workload.
+PASS: Active queue reservations reduce effective free space.
+PASS: Critical capacity prevents unsafe transfer start.
+PASS: Healthy provider recommendation integrates with storage policy.
+PASS: Capacity reservations are released after completion or failure.
+PASS: Cleanup recommendations never perform automatic deletion.
+PASS: Storage Capacity Dashboard is connected.
+PASS: Storage Capacity Management validation completed.
+PASS: Lifecycle rules exist for Models, Images, Video, Backups and Temporary.
+PASS: Retention age controls Keep, Review, Archive and Delete-Candidate states.
+PASS: Protected paths always remain Keep.
+PASS: Symbolic links are excluded from lifecycle scans.
+PASS: Delete-Candidate is planning metadata only.
+PASS: No lifecycle deletion API exists.
+PASS: Automatic deletion remains disabled.
+PASS: Safe Cleanup Planner Dashboard is connected.
+PASS: Storage Lifecycle Rules validation completed.
+PASS: Archive requests preserve the source file.
+PASS: SHA-256 is captured before archive transfer.
+PASS: Cleanup becomes available only after verified archive completion.
+PASS: Cleanup request alone never deletes the source.
+PASS: Cancelled cleanup preserves the source.
+PASS: Source checksum and size are revalidated before deletion.
+PASS: Explicit cleanup confirmation deletes only the verified source.
+PASS: Automatic source deletion remains disabled.
+PASS: Safe Archive Dashboard is connected.
+PASS: Safe Archive Workflow validation completed.
+PASS: Only verified archives can be restored.
+PASS: Archive size is verified before restore.
+PASS: Archive SHA-256 is verified before restore.
+PASS: Restored size is verified after copy.
+PASS: Restored SHA-256 is verified after copy.
+PASS: Existing files are never overwritten automatically.
+PASS: Restore-as-new creates a unique destination.
+PASS: Archive source remains preserved.
+PASS: Archive Restore Workflow validation completed.
+PASS: Verified archives are included in integrity scans.
+PASS: Verified restores are included in integrity scans.
+PASS: File size verification detects mutations.
+PASS: SHA-256 verification detects corruption.
+PASS: Missing files are reported without modification.
+PASS: Remote Cloud records are marked for deep verification.
+PASS: Scheduled verification can be started and stopped.
+PASS: Integrity Scanner performs read-only verification.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Integrity Scanner validation completed.
+PASS: Deep verification uses the S3 download contract.
+PASS: Cloud object is downloaded only to the approved temporary verification area.
+PASS: Cloud object size is compared with verified archive metadata.
+PASS: Cloud object SHA-256 is compared with verified archive metadata.
+PASS: Corrupted Cloud objects create critical integrity alerts.
+PASS: Integrity alerts can be acknowledged without modifying Cloud objects.
+PASS: Temporary verification copies are removed after verification.
+PASS: Remote objects and archive sources remain read-only.
+PASS: Automatic repair and deletion remain disabled.
+PASS: Deep Cloud Integrity Verification validation completed.
+PASS: Provider health contributes to recovery readiness.
+PASS: Capacity risk contributes to recovery readiness.
+PASS: Archive and restore readiness are summarized.
+PASS: Local, NAS and Cloud integrity risks are summarized.
+PASS: Critical Deep Cloud alerts reduce recovery readiness.
+PASS: Disaster Recovery recommendations are generated from actual subsystem state.
+PASS: Unavailable subsystems degrade gracefully instead of crashing the dashboard.
+PASS: Dashboard remains read-only with automatic repair, deletion and overwrite disabled.
+PASS: Storage Disaster Recovery Dashboard validation completed.
+PASS: Disaster Recovery recommendations are converted into guided runbook procedures.
+PASS: Safe actions are restricted to an explicit allowlist.
+PASS: Health evaluation, availability scan and integrity scan can be user-triggered safely.
+PASS: Actions requiring identifiers or recovery choices remain manual.
+PASS: Source cleanup remains behind explicit confirmation.
+PASS: Destructive actions are never executable as SAFE actions.
+PASS: Guided Recovery never performs automatic repair, deletion or overwrite.
+PASS: Storage Recovery Runbook validation completed.
+PASS: NAS/provider offline scenario is detected.
+PASS: Critical Local capacity scenario is detected.
+PASS: SHA-256 corruption scenario is detected.
+PASS: Missing archive scenario is detected.
+PASS: Restore failure scenario is detected.
+PASS: Critical Cloud integrity alert scenario is detected.
+PASS: Stopped availability watcher scenario is detected.
+PASS: Disaster Recovery recommendations map to the expected Guided Recovery procedures.
+PASS: Disaster Drill uses mock managers only.
+PASS: Production Local, External, NAS and Cloud storage are never accessed.
+PASS: Disaster Drill performs no network access.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Recovery Simulation validation completed.
+PASS: Recovery readiness score is included in certification.
+PASS: Disaster Drill must pass before certification.
+PASS: Guided Recovery policy is validated.
+PASS: Destructive automatic execution remains disabled.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Recovery Readiness Certification validation completed.
+PASS: Image-to-Video runtime path is detected.
+PASS: Required package readiness is evaluated.
+PASS: Torch MPS capability is evaluated.
+PASS: FFmpeg capability is evaluated.
+PASS: Capability probe performs no package installation.
+PASS: Capability probe performs no model download.
+PASS: Image-to-Video Runtime Capability Manager validation completed.
+PASS: Runtime Health service integration is present.
+PASS: Runtime Health UI displays readiness state.
+PASS: Runtime readiness gate remains enforced before async generation.
+PASS: ImageToVideo UI now uses asynchronous Job API generation.
+PASS: Legacy generate service remains available only as fallback.
+PASS: Cancel, retry, polling and history contracts are present.
+PASS: Runtime Health performs no automatic install or repair.
+PASS: Image-to-Video Runtime UI Integration validation completed.
+PASS: Worker enforces exactly one local-only model load.
+PASS: Worker contains no explicit Hugging Face download.
+PASS: Hidden Image-to-Video model download is blocked.
+PASS: Image-to-Video Offline Worker validation completed.
+PASS: queued -> running -> cancelling -> cancelled lifecycle.
+PASS: completed and failed terminal states.
+PASS: Progress persists independently of process objects.
+PASS: Cancel sends SIGTERM only through the owned child-process handle.
+PASS: Retry creates a new queued job and preserves retryOf.
+PASS: Persistent history does not serialize child-process objects.
+PASS: Running jobs recover safely as failed after application restart.
+PASS: Production Image-to-Video Job Manager validation completed.
+PASS: Production Image-to-Video Job REST API contracts are present.
+PASS: Job creation, list, detail, cancel and retry APIs are wired.
+PASS: Existing synchronous generation endpoint remains available.
+PASS: Job API layer contains no model download behavior.
+PASS: Production Image-to-Video Job API Integration validation completed.
+PASS: Worker process runs asynchronously with unbuffered output.
+PASS: tqdm progress is parsed from stderr.
+PASS: Final worker JSON is parsed from stdout.
+PASS: Successful worker transitions job to completed.
+PASS: Worker failure transitions job to failed.
+PASS: SIGTERM cancellation is confirmed after owned process closes.
+PASS: HF and Transformers offline mode are enforced for every job.
+PASS: Production Image-to-Video Process Runner validation completed.
+PASS: POST /jobs prepares and starts asynchronous generation.
+PASS: Retry prepares and starts a new asynchronous generation.
+PASS: Worker argument contract is preserved.
+PASS: app/outputs/video output contract is preserved.
+PASS: Legacy synchronous generation route remains available.
+PASS: Offline Process Runner and local-only worker safety remain enforced.
+PASS: Production Image-to-Video Job Execution Integration validation completed.
+PASS: Image-to-Video concurrency is limited to exactly one worker.
+PASS: Additional jobs remain queued until the active worker settles.
+PASS: Queued jobs automatically start in FIFO order.
+PASS: Cancelled queued jobs never spawn a worker.
+PASS: Job progress is monotonic and never decreases.
+PASS: Small model-loading tqdm bars are ignored.
+PASS: Real inference 25-step progress is detected.
+PASS: Image-to-Video Production Hardening Phase 1 validation completed.
+PASS: Async Image-to-Video Job services are present.
+PASS: UI creates asynchronous single and Batch Image-to-Video jobs.
+PASS: UI polls job state and progress.
+PASS: Cancel, retry and history controls are connected.
+PASS: Completed job output is handed to the video UI.
+PASS: Runtime readiness gate remains enforced.
+PASS: Legacy synchronous generate service remains fallback-only.
+PASS: Async UI validation is contract-based and independent of marker comments.
+PASS: Image-to-Video Async UI Migration validation completed.
+PASS: Active Image-to-Video cache is always preserved.
+PASS: Expired terminal and orphan cache can be safely cleaned.
+PASS: Outputs referenced by retained history are never deleted.
+PASS: Expired unreferenced outputs can be cleaned.
+PASS: Recent orphan files are preserved by grace period.
+PASS: Terminal history retention removes expired records only.
+PASS: Restart recovery records previous state and recovery reason.
+PASS: Image-to-Video Production Hardening Phase 2A validation completed.
+PASS: Startup maintenance is executed once.
+PASS: Maintenance remains plan-first and path allowlisted.
+PASS: Maintenance and recovery status APIs are available.
+PASS: Frontend can restore active Image-to-Video state after restart.
+PASS: Only genuinely active jobs resume polling.
+PASS: Interrupted jobs are shown as failed/retryable rather than resuming a dead process.
+PASS: Referenced outputs remain protected.
+PASS: Image-to-Video Production Hardening Phase 2B validation completed.
+PASS: Prompt textarea is connected to generation.
+PASS: TXT / Markdown / CSV / XLSX import remain available.
+PASS: Duration selector exposes 5 / 10 / 15 seconds.
+PASS: 10 / 15 second duration now routes through Segment/Stitch.
+PASS: Certified asynchronous I2V Job API remains unchanged.
+PASS: Automatic Image-to-Video Prompt Studio Phase 3A-1 validation completed.
+PASS: 10 sec actual=10.000 segments=2
+PASS: 15 sec actual=15.000 segments=3
+PASS: Segment normalization uses exact 5-second targets.
+PASS: Last-frame continuity pipeline completed.
+PASS: 10-second Segment/Stitch duration verified.
+PASS: 15-second Segment/Stitch duration verified.
+PASS: Image-to-Video Duration Worker synthetic certification completed.
+PASS: 5-second jobs preserve the certified base worker route.
+PASS: 10/15-second jobs route through Duration Worker.
+PASS: Offline/local-only generation remains enforced.
+PASS: Concurrency control remains in Process Runner.
+PASS: Last-frame continuity is enabled.
+PASS: FFmpeg normalization and duration verification are enabled.
+PASS: UI supports 5 / 10 / 15 second targets.
+PASS: Image-to-Video Duration Strategy Phase 3A-2 validation completed.
+PASS: Imported CSV/XLSX rows create persistent Image-to-Video jobs.
+PASS: One imported row maps to one existing async job.
+PASS: Prompt and 5/10/15-second duration are resolved per row.
+PASS: Batch metadata includes batchId / batchIndex / batchSize.
+PASS: Batch execution reuses the existing FIFO Process Runner.
+PASS: Existing concurrency=1 protection remains authoritative.
+PASS: Batch progress is derived from persistent Job History.
+PASS: Latest Batch context restores after application restart.
+PASS: Individual cancel/retry/history remain handled by existing Job controls.
+PASS: Image-to-Video Batch Execution Phase 3A-3 validation completed.
+PASS: Queued Batch jobs can be paused persistently.
+PASS: Paused jobs resume to the existing FIFO state.
+PASS: Skip affects only queued/paused jobs.
+PASS: Running worker ownership remains outside Batch pause semantics.
+PASS: Batch controls reuse the certified Job Manager and Process Runner.
+PASS: Image-to-Video Batch Controls Phase 3A-4A validation completed.
+PASS: Batch Pause and Resume controls are connected.
+PASS: Cancel Remaining preserves the running-job backend semantics.
+PASS: Failed/cancelled Batch jobs reuse the existing retry service.
+PASS: queued/paused items expose individual Skip controls.
+PASS: persistent paused state is visible in Batch Progress.
+PASS: every Batch mutation refreshes persistent Job History.
+PASS: no second Batch Queue implementation was introduced.
+PASS: Image-to-Video Batch Control UI Phase 3A-4B validation completed.
+PASS: Batch elapsed time uses startedAt and finishedAt.
+PASS: Average generation time uses completed jobs only.
+PASS: ETA is withheld until observed completion samples exist.
+PASS: Storage estimates use observed output.sizeBytes only.
+PASS: Skipped and ordinary cancelled jobs are reported separately.
+PASS: Completion Report supports CSV and JSON export.
+PASS: Image-to-Video Batch Analytics Phase 3A-4C validation completed.
+PASS: Stable asset IDs are generated.
+PASS: Asset Registry references existing paths without file copying.
+PASS: Unified asset types are supported.
+PASS: tags/favorite/pinned/project/campaign metadata are supported.
+PASS: source prompt/model and asset relationships are supported.
+PASS: Registry state persists atomically.
+PASS: Removing an Asset record does not delete physical files.
+PASS: Phase 3A-5A Asset Registry Core validation completed.
+PASS: existingPath is normalized.
+PASS: one physical path maps to one Asset record.
+PASS: repeated registration updates existing metadata.
+PASS: findByPath() survives persistent reload.
+PASS: no file copy is performed by Asset Registry.
+PASS: Phase 3A-5B.1 Asset Path Upsert validation completed.
+PASS: Generated Image registration uses Asset Registry upsertByPath.
+PASS: Image Asset registration occurs only after generated-output persistence flow.
+PASS: Existing generated files are referenced without copying.
+PASS: source prompt/model/project/campaign metadata is forwarded when available.
+PASS: registration failure is non-fatal to image generation.
+PASS: Phase 3A-5B.2 Generated Image Asset Registration validation completed.
+PASS: I2V videos register only after worker success.
+PASS: Physical MP4 existence and file type are verified before registration.
+PASS: Actual output size is derived from fs.statSync.
+PASS: prompt/model/seconds/batch metadata is preserved when available.
+PASS: failed I2V worker responses bypass Asset registration.
+PASS: Asset registration remains non-fatal to successful video generation.
+PASS: path upsert prevents duplicate video Asset records.
+PASS: no physical file copy/delete behavior was introduced.
+PASS: Phase 3A-5B.3 Completed I2V Asset Registration validation completed.
+PASS: sourceAssetId is optional in I2V generation.
+PASS: referenceAssetIds are optional in I2V generation.
+PASS: Video Assets receive derived_from relationships when a source Asset exists.
+PASS: Reference Asset IDs are preserved separately.
+PASS: Existing Asset IDs are reused without copying files.
+PASS: Image-to-Video can link existing Asset Library records read-only.
+PASS: Image-to-Video shows selected Asset relationships before generation.
+PASS: Image-to-Video shows available Asset relationship counts.
+PASS: Image-to-Video shows an empty state when no linkable Assets exist.
+PASS: Image-to-Video clears stale selected Asset IDs after refresh.
+PASS: Image-to-Video explains stale linked Asset cleanup.
+PASS: Image-to-Video clears stale cleanup notices after manual selection.
+PASS: Image-to-Video disables Asset relationship controls while loading.
+PASS: I2V generation remains supported when no Asset IDs exist.
+PASS: Phase 3A-5B.4 Image-to-Video Asset Relationship validation completed.
+PASS: Asset Library uses existing Asset API.
+PASS: Asset Library filters by type and favorites.
+PASS: Asset Library exposes filter pressed states accessibly.
+PASS: Asset Library filters by project, campaign and tag.
+PASS: Asset Library resets local view controls read-only.
+PASS: Asset Library clears selected details hidden by the active view.
+PASS: Asset Library summarizes active view controls.
+PASS: Asset Library search covers metadata and relationships.
+PASS: Asset Library search normalizes visible relationship rows.
+PASS: Asset Library shows read-only summary stats.
+PASS: Asset Library announces status and error states accessibly.
+PASS: Asset Library exposes loading busy state accessibly.
+PASS: Asset Library summary counts visible relationship IDs.
+PASS: Asset Library sorts loaded assets read-only.
+PASS: Asset Library exposes card collection semantics accessibly.
+PASS: Asset Library labels the card results list accessibly.
+PASS: Asset Library cards show source prompt/model context.
+PASS: Asset Library cards show split relationship counts.
+PASS: Asset Library cards count visible relationship IDs.
+PASS: Asset Library cards show hidden tag counts.
+PASS: Asset Library highlights the selected detail card.
+PASS: Asset Library exposes selected card state accessibly.
+PASS: Asset Library exposes detail trigger expanded state accessibly.
+PASS: Asset Library shows paths and relationship counts.
+PASS: Asset Library detail is labelled by its asset title.
+PASS: Asset Library detail trigger references the detail panel accessibly.
+PASS: Asset Library detail shows full read-only asset metadata.
+PASS: Asset Library detail summarizes metadata fields.
+PASS: Asset Library detail sorts metadata summaries consistently.
+PASS: Asset Library detail formats nested metadata summaries.
+PASS: Asset Library detail exposes copyable read-only snapshots.
+PASS: Asset Library exposes copyable current-view snapshots.
+PASS: Asset Library detail shows capped metadata overflow.
+PASS: Asset Library detail summarizes relationships.
+PASS: Asset Library detail exposes read-only copy controls.
+PASS: Asset Library detail announces copy confirmations accessibly.
+PASS: Asset Library detail announces clipboard copy failures.
+PASS: Asset Library detail clears stale copy feedback after asset changes.
+PASS: Asset Library detail exposes copyable relationship IDs.
+PASS: Asset Library detail normalizes relationship display rows.
+PASS: Asset Library detail counts visible relationship rows.
+PASS: Asset Library is connected to navigation.
+PASS: Asset Library remains read-only.
+PASS: Phase 3A-5D Asset Library UI validation completed.
+PASS: Reference metadata types are normalized.
+PASS: Reference weight is constrained to 0.20-1.00 with 0.85 default.
+PASS: Reference Lock defaults to true.
+PASS: originalName/mimeType/source metadata are supported.
+PASS: Existing localStorage reference presets remain readable.
+PASS: No destructive reference migration was introduced.
+PASS: Phase 3A-5C.1 Reference Asset Schema validation completed.
+PASS: Uploaded references persist through Asset API.
+PASS: Successful uploads receive stable Asset IDs.
+PASS: Local preview remains available before/without Asset registration.
+PASS: Failed Asset registration does not block the reference workflow.
+PASS: Reference metadata preserves type, weight and lock.
+PASS: Phase 3A-5C.2 Uploaded Reference Auto-Registration validation completed.
+PASS: Source Validation ผ่าน
+
+[4/9] สร้าง Clean Staging Package
+PASS: Source ถูกคัดลอกเข้า Staging
+
+[5/9] นำ Portable Runtime เข้า Package
+PASS: Portable Runtime ถูกติดตั้งใน Package
+
+added 37 packages in 552ms
+PASS: Server Production Dependencies พร้อมใน Package
+
+[6/9] อัปเดต Version Metadata ใน Package
+PASS: Package Version = 1.0.0-beta.7
+
+[7/9] รัน Packaging Validation
+PASS: release structure and syntax
+PASS: Portable Node runtime is valid for packaging
+LUKE AI STUDIO API Contract Validation
+Frontend endpoints: 172
+Backend endpoints : 208
+PASS: All frontend API endpoints have backend contracts.
+LUKE AI STUDIO Backend API Smoke Test
+Server : /Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7/scripts/server/serve.cjs
+Port   : 53817
+Routes : /api/health, /api/status, /health
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53817
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Backend API ready at /api/health
+HTTP: 200
+Body: {"ok":false,"build":"text-image-v1","root":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7","platform":"darwin","checks":[{"label":"Portable Node.js","path":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7/app/tools/node-mac/bin/node","type":"file","exists":true,"ok":true},{"label":"Portable npm","path":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7/app/tools/node-mac/bin/npm","type":"file","exists":true,"ok":true},{"label":"Frontend build","path":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7/app/dist/index.html","type":"file","exists":true,"ok":true},{"label":"Models folder","path":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7/app/models","type":"directory","exists":true,"writable":true,"ok":true},{"label":"Outputs folder","path":"/Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/L
+
+NOTICE: Backend API is reachable, but optional runtime dependencies are not fully installed.
+
+PASS: Backend API smoke test completed using /api/health.
+
+Negative API tests:
+PASS: Unknown API route
+  Expected: HTTP 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Unsupported health method
+  Expected: HTTP 400, 404 or 405
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+PASS: Invalid JSON payload
+  Expected: HTTP 400, 404, 405, 415 or 422
+  Actual  : HTTP 404
+  Body    : {"ok":false,"error":"Unknown API endpoint"}
+
+PASS: Backend negative API tests completed.
+
+NOTICE: Dependency health is degraded; API lifecycle and error contracts still passed.
+
+PASS: Backend process stopped after all API tests.
+[backend] 
+[backend]   ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53823
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime dependency catalog API responded.
+Dependencies     : 7
+Ready            : 5
+Missing          : 2
+Required missing : 0
+
+PASS: Runtime dependency API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53826
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime install state transitions completed.
+Completed job: runtime-1786729075681-f402ffd2
+Cancelled job: runtime-1786729075696-89f18ec8
+PASS: Runtime install state API test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53831
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+[runtime] Install job runtime-1786729079182-31173543 failed: Runtime package SHA256 verification failed.
+[runtime] Install job runtime-1786729079292-d8f54e4f failed: This operation was aborted
+
+PASS: Runtime download completed.
+PASS: SHA256 verification completed.
+PASS: Checksum mismatch was rejected.
+PASS: Active download cancellation completed.
+PASS: Runtime safe download worker test completed.
+PASS: Runtime dashboard component is complete.
+PASS: Runtime dashboard API integration is present.
+PASS: Runtime dashboard progress polling is present.
+PASS: Runtime dashboard is connected to the App.
+PASS: Runtime dashboard validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53837
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: External drive absence detected.
+PASS: Safe fallback directory selected.
+PASS: Safe fallback directory created.
+PASS: Runtime storage resolve API completed.
+PASS: Missing external volume was not created.
+PASS: External volume mount guard completed.
+PASS: Runtime storage availability test completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53841
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime storage usage calculated.
+PASS: Cleanup dry run completed without deletion.
+PASS: Cleanable storage file deleted.
+PASS: Active runtime file remained protected.
+PASS: Cleanup category remained available with protected descendants.
+PASS: Protected models category rejected cleanup.
+PASS: Unsafe cleanup category rejected.
+PASS: Runtime storage cleanup test completed.
+PASS: Signed catalog policy is enabled.
+PASS: Batch selection is limited to three models.
+PASS: Download concurrency is limited to one.
+PASS: Side-by-side installation and rollback policy are enabled.
+PASS: Preferred storage and Local Staging fallback are enabled.
+PASS: Text Model Manager foundation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53845
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Text model catalog API responded.
+PASS: Official Qwen model is present.
+PASS: Maximum queue selection is three.
+PASS: Download concurrency is one.
+PASS: Text model catalog API validation completed.
+PASS: Community Models category is enabled.
+PASS: Dolphin community model is present.
+PASS: One-click in-app download is required.
+PASS: Community models use the unified queue.
+PASS: SHA256 metadata verification is required.
+PASS: Automatic community model update checking is enabled.
+PASS: Community text model catalog validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53851
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three text models entered the queue.
+PASS: Only one text model downloaded at a time.
+PASS: Queue started the next model automatically.
+PASS: SHA256 verification passed for every model.
+PASS: Models installed into managed storage.
+PASS: Sequential text model download worker validation completed.
+PASS: Text Model Manager cards are present.
+PASS: One-click in-app download is connected.
+PASS: Sequential Download Queue UI is present.
+PASS: Queue actions are connected.
+PASS: Official and Community categories are present.
+PASS: Text Model Manager is connected to the App.
+PASS: Text Model Manager UI validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53856
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Installed Model Registry API responded.
+PASS: Automatic update comparison detected a newer version.
+PASS: Installed and latest versions were reported.
+PASS: Update Available UI is present.
+PASS: One-click Update action is connected.
+PASS: Static Text Model Update endpoint is connected.
+PASS: Text Model Update Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53860
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Hardware profile API responded.
+PASS: Q4, Q5 and Q8 catalog variants are present.
+PASS: Compatible Quantization was selected automatically.
+PASS: Manual Quantization selector is present.
+PASS: Incompatible variants are disabled.
+PASS: Hardware summary UI is connected.
+PASS: Text Model hardware compatibility validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53863
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Conversation was created.
+PASS: Chat message was autosaved.
+PASS: Conversation was restored after refresh.
+PASS: Last opened conversation was remembered.
+PASS: Search, pin and confirmed delete UI are present.
+PASS: Persistent Text Chat validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53867
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Context usage was calculated.
+PASS: Conversation summary was created.
+PASS: Memory snapshot was persisted.
+PASS: Session refreshed without changing the conversation.
+PASS: Raw conversation history was preserved.
+PASS: Restore context contains summary and recent messages.
+PASS: RAM emergency refresh was detected.
+PASS: Context Memory UI is connected.
+PASS: Text Chat Memory Manager validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53872
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Runtime health was checked before refresh.
+PASS: Loaded model was unloaded.
+PASS: Model runtime was loaded again.
+PASS: Runtime health was verified after reload.
+PASS: Conversation ID remained unchanged.
+PASS: Memory summary was injected into the restore prompt.
+PASS: Facts, decisions, tasks and recent messages were restored.
+PASS: Runtime Session UI is connected.
+PASS: Text Runtime Session Refresh validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53879
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:53878
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: User message was saved before generation.
+PASS: Runtime received an OpenAI-compatible streaming request.
+PASS: Runtime received normalized JSON schema response_format.
+PASS: Text tokens streamed incrementally.
+PASS: Streaming completion event was emitted.
+PASS: Assistant response was autosaved.
+PASS: Conversation history contains user and assistant messages.
+PASS: Stop Generation UI is connected through Runtime Recovery.
+PASS: Text Generation Streaming validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53888
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Three unique models were selected.
+PASS: All three models generated in parallel.
+PASS: All multi-model runtime requests received normalized JSON schema response_format.
+PASS: Every model streamed its response.
+PASS: All model responses were autosaved.
+PASS: Responses were scored and ranked.
+PASS: Exactly one Best Response was selected.
+PASS: Model ID and evaluation metadata were preserved.
+PASS: Multi-Model Comparison UI is connected.
+PASS: Multi-Model Parallel Generation validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53896
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: AI Judge received all model responses.
+PASS: Highest ranked model was selected as Judge.
+PASS: AI Judge runtime request received normalized JSON schema response_format.
+PASS: Final Answer streamed incrementally.
+PASS: Final Answer was autosaved.
+PASS: Original model responses were preserved.
+PASS: Source Model IDs were stored in metadata.
+PASS: AI Judge Synthesis UI is connected.
+PASS: AI Judge Synthesis validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53901
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Like feedback was recorded.
+PASS: Dislike and preferred feedback types are supported.
+PASS: Preferred response was marked in conversation history.
+PASS: Model satisfaction scores were persisted.
+PASS: Feedback audit events were preserved.
+PASS: Adaptive model score is available for ranking.
+PASS: Regenerate UI is connected.
+PASS: Text Model Feedback validation completed.
+PASS: Automatic Model Router backend is present.
+PASS: Task classification and scoring are present.
+PASS: Feedback and hardware scoring are connected.
+PASS: Fallback model routing is configured.
+PASS: Automatic Model Router UI is connected.
+PASS: Manual Auto Router toggle is connected.
+PASS: Automatic Model Router validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53908
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Primary model was attempted first.
+PASS: Primary model failure was detected.
+PASS: Automatic fallback model was selected.
+PASS: Runtime Recovery attempts received normalized JSON schema response_format.
+PASS: Fallback response streamed successfully.
+PASS: Only the successful response was autosaved.
+PASS: Recovery attempt history was preserved.
+PASS: Successful fallback Model ID was stored.
+PASS: Runtime Recovery UI is connected.
+PASS: Runtime Failure Recovery validation completed.
+
+  ============================================================
+   LUKE AI STUDIO      |  Running
+   Server Build: text-image-v1
+   Frontend : http://localhost:53916
+   Image API: http://127.0.0.1:8080
+   Text API : starts on http://127.0.0.1:10086
+   Speech   : managed locally, API on frontend port
+   TTS      : Kokoro ONNX managed locally, API on frontend port
+  ============================================================
+
+  [backend] Ready. Waiting for model load request from the webapp...
+
+PASS: Model failures were recorded.
+PASS: Circuit opened after repeated failures.
+PASS: Open circuit model was excluded from routing.
+PASS: Healthy fallback model remained available.
+PASS: Next half-open probe time was stored.
+PASS: Manual circuit reset closed the circuit.
+PASS: Model Health audit events were persisted.
+PASS: Model Health Dashboard UI is connected.
+PASS: Model Health Circuit Breaker validation completed.
+PASS: Runtime process was started by the supervisor.
+PASS: Runtime PID and ownership were recorded.
+PASS: Runtime crash was detected.
+PASS: Runtime restarted automatically.
+PASS: Restart audit events were persisted.
+PASS: Manual restart replaced the runtime process.
+PASS: Runtime stopped gracefully.
+PASS: Runtime Supervisor validation completed.
+PASS: Runtime Supervisor Settings API is present.
+PASS: Runtime policy validation is present.
+PASS: Localhost-only Health URL validation is present.
+PASS: Shell command execution remains disabled.
+PASS: Supervisor policy reload is connected.
+PASS: Start, Stop, Restart and Reset controls are connected.
+PASS: Runtime Settings UI is connected.
+PASS: Supervisor event history is displayed.
+PASS: Runtime Supervisor Dashboard validation completed.
+PASS: Ollama detection is supported.
+PASS: llama.cpp detection is supported.
+PASS: MLX detection is supported.
+PASS: Runtime presets use localhost endpoints.
+PASS: Detection does not modify Runtime Settings.
+PASS: One-click configuration API is connected.
+PASS: Runtime Auto-Detection validation completed.
+PASS: Runtime Detection Cards are connected.
+PASS: Ollama, llama.cpp and MLX cards are supported.
+PASS: Installed and running states are displayed.
+PASS: Executable, version and health details are displayed.
+PASS: One-click configuration is connected.
+PASS: Missing runtimes cannot be configured.
+PASS: Detection does not change settings without confirmation.
+PASS: Runtime Detection Dashboard validation completed.
+PASS: Runtime install jobs were queued.
+PASS: Runtime installs were processed one at a time.
+PASS: Shell execution remained disabled.
+PASS: One-Click Install UI is connected.
+PASS: Runtime Installation Queue is displayed.
+PASS: Runtime One-Click Install validation completed.
+PASS: Disk space preflight returned available and required bytes.
+PASS: Queued jobs start at zero percent.
+PASS: Installer output updates progress.
+PASS: Completed jobs finish at one hundred percent.
+PASS: Disk preflight is persisted with each install job.
+PASS: Progress and Disk Preflight UI are connected.
+PASS: Runtime Install Progress validation completed.
+PASS: Local fallback was selected when External Drive was unavailable.
+PASS: External destination was selected when the drive became available.
+PASS: Files were copied from Local fallback to External storage.
+PASS: File size and SHA-256 verification completed.
+PASS: Local copy remained after transfer.
+PASS: Local deletion required explicit confirmation.
+PASS: Confirmed deletion removed only the verified Local source.
+PASS: Cancelled deletion preserved the Local source.
+PASS: Shell and automatic deletion remained disabled.
+PASS: Storage Destination Manager validation completed.
+PASS: Storage Settings API is connected.
+PASS: Automatic, External, Local and Custom modes are supported.
+PASS: macOS Folder Picker uses shell-disabled execution.
+PASS: Active destination and fallback status are displayed.
+PASS: Local-to-External transfer controls are connected.
+PASS: Transfer history and SHA-256 status are displayed.
+PASS: Local deletion requires explicit confirmation.
+PASS: Cancelling deletion preserves the Local copy.
+PASS: Storage Destination Dashboard validation completed.
+PASS: Local, External, NAS and Cloud provider categories are supported.
+PASS: Mounted NAS folder health and write permissions were checked.
+PASS: NAS priority routing selected the highest healthy provider.
+PASS: SMB, NFS, WebDAV and mounted-folder NAS adapters are registered.
+PASS: S3-compatible, Google Cloud and Azure Cloud adapters are registered.
+PASS: Multiple providers and accounts can be added.
+PASS: SMB without a credential reference requires authentication.
+PASS: Plaintext credential fields were rejected.
+PASS: Shell, automatic mount and automatic deletion remain disabled.
+PASS: Unified Storage Provider Core validation completed.
+PASS: macOS Keychain stores provider credentials.
+PASS: Credential secrets are never returned by the summary API.
+PASS: JSON provider configuration stores only credential references.
+PASS: Keychain commands use argument arrays with shell disabled.
+PASS: Mounted NAS folders can be selected with the native folder picker.
+PASS: NAS read, write and free-space health checks are available.
+PASS: SMB and WebDAV credentials can be saved to Keychain.
+PASS: NAS mounting remains manual and automatic mount remains disabled.
+PASS: Storage Keychain and NAS Dashboard validation completed.
+PASS: AWS S3, Cloudflare R2, Backblaze B2 and MinIO use one S3-compatible adapter.
+PASS: Credentials are loaded through credential references.
+PASS: Bucket connection and list permissions are checked.
+PASS: Upload uses queue size 1.
+PASS: Upload size and SHA-256 metadata are verified.
+PASS: Local source is preserved after upload.
+PASS: Download SHA-256 verification succeeds.
+PASS: Cloud deletion requires explicit confirmation.
+PASS: Cancelled deletion preserves the Cloud object.
+PASS: S3-Compatible Storage Adapter validation completed.
+PASS: AWS S3 Cloud account UI is available.
+PASS: Cloudflare R2 Cloud account UI is available.
+PASS: Backblaze B2 Cloud account UI is available.
+PASS: MinIO and Custom S3 account UI are available.
+PASS: Cloud credentials use macOS Keychain API.
+PASS: Cloud Test Connection UI is connected.
+PASS: Cloud Upload and SHA-256 verification UI is connected.
+PASS: Cloud Download and SHA-256 verification UI is connected.
+PASS: Cloud deletion requires Request and Confirm.
+PASS: Cloud Transfer History is displayed.
+PASS: Cloud Storage Provider Dashboard validation completed.
+PASS: Unified queue supports Local, External, NAS and Cloud.
+PASS: Queue processing defaults to one job at a time.
+PASS: Provider priority routing is connected.
+PASS: Waiting and automatic retry states are supported.
+PASS: Exponential retry backoff is supported.
+PASS: Pause, Resume, Cancel and Retry controls are available.
+PASS: Queue state persists across application restarts.
+PASS: Source files remain preserved.
+PASS: Unified Storage Transfer Queue validation completed.
+PASS: External, NAS and Cloud availability watching is supported.
+PASS: Provider status changes are persisted.
+PASS: Waiting jobs wake automatically when a provider returns online.
+PASS: Automatic and manual scans are supported.
+PASS: Watcher can be started and stopped.
+PASS: Availability Watcher Dashboard is connected.
+PASS: Storage Availability Watcher validation completed.
+PASS: Storage providers receive dynamic health scores.
+PASS: Availability and writable state affect provider selection.
+PASS: Free space and latency affect provider scores.
+PASS: Recent provider failures reduce stability score.
+PASS: Provider priority remains part of Smart Selection.
+PASS: Unified Transfer Queue uses Smart Provider Selection.
+PASS: Storage Health Score Dashboard is connected.
+PASS: Storage Health Scoring validation completed.
+PASS: Models policy profile is available.
+PASS: Images policy profile is available.
+PASS: Video policy profile is available.
+PASS: Backups policy profile is available.
+PASS: Temporary policy profile is available.
+PASS: Health scoring is adjusted per workload.
+PASS: Minimum free-space policy is enforced.
+PASS: Explicit provider selection overrides automatic policy routing.
+PASS: Unified Transfer Queue accepts workloadType.
+PASS: Queue remains sequential by default.
+PASS: Storage Policy Dashboard is connected.
+PASS: Storage Policy Profiles validation completed.
+PASS: GGUF and model extensions route to Models.
+PASS: Image extensions route to Images.
+PASS: Video extensions route to Video.
+PASS: Archive and backup extensions route to Backups.
+PASS: Temporary and cache paths route to Temporary.
+PASS: Queue automatically detects workloadType.
+PASS: Manual workload override remains supported.
+PASS: Detection history is persisted.
+PASS: Automatic Workload Detection validation completed.
+PASS: Required storage bytes are forecast before transfer.
+PASS: Safety reserve varies by workload.
+PASS: Active queue reservations reduce effective free space.
+PASS: Critical capacity prevents unsafe transfer start.
+PASS: Healthy provider recommendation integrates with storage policy.
+PASS: Capacity reservations are released after completion or failure.
+PASS: Cleanup recommendations never perform automatic deletion.
+PASS: Storage Capacity Dashboard is connected.
+PASS: Storage Capacity Management validation completed.
+PASS: Lifecycle rules exist for Models, Images, Video, Backups and Temporary.
+PASS: Retention age controls Keep, Review, Archive and Delete-Candidate states.
+PASS: Protected paths always remain Keep.
+PASS: Symbolic links are excluded from lifecycle scans.
+PASS: Delete-Candidate is planning metadata only.
+PASS: No lifecycle deletion API exists.
+PASS: Automatic deletion remains disabled.
+PASS: Safe Cleanup Planner Dashboard is connected.
+PASS: Storage Lifecycle Rules validation completed.
+PASS: Archive requests preserve the source file.
+PASS: SHA-256 is captured before archive transfer.
+PASS: Cleanup becomes available only after verified archive completion.
+PASS: Cleanup request alone never deletes the source.
+PASS: Cancelled cleanup preserves the source.
+PASS: Source checksum and size are revalidated before deletion.
+PASS: Explicit cleanup confirmation deletes only the verified source.
+PASS: Automatic source deletion remains disabled.
+PASS: Safe Archive Dashboard is connected.
+PASS: Safe Archive Workflow validation completed.
+PASS: Only verified archives can be restored.
+PASS: Archive size is verified before restore.
+PASS: Archive SHA-256 is verified before restore.
+PASS: Restored size is verified after copy.
+PASS: Restored SHA-256 is verified after copy.
+PASS: Existing files are never overwritten automatically.
+PASS: Restore-as-new creates a unique destination.
+PASS: Archive source remains preserved.
+PASS: Archive Restore Workflow validation completed.
+PASS: Verified archives are included in integrity scans.
+PASS: Verified restores are included in integrity scans.
+PASS: File size verification detects mutations.
+PASS: SHA-256 verification detects corruption.
+PASS: Missing files are reported without modification.
+PASS: Remote Cloud records are marked for deep verification.
+PASS: Scheduled verification can be started and stopped.
+PASS: Integrity Scanner performs read-only verification.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Integrity Scanner validation completed.
+PASS: Deep verification uses the S3 download contract.
+PASS: Cloud object is downloaded only to the approved temporary verification area.
+PASS: Cloud object size is compared with verified archive metadata.
+PASS: Cloud object SHA-256 is compared with verified archive metadata.
+PASS: Corrupted Cloud objects create critical integrity alerts.
+PASS: Integrity alerts can be acknowledged without modifying Cloud objects.
+PASS: Temporary verification copies are removed after verification.
+PASS: Remote objects and archive sources remain read-only.
+PASS: Automatic repair and deletion remain disabled.
+PASS: Deep Cloud Integrity Verification validation completed.
+PASS: Provider health contributes to recovery readiness.
+PASS: Capacity risk contributes to recovery readiness.
+PASS: Archive and restore readiness are summarized.
+PASS: Local, NAS and Cloud integrity risks are summarized.
+PASS: Critical Deep Cloud alerts reduce recovery readiness.
+PASS: Disaster Recovery recommendations are generated from actual subsystem state.
+PASS: Unavailable subsystems degrade gracefully instead of crashing the dashboard.
+PASS: Dashboard remains read-only with automatic repair, deletion and overwrite disabled.
+PASS: Storage Disaster Recovery Dashboard validation completed.
+PASS: Disaster Recovery recommendations are converted into guided runbook procedures.
+PASS: Safe actions are restricted to an explicit allowlist.
+PASS: Health evaluation, availability scan and integrity scan can be user-triggered safely.
+PASS: Actions requiring identifiers or recovery choices remain manual.
+PASS: Source cleanup remains behind explicit confirmation.
+PASS: Destructive actions are never executable as SAFE actions.
+PASS: Guided Recovery never performs automatic repair, deletion or overwrite.
+PASS: Storage Recovery Runbook validation completed.
+PASS: NAS/provider offline scenario is detected.
+PASS: Critical Local capacity scenario is detected.
+PASS: SHA-256 corruption scenario is detected.
+PASS: Missing archive scenario is detected.
+PASS: Restore failure scenario is detected.
+PASS: Critical Cloud integrity alert scenario is detected.
+PASS: Stopped availability watcher scenario is detected.
+PASS: Disaster Recovery recommendations map to the expected Guided Recovery procedures.
+PASS: Disaster Drill uses mock managers only.
+PASS: Production Local, External, NAS and Cloud storage are never accessed.
+PASS: Disaster Drill performs no network access.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Recovery Simulation validation completed.
+PASS: Recovery readiness score is included in certification.
+PASS: Disaster Drill must pass before certification.
+PASS: Guided Recovery policy is validated.
+PASS: Destructive automatic execution remains disabled.
+PASS: Automatic repair, deletion and overwrite remain disabled.
+PASS: Storage Recovery Readiness Certification validation completed.
+PASS: Image-to-Video runtime path is detected.
+PASS: Required package readiness is evaluated.
+PASS: Torch MPS capability is evaluated.
+PASS: FFmpeg capability is evaluated.
+PASS: Capability probe performs no package installation.
+PASS: Capability probe performs no model download.
+PASS: Image-to-Video Runtime Capability Manager validation completed.
+PASS: Runtime Health service integration is present.
+PASS: Runtime Health UI displays readiness state.
+PASS: Runtime readiness gate remains enforced before async generation.
+PASS: ImageToVideo UI now uses asynchronous Job API generation.
+PASS: Legacy generate service remains available only as fallback.
+PASS: Cancel, retry, polling and history contracts are present.
+PASS: Runtime Health performs no automatic install or repair.
+PASS: Image-to-Video Runtime UI Integration validation completed.
+PASS: Worker enforces exactly one local-only model load.
+PASS: Worker contains no explicit Hugging Face download.
+PASS: Hidden Image-to-Video model download is blocked.
+PASS: Image-to-Video Offline Worker validation completed.
+PASS: queued -> running -> cancelling -> cancelled lifecycle.
+PASS: completed and failed terminal states.
+PASS: Progress persists independently of process objects.
+PASS: Cancel sends SIGTERM only through the owned child-process handle.
+PASS: Retry creates a new queued job and preserves retryOf.
+PASS: Persistent history does not serialize child-process objects.
+PASS: Running jobs recover safely as failed after application restart.
+PASS: Production Image-to-Video Job Manager validation completed.
+PASS: Production Image-to-Video Job REST API contracts are present.
+PASS: Job creation, list, detail, cancel and retry APIs are wired.
+PASS: Existing synchronous generation endpoint remains available.
+PASS: Job API layer contains no model download behavior.
+PASS: Production Image-to-Video Job API Integration validation completed.
+PASS: Worker process runs asynchronously with unbuffered output.
+PASS: tqdm progress is parsed from stderr.
+PASS: Final worker JSON is parsed from stdout.
+PASS: Successful worker transitions job to completed.
+PASS: Worker failure transitions job to failed.
+PASS: SIGTERM cancellation is confirmed after owned process closes.
+PASS: HF and Transformers offline mode are enforced for every job.
+PASS: Production Image-to-Video Process Runner validation completed.
+PASS: POST /jobs prepares and starts asynchronous generation.
+PASS: Retry prepares and starts a new asynchronous generation.
+PASS: Worker argument contract is preserved.
+PASS: app/outputs/video output contract is preserved.
+PASS: Legacy synchronous generation route remains available.
+PASS: Offline Process Runner and local-only worker safety remain enforced.
+PASS: Production Image-to-Video Job Execution Integration validation completed.
+PASS: Image-to-Video concurrency is limited to exactly one worker.
+PASS: Additional jobs remain queued until the active worker settles.
+PASS: Queued jobs automatically start in FIFO order.
+PASS: Cancelled queued jobs never spawn a worker.
+PASS: Job progress is monotonic and never decreases.
+PASS: Small model-loading tqdm bars are ignored.
+PASS: Real inference 25-step progress is detected.
+PASS: Image-to-Video Production Hardening Phase 1 validation completed.
+PASS: Async Image-to-Video Job services are present.
+PASS: UI creates asynchronous single and Batch Image-to-Video jobs.
+PASS: UI polls job state and progress.
+PASS: Cancel, retry and history controls are connected.
+PASS: Completed job output is handed to the video UI.
+PASS: Runtime readiness gate remains enforced.
+PASS: Legacy synchronous generate service remains fallback-only.
+PASS: Async UI validation is contract-based and independent of marker comments.
+PASS: Image-to-Video Async UI Migration validation completed.
+PASS: Active Image-to-Video cache is always preserved.
+PASS: Expired terminal and orphan cache can be safely cleaned.
+PASS: Outputs referenced by retained history are never deleted.
+PASS: Expired unreferenced outputs can be cleaned.
+PASS: Recent orphan files are preserved by grace period.
+PASS: Terminal history retention removes expired records only.
+PASS: Restart recovery records previous state and recovery reason.
+PASS: Image-to-Video Production Hardening Phase 2A validation completed.
+PASS: Startup maintenance is executed once.
+PASS: Maintenance remains plan-first and path allowlisted.
+PASS: Maintenance and recovery status APIs are available.
+PASS: Frontend can restore active Image-to-Video state after restart.
+PASS: Only genuinely active jobs resume polling.
+PASS: Interrupted jobs are shown as failed/retryable rather than resuming a dead process.
+PASS: Referenced outputs remain protected.
+PASS: Image-to-Video Production Hardening Phase 2B validation completed.
+PASS: Prompt textarea is connected to generation.
+PASS: TXT / Markdown / CSV / XLSX import remain available.
+PASS: Duration selector exposes 5 / 10 / 15 seconds.
+PASS: 10 / 15 second duration now routes through Segment/Stitch.
+PASS: Certified asynchronous I2V Job API remains unchanged.
+PASS: Automatic Image-to-Video Prompt Studio Phase 3A-1 validation completed.
+PASS: 10 sec actual=10.000 segments=2
+PASS: 15 sec actual=15.000 segments=3
+PASS: Segment normalization uses exact 5-second targets.
+PASS: Last-frame continuity pipeline completed.
+PASS: 10-second Segment/Stitch duration verified.
+PASS: 15-second Segment/Stitch duration verified.
+PASS: Image-to-Video Duration Worker synthetic certification completed.
+PASS: 5-second jobs preserve the certified base worker route.
+PASS: 10/15-second jobs route through Duration Worker.
+PASS: Offline/local-only generation remains enforced.
+PASS: Concurrency control remains in Process Runner.
+PASS: Last-frame continuity is enabled.
+PASS: FFmpeg normalization and duration verification are enabled.
+PASS: UI supports 5 / 10 / 15 second targets.
+PASS: Image-to-Video Duration Strategy Phase 3A-2 validation completed.
+PASS: Imported CSV/XLSX rows create persistent Image-to-Video jobs.
+PASS: One imported row maps to one existing async job.
+PASS: Prompt and 5/10/15-second duration are resolved per row.
+PASS: Batch metadata includes batchId / batchIndex / batchSize.
+PASS: Batch execution reuses the existing FIFO Process Runner.
+PASS: Existing concurrency=1 protection remains authoritative.
+PASS: Batch progress is derived from persistent Job History.
+PASS: Latest Batch context restores after application restart.
+PASS: Individual cancel/retry/history remain handled by existing Job controls.
+PASS: Image-to-Video Batch Execution Phase 3A-3 validation completed.
+PASS: Queued Batch jobs can be paused persistently.
+PASS: Paused jobs resume to the existing FIFO state.
+PASS: Skip affects only queued/paused jobs.
+PASS: Running worker ownership remains outside Batch pause semantics.
+PASS: Batch controls reuse the certified Job Manager and Process Runner.
+PASS: Image-to-Video Batch Controls Phase 3A-4A validation completed.
+PASS: Batch Pause and Resume controls are connected.
+PASS: Cancel Remaining preserves the running-job backend semantics.
+PASS: Failed/cancelled Batch jobs reuse the existing retry service.
+PASS: queued/paused items expose individual Skip controls.
+PASS: persistent paused state is visible in Batch Progress.
+PASS: every Batch mutation refreshes persistent Job History.
+PASS: no second Batch Queue implementation was introduced.
+PASS: Image-to-Video Batch Control UI Phase 3A-4B validation completed.
+PASS: Batch elapsed time uses startedAt and finishedAt.
+PASS: Average generation time uses completed jobs only.
+PASS: ETA is withheld until observed completion samples exist.
+PASS: Storage estimates use observed output.sizeBytes only.
+PASS: Skipped and ordinary cancelled jobs are reported separately.
+PASS: Completion Report supports CSV and JSON export.
+PASS: Image-to-Video Batch Analytics Phase 3A-4C validation completed.
+PASS: Stable asset IDs are generated.
+PASS: Asset Registry references existing paths without file copying.
+PASS: Unified asset types are supported.
+PASS: tags/favorite/pinned/project/campaign metadata are supported.
+PASS: source prompt/model and asset relationships are supported.
+PASS: Registry state persists atomically.
+PASS: Removing an Asset record does not delete physical files.
+PASS: Phase 3A-5A Asset Registry Core validation completed.
+PASS: existingPath is normalized.
+PASS: one physical path maps to one Asset record.
+PASS: repeated registration updates existing metadata.
+PASS: findByPath() survives persistent reload.
+PASS: no file copy is performed by Asset Registry.
+PASS: Phase 3A-5B.1 Asset Path Upsert validation completed.
+PASS: Generated Image registration uses Asset Registry upsertByPath.
+PASS: Image Asset registration occurs only after generated-output persistence flow.
+PASS: Existing generated files are referenced without copying.
+PASS: source prompt/model/project/campaign metadata is forwarded when available.
+PASS: registration failure is non-fatal to image generation.
+PASS: Phase 3A-5B.2 Generated Image Asset Registration validation completed.
+PASS: I2V videos register only after worker success.
+PASS: Physical MP4 existence and file type are verified before registration.
+PASS: Actual output size is derived from fs.statSync.
+PASS: prompt/model/seconds/batch metadata is preserved when available.
+PASS: failed I2V worker responses bypass Asset registration.
+PASS: Asset registration remains non-fatal to successful video generation.
+PASS: path upsert prevents duplicate video Asset records.
+PASS: no physical file copy/delete behavior was introduced.
+PASS: Phase 3A-5B.3 Completed I2V Asset Registration validation completed.
+PASS: sourceAssetId is optional in I2V generation.
+PASS: referenceAssetIds are optional in I2V generation.
+PASS: Video Assets receive derived_from relationships when a source Asset exists.
+PASS: Reference Asset IDs are preserved separately.
+PASS: Existing Asset IDs are reused without copying files.
+PASS: Image-to-Video can link existing Asset Library records read-only.
+PASS: Image-to-Video shows selected Asset relationships before generation.
+PASS: Image-to-Video shows available Asset relationship counts.
+PASS: Image-to-Video shows an empty state when no linkable Assets exist.
+PASS: Image-to-Video clears stale selected Asset IDs after refresh.
+PASS: Image-to-Video explains stale linked Asset cleanup.
+PASS: Image-to-Video clears stale cleanup notices after manual selection.
+PASS: Image-to-Video disables Asset relationship controls while loading.
+PASS: I2V generation remains supported when no Asset IDs exist.
+PASS: Phase 3A-5B.4 Image-to-Video Asset Relationship validation completed.
+PASS: Asset Library uses existing Asset API.
+PASS: Asset Library filters by type and favorites.
+PASS: Asset Library exposes filter pressed states accessibly.
+PASS: Asset Library filters by project, campaign and tag.
+PASS: Asset Library resets local view controls read-only.
+PASS: Asset Library clears selected details hidden by the active view.
+PASS: Asset Library summarizes active view controls.
+PASS: Asset Library search covers metadata and relationships.
+PASS: Asset Library search normalizes visible relationship rows.
+PASS: Asset Library shows read-only summary stats.
+PASS: Asset Library announces status and error states accessibly.
+PASS: Asset Library exposes loading busy state accessibly.
+PASS: Asset Library summary counts visible relationship IDs.
+PASS: Asset Library sorts loaded assets read-only.
+PASS: Asset Library exposes card collection semantics accessibly.
+PASS: Asset Library labels the card results list accessibly.
+PASS: Asset Library cards show source prompt/model context.
+PASS: Asset Library cards show split relationship counts.
+PASS: Asset Library cards count visible relationship IDs.
+PASS: Asset Library cards show hidden tag counts.
+PASS: Asset Library highlights the selected detail card.
+PASS: Asset Library exposes selected card state accessibly.
+PASS: Asset Library exposes detail trigger expanded state accessibly.
+PASS: Asset Library shows paths and relationship counts.
+PASS: Asset Library detail is labelled by its asset title.
+PASS: Asset Library detail trigger references the detail panel accessibly.
+PASS: Asset Library detail shows full read-only asset metadata.
+PASS: Asset Library detail summarizes metadata fields.
+PASS: Asset Library detail sorts metadata summaries consistently.
+PASS: Asset Library detail formats nested metadata summaries.
+PASS: Asset Library detail exposes copyable read-only snapshots.
+PASS: Asset Library exposes copyable current-view snapshots.
+PASS: Asset Library detail shows capped metadata overflow.
+PASS: Asset Library detail summarizes relationships.
+PASS: Asset Library detail exposes read-only copy controls.
+PASS: Asset Library detail announces copy confirmations accessibly.
+PASS: Asset Library detail announces clipboard copy failures.
+PASS: Asset Library detail clears stale copy feedback after asset changes.
+PASS: Asset Library detail exposes copyable relationship IDs.
+PASS: Asset Library detail normalizes relationship display rows.
+PASS: Asset Library detail counts visible relationship rows.
+PASS: Asset Library is connected to navigation.
+PASS: Asset Library remains read-only.
+PASS: Phase 3A-5D Asset Library UI validation completed.
+PASS: Reference metadata types are normalized.
+PASS: Reference weight is constrained to 0.20-1.00 with 0.85 default.
+PASS: Reference Lock defaults to true.
+PASS: originalName/mimeType/source metadata are supported.
+PASS: Existing localStorage reference presets remain readable.
+PASS: No destructive reference migration was introduced.
+PASS: Phase 3A-5C.1 Reference Asset Schema validation completed.
+PASS: Uploaded references persist through Asset API.
+PASS: Successful uploads receive stable Asset IDs.
+PASS: Local preview remains available before/without Asset registration.
+PASS: Failed Asset registration does not block the reference workflow.
+PASS: Reference metadata preserves type, weight and lock.
+PASS: Phase 3A-5C.2 Uploaded Reference Auto-Registration validation completed.
+PASS: Packaging Validation ผ่าน
+
+[8/9] สร้าง ZIP, SHA256 และ Manifest
+PASS: ZIP Integrity ผ่าน
+SHA256: 85ef22fbdce3dcdaa13f27c3310e6ca6875b82f48f732ec964304889aec0a123
+PASS: Manifest และ Release Notes พร้อม
+
+[9/9] สรุปผล
+============================================================
+ BETA 7 BUILD PASSED
+============================================================
+Version : 1.0.0-beta.7
+Package : /Users/ekky/Desktop/Luke ai/releases/staging-1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7
+ZIP     : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7.zip
+SHA256  : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/LUKE-AI-STUDIO-1.0.0-beta.7.zip.sha256
+Manifest: /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/latest-1.0.0-beta.7.json
+Latest  : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/latest.json
+Notes   : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/RELEASE-NOTES.md
+Runtime : /Users/ekky/Library/Caches/LUKE-AI-STUDIO/runtime-validation-repair-20260805-162313/node-mac-runtime
+Report  : /Users/ekky/Desktop/Luke ai/releases/1.0.0-beta.7/BUILD-REPORT.txt

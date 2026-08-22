@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "judge": {
+    "mode": "selected-model",
+    "preferBestResponseModel": true,
+    "fallbackToBestResponse": true,
+    "stream": true,
+    "temperature": 0.3,
+    "topP": 0.85,
+    "maxTokens": 3072
+  },
+  "synthesis": {
+    "preserveCorrectDetails": true,
+    "removeDuplicates": true,
+    "resolveContradictions": true,
+    "preferEvidenceSupportedClaims": true,
+    "preserveUserLanguage": true,
+    "doNotMentionInternalScoring": true,
+    "includeSourceModelIdsInMetadata": true
+  },
+  "history": {
+    "autosaveFinalAnswer": true,
+    "preserveOriginalResponses": true,
+    "markAsFinalAnswer": true
+  },
+  "fallback": {
+    "enabled": true,
+    "useHighestRankedResponse": true
+  }
+}

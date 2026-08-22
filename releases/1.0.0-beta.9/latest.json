@@ -1,0 +1,21 @@
+{
+  "product": "LUKE AI STUDIO",
+  "version": "1.0.0-beta.9",
+  "channel": "beta",
+  "releasedAt": "2026-08-17T05:59:21Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "target": "darwin-arm64",
+  "targets": [
+    "darwin-arm64"
+  ],
+  "filename": "LUKE-AI-STUDIO-1.0.0-beta.9.zip",
+  "sizeBytes": 126753805,
+  "sha256": "7c071fc9d7b0ee32f783ee095a54d84e8898685db5b113a71c061e8b6d19ea74",
+  "minimumMacOS": "13.0",
+  "offlineFirst": true,
+  "stagedUpdate": true,
+  "cleanupOldVersion": true,
+  "portableRuntimeIncluded": true,
+  "validated": true
+}

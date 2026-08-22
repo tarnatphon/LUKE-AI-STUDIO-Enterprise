@@ -1,0 +1,14 @@
+{
+  "id": "image-to-video",
+  "name": "Image to Video",
+  "version": "1.0.0",
+  "description": "Automatic local image animation with reference matching.",
+  "runtime": "isolated-python-venv",
+  "dependencies": ["torch", "torchvision", "diffusers", "transformers", "accelerate", "pillow", "imageio", "imageio-ffmpeg", "safetensors"],
+  "models": [
+    {"id":"svd","repository":"stabilityai/stable-video-diffusion-img2vid","download":"on-first-generation"},
+    {"id":"svd-xt","repository":"stabilityai/stable-video-diffusion-img2vid-xt","download":"on-first-generation"}
+  ],
+  "minimum": {"ramGb":16,"diskGb":12,"device":["apple-silicon-metal","nvidia-cuda"]},
+  "preserveOnUpdate": ["app/runtimes/image-to-video", "app/models", "app/outputs/video"]
+}

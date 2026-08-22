@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "supervision": {
+    "autoStart": false,
+    "autoRestart": true,
+    "healthCheckIntervalMs": 5000,
+    "healthCheckTimeoutMs": 3000,
+    "startupGracePeriodMs": 15000,
+    "shutdownTimeoutMs": 8000,
+    "maximumConsecutiveFailures": 5,
+    "failureWindowMs": 300000,
+    "suspendDurationMs": 600000
+  },
+  "restart": {
+    "initialDelayMs": 1000,
+    "maximumDelayMs": 30000,
+    "backoffMultiplier": 2,
+    "resetBackoffAfterHealthyMs": 60000
+  },
+  "runtime": {
+    "healthUrl": "http://127.0.0.1:10086/health",
+    "workingDirectory": ".",
+    "command": "",
+    "arguments": [],
+    "environment": {},
+    "inheritEnvironment": true
+  },
+  "security": {
+    "terminateOnlyOwnedProcess": true,
+    "allowShellCommand": false,
+    "writePidToState": true
+  },
+  "history": {
+    "maximumEvents": 2000
+  }
+}
