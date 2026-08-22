@@ -1,7 +1,7 @@
 # LUKE AI STUDIO Enterprise 1.0.0-beta.13
 
-## Highlights & Changes
-- **WorkTab Modularization**: Replaced monolithic WorkTab with ChatProjects, ProjectMemoryPanel, WorkTerminalDock, and WorkToolsPanel.
-- **Asset Registry & I2V**: Reference image upload registration & Image-to-Video asset tracking pipeline.
-- **Runtime Supervisor**: Hardened policy crash protection and automatic recovery.
-- **Storage Engine**: S3-compatible cloud storage adapter and keychain disaster recovery readiness.
+## Highlights & Features
+- **WorkTab Modular Architecture**: Separated project workflows into ChatProjects, ProjectMemoryPanel, WorkTerminalDock, and WorkToolsPanel.
+- **Asset Registry & I2V Pipeline**: Reference image upload registration and direct Image-to-Video asset linking.
+- **Supervisor Stability**: Fixed missing supervisor policy schema and auto-recovery circuit breaker.
+- **Optimized UI Build**: Full Vite production build with code-splitting.

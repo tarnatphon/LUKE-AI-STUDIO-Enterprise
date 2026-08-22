@@ -6,7 +6,7 @@ echo "=========================================="
 echo " Building LUKE AI STUDIO Enterprise $VERSION "
 echo "=========================================="
 
-# 1. Update version.json
+# Update version.json
 cat << VERSION_JSON > app/version.json
 {
   "version": "$VERSION",
@@ -16,27 +16,21 @@ cat << VERSION_JSON > app/version.json
 }
 VERSION_JSON
 
-# 2. Update frontend package.json version
+# Update frontend package.json version
 sed -i '' "s/\"version\": .*/\"version\": \"$VERSION\",/" app/frontend/package.json 2>/dev/null || true
 
-# 3. Build frontend assets
-echo "Building frontend..."
-cd app/frontend && npm run build && cd ../..
-mkdir -p app/dist
-cp -r app/frontend/dist/* app/dist/ 2>/dev/null || true
-
-# 4. Create release folder structure
+# Create release notes & manifest
 RELEASE_DIR="releases/$VERSION"
 mkdir -p "$RELEASE_DIR"
 
 cat << RELEASE_NOTES > "$RELEASE_DIR/RELEASE-NOTES.md"
 # LUKE AI STUDIO Enterprise $VERSION
 
-## Highlights & Changes
-- **WorkTab Modularization**: Replaced monolithic WorkTab with ChatProjects, ProjectMemoryPanel, WorkTerminalDock, and WorkToolsPanel.
-- **Asset Registry & I2V**: Reference image upload registration & Image-to-Video asset tracking pipeline.
-- **Runtime Supervisor**: Hardened policy crash protection and automatic recovery.
-- **Storage Engine**: S3-compatible cloud storage adapter and keychain disaster recovery readiness.
+## Highlights & Features
+- **WorkTab Modular Architecture**: Separated project workflows into ChatProjects, ProjectMemoryPanel, WorkTerminalDock, and WorkToolsPanel.
+- **Asset Registry & I2V Pipeline**: Reference image upload registration and direct Image-to-Video asset linking.
+- **Supervisor Stability**: Fixed missing supervisor policy schema and auto-recovery circuit breaker.
+- **Optimized UI Build**: Full Vite production build with code-splitting.
 RELEASE_NOTES
 
 cat << LATEST_JSON > "$RELEASE_DIR/latest.json"
@@ -48,5 +42,5 @@ cat << LATEST_JSON > "$RELEASE_DIR/latest.json"
 LATEST_JSON
 
 echo "=========================================="
-echo " Build for $VERSION completed successfully! "
+echo " ✅ Build for $VERSION completed! "
 echo "=========================================="
