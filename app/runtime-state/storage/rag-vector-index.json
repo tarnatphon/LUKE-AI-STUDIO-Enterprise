@@ -1,0 +1,39 @@
+[
+  {
+    "id": "src/server.js#chunk-0",
+    "filePath": "src/server.js",
+    "content": "Express server running on port 1420 managing local text, images and video.",
+    "vector": {
+      "1420": 1,
+      "express": 1,
+      "server": 1,
+      "running": 1,
+      "on": 1,
+      "port": 1,
+      "managing": 1,
+      "local": 1,
+      "text": 1,
+      "images": 1,
+      "and": 1,
+      "video": 1
+    },
+    "updatedAt": 1787498526750
+  },
+  {
+    "id": "src/tts.js#chunk-0",
+    "filePath": "src/tts.js",
+    "content": "Kokoro ONNX text-to-speech audio synthesis engine for Apple Silicon.",
+    "vector": {
+      "kokoro": 1,
+      "onnx": 1,
+      "text-to-speech": 1,
+      "audio": 1,
+      "synthesis": 1,
+      "engine": 1,
+      "for": 1,
+      "apple": 1,
+      "silicon": 1
+    },
+    "updatedAt": 1787498526751
+  }
+]
