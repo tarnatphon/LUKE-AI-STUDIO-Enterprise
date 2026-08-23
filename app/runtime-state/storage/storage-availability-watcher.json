@@ -2,20 +2,20 @@
   "schemaVersion": 1,
   "enabled": true,
   "intervalMs": 10000,
-  "updatedAt": "2026-08-22T20:41:44.441Z",
-  "lastScanAt": "2026-08-22T20:41:44.441Z",
+  "updatedAt": "2026-08-23T15:13:07.816Z",
+  "lastScanAt": "2026-08-23T15:13:07.816Z",
   "providers": {
     "external-default": {
       "status": "offline",
       "reachable": false,
       "writable": false,
-      "checkedAt": "2026-08-22T20:41:44.438Z"
+      "checkedAt": "2026-08-23T15:13:07.812Z"
     },
     "local-fallback": {
       "status": "offline",
       "reachable": false,
       "writable": false,
-      "checkedAt": "2026-08-22T20:41:44.440Z"
+      "checkedAt": "2026-08-23T15:13:07.815Z"
     }
   },
   "events": [

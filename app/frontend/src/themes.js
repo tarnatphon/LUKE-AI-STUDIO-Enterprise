@@ -1,4 +1,4 @@
-export const themes = {
+export const THEMES = {
   midnightGlass: {
     id: "midnightGlass",
     name: "Midnight Glass (M3 Pro)",
@@ -46,4 +46,6 @@ export const themes = {
   }
 };
 
+export const themes = THEMES;
+export const DEFAULT_THEME = "midnightGlass";
 export const defaultTheme = "midnightGlass";
