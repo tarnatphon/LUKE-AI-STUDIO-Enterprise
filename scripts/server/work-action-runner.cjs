@@ -9,7 +9,6 @@ class WorkActionRunner {
 
   async executeCommand(command, options = {}) {
     return new Promise((resolve, reject) => {
-      // Safety whitelist check: Prevent dangerous commands
       const blocked = ['rm -rf /', ':(){ :|:& };:'];
       if (blocked.some(b => command.includes(b))) {
         return reject(new Error('Command blocked for safety reasons.'));
@@ -34,6 +33,16 @@ class WorkActionRunner {
       isDirectory: f.isDirectory(),
       path: path.relative(this.projectRoot, path.join(targetDir, f.name))
     }));
+  }
+
+  async runWorkFileDiff(oldContent, newContent) {
+    const linesOld = (oldContent || '').split('\n');
+    const linesNew = (newContent || '').split('\n');
+    return {
+      totalOldLines: linesOld.length,
+      totalNewLines: linesNew.length,
+      hasChanges: oldContent !== newContent
+    };
   }
 }
 
