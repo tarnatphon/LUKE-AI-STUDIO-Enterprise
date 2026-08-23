@@ -12,14 +12,14 @@ class WorkFileManager {
     return resolved.startsWith(path.resolve(this.projectRoot));
   }
 
-  readProjectFile(relPath) {
+  readWorkFile(relPath) {
     if (!this.isSafePath(relPath)) throw new Error('Path outside project root');
     const full = path.resolve(this.projectRoot, relPath);
     if (!fs.existsSync(full)) throw new Error(`File not found: ${relPath}`);
     return fs.readFileSync(full, 'utf8');
   }
 
-  writeProjectFile(relPath, content) {
+  writeWorkFile(relPath, content) {
     if (!this.isSafePath(relPath)) throw new Error('Path outside project root');
     const full = path.resolve(this.projectRoot, relPath);
     const dir = path.dirname(full);
@@ -41,13 +41,12 @@ class WorkFileManager {
 }
 
 const defaultManager = new WorkFileManager();
-function getWorkTerminalSession(sessionId) {
-  return defaultManager.getWorkTerminalSession(sessionId);
-}
 
 module.exports = {
   WorkFileManager,
-  getWorkTerminalSession,
-  readProjectFile: (p) => defaultManager.readProjectFile(p),
-  writeProjectFile: (p, c) => defaultManager.writeProjectFile(p, c)
+  getWorkTerminalSession: (s) => defaultManager.getWorkTerminalSession(s),
+  readWorkFile: (p) => defaultManager.readWorkFile(p),
+  writeWorkFile: (p, c) => defaultManager.writeWorkFile(p, c),
+  readProjectFile: (p) => defaultManager.readWorkFile(p),
+  writeProjectFile: (p, c) => defaultManager.writeWorkFile(p, c)
 };
