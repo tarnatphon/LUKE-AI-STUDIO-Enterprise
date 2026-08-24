@@ -4,18 +4,49 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadBucketCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
-  S3Client,
-} = require("@aws-sdk/client-s3");
+// Cloud storage is an optional capability. The AWS SDK lives in
+// scripts/server/node_modules (installed by first-run setup) and is not
+// required for the core offline app, so load it lazily: the module must
+// stay loadable when the dependencies are absent, and every cloud operation
+// then fails with a clear, actionable 503 instead of crashing the server.
+let DeleteObjectCommand = null;
+let GetObjectCommand = null;
+let HeadBucketCommand = null;
+let HeadObjectCommand = null;
+let ListObjectsV2Command = null;
+let S3Client = null;
+let Upload = null;
 
-const {
-  Upload,
-} = require("@aws-sdk/lib-storage");
+let awsSdkLoadError = null;
+
+try {
+  ({
+    DeleteObjectCommand,
+    GetObjectCommand,
+    HeadBucketCommand,
+    HeadObjectCommand,
+    ListObjectsV2Command,
+    S3Client,
+  } = require("@aws-sdk/client-s3"));
+
+  ({
+    Upload,
+  } = require("@aws-sdk/lib-storage"));
+} catch (error) {
+  awsSdkLoadError = error;
+}
+
+function assertAwsSdkAvailable() {
+  if (!S3Client || !Upload) {
+    const error = new Error(
+      "Cloud storage dependencies are not installed. Run: npm install (in scripts/server). " +
+        `(${awsSdkLoadError instanceof Error ? awsSdkLoadError.message : String(awsSdkLoadError)})`
+    );
+
+    error.statusCode = 503;
+    throw error;
+  }
+}
 
 function readJson(filePath) {
   return JSON.parse(
@@ -282,19 +313,39 @@ class S3CompatibleStorageAdapter {
     this.statePath =
       statePath;
 
-    this.clientFactory =
+    const baseClientFactory =
       clientFactory ||
       ((configuration) =>
         new S3Client(
           configuration
         ));
 
-    this.uploadFactory =
+    const baseUploadFactory =
       uploadFactory ||
       ((configuration) =>
         new Upload(
           configuration
         ));
+
+    // Every operation must obtain a client or upload first, so guarding the
+    // factories here keeps the module (and the whole server) functional when
+    // the optional AWS SDK is not installed: cloud calls then fail with a
+    // clear 503 instead of crashing process startup.
+    this.clientFactory =
+      (configuration) => {
+        assertAwsSdkAvailable();
+        return baseClientFactory(
+          configuration
+        );
+      };
+
+    this.uploadFactory =
+      (configuration) => {
+        assertAwsSdkAvailable();
+        return baseUploadFactory(
+          configuration
+        );
+      };
   }
 
   readState() {

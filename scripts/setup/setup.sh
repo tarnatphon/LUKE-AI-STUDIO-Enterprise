@@ -704,6 +704,17 @@ else
   fi
 fi
 
+# ── Backend server dependencies (optional cloud + document features) ────────
+# The core offline app starts without these (the server degrades gracefully),
+# but installing them enables cloud storage and project document previews.
+SERVER_DIR="$ROOT_DIR/scripts/server"
+print_info "Installing backend server dependencies (scripts/server/)"
+if (cd "$SERVER_DIR" && "$NPM_BIN" install --prefer-offline --no-bin-links); then
+  print_ok "Backend server dependencies installed."
+else
+  print_warn "Backend server dependencies could not be installed. Core offline features still work; cloud storage and document previews stay disabled until 'npm install' succeeds in scripts/server."
+fi
+
 # ── Step 4: Build frontend ──────────────────────────────────────────────────
 print_step 7 $TOTAL_STEPS "Building frontend -> app/dist/"
 
