@@ -45,3 +45,7 @@ runtime-logs/
 .DS_Store
 .aider*
 .env
+
+# Agent skill shortcuts created by Streamlit inside the repo
+.agents/
+.claude/
