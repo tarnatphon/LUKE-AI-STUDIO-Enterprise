@@ -10,6 +10,7 @@ import {
 import {
   getTtsStatus,
   listTtsModels,
+  speakSystemTts,
   speakTts,
   startTts,
   stopTts,
@@ -52,9 +53,35 @@ export default function TextToSpeech({
   const voices = status.voices?.length ? status.voices : FALLBACK_VOICES;
   const selectedVoice = ttsSettings?.voice || "af_heart";
   const speed = ttsSettings?.speed || 1;
+  const engine = ttsSettings?.engine || "kokoro";
+  const systemTts = status.systemTts || null;
+  const systemEngineAvailable = !!systemTts?.available;
+  const systemVoices = useMemo(() => {
+    const list = Array.isArray(systemTts?.voices) ? systemTts.voices : [];
+    return [...list].sort((a, b) => {
+      const aThai = String(a.language).toLowerCase().startsWith("th") ? 1 : 0;
+      const bThai = String(b.language).toLowerCase().startsWith("th") ? 1 : 0;
+      if (aThai !== bThai) return bThai - aThai;
+      return String(a.name).localeCompare(String(b.name));
+    });
+  }, [systemTts?.voices]);
+  const hasThaiSystemVoice = systemVoices.some((voice) => String(voice.language).toLowerCase().startsWith("th"));
+  const selectedSystemVoice = ttsSettings?.systemVoice
+    || systemVoices.find((voice) => String(voice.language).toLowerCase().startsWith("th"))?.id
+    || systemVoices[0]?.id
+    || "";
+  const usingSystemEngine = engine === "system";
 
   const updateTtsSetting = (key, value) => {
     setTtsSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const switchEngine = (nextEngine) => {
+    if (nextEngine === engine) return;
+    updateTtsSetting("engine", nextEngine);
+    if (nextEngine === "system" && text.trim() === "Hello from LUKE AI STUDIO text to speech.") {
+      setText("สวัสดีครับ ยินดีต้อนรับสู่ LUKE AI STUDIO ทุกเสียงนี้สร้างขึ้นบนเครื่องของคุณ โดยไม่ต้องใช้อินเทอร์เน็ต");
+    }
   };
 
   const refresh = useCallback(async () => {
@@ -87,6 +114,12 @@ export default function TextToSpeech({
     if (!selectedOutput) return;
     setOutput(selectedOutput);
     setText(selectedOutput.text || "");
+    if (selectedOutput.model === "macos-system") {
+      updateTtsSetting("engine", "system");
+      if (selectedOutput.voice) updateTtsSetting("systemVoice", selectedOutput.voice);
+      if (selectedOutput.speed) updateTtsSetting("speed", selectedOutput.speed);
+      return;
+    }
     if (selectedOutput.voice) updateTtsSetting("voice", selectedOutput.voice);
     if (selectedOutput.speed) updateTtsSetting("speed", selectedOutput.speed);
     if (selectedOutput.model) setSelectedModel(selectedOutput.model);
@@ -120,7 +153,38 @@ export default function TextToSpeech({
   };
 
   const handleGenerate = async () => {
-    if (!text.trim() || !selectedModel) return;
+    if (!text.trim()) return;
+    if (usingSystemEngine) {
+      if (!systemEngineAvailable) {
+        showAlert?.({ title: "System Voice Unavailable", message: "macOS System Voice TTS is only available on macOS.", danger: true });
+        return;
+      }
+      if (!selectedSystemVoice) {
+        showAlert?.({ title: "No System Voice", message: "No macOS system voices were found. Install a voice in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices.", danger: true });
+        return;
+      }
+      setIsGenerating(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const generated = await speakSystemTts(text, {
+          voice: selectedSystemVoice,
+          speed,
+          signal: controller.signal,
+        });
+        setOutput(generated);
+        await onOutputsChanged?.();
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          showAlert?.({ title: "System Voice Generation Failed", message: err.message || String(err), danger: true });
+        }
+      } finally {
+        abortRef.current = null;
+        setIsGenerating(false);
+      }
+      return;
+    }
+    if (!selectedModel) return;
     setIsGenerating(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -166,7 +230,7 @@ export default function TextToSpeech({
       <div className="workspace-title-section">
         <h2 className="workspace-title">Text to Speech</h2>
         <p className="workspace-subtitle">
-          Generate local WAV narration with Kokoro ONNX.
+          Generate local WAV narration with Kokoro ONNX or macOS system voices (Thai-capable).
         </p>
       </div>
 
@@ -174,64 +238,120 @@ export default function TextToSpeech({
         <section className="m3-card speech-panel">
           <div className="speech-panel-header">
             <h3>Runtime</h3>
-            <span className={`status-chip ${status.runtimeInstalled ? "" : "offline"}`}>
-              {status.runtimeInstalled ? (status.ready ? "Ready" : "Installed") : "Runtime missing"}
+            <span className={`status-chip ${usingSystemEngine ? (systemEngineAvailable ? "" : "offline") : (status.runtimeInstalled ? "" : "offline")}`}>
+              {usingSystemEngine
+                ? (systemEngineAvailable ? (systemVoices.length ? `${systemVoices.length} system voices` : "No voices found") : "macOS only")
+                : (status.runtimeInstalled ? (status.ready ? "Ready" : "Installed") : "Runtime missing")}
             </span>
           </div>
 
-          {status.error && <div className="text-progress error">{status.error}</div>}
-
-          <label className="speech-label">
-            Kokoro model
-            <select className="m3-input" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
-              {installedModels.length === 0 && <option value="">No downloaded TTS models</option>}
-              {installedModels.map((model) => (
-                <option key={model.id || model.filename} value={model.filename}>
-                  {model.name || model.filename}
-                </option>
-              ))}
-            </select>
-          </label>
+          {status.error && !usingSystemEngine && <div className="text-progress error">{status.error}</div>}
 
           <div className="speech-controls-row">
             <label className="speech-label">
-              Voice
-              <select className="m3-input" value={selectedVoice} onChange={(event) => updateTtsSetting("voice", event.target.value)}>
-                {voices.map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.name} ({voice.gender}, {voice.language})
-                  </option>
-                ))}
+              Engine
+              <select className="m3-input" value={engine} onChange={(event) => switchEngine(event.target.value)}>
+                <option value="kokoro">Kokoro (English, offline model)</option>
+                <option value="system" disabled={!systemEngineAvailable}>
+                  {systemEngineAvailable ? "macOS System Voice (Thai & multilingual)" : "macOS System Voice (macOS only)"}
+                </option>
               </select>
-            </label>
-            <label className="speech-label">
-              Speed
-              <input
-                className="m3-input"
-                type="number"
-                min="0.5"
-                max="2"
-                step="0.05"
-                value={speed}
-                onChange={(event) => updateTtsSetting("speed", Math.max(0.5, Math.min(2, Number(event.target.value) || 1)))}
-              />
             </label>
           </div>
 
+          {usingSystemEngine ? (
+            <>
+              <div className="speech-controls-row">
+                <label className="speech-label">
+                  System voice
+                  <select className="m3-input" value={selectedSystemVoice} onChange={(event) => updateTtsSetting("systemVoice", event.target.value)}>
+                    {systemVoices.length === 0 && <option value="">No system voices found</option>}
+                    {systemVoices.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {`${String(voice.language).toLowerCase().startsWith("th") ? "★ " : ""}${voice.name} (${voice.language})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="speech-label">
+                  Speed
+                  <input
+                    className="m3-input"
+                    type="number"
+                    min="0.5"
+                    max="2"
+                    step="0.05"
+                    value={speed}
+                    onChange={(event) => updateTtsSetting("speed", Math.max(0.5, Math.min(2, Number(event.target.value) || 1)))}
+                  />
+                </label>
+              </div>
+              {!hasThaiSystemVoice && systemVoices.length > 0 && (
+                <div className="text-progress">
+                  No Thai voice installed. Add one in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices, then click Refresh.
+                </div>
+              )}
+              <div className="text-progress">
+                System voices are spoken by macOS itself — no model download, works with Thai text (★ = Thai voices).
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="speech-label">
+                Kokoro model
+                <select className="m3-input" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
+                  {installedModels.length === 0 && <option value="">No downloaded TTS models</option>}
+                  {installedModels.map((model) => (
+                    <option key={model.id || model.filename} value={model.filename}>
+                      {model.name || model.filename}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="speech-controls-row">
+                <label className="speech-label">
+                  Voice
+                  <select className="m3-input" value={selectedVoice} onChange={(event) => updateTtsSetting("voice", event.target.value)}>
+                    {voices.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.name} ({voice.gender}, {voice.language})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="speech-label">
+                  Speed
+                  <input
+                    className="m3-input"
+                    type="number"
+                    min="0.5"
+                    max="2"
+                    step="0.05"
+                    value={speed}
+                    onChange={(event) => updateTtsSetting("speed", Math.max(0.5, Math.min(2, Number(event.target.value) || 1)))}
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
           <div className="speech-button-row">
-            <button
-              className="m3-btn m3-btn-filled"
-              onClick={handleLoadModel}
-              disabled={!selectedModel || isLoadingModel || isGenerating || isLoaded}
-            >
-              {isLoadingModel ? <LoaderCircle className="progress-spinner" size={14} /> : <Play size={14} />}
-              <span>{isLoaded ? "Loaded" : isLoadingModel ? "Loading" : "Load"}</span>
-            </button>
+            {!usingSystemEngine && (
+              <button
+                className="m3-btn m3-btn-filled"
+                onClick={handleLoadModel}
+                disabled={!selectedModel || isLoadingModel || isGenerating || isLoaded}
+              >
+                {isLoadingModel ? <LoaderCircle className="progress-spinner" size={14} /> : <Play size={14} />}
+                <span>{isLoaded ? "Loaded" : isLoadingModel ? "Loading" : "Load"}</span>
+              </button>
+            )}
             <button className="m3-btn m3-btn-outlined" onClick={refresh}>
               <RefreshCw size={14} />
               <span>Refresh</span>
             </button>
-            {status.ready && (
+            {!usingSystemEngine && status.ready && (
               <button className="m3-btn m3-btn-error" onClick={handleStop}>
                 <Square size={14} />
                 <span>Stop Runtime</span>
@@ -239,9 +359,9 @@ export default function TextToSpeech({
             )}
           </div>
 
-          {installedModels.length === 0 && (
+          {!usingSystemEngine && installedModels.length === 0 && (
             <div className="text-progress">
-              Download a Kokoro model from Model Manager, TTS Models first.
+              Download a Kokoro model from Model Manager, TTS Models first — or switch Engine to macOS System Voice for Thai.
             </div>
           )}
         </section>
@@ -270,7 +390,7 @@ export default function TextToSpeech({
               <button
                 className="m3-btn m3-btn-filled"
                 onClick={handleGenerate}
-                disabled={!text.trim() || !selectedModel || !status.runtimeInstalled}
+                disabled={!text.trim() || (usingSystemEngine ? (!systemEngineAvailable || !selectedSystemVoice) : (!selectedModel || !status.runtimeInstalled))}
               >
                 <Volume2 size={14} />
                 <span>Generate WAV</span>

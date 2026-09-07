@@ -1,3 +1,30 @@
+
+function lukeArchiveChatMarkdown(req, res, projectRoot) {
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
+    try {
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+      const id = String(body.id || "chat").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+      const title = String(body.title || id);
+      const markdown = String(body.markdown || "");
+      const dir = require("path").join(projectRoot, "app", "chat-history");
+      require("fs").mkdirSync(dir, { recursive: true });
+      const file = require("path").join(dir, id + ".md");
+      const header = "# " + title + "\\n\\n";
+      require("fs").writeFileSync(file, header + markdown, "utf8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: "app/chat-history/" + id + ".md" }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: String(err.message || err) }));
+    }
+  });
+}
+
+// LUKE_SOCIAL_AGENCY_RUNTIME_IMPORT_V1
+const { SocialAgencyRuntime } = require("./social-agency-runtime.cjs");
+
 // LUKE_AI_I2V_MAINTENANCE_IMPORT_V1
 const {
   planImageToVideoCleanup,
@@ -448,6 +475,12 @@ let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
 const SERVER_BUILD = "text-image-v1";
 const ROOT    = path.join(__dirname, "..", "..");
+
+let socialAgencyRuntime = null;
+function getSocialAgencyRuntime() {
+  if (!socialAgencyRuntime) socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
+  return socialAgencyRuntime;
+}
 const DIST    = path.join(ROOT, "app", "dist");
 const TOOLS   = path.join(ROOT, "app", "tools");
 const osPlatform = process.platform;
@@ -2702,6 +2735,149 @@ function listTtsOutputs() {
   } catch (_) {
     return [];
   }
+}
+
+// ── macOS System Voice TTS (Thai & multilingual, no model download) ─────────
+let systemTtsVoicesCache = { at: 0, voices: [] };
+
+function getSystemTtsVoices(force = false) {
+  if (process.platform !== "darwin") return [];
+  const now = Date.now();
+  if (!force && systemTtsVoicesCache.voices.length && now - systemTtsVoicesCache.at < 60000) {
+    return systemTtsVoicesCache.voices;
+  }
+  try {
+    const output = execSync("say -v ?", { encoding: "utf8", timeout: 20000, windowsHide: true });
+    const voices = [];
+    for (const rawLine of String(output).split(/\r?\n/)) {
+      const line = rawLine.trimEnd();
+      const match = line.match(/^(.+?)\s{2,}([a-z]{2}_[A-Za-z0-9]{2,4})\s*(?:#\s*(.*))?$/i);
+      if (!match) continue;
+      const name = match[1].trim();
+      const locale = match[2];
+      if (!name || !locale) continue;
+      voices.push({
+        id: name,
+        name,
+        language: locale,
+        gender: locale.toLowerCase().startsWith("th") ? "Thai" : "System",
+        demo: (match[3] || "").trim(),
+      });
+    }
+    if (voices.length) systemTtsVoicesCache = { at: now, voices };
+  } catch (err) {
+    console.error("  [tts] Failed to list macOS system voices:", err.message || String(err));
+  }
+  return systemTtsVoicesCache.voices;
+}
+
+function getSystemTtsStatus(force = false) {
+  const voices = getSystemTtsVoices(force);
+  return {
+    available: process.platform === "darwin",
+    platform: process.platform,
+    engine: "macos-say",
+    label: "macOS System Voice",
+    voices,
+    thaiVoices: voices.filter((voice) => String(voice.language).toLowerCase().startsWith("th")),
+  };
+}
+
+function readWavDurationMs(wavPath) {
+  try {
+    const fd = fs.openSync(wavPath, "r");
+    const header = Buffer.alloc(44);
+    fs.readSync(fd, header, 0, 44, 0);
+    fs.closeSync(fd);
+    const byteRate = header.readUInt32LE(28) || 1;
+    const dataSize = header.readUInt32LE(40);
+    if (byteRate > 0 && dataSize > 0) return Math.round((dataSize / byteRate) * 1000);
+  } catch (_) { /* best effort */ }
+  return 0;
+}
+
+function synthesizeSystemTts(text, options = {}) {
+  return new Promise((resolve, reject) => {
+    const cleanedText = String(text || "").trim();
+    if (!cleanedText) {
+      const err = new Error("Enter text to synthesize.");
+      err.statusCode = 400;
+      reject(err);
+      return;
+    }
+    if (cleanedText.length > 5000) {
+      const err = new Error("TTS text is too long. Limit is 5000 characters.");
+      err.statusCode = 400;
+      reject(err);
+      return;
+    }
+    if (process.platform !== "darwin") {
+      const err = new Error("System Voice TTS is only available on macOS. Use Kokoro on this platform.");
+      err.statusCode = 400;
+      reject(err);
+      return;
+    }
+    const voices = getSystemTtsVoices();
+    const requestedVoice = String(options.voice || "").trim();
+    const voiceInfo = voices.find((voice) => voice.name === requestedVoice);
+    if (!voiceInfo) {
+      const err = new Error(requestedVoice
+        ? `System voice "${requestedVoice}" is not installed on this Mac.`
+        : "Select a system voice first.");
+      err.statusCode = 400;
+      reject(err);
+      return;
+    }
+    const speed = Math.max(0.5, Math.min(2, Number(options.speed) || 1));
+    const rate = Math.max(80, Math.min(400, Math.round(175 * speed)));
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempWav = path.join(TTS_OUTPUTS, `.system-tts-${stamp}.wav`);
+    const proc = spawn("say", [
+      "-v", voiceInfo.name,
+      "-r", String(rate),
+      "-o", tempWav,
+      "--data-format=LEI16@22050",
+      cleanedText,
+    ], { stdio: "pipe", windowsHide: true });
+    let stderrText = "";
+    proc.stderr.on("data", (chunk) => { stderrText += chunk.toString(); });
+    proc.on("error", (err) => {
+      try { fs.unlinkSync(tempWav); } catch (_) { /* not created */ }
+      const wrapped = new Error(`macOS 'say' command failed to start: ${err.message}`);
+      wrapped.statusCode = 500;
+      reject(wrapped);
+    });
+    proc.on("close", (code) => {
+      const wavExists = fs.existsSync(tempWav) && fs.statSync(tempWav).size > 44;
+      if (code !== 0 || !wavExists) {
+        try { if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav); } catch (_) { /* ignore */ }
+        const detail = stderrText.trim().slice(0, 300);
+        const err = new Error(`macOS system voice generation failed${code ? ` (exit ${code})` : ""}${detail ? `: ${detail}` : "."}`);
+        err.statusCode = 500;
+        reject(err);
+        return;
+      }
+      try {
+        const result = saveTtsOutput({
+          wavPath: tempWav,
+          text: cleanedText,
+          model: "macos-system",
+          modelName: `macOS System Voice (${voiceInfo.language})`,
+          voice: voiceInfo.name,
+          voiceName: `${voiceInfo.name} (${voiceInfo.language})`,
+          speed,
+          durationMs: readWavDurationMs(tempWav),
+          sampleRate: 22050,
+          displayName: `${voiceInfo.name} (${voiceInfo.language}) System Voice`,
+        });
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      } finally {
+        try { fs.unlinkSync(tempWav); } catch (_) { /* ignore */ }
+      }
+    });
+  });
 }
 
 function synthesizeTts(text, options = {}) {
@@ -18127,6 +18303,11 @@ const storageRecoveryReadinessCertifier =
 storageAvailabilityWatcher.start();
 
 const server = http.createServer(async (req, res) => {
+    if (String(req.url || "").split("?")[0] === "/api/llm/archive-markdown") {
+      lukeArchiveChatMarkdown(req, res, require("path").join(__dirname, "..", ".."));
+      return;
+    }
+
   // LUKE_AI_RUNTIME_SUPERVISOR_ROUTES_V3
 
   // LUKE_AI_RUNTIME_AUTO_DETECTION_API_V3
@@ -23359,11 +23540,12 @@ const server = http.createServer(async (req, res) => {
       settings: ttsSettings,
       generation: ttsGenerationState,
       voices: TTS_VOICES,
+      systemTts: getSystemTtsStatus(),
     });
   }
 
   if (req.url === "/api/tts/models" && req.method === "GET") {
-    return json(res, 200, { ok: true, models: getTtsModels(), voices: TTS_VOICES });
+    return json(res, 200, { ok: true, models: getTtsModels(), voices: TTS_VOICES, systemTts: getSystemTtsStatus() });
   }
 
   if (req.url === "/api/tts/start" && req.method === "POST") {
@@ -23395,6 +23577,18 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       ttsError = err.message || String(err);
       return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+    }
+  }
+
+  if (req.url === "/api/tts/system-speak" && req.method === "POST") {
+    const body = await readJsonBody(req, res, 512 * 1024);
+    if (!body) return;
+    try {
+      const output = await synthesizeSystemTts(body.text, body);
+      return json(res, 200, { ok: true, output });
+    } catch (err) {
+      ttsError = err.message || String(err);
+      return json(res, jsonErrorStatus(err), { ok: false, error: ttsError, code: err.code || "" });
     }
   }
 
@@ -26054,6 +26248,18 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       console.error(`  [api] Failed to delete model ${safeFilename}:`, err);
       return json(res, 500, { error: err.message });
     }
+  }
+
+  if (req.url === "/api/social-agency/state" && req.method === "GET") {
+    return json(res, 200, { ok: true, state: getSocialAgencyRuntime().getState() });
+  }
+  if (req.url === "/api/social-agency/daily-drafts" && req.method === "POST") {
+    try { return json(res, 201, { ok: true, draft: getSocialAgencyRuntime().createDailyDraft() }); }
+    catch (error) { return json(res, 409, { ok: false, error: error.message }); }
+  }
+  if (req.url === "/api/social-agency/draft-status" && req.method === "POST") {
+    try { const body = await readJsonRequestBody(req); return json(res, 200, { ok: true, draft: getSocialAgencyRuntime().updateDraftStatus(body.id, body.status) }); }
+    catch (error) { return json(res, 409, { ok: false, error: error.message }); }
   }
 
   if (req.url.startsWith("/api/")) {

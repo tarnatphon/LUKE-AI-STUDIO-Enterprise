@@ -517,6 +517,15 @@ export async function listLlmConversations() {
   return data.conversations || [];
 }
 
+export async function archiveChatMarkdown({ id, title, markdown }) {
+  const res = await fetch("/api/llm/archive-markdown", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, title, markdown }),
+  });
+  return await readJsonResponse(res, "Could not archive chat markdown.");
+}
+
 export async function saveLlmConversation(conversation) {
   const res = await fetch("/api/llm/save-conversation", {
     method: "POST",
@@ -998,6 +1007,21 @@ export async function speakTts(text, options = {}) {
     signal: options.signal,
   });
   const data = await readJsonResponse(res, "The local server returned an invalid TTS response.");
+  return data.output;
+}
+
+export async function speakSystemTts(text, options = {}) {
+  const res = await fetch("/api/tts/system-speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voice: options.voice,
+      speed: options.speed,
+    }),
+    signal: options.signal,
+  });
+  const data = await readJsonResponse(res, "The local server returned an invalid system voice TTS response.");
   return data.output;
 }
 
