@@ -49,3 +49,16 @@ runtime-logs/
 # Agent skill shortcuts created by Streamlit inside the repo
 .agents/
 .claude/
+
+# macOS metadata and local workspace junk
+.fseventsd/
+.Spotlight-V100/
+.TemporaryItems/
+.Trashes/
+._*
+*.orig
+*.rej
+*.backup
+*.tmp-*
+thai-tts.patch*
+SuperTrader/
