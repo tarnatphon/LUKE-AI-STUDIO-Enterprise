@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "client": {
+    "id": "thai-modern-bags",
+    "name": "Thai Modern Bags Co.,Ltd.",
+    "website": "https://www.thaimodernbags.com"
+  },
+  "products": [
+    {
+      "sku": "CAM-009",
+      "name": "กระเป๋ากล้อง CAM-009",
+      "category": "Camera bags",
+      "minimumOrder": "100–200 ใบ",
+      "productionTime": "30–45 วัน",
+      "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
+      "status": "verified-source",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html"
+    },
+    {
+      "sku": "SGB-012",
+      "name": "กระเป๋าเชือกรูด SGB-012",
+      "category": "Drawstring bags",
+      "minimumOrder": "100–200 ใบ",
+      "productionTime": "30–45 วัน",
+      "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
+      "status": "verified-source",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html"
+    }
+  ],
+  "drafts": [
+    {
+      "id": "a04382ce-c290-4343-962f-fc575610735f",
+      "sku": "CAM-009",
+      "productName": "กระเป๋ากล้อง CAM-009",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+      "status": "needs-approval",
+      "evidence": "verified-source",
+      "createdAt": "2026-09-07T05:18:13.753Z",
+      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา"
+    },
+    {
+      "id": "003199a5-9b34-4921-8d8d-6776001d04b1",
+      "sku": "CAM-009",
+      "productName": "กระเป๋ากล้อง CAM-009",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+      "status": "approved",
+      "evidence": "verified-source",
+      "createdAt": "2026-09-03T07:19:43.463Z",
+      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+      "updatedAt": "2026-09-03T07:21:02.377Z"
+    },
+    {
+      "id": "22de68e8-79fb-43b0-922d-c925873f8a36",
+      "sku": "CAM-009",
+      "productName": "กระเป๋ากล้อง CAM-009",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+      "status": "approved",
+      "evidence": "verified-source",
+      "createdAt": "2026-09-03T07:19:36.741Z",
+      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+      "updatedAt": "2026-09-03T07:20:57.746Z"
+    },
+    {
+      "id": "8c1ec1fc-1e59-4a69-a361-e21d86629d87",
+      "sku": "SGB-012",
+      "productName": "กระเป๋าเชือกรูด SGB-012",
+      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html",
+      "status": "approved",
+      "evidence": "verified-source",
+      "createdAt": "2026-08-25T05:27:06.441Z",
+      "caption": "กระเป๋าเชือกรูด SGB-012\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+      "updatedAt": "2026-09-03T07:20:44.371Z"
+    }
+  ],
+  "selectionHistory": [
+    {
+      "sku": "SGB-012",
+      "selectedAt": "2026-08-25T05:27:06.441Z"
+    },
+    {
+      "sku": "CAM-009",
+      "selectedAt": "2026-09-03T07:19:36.741Z"
+    },
+    {
+      "sku": "CAM-009",
+      "selectedAt": "2026-09-03T07:19:43.463Z"
+    },
+    {
+      "sku": "CAM-009",
+      "selectedAt": "2026-09-07T05:18:13.753Z"
+    }
+  ],
+  "createdAt": "2026-08-25T05:27:06.436Z"
+}

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-08-22T15:08:20.542Z",
+  "updatedAt": "2026-09-03T06:17:41.131Z",
   "status": "stopped",
   "desiredState": "stopped",
   "pid": null,
@@ -9,7 +9,7 @@
   "healthySince": null,
   "lastHealthCheckAt": null,
   "lastHealthyAt": null,
-  "lastStoppedAt": "2026-08-22T15:08:20.542Z",
+  "lastStoppedAt": "2026-09-03T06:17:41.131Z",
   "lastExitCode": null,
   "lastSignal": null,
   "lastError": null,
@@ -178,6 +178,42 @@
       "id": "runtime-event-1787411300542-09c983c143f16",
       "type": "runtime-stop-requested",
       "createdAt": "2026-08-22T15:08:20.542Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787631297721-5a3985f50bbdd",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-25T04:14:57.721Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787635706328-46ad052c84778",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-25T05:28:26.328Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1787637837791-afc59623ead52",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-25T06:03:57.791Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1788019652295-d8e76a8221879",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-29T16:07:32.295Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1788022434588-c89094422c144",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-08-29T16:53:54.588Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1788416261126-7c8ea72f129a1",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-03T06:17:41.126Z",
       "reason": "supervisor-shutdown"
     }
   ]

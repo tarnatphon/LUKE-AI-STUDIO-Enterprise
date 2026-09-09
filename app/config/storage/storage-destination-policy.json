@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "enabled": true,
-  "selectionMode": "automatic",
+  "selectionMode": "external",
   "preferredDestination": {
     "type": "external",
-    "volumeName": "EXTERNAL Drive",
-    "relativePath": "ai/ai-downloads"
+    "volumeName": "AI",
+    "relativePath": "ai-downloads"
   },
   "localFallback": {
     "enabled": true,

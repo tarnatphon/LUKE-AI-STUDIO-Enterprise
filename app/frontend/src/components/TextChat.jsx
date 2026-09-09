@@ -11,6 +11,7 @@ import {
   listSpeechModels,
   listLlmModels,
   streamChatWithLlm,
+  archiveChatMarkdown,
   startLlm,
   startSpeech,
   stopLlm,
@@ -502,7 +503,7 @@ function TextChat({
   const openSearchResult = (result) => {
     if (!result) return;
     if (result.conversationId !== activeConversationId) setActiveConversationId(result.conversationId);
-    setTimeout(() => document.getElementById(`chat-message-${result.messageIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    setTimeout(() => document.getElementById(`chat-message-${result.messageIndex}`)?.scrollIntoView({ behavior: "auto" }), 50);
   };
 
   const moveMessageSearch = (delta) => {
@@ -510,6 +511,80 @@ function TextChat({
     const nextIndex = (messageSearchIndex + delta + messageSearchResults.length) % messageSearchResults.length;
     setMessageSearchIndex(nextIndex);
     openSearchResult(messageSearchResults[nextIndex]);
+  };
+
+  const messagesToMarkdown = (allMessages, title = "Chat") => {
+    const lines = [`# ${title}`, "", "Exported for history review. This file is not sent back to the model.", ""];
+    for (const message of allMessages || []) {
+      const role = message.role === "assistant" ? "Assistant" : message.role === "user" ? "You" : message.role;
+      let text = "";
+      if (Array.isArray(message.content)) {
+        text = message.content.map((item) => item && item.text ? item.text : "").join("\n").trim();
+      } else {
+        text = String(message.content || "").trim();
+      }
+      if (!text) continue;
+      lines.push(`## ${role}`, "", text, "");
+    }
+    return lines.join("\n");
+  };
+
+  const archiveFinishedChat = async (convId, allMessages, modelName) => {
+    const title = (conversations.find((c) => c.id === convId) || {}).title || "Chat Session";
+    const markdown = messagesToMarkdown(allMessages, title);
+    try {
+      await archiveChatMarkdown({ id: convId, title, markdown });
+    } catch (err) {
+      console.warn("Markdown archive skipped:", err);
+    }
+    if (assistantMode !== "work") {
+      freshContextRef.current = true;
+    }
+    setMemoryStatus((prev) => ({
+      ...(prev || {}),
+      compressed: true,
+      archivedCount: (allMessages || []).length,
+      activeMessageCount: 0,
+      conversationId: convId,
+    }));
+  };
+
+  const resetModelContextToStart = async () => {
+    freshContextRef.current = true;
+    if (activeConversationId) {
+      await archiveFinishedChat(activeConversationId, messages, selectedModel);
+    }
+    setMemoryStatus({ compressed: true, archivedCount: messages.length, activeMessageCount: 0, conversationId: activeConversationId });
+  };
+
+    const sanitizeMessagesForTemplate = (msgs) => {
+    const systems = [];
+    const rest = [];
+    for (const message of msgs || []) {
+      if (message?.role === "system") {
+        const text = Array.isArray(message.content) ? message.content.map((item) => item?.text || "").join("\n") : String(message.content || "");
+        if (text.trim()) systems.push(text.trim());
+        continue;
+      }
+      if (message?.role === "user" || message?.role === "assistant") rest.push(message);
+    }
+    const merged = [];
+    for (const message of rest) {
+      const last = merged[merged.length - 1];
+      if (last && last.role === message.role && typeof last.content === "string" && typeof message.content === "string") {
+        last.content = last.content + "\n\n" + message.content;
+      } else merged.push({ ...message });
+    }
+    while (merged.length && merged[0].role !== "user") merged.shift();
+    const prefix = systems.join("\n\n");
+    if (prefix && merged[0]?.role === "user" && typeof merged[0].content === "string") {
+      merged[0] = { ...merged[0], content: prefix + "\n\n" + merged[0].content };
+    } else if (prefix && merged[0]?.role === "user" && Array.isArray(merged[0].content)) {
+      merged[0] = { ...merged[0], content: [{ type: "text", text: prefix }, ...merged[0].content] };
+    } else if (prefix) {
+      merged.unshift({ role: "user", content: prefix });
+    }
+    return merged;
   };
 
   const compactConversationContext = (allMessages, contextLimit, reservedTokens = 0) => {
@@ -603,6 +678,8 @@ function TextChat({
   const prevMessagesLengthRef = useRef(0);
   const followGenerationRef = useRef(false);
   const abortControllerRef = useRef(null);
+  const freshContextRef = useRef(false);
+
   // rAF batching: accumulate token updates and flush once per frame
   const tokenBufferRef = useRef(null);
   const rafRef = useRef(null);
@@ -1082,19 +1159,24 @@ function TextChat({
 
     const lastMessage = messages[len - 1];
     const isNewUserMessage = len > prevLen && lastMessage?.role === "user";
+    // Scroll only the message pane. Element.scrollIntoView can scroll the
+    // document and move the full LUKE workspace above the viewport.
+    const scrollMessagesToBottom = (behavior) => {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+    };
 
     if (isNewUserMessage) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollMessagesToBottom("smooth");
     } else if (followGenerationRef.current) {
       // Streaming updates already arrive several times per second. Immediate
       // scrolling avoids stacking smooth-scroll animations on the main thread,
       // keeping the composer responsive while the response grows.
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      scrollMessagesToBottom("auto");
     } else {
       const threshold = 150;
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
       if (isNearBottom) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        scrollMessagesToBottom("smooth");
       }
     }
   }, [messages, isBusy, loadingModel]);
@@ -1363,8 +1445,11 @@ function TextChat({
       branchAlternatives: Array.isArray(queuedItem?.branchAlternatives) ? queuedItem.branchAlternatives : [],
       ragSources: retrievedProjectSources,
     };
-    const nextMessages = [...conversationBase, userMessage];
-    const requestConversationMessages = [...conversationBase, { role: "user", content: requestUserMessageContent }];
+    const historyMessages = conversationBase;
+    const modelHistory = (freshContextRef.current && assistantMode !== "work") ? [] : historyMessages;
+    const nextMessages = [...historyMessages, userMessage];
+    const requestConversationMessages = [...modelHistory, { role: "user", content: requestUserMessageContent }];
+    if (freshContextRef.current && assistantMode !== "work") freshContextRef.current = false;
     followGenerationRef.current = true;
     setMessages(nextMessages);
     if (!queuedItem?.preserveComposer) {
@@ -1430,10 +1515,16 @@ function TextChat({
         contextLimit,
         reservedSystemTokens,
       );
-      const requestMessages = [
+      let contextMessages = managedContext.messages;
+      if (assistantMode !== "work" && freshContextRef.current) {
+        const lastUser = requestConversationMessages.filter((message) => message.role === "user").slice(-1);
+        contextMessages = lastUser;
+        freshContextRef.current = false;
+      }
+      const requestMessages = sanitizeMessagesForTemplate([
         ...(combinedSystemPrompt ? [{ role: "system", content: combinedSystemPrompt }] : []),
-        ...managedContext.messages,
-      ];
+        ...contextMessages,
+      ]);
       setMemoryStatus({
         compressed: managedContext.compressed,
         archivedCount: managedContext.archivedCount,
@@ -1580,6 +1671,10 @@ function TextChat({
       cancelPendingStreamPaint();
       setMessages(finalMessages);
       saveConversationState(convId, finalMessages, selectedModel);
+      if (assistantMode !== "work") {
+        freshContextRef.current = true;
+      }
+      archiveFinishedChat(convId, finalMessages, selectedModel);
       const workActions = assistantMode === "work" ? parseWorkActions(processed.content) : [];
       if (workActions.length > 0 && agentRound < MAX_WORK_AGENT_ROUNDS) {
         const toolResults = await executeWorkActions(workActions);
@@ -1717,8 +1812,8 @@ function TextChat({
   };
 
   return (
-    <div className="text-chat-layout" style={{ display: "flex", height: "100%", width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
-      <section className="text-chat-main" style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="text-chat-layout" style={{ display: "flex", flex: "1 1 0", minHeight: 0, width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
+      <section className="text-chat-main" style={{ flex: "1 1 0", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {/* ─── Header ─────────────────────────────────────────── */}
         <div className="text-chat-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flex: 1 }}>

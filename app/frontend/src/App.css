@@ -10062,3 +10062,29 @@ html[data-theme^="dark"] .settings-subsection:hover {
 .chat-branch-switcher button { display: inline-flex; padding: 3px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }
 .chat-branch-switcher button:hover:not(:disabled) { background: var(--md-sys-color-surface-variant); }
 .chat-branch-switcher button:disabled { opacity: 0.35; }
+
+/* LUKE_CHAT_WORKSPACE_LAYOUT_FIX_V1
+   Keep the active chat workspace inside the flex area below the status bar.
+   Without a zero flex-basis, a 100%-height chat child can expand the parent
+   and appear to jump upward or stick under the top status bar. */
+.workspace-panel {
+  flex: 1 1 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace-panel > * {
+  min-width: 0;
+  min-height: 0;
+}
+.workspace-panel .text-chat-layout {
+  height: auto !important;
+  min-height: 0;
+}
+
+
+/* LUKE_SETTINGS_SCROLL_FIX */
+.app-container { height: 100vh; overflow: hidden; }
+.main-content { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.workspace-panel { flex: 1 1 auto; min-height: 0; }
+.runtime-dashboard-shell { overflow: visible; }

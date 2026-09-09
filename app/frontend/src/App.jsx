@@ -14,6 +14,7 @@ const workspaceLoaders = {
   tts: () => import("./components/TextToSpeech"),
   "image-video": () => import("./components/ImageToVideo"),
   assets: () => import("./components/AssetLibrary"),
+  "social-agency": () => import("./components/SocialAgency"),
 };
 
 const workspacePrefetches = new Map();
@@ -49,12 +50,35 @@ const TextModelManager = lazy(() => import("./components/TextModelManager"));
 const PersistentTextChat = lazy(() => import("./components/PersistentTextChat"));
 // LUKE_AI_ASSET_LIBRARY_UI_V1
 const AssetLibrary = lazy(workspaceLoaders.assets);
+const SocialAgency = lazy(workspaceLoaders["social-agency"]);
 
 const WorkspaceFallback = () => (
   <div className="workspace-loading" role="status" aria-live="polite">
     Loading workspace…
   </div>
 );
+
+class SoftWorkspaceBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("Settings extra panel failed", error, info);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="workspace-load-error" role="alert" style={{ padding: "16px", margin: "12px" }}>
+        <strong>A settings panel failed to load.</strong>
+        <span>{String(this.state.error && this.state.error.message ? this.state.error.message : this.state.error)}</span>
+      </div>
+    );
+  }
+}
 
 class WorkspaceErrorBoundary extends Component {
   constructor(props) {
@@ -96,7 +120,7 @@ class WorkspaceErrorBoundary extends Component {
 }
 
 const WorkspacePanel = ({ tab, activeTab, onReturnHome, overflow = "hidden", children }) => (
-  <div className="workspace-panel" style={{ display: activeTab === tab ? "flex" : "none", overflow }}>
+  <div className="workspace-panel" style={{ display: activeTab === tab ? "flex" : "none", overflow, flex: "1 1 0", height: 0, minHeight: 0 }}>
     <WorkspaceErrorBoundary onReturnHome={() => onReturnHome(tab)}>
       {children}
     </WorkspaceErrorBoundary>
@@ -993,6 +1017,16 @@ function App() {
         </WorkspacePanel>
         )}
 
+        {visitedTabs.has("social-agency") && (
+        <WorkspacePanel tab="social-agency" activeTab={activeTab} onReturnHome={recoverFailedWorkspace} overflow="auto">
+          <SocialAgency
+            onCreateImage={() => setActiveTab("generator")}
+            onCreateVideo={() => setActiveTab("image-video")}
+            onOpenChat={() => setActiveTab("chat")}
+          />
+        </WorkspacePanel>
+        )}
+
         {visitedTabs.has("models") && (
         <WorkspacePanel tab="models" activeTab={activeTab} onReturnHome={recoverFailedWorkspace}>
           <ModelManager
@@ -1066,13 +1100,18 @@ function App() {
         )}
 
         {visitedTabs.has("settings") && (
-        <WorkspacePanel tab="settings" activeTab={activeTab} onReturnHome={recoverFailedWorkspace}>
+        <WorkspacePanel tab="settings" activeTab={activeTab} onReturnHome={recoverFailedWorkspace} overflow="auto">
           <div className="runtime-dashboard-shell">
-  <RuntimeDownloadDashboard />
-<TextModelManager />
-<PersistentTextChat />
-</div>
-<Settings
+          <SoftWorkspaceBoundary>
+            <RuntimeDownloadDashboard />
+          </SoftWorkspaceBoundary>
+          <SoftWorkspaceBoundary>
+            <TextModelManager />
+          </SoftWorkspaceBoundary>
+
+        </div>
+
+        <Settings
             constraints={constraints}
             setConstraints={setConstraints}
             activeModel={activeModel}

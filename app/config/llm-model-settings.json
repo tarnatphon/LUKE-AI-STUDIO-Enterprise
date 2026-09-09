@@ -14,7 +14,119 @@
         "ubatchSize": 512,
         "flashAttn": true
       },
-      "updatedAt": "2026-08-22T20:38:24.561Z"
+      "updatedAt": "2026-08-25T05:59:48.869Z"
+    },
+    "Document-Qwen3-VL-4B.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": 0,
+        "cacheTypeK": "q4_0",
+        "cacheTypeV": "q4_0",
+        "batchSize": 256,
+        "ubatchSize": 256,
+        "flashAttn": false
+      },
+      "updatedAt": "2026-09-01T08:12:28.120Z"
+    },
+    "Chat-gemma-3-4b.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": -1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "batchSize": 512,
+        "ubatchSize": 512,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-09-03T06:52:23.347Z"
+    },
+    "Coder-Qwen2.5-7B.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 10240,
+        "gpuLayers": -1,
+        "cacheTypeK": "q4_0",
+        "cacheTypeV": "q4_0",
+        "batchSize": 256,
+        "ubatchSize": 256,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-09-02T04:00:54.084Z"
+    },
+    "Qwen3.5-9B.Q4_K_M.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 10240,
+        "gpuLayers": 0,
+        "cacheTypeK": "q4_0",
+        "cacheTypeV": "q4_0",
+        "batchSize": 256,
+        "ubatchSize": 256,
+        "flashAttn": false
+      },
+      "updatedAt": "2026-09-02T05:02:29.740Z"
+    },
+    "Qwen2.5-Coder-7B-Instruct-abliterated-Q4_K_M.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": -1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "batchSize": 512,
+        "ubatchSize": 512,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-09-03T04:30:55.065Z"
+    },
+    "Qwen3-8B-Q4_K_M.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": 0,
+        "cacheTypeK": "q4_0",
+        "cacheTypeV": "q4_0",
+        "batchSize": 256,
+        "ubatchSize": 256,
+        "flashAttn": false
+      },
+      "updatedAt": "2026-09-04T06:41:07.299Z"
+    },
+    "Qwen3.5-9B-The-Defiant-Fable-Uncnr-Heretic-NEO-MAX-Q6_K.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 8192,
+        "gpuLayers": -1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "batchSize": 512,
+        "ubatchSize": 512,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-09-04T07:47:11.958Z"
     }
   }
 }
