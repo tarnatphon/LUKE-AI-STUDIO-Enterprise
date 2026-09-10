@@ -478,8 +478,45 @@ const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
 function getSocialAgencyRuntime() {
-  if (!socialAgencyRuntime) socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
+  if (!socialAgencyRuntime) {
+    socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
+    socialAgencyRuntime.setLlmClient(makeSocialAgencyLlmClient());
+  }
   return socialAgencyRuntime;
+}
+
+// Bridge between the Social Agency workflow engine and the SAME local llama-server
+// instance used by Chat/generator features. No new LLM client is invented here.
+function makeSocialAgencyLlmClient() {
+  return {
+    isReady: () => llmReady && Boolean(llmProc),
+    chat: async (messages, options = {}) => {
+      const body = {
+        model: llmSettings.model || "local-model",
+        messages,
+        temperature: Number.isFinite(Number(options.temperature)) ? options.temperature : 0.7,
+        max_tokens: Number(options.maxTokens) || 512,
+        stream: false,
+      };
+      if (options.json) body.response_format = { type: "json_object" };
+      const url = `http://127.0.0.1:${PORT_LLM}/v1/chat/completions`;
+      try {
+        const result = await requestJson(url, body, options.timeoutMs || 300000);
+        const content = result?.choices?.[0]?.message?.content;
+        if (!content) throw new Error("Empty local LLM response.");
+        return content;
+      } catch (err) {
+        if (/response_format/i.test(String(err?.message || "")) && options.json) {
+          // older llama-server builds: retry without response_format and parse leniently
+          const retry = await requestJson(url, { ...body, response_format: undefined }, options.timeoutMs || 300000);
+          const content = retry?.choices?.[0]?.message?.content;
+          if (!content) throw new Error("Empty local LLM response.");
+          return content;
+        }
+        throw err;
+      }
+    },
+  };
 }
 const DIST    = path.join(ROOT, "app", "dist");
 const TOOLS   = path.join(ROOT, "app", "tools");
@@ -26250,16 +26287,10 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     }
   }
 
-  if (req.url === "/api/social-agency/state" && req.method === "GET") {
-    return json(res, 200, { ok: true, state: getSocialAgencyRuntime().getState() });
-  }
-  if (req.url === "/api/social-agency/daily-drafts" && req.method === "POST") {
-    try { return json(res, 201, { ok: true, draft: getSocialAgencyRuntime().createDailyDraft() }); }
-    catch (error) { return json(res, 409, { ok: false, error: error.message }); }
-  }
-  if (req.url === "/api/social-agency/draft-status" && req.method === "POST") {
-    try { const body = await readJsonRequestBody(req); return json(res, 200, { ok: true, draft: getSocialAgencyRuntime().updateDraftStatus(body.id, body.status) }); }
-    catch (error) { return json(res, 409, { ok: false, error: error.message }); }
+  if (req.url.startsWith("/api/social-agency")) {
+    // All v2.2 agency routes + the legacy v1 endpoints live in social-agency-runtime.cjs
+    const handled = await getSocialAgencyRuntime().handleApiRequest(req, res, { readJsonRequestBody, json });
+    if (handled !== false) return;
   }
 
   if (req.url.startsWith("/api/")) {
@@ -26287,6 +26318,9 @@ server.timeout = 0; // Disable socket timeout for large model uploads/downloads
 
 // LUKE_AI_I2V_STARTUP_MAINTENANCE_RUN_V1
 runImageToVideoStartupMaintenance();
+
+// Social Agency automation core: 60s scheduler tick, Asia/Bangkok
+getSocialAgencyRuntime().startScheduler();
 
 server.listen(PORT_FRONTEND, "0.0.0.0", () => {
   console.log("");
