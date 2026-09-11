@@ -48,6 +48,13 @@ const NODE_DEFS = [
   { key: "result", label: "ผลลัพธ์" },
 ];
 const MAX_RUNS_PER_CLIENT = 40;
+const MAX_FEWSHOTS_PER_CLIENT = 20;
+const PLATFORM_VERSION_RULES = {
+  demo: { maxChars: 2200, maxHashtags: 5 },
+  facebook: { maxChars: 2000, maxHashtags: 4 },
+  instagram: { maxChars: 2200, maxHashtags: 8 },
+  line: { maxChars: 400, maxHashtags: 2 },
+};
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
@@ -69,6 +76,14 @@ function bangkokTimeStr(d = new Date()) {
 }
 function bangkokMonthStr(d = new Date()) {
   return bangkokDateStr(d).slice(0, 7);
+}
+// Monday-start week range in Bangkok wall-clock; weekOffset=1 → last week
+function bangkokWeekRange(weekOffset = 0) {
+  const nowBkk = new Date(Date.now() + BANGKOK_OFFSET_MS);
+  const dow = (nowBkk.getUTCDay() + 6) % 7; // Monday = 0
+  const monday = new Date(Date.UTC(nowBkk.getUTCFullYear(), nowBkk.getUTCMonth(), nowBkk.getUTCDate() - dow - weekOffset * 7));
+  const sunday = new Date(monday.getTime() + 6 * 86400000);
+  return { weekKey: monday.toISOString().slice(0, 10), start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
 }
 function bangkokToUtcMs(dateStr, timeStr) {
   const time = String(timeStr || "18:30").slice(0, 5);
@@ -293,6 +308,7 @@ function defaultSettings() {
     timezone: TZ_LABEL,
     dryRun: true,
     notify: false,
+    weeklySummaryLine: false,
   };
 }
 
@@ -348,6 +364,33 @@ function buildTemplateCaption(product, { angle, platform, tone } = {}) {
 function buildTemplateImagePrompt(product, { angle } = {}) {
   const name = product?.name || "สินค้า";
   return `ภาพถ่ายสินค้า ${name} วางบนโต๊ะไม้โทนอบอุ่น แสงธรรมชาติจากหน้าต่าง มุมมองสวยงามเห็นรายละเอียดงาน สไตล์ ${angle || "เปิดตัวสินค้า"} พื้นหลังเรียบๆ ไม่มีตัวหนังสือ`;
+}
+
+// ── group 4 helpers: per-platform caption versions ──
+function splitHashtags(text) {
+  const tags = String(text || "").match(/#[^\s#]+/g) || [];
+  const body = String(text || "")
+    .replace(/#[^\s#]+/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { body, tags: [...new Set(tags)] };
+}
+
+function truncateAtBoundary(text, max) {
+  const t = String(text || "");
+  if (t.length <= max) return { text: t, truncated: false };
+  const cut = t.slice(0, max);
+  const idx = Math.max(
+    cut.lastIndexOf("\n"),
+    cut.lastIndexOf("."),
+    cut.lastIndexOf("!"),
+    cut.lastIndexOf("?"),
+    cut.lastIndexOf("…"),
+    cut.lastIndexOf(" ")
+  );
+  const base = (idx > max * 0.5 ? cut.slice(0, idx) : cut).trim();
+  return { text: `${base}…`, truncated: true };
 }
 
 
@@ -477,6 +520,7 @@ class SocialAgencyRuntime {
     this.stateDir = path.join(root, "app", "runtime-state", "social-agency");
     this.filePath = path.join(this.stateDir, "thai-modern-bags.json");
     this.connectorsFile = path.join(this.stateDir, "connectors.json");
+    this.backupDir = path.join(this.stateDir, "backups");
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
     this.schedulerTimer = null;
     this.schedulerLastTickAt = null;
@@ -604,6 +648,7 @@ class SocialAgencyRuntime {
       if (!Array.isArray(client.calendar)) client.calendar = [];
       if (!Array.isArray(client.workflowRuns)) client.workflowRuns = [];
       if (!Array.isArray(client.researcherRoles) || !client.researcherRoles.length) client.researcherRoles = defaultResearcherRoles();
+      if (!Array.isArray(client.fewShots)) client.fewShots = [];
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
@@ -782,9 +827,207 @@ class SocialAgencyRuntime {
   }
 
   // ── calendar CRUD ──
-  listCalendar(clientId) {
+  listCalendar(clientId, filters = {}) {
     const { client } = this._resolveClient(clientId);
-    return client.calendar || [];
+    let entries = [...(client.calendar || [])];
+    const { status, platform, q, from, to } = filters || {};
+    if (status) {
+      const set = new Set(String(status).split(",").map((s) => s.trim()).filter(Boolean));
+      if (set.size) entries = entries.filter((e) => set.has(e.status));
+    }
+    if (platform) {
+      const set = new Set(String(platform).split(",").map((s) => s.trim()).filter(Boolean));
+      if (set.size) entries = entries.filter((e) => set.has(e.platform));
+    }
+    if (from) entries = entries.filter((e) => e.date && e.date >= String(from));
+    if (to) entries = entries.filter((e) => e.date && e.date <= String(to));
+    if (q && String(q).trim()) {
+      const needle = String(q).trim().toLowerCase();
+      entries = entries.filter((e) =>
+        [e.productName, e.angle, e.caption, e.brief, e.id, e.sku]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(needle)
+      );
+    }
+    entries.sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    return entries;
+  }
+
+  // ── overview dashboard (group 3: month stats, upcoming, review queue) ──
+  getOverview(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const month = bangkokMonthStr();
+    const today = bangkokDateStr();
+    const in7 = bangkokDateStr(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    const entries = client.calendar || [];
+    const inMonth = entries.filter((e) => e.date && e.date.startsWith(month));
+    const byStatus = {};
+    for (const e of inMonth) byStatus[e.status] = (byStatus[e.status] || 0) + 1;
+    const byPlatform = {};
+    for (const e of inMonth) byPlatform[e.platform] = (byPlatform[e.platform] || 0) + 1;
+    const slim = (e) => ({
+      id: e.id,
+      date: e.date,
+      time: e.time,
+      platform: e.platform,
+      productName: e.productName,
+      angle: e.angle,
+      status: e.status,
+    });
+    const upcoming = entries
+      .filter((e) => ["planned", "ready"].includes(e.status) && e.date >= today && e.date <= in7)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+      .slice(0, 10)
+      .map(slim);
+    const needsReview = entries
+      .filter((e) => e.status === "needs_review")
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+      .slice(0, 10)
+      .map((e) => ({ ...slim(e), caption: e.caption || "" }));
+    const recentRuns = [...(client.workflowRuns || [])]
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 5)
+      .map((r) => ({
+        id: r.id,
+        entryId: r.entryId,
+        status: r.status,
+        trigger: r.trigger,
+        createdAt: r.createdAt,
+        finishedAt: r.finishedAt || null,
+      }));
+    return {
+      clientId: client.id,
+      month,
+      counts: {
+        scheduled: (byStatus.planned || 0) + (byStatus.in_workflow || 0) + (byStatus.ready || 0) + (byStatus.publishing || 0),
+        awaiting: byStatus.needs_review || 0,
+        published: byStatus.published || 0,
+        failed: (byStatus.failed || 0) + (byStatus.missed || 0),
+        total: inMonth.length,
+      },
+      byStatus,
+      byPlatform,
+      upcoming,
+      needsReview,
+      recentRuns,
+      serverNow: new Date().toISOString(),
+    };
+  }
+
+  // ── per-platform caption versions (group 4) ──
+  buildPlatformVersions({ caption, product, angle, tone } = {}) {
+    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone });
+    const { body, tags } = splitHashtags(base);
+    const fallbackTags = templateHashtags(product, "instagram");
+    const fill = (have, max) => {
+      const out = [...have];
+      for (const t of fallbackTags) {
+        if (out.length >= max) break;
+        if (!out.includes(t)) out.push(t);
+      }
+      return out.slice(0, max);
+    };
+    const assemble = (textBody, tagList) => (tagList.length ? `${textBody}\n\n${tagList.join(" ")}` : textBody);
+    const versions = { demo: base };
+    const meta = { demo: { chars: base.length, truncated: false, hashtags: tags.length } };
+    const jobs = [
+      { platform: "facebook", tagList: fill(tags, PLATFORM_VERSION_RULES.facebook.maxHashtags) },
+      { platform: "instagram", tagList: fill(tags, PLATFORM_VERSION_RULES.instagram.maxHashtags) },
+      { platform: "line", tagList: tags.slice(0, PLATFORM_VERSION_RULES.line.maxHashtags) },
+    ];
+    for (const { platform, tagList } of jobs) {
+      const rules = PLATFORM_VERSION_RULES[platform];
+      let textBody = body;
+      // LINE broadcast budget: reserve room for hashtags, then truncate the body
+      const tagSuffix = tagList.length ? tagList.join(" ").length + 2 : 0;
+      const bodyBudget = platform === "line" ? Math.max(80, rules.maxChars - tagSuffix) : rules.maxChars;
+      const cut = truncateAtBoundary(textBody, bodyBudget);
+      textBody = cut.text;
+      let text = assemble(textBody, tagList);
+      let truncated = cut.truncated;
+      if (text.length > rules.maxChars) {
+        const recut = truncateAtBoundary(text, rules.maxChars);
+        text = recut.text;
+        truncated = true;
+      }
+      versions[platform] = text;
+      meta[platform] = { chars: text.length, truncated, hashtags: (text.match(/#[^\s#]+/g) || []).length };
+    }
+    return { base, versions, meta };
+  }
+
+  previewPlatformVersions(clientId, body = {}) {
+    const { client } = this._resolveClient(clientId || body.clientId);
+    let caption = body.caption ? String(body.caption) : "";
+    let product = client.products.find((p) => p.sku === body.sku) || client.products[0];
+    let angle = CONTENT_ANGLES.includes(body.angle) ? body.angle : CONTENT_ANGLES[0];
+    let entryId = null;
+    if (body.entryId) {
+      const entry = (client.calendar || []).find((e) => e.id === body.entryId);
+      if (!entry) throw new Error("ไม่พบรายการในปฏิทิน");
+      entryId = entry.id;
+      caption = caption || entry.caption || "";
+      product = client.products.find((p) => p.sku === entry.sku) || product;
+      angle = entry.angle || angle;
+    }
+    if (!product) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า กรุณาเพิ่มสินค้าก่อน");
+    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone });
+    return {
+      entryId,
+      sku: product.sku,
+      productName: product.name,
+      angle,
+      ...this.buildPlatformVersions({ caption, product, angle, tone: client.tone }),
+    };
+  }
+
+  // ── few-shot style examples (group 4) ──
+  listFewShots(clientId) {
+    const { client } = this._resolveClient(clientId);
+    return [...(client.fewShots || [])].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+
+  addFewShot(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const platform = PLATFORMS.includes(body.platform) ? body.platform : "facebook";
+    const caption = String(body.caption || "").trim();
+    if (caption.length < 20) throw new Error("ตัวอย่างสั้นเกินไป (อย่างน้อย 20 ตัวอักษร)");
+    if (caption.length > 2000) throw new Error("ตัวอย่างยาวเกินไป (ไม่เกิน 2000 ตัวอักษร)");
+    if ((client.fewShots || []).length >= MAX_FEWSHOTS_PER_CLIENT) {
+      throw new Error(`เก็บตัวอย่างได้สูงสุด ${MAX_FEWSHOTS_PER_CLIENT} ชิ้นต่อลูกค้า ลบของเก่าออกก่อนนะ`);
+    }
+    const shot = {
+      id: newId("fs"),
+      platform,
+      caption,
+      note: body.note ? String(body.note).slice(0, 200) : "",
+      angle: CONTENT_ANGLES.includes(body.angle) ? body.angle : null,
+      createdAt: new Date().toISOString(),
+    };
+    client.fewShots = [...(client.fewShots || []), shot];
+    this._write(state);
+    return shot;
+  }
+
+  deleteFewShot(clientId, shotId) {
+    const { state, client } = this._resolveClient(clientId);
+    const before = (client.fewShots || []).length;
+    client.fewShots = (client.fewShots || []).filter((s) => s.id !== shotId);
+    if (client.fewShots.length === before) throw new Error("ไม่พบตัวอย่างสไตล์นี้");
+    this._write(state);
+    return { deleted: shotId };
+  }
+
+  _fewShotExamples(client, platform, limit = 3) {
+    const shots = (client?.fewShots || []).filter((s) => s && s.caption);
+    return [...shots]
+      .sort((a, b) => {
+        const score = (s) => (s.platform === platform ? 0 : 1);
+        return score(a) - score(b) || String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      })
+      .slice(0, limit);
   }
 
   _findEntry(clientId, entryId) {
@@ -1109,11 +1352,19 @@ class SocialAgencyRuntime {
       "- ประโยคสั้น-ยาวสลับกัน ใช้คำลงท้าย ครับ/ค่ะ/นะ ตามธรรมชาติ ใส่อีโมจิที่แอดมินจริงใช้",
       "- ห้ามอ้างราคา ขนาด จำนวนสต๊อก ใบรับรอง หรือสัญญาการจัดส่ง ถ้าไม่มีอยู่ในข้อมูลสินค้าที่ให้มา",
       "- ตอบกลับเฉพาะเนื้อโพสต์เท่านั้น ไม่มีคำอธิบาย ไม่มีเครื่องหมายคำพูด",
-    ].join("\n");
+    ];
+    const examples = this._fewShotExamples(client, platform);
+    if (examples.length) {
+      system.push(
+        "ตัวอย่างสไตล์ที่เจ้าของแบรนด์ชอบ (เขียนให้ใกล้เคียงสไตล์นี้ แต่ห้ามคัดลอกประโยคเดิม):",
+        ...examples.map((ex, i) => `--- ตัวอย่างที่ ${i + 1} (${ex.platform || platform}) ---\n${String(ex.caption).slice(0, 400)}`)
+      );
+    }
+    const systemPrompt = system.join("\n");
     const user = `Brief:\n${brief}\n\nเขียนโพสต์ 1 ชิ้นสำหรับมุม "${angle}" ของสินค้านี้`;
     const raw = await this._llmChat(
       [
-        { role: "system", content: system },
+        { role: "system", content: systemPrompt },
         { role: "user", content: user },
       ],
       { temperature: 0.8, maxTokens: 600, timeoutMs: 300000 }
@@ -1946,6 +2197,7 @@ class SocialAgencyRuntime {
       if (s.timezone !== undefined) merged.timezone = TZ_LABEL; // scheduler is Asia/Bangkok
       if (typeof s.dryRun === "boolean") merged.dryRun = s.dryRun;
       if (typeof s.notify === "boolean") merged.notify = s.notify && process.platform === "darwin";
+      if (typeof s.weeklySummaryLine === "boolean") merged.weeklySummaryLine = s.weeklySummaryLine;
       client.settings = merged;
     }
     this._write(state);
@@ -2156,21 +2408,6 @@ class SocialAgencyRuntime {
     }
 
     if (platform === "line") {
-      const quota = await SocialAgencyRuntime._https({
-        host: LINE_HOST,
-        path: "/v2/bot/message/quota",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
-      });
-      const consumption = await SocialAgencyRuntime._https({
-        host: LINE_HOST,
-        path: "/v2/bot/message/quota/consumption",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
-      });
-      const total = Number(quota.json?.value);
-      const used = Number(consumption.json?.totalUsage);
-      if (Number.isFinite(total) && Number.isFinite(used) && total - used < 1) {
-        throw new Error(`โควตาข้อความรายเดือนของ LINE OA เหลือ ${Math.max(0, total - used)} ข้อความ — broadcast ถูกบล็อกเพื่อกันเกินโควตา`);
-      }
       const messages = [];
       const wantsImage = entry.image && (entry.image.publicUrl || entry.image.path) && meta.sendImageTextStack !== false;
       if (wantsImage) {
@@ -2180,28 +2417,196 @@ class SocialAgencyRuntime {
       } else {
         messages.push({ type: "text", text: entry.caption || "" });
       }
-      const res = await SocialAgencyRuntime._https({
-        method: "POST",
-        host: LINE_HOST,
-        path: "/v2/bot/message/broadcast",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
-        timeoutMs: 60 * 1000,
-      });
-      if (res.status >= 300 || res.json?.message) throw new Error(res.json?.message || `LINE ตอบ HTTP ${res.status}`);
+      const { quotaNote } = await this._lineBroadcast(secret, messages);
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      const quotaNote = Number.isFinite(total) && Number.isFinite(used) ? ` (โควตาเหลือ ${Math.max(0, total - used)} ข้อความ)` : "";
       return { platform, mode: "live", postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
   }
 
+  // ── LINE broadcast primitive (quota-guarded; shared by publish + weekly summary) ──
+  async _lineBroadcast(secret, messages) {
+    const quota = await SocialAgencyRuntime._https({
+      host: LINE_HOST,
+      path: "/v2/bot/message/quota",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
+    });
+    const consumption = await SocialAgencyRuntime._https({
+      host: LINE_HOST,
+      path: "/v2/bot/message/quota/consumption",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
+    });
+    const total = Number(quota.json?.value);
+    const used = Number(consumption.json?.totalUsage);
+    if (Number.isFinite(total) && Number.isFinite(used) && total - used < 1) {
+      throw new Error(`โควตาข้อความรายเดือนของ LINE OA เหลือ ${Math.max(0, total - used)} ข้อความ — broadcast ถูกบล็อกเพื่อกันเกินโควตา`);
+    }
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: LINE_HOST,
+      path: "/v2/bot/message/broadcast",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      timeoutMs: 60 * 1000,
+    });
+    if (res.status >= 300 || res.json?.message) throw new Error(res.json?.message || `LINE ตอบ HTTP ${res.status}`);
+    const quotaNote = Number.isFinite(total) && Number.isFinite(used) ? ` (โควตาเหลือ ${Math.max(0, total - used)} ข้อความ)` : "";
+    return { quotaNote };
+  }
+
+  // ── backup & restore (group 5) ──
+  exportBackup(clientId) {
+    const state = this._read();
+    const clients = clientId ? state.clients.filter((c) => c.id === clientId) : state.clients;
+    if (clientId && !clients.length) throw new Error("ไม่พบลูกค้ารายนี้ (client not found)");
+    const clean = JSON.parse(JSON.stringify(clients)).map((c) => ({
+      ...c,
+      calendar: (c.calendar || []).map((e) => ({ ...e, inFlight: false })),
+    }));
+    return { app: "luke-social-agency", version: 2, scope: clientId ? "client" : "all", exportedAt: new Date().toISOString(), clients: clean };
+  }
+
+  listBackups() {
+    try {
+      return fs.readdirSync(this.backupDir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => {
+          const stat = fs.statSync(path.join(this.backupDir, f));
+          return { file: f, size: stat.size, createdAt: stat.mtime.toISOString() };
+        })
+        .sort((a, b) => b.file.localeCompare(a.file));
+    } catch {
+      return [];
+    }
+  }
+
+  saveBackupSnapshot(clientId) {
+    const snapshot = this.exportBackup(clientId);
+    fs.mkdirSync(this.backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const name = clientId ? `backup-${clientId}-${stamp}.json` : `backup-all-${stamp}.json`;
+    fs.writeFileSync(path.join(this.backupDir, name), JSON.stringify(snapshot, null, 2), "utf8");
+    for (const extra of this.listBackups().slice(20)) {
+      try { fs.unlinkSync(path.join(this.backupDir, extra.file)); } catch {}
+    }
+    return { file: name, scope: snapshot.scope, clients: snapshot.clients.length, exportedAt: snapshot.exportedAt };
+  }
+
+  restoreBackup(clientId, snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.clients) || !snapshot.clients.length) {
+      throw new Error("ไฟล์สำรองไม่ถูกต้อง (ต้องมี clients อย่างน้อย 1 ราย)");
+    }
+    for (const c of snapshot.clients) {
+      if (!c || typeof c.id !== "string" || !Array.isArray(c.calendar)) throw new Error("ไฟล์สำรองไม่ถูกต้อง (โครงลูกค้าไม่ครบ)");
+    }
+    this.saveBackupSnapshot(); // safety copy of current state before overwriting
+    const state = this._read();
+    const wanted = clientId ? snapshot.clients.filter((c) => c.id === clientId) : snapshot.clients;
+    if (clientId && !wanted.length) throw new Error("ไฟล์สำรองไม่มีข้อมูลของลูกค้ารายนี้");
+    const restored = [];
+    for (const incoming of wanted) {
+      const clean = JSON.parse(JSON.stringify(incoming));
+      clean.calendar = (clean.calendar || []).map((e) => ({ ...e, inFlight: false }));
+      const idx = state.clients.findIndex((c) => c.id === incoming.id);
+      if (idx >= 0) state.clients[idx] = clean;
+      else state.clients.push(clean);
+      restored.push(incoming.id);
+    }
+    this._ensureClientShapes(state);
+    if (!state.clients.find((c) => c.id === state.activeClientId)) state.activeClientId = state.clients[0]?.id || null;
+    this._write(state);
+    return { restored };
+  }
+
+  // ── weekly summary + LINE push (group 5) ──
+  buildWeeklySummary(clientId, weekOffset = 0) {
+    const { client } = this._resolveClient(clientId);
+    const { weekKey, start, end } = bangkokWeekRange(Number(weekOffset) || 0);
+    const entries = (client.calendar || []).filter((e) => e.date >= start && e.date <= end);
+    const published = entries.filter((e) => e.status === "published");
+    const failed = entries.filter((e) => ["failed", "missed"].includes(e.status));
+    const byPlatform = {};
+    for (const e of published) byPlatform[e.platform] = (byPlatform[e.platform] || 0) + 1;
+    const angles = [...new Set(published.map((e) => e.angle).filter(Boolean))];
+    const runs = (client.workflowRuns || []).filter((r) => {
+      const day = String(r.createdAt || "").slice(0, 10);
+      return day >= start && day <= end;
+    });
+    return {
+      clientId: client.id,
+      clientName: client.name,
+      weekKey,
+      start,
+      end,
+      counts: { total: entries.length, published: published.length, failed: failed.length, runs: runs.length },
+      byPlatform,
+      angles,
+      publishedPosts: published.map((e) => ({ date: e.date, time: e.time, platform: e.platform, productName: e.productName, caption: (e.caption || "").slice(0, 160) })),
+      failedPosts: failed.map((e) => ({ date: e.date, time: e.time, platform: e.platform, productName: e.productName, status: e.status })),
+    };
+  }
+
+  formatWeeklySummaryText(summary) {
+    const lines = [
+      `📊 สรุปสัปดาห์ ${summary.start} – ${summary.end}`,
+      `${summary.clientName}`,
+      `เผยแพร่แล้ว ${summary.counts.published} / ทั้งหมด ${summary.counts.total} โพสต์${summary.counts.failed ? ` (พลาด ${summary.counts.failed})` : ""}`,
+    ];
+    const pfEntries = Object.entries(summary.byPlatform || {});
+    if (pfEntries.length) lines.push(pfEntries.map(([p, n]) => `• ${p}: ${n}`).join("  "));
+    if (summary.angles?.length) lines.push(`มุมที่ใช้: ${summary.angles.join(" / ")}`);
+    for (const p of (summary.publishedPosts || []).slice(0, 5)) {
+      const first = String(p.caption || "").split("\n").filter(Boolean)[0] || p.productName;
+      lines.push(`✓ ${p.date.slice(5)} ${p.platform} — ${first.slice(0, 60)}`);
+    }
+    const text = lines.join("\n");
+    return text.length > 900 ? `${text.slice(0, 897)}…` : text;
+  }
+
+  async sendWeeklySummary(clientId, { weekOffset = 0 } = {}) {
+    const { client } = this._resolveClient(clientId);
+    const summary = this.buildWeeklySummary(client.id, weekOffset);
+    const text = this.formatWeeklySummaryText(summary);
+    const secrets = this._getSecrets(client.id);
+    if (!this._connectorConfigured("line", secrets.line)) {
+      throw new Error("ลูกค้ารายนี้ยังไม่ได้ตั้งค่า LINE channelAccessToken");
+    }
+    if ((client.connectors?.line || {}).dryRun !== false) {
+      return { sent: false, reason: "dryRun", text, summary };
+    }
+    await this._lineBroadcast({ channelAccessToken: secrets.line.channelAccessToken }, [{ type: "text", text }]);
+    this._mutateClient(client.id, (c) => {
+      c.connectors.line.lastPublishAt = new Date().toISOString();
+    });
+    return { sent: true, text, summary };
+  }
+
   // ── scheduler (automation core) ──
+  // ── serve.cjs wiring: health + scheduler lifecycle controls ──
+  getHealth() {
+    const state = this._read();
+    let llmReady = false;
+    try {
+      llmReady = Boolean(this.llm && typeof this.llm.isReady === "function" && this.llm.isReady());
+    } catch {
+      llmReady = false;
+    }
+    return {
+      version: 2,
+      scheduler: this.getSchedulerStatus(),
+      clients: state.clients.length,
+      activeClientId: state.activeClientId,
+      llmReady,
+      stateFile: this.filePath,
+      serverNow: new Date().toISOString(),
+    };
+  }
+
   startScheduler() {
-    if (this.schedulerTimer) return;
+    if (this.schedulerTimer) return this.getSchedulerStatus();
     this._recoverInFlightOnce();
     const tick = async () => {
       try {
@@ -2213,6 +2618,7 @@ class SocialAgencyRuntime {
     tick();
     this.schedulerTimer = setInterval(tick, SCHEDULER_TICK_MS);
     console.log("  [social-agency] Scheduler active (every 60s, Asia/Bangkok)");
+    return this.getSchedulerStatus();
   }
 
   stopScheduler() {
@@ -2220,6 +2626,7 @@ class SocialAgencyRuntime {
       clearInterval(this.schedulerTimer);
       this.schedulerTimer = null;
     }
+    return this.getSchedulerStatus();
   }
 
   _recoverInFlightOnce() {
@@ -2305,6 +2712,39 @@ class SocialAgencyRuntime {
         console.warn("[social-agency] scheduled run failed to start:", err.message);
       }
     }
+    try {
+      await this._maybeWeeklySummary();
+    } catch (err) {
+      console.warn("[social-agency] weekly summary skipped:", err.message);
+    }
+  }
+
+  async _maybeWeeklySummary() {
+    // Bangkok wall-clock: Monday 09:00+ local time, once per week, opt-in per client
+    const bkk = new Date(Date.now() + BANGKOK_OFFSET_MS);
+    if ((bkk.getUTCDay() + 6) % 7 !== 0) return; // Monday only
+    if (bkk.getUTCHours() < 9) return;
+    const { weekKey } = bangkokWeekRange(0);
+    const seen = this._read().weeklySummary || {};
+    if (seen.sentFor === weekKey) return;
+    const results = [];
+    for (const client of this._read().clients) {
+      if (!client.settings?.weeklySummaryLine) continue;
+      const secrets = this._getSecrets(client.id);
+      if (!this._connectorConfigured("line", secrets.line) || (client.connectors?.line || {}).dryRun !== false) {
+        results.push({ clientId: client.id, sent: false, reason: "not-configured-or-dryRun" });
+        continue;
+      }
+      try {
+        await this.sendWeeklySummary(client.id, { weekOffset: 1 }); // summarize last week
+        results.push({ clientId: client.id, sent: true });
+      } catch (err) {
+        results.push({ clientId: client.id, sent: false, reason: err.message });
+      }
+    }
+    const fresh = this._read();
+    fresh.weeklySummary = { sentFor: weekKey, lastAt: new Date().toISOString(), results };
+    this._write(fresh);
   }
 
   getSchedulerStatus() {
@@ -2405,7 +2845,34 @@ class SocialAgencyRuntime {
 
       // calendar
       if (pathname === "/api/social-agency/calendar" && method === "GET") {
-        return json(res, 200, { ok: true, entries: this.listCalendar(clientId) });
+        const filters = {
+          status: parsed.searchParams.get("status") || undefined,
+          platform: parsed.searchParams.get("platform") || undefined,
+          q: parsed.searchParams.get("q") || undefined,
+          from: parsed.searchParams.get("from") || undefined,
+          to: parsed.searchParams.get("to") || undefined,
+        };
+        return json(res, 200, { ok: true, entries: this.listCalendar(clientId, filters) });
+      }
+      // overview dashboard (group 3)
+      if (pathname === "/api/social-agency/overview" && method === "GET") {
+        return json(res, 200, { ok: true, overview: this.getOverview(clientId) });
+      }
+      // platform versions + few-shot (group 4)
+      if (pathname === "/api/social-agency/platform-versions" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, preview: this.previewPlatformVersions(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/few-shots" && method === "GET") {
+        return json(res, 200, { ok: true, fewShots: this.listFewShots(clientId) });
+      }
+      if (pathname === "/api/social-agency/few-shots" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, fewShot: this.addFewShot(clientId || body.clientId, body) });
+      }
+      match = pathname.match(/^\/api\/social-agency\/few-shots\/([^/]+)$/);
+      if (match && method === "DELETE") {
+        return json(res, 200, { ok: true, ...this.deleteFewShot(clientId, decodeURIComponent(match[1])) });
       }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();
@@ -2476,6 +2943,41 @@ class SocialAgencyRuntime {
       // scheduler
       if (pathname === "/api/social-agency/scheduler" && method === "GET") {
         return json(res, 200, { ok: true, scheduler: this.getSchedulerStatus() });
+      }
+      // health + scheduler lifecycle (serve.cjs wiring)
+      if (pathname === "/api/social-agency/health" && method === "GET") {
+        return json(res, 200, { ok: true, health: this.getHealth() });
+      }
+      if (pathname === "/api/social-agency/scheduler/start" && method === "POST") {
+        return json(res, 200, { ok: true, scheduler: this.startScheduler() });
+      }
+      if (pathname === "/api/social-agency/scheduler/stop" && method === "POST") {
+        return json(res, 200, { ok: true, scheduler: this.stopScheduler() });
+      }
+      // backup + weekly summary (group 5)
+      if (pathname === "/api/social-agency/backup" && method === "GET") {
+        return json(res, 200, { ok: true, backup: this.exportBackup(clientId) });
+      }
+      if (pathname === "/api/social-agency/backups" && method === "GET") {
+        return json(res, 200, { ok: true, backups: this.listBackups() });
+      }
+      if (pathname === "/api/social-agency/backup/snapshot" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, snapshot: this.saveBackupSnapshot(clientId || body.clientId || undefined) });
+      }
+      if (pathname === "/api/social-agency/backup/restore" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...this.restoreBackup(clientId || body.clientId || undefined, body.snapshot) });
+      }
+      if (pathname === "/api/social-agency/weekly-summary" && method === "GET") {
+        const weekOffset = Number(parsed.searchParams.get("weekOffset") || 0) || 0;
+        const summary = this.buildWeeklySummary(clientId, weekOffset);
+        return json(res, 200, { ok: true, summary, text: this.formatWeeklySummaryText(summary) });
+      }
+      if (pathname === "/api/social-agency/weekly-summary/send" && method === "POST") {
+        const body = await readBody();
+        const result = await this.sendWeeklySummary(clientId || body.clientId, { weekOffset: Number(body.weekOffset) || 0 });
+        return json(res, result.sent ? 200 : 202, { ok: true, ...result });
       }
     } catch (error) {
       const code = /ไม่พบ/.test(error.message || "") ? 404 : 400;

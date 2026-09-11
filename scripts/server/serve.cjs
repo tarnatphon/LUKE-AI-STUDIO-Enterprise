@@ -26320,7 +26320,11 @@ server.timeout = 0; // Disable socket timeout for large model uploads/downloads
 runImageToVideoStartupMaintenance();
 
 // Social Agency automation core: 60s scheduler tick, Asia/Bangkok
-getSocialAgencyRuntime().startScheduler();
+if (process.env.LUKE_SOCIAL_AGENCY_SCHEDULER === "off") {
+  console.log("  [social-agency] Scheduler autostart disabled via LUKE_SOCIAL_AGENCY_SCHEDULER=off");
+} else {
+  getSocialAgencyRuntime().startScheduler();
+}
 
 server.listen(PORT_FRONTEND, "0.0.0.0", () => {
   console.log("");
@@ -26340,8 +26344,13 @@ server.listen(PORT_FRONTEND, "0.0.0.0", () => {
 });
 
 // Graceful shutdown
-process.on("SIGINT",  async () => { await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
-process.on("SIGTERM", async () => { await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
+function stopSocialAgencyScheduler() {
+  try {
+    if (socialAgencyRuntime) socialAgencyRuntime.stopScheduler();
+  } catch {}
+}
+process.on("SIGINT",  async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
+process.on("SIGTERM", async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
 
 
 // LUKE_AI_RUNTIME_SUPERVISOR_SHUTDOWN_V3

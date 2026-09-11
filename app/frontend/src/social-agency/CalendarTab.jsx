@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
   bangkokToday, currentMonth, entriesOfMonth,
@@ -36,18 +36,38 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [planBusy, setPlanBusy] = useState(false);
   const [dragOver, setDragOver] = useState(null);
   const [error, setError] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [query, setQuery] = useState("");
   const today = bangkokToday();
   const weeks = useMemo(() => monthMatrix(month), [month]);
+  const monthEntries = useMemo(() => entriesOfMonth(activeClient?.calendar || [], month), [activeClient, month]);
+  const filteredEntries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return monthEntries.filter((entry) => {
+      if (statusFilter !== "all" && entry.status !== statusFilter) return false;
+      if (platformFilter !== "all" && entry.platform !== platformFilter) return false;
+      if (needle) {
+        const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.id, entry.sku]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [monthEntries, statusFilter, platformFilter, query]);
   const byDate = useMemo(() => {
     const map = new Map();
-    for (const entry of entriesOfMonth(activeClient?.calendar || [], month)) {
+    for (const entry of filteredEntries) {
       const list = map.get(entry.date) || [];
       list.push(entry);
       map.set(entry.date, list);
     }
     for (const list of map.values()) list.sort((a, b) => a.time.localeCompare(b.time));
     return map;
-  }, [activeClient, month]);
+  }, [filteredEntries]);
+  const filtering = statusFilter !== "all" || platformFilter !== "all" || query.trim() !== "";
 
   const startAutoPlan = async () => {
     setPlanBusy(true);
@@ -89,6 +109,43 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
       </div>
 
       {error && <p className="sa-error-banner">{error}</p>}
+
+      <div className="sa-filterbar">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="กรองตามสถานะ">
+          <option value="all">ทุกสถานะ</option>
+          {Object.entries(STATUS_META).map(([value, meta]) => (
+            <option key={value} value={value}>{meta.label}</option>
+          ))}
+        </select>
+        <select value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} aria-label="กรองตามแพลตฟอร์ม">
+          <option value="all">ทุกแพลตฟอร์ม</option>
+          {Object.entries(PLATFORM_META).map(([value, meta]) => (
+            <option key={value} value={value}>{meta.label}</option>
+          ))}
+        </select>
+        <span className="sa-searchbox">
+          <Search size={13} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ค้นหา สินค้า/มุม/แคปชัน…"
+            aria-label="ค้นหารายการในปฏิทิน"
+          />
+          {query && (
+            <button className="sa-icon-btn sm" onClick={() => setQuery("")} aria-label="ล้างคำค้น">
+              <X size={12} />
+            </button>
+          )}
+        </span>
+        {filtering && (
+          <span className="sa-muted">
+            แสดง {filteredEntries.length} จาก {monthEntries.length} รายการ
+            <button className="sa-btn ghost sm" onClick={() => { setStatusFilter("all"); setPlatformFilter("all"); setQuery(""); }}>
+              ล้างฟิลเตอร์
+            </button>
+          </span>
+        )}
+      </div>
 
       <div className="sa-grid">
         <div className="sa-grid-head">
