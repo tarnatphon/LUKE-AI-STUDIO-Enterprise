@@ -50,6 +50,9 @@ runtime-logs/
 .agents/
 .claude/
 
+# Social Agency connector secrets (tokens live only in this gitignored file)
+app/runtime-state/social-agency/connectors.json
+
 # macOS metadata and local workspace junk
 .fseventsd/
 .Spotlight-V100/
