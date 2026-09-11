@@ -436,12 +436,3 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     </section>
   );
 }
-il={confirm.detail}
-          confirmLabel={confirm.confirmLabel}
-          onConfirm={confirm.onConfirm}
-          onClose={() => setConfirm(null)}
-        />
-      )}
-    </section>
-  );
-}

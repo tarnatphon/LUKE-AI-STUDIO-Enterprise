@@ -322,9 +322,6 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
           <button className="sa-btn ghost sm" disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
             <RefreshCw size={13} /> ทดสอบการเชื่อมต่อ
           </button>
-disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
-            <RefreshCw size={13} /> ทดสอบการเชื่อมต่อ
-          </button>
         </div>
         {tests.facebook?.message && <p className={`sa-test-msg ${tests.facebook.ok ? "ok" : "err"}`}>{tests.facebook.message}</p>}
         <p className="sa-form-hint">Text ไปที่ /feed · รูปไปที่ /photos · เว้นจังหวะโพสต์อย่างน้อย 5 นาทีต่อเพจ</p>
