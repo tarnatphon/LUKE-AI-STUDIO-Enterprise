@@ -293,6 +293,64 @@ async function main() {
     assert.ok(restoreRes.body.restored.includes(clientId));
   });
 
+  // ── live-publish gating regression (fix: per-platform secrets) ──
+  check("_connectorConfigured matrix", () => {
+    assert.strictEqual(rt._connectorConfigured("line", { channelAccessToken: "x" }), true);
+    assert.strictEqual(rt._connectorConfigured("line", {}), false);
+    assert.strictEqual(rt._connectorConfigured("facebook", { pageId: "1", accessToken: "x" }), true);
+    assert.strictEqual(rt._connectorConfigured("facebook", { pageId: "1" }), false);
+    assert.strictEqual(rt._connectorConfigured("instagram", { igUserId: "1", accessToken: "x" }), true);
+    assert.strictEqual(rt._connectorConfigured("instagram", {}), false);
+    assert.strictEqual(rt._connectorConfigured("demo", {}), true);
+  });
+
+  // configure both connectors for real (tokens + dryRun off) via the public path
+  rt.saveConnectors(clientId, { connectors: {
+    facebook: { pageId: "1234567890", accessToken: "fake-fb-token", dryRun: false },
+    line: { channelAccessToken: "fake-line-token", dryRun: false },
+  } });
+  const fbLiveEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(-1), time: "05:05", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+  const lineLiveEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(-1), time: "05:06", platform: "line", sku, angle: "เคล็ดลับการใช้งาน" } });
+  const futureEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(5), time: "05:05", platform: "facebook", sku, angle: "เรื่องจากลูกค้า" } });
+
+  const httpsCalls = [];
+  const realHttps = SocialAgencyRuntime._https;
+  SocialAgencyRuntime._https = async (opts = {}) => {
+    httpsCalls.push(`${opts.host}${opts.path}`);
+    if (opts.host === "graph.facebook.com") return { status: 200, json: { id: "fb_live_123" }, text: "{}" };
+    if (opts.path === "/v2/bot/message/quota") return { status: 200, json: { value: 1000 }, text: "{}" };
+    if (opts.path === "/v2/bot/message/quota/consumption") return { status: 200, json: { totalUsage: 5 }, text: "{}" };
+    if (opts.path === "/v2/bot/message/broadcast") return { status: 200, json: {}, text: "{}" };
+    throw new Error(`unexpected https call ${opts.host}${opts.path}`);
+  };
+  let fbLiveOut, lineLiveOut, dryOut, earlyOut;
+  try {
+    const getClient = () => rt._read().clients.find((c) => c.id === clientId);
+    const entryById = (id) => getClient().calendar.find((e) => e.id === id);
+    fbLiveOut = await rt._publishEntry(getClient(), { ...entryById(fbLiveEntry.id), caption: "โพสต์ทดสอบ live" }, { trigger: "schedule" });
+    lineLiveOut = await rt._publishEntry(getClient(), { ...entryById(lineLiveEntry.id), caption: "ข้อความทดสอบสั้นๆ" }, { trigger: "schedule" });
+    rt.saveConnectors(clientId, { connectors: { line: { dryRun: true } } });
+    dryOut = await rt._publishEntry(getClient(), { ...entryById(lineLiveEntry.id), caption: "ข้อความทดสอบสั้นๆ" }, { trigger: "schedule" });
+    earlyOut = await rt._publishEntry(getClient(), { ...entryById(futureEntry.id), caption: "โพสต์ล่วงหน้า" }, { trigger: "manual" });
+  } finally {
+    SocialAgencyRuntime._https = realHttps;
+  }
+  check("facebook publishes live when configured + dryRun off", () => {
+    assert.strictEqual(fbLiveOut.mode, "live");
+    assert.strictEqual(fbLiveOut.postId, "fb_live_123");
+    assert.ok(httpsCalls.some((c) => c.includes("/feed")), `feed called: ${httpsCalls.join(",")}`);
+  });
+  check("line broadcasts live when configured + dryRun off", () => {
+    assert.strictEqual(lineLiveOut.mode, "live");
+    assert.ok(httpsCalls.some((c) => c.includes("/broadcast")), `broadcast called: ${httpsCalls.join(",")}`);
+  });
+  check("dryRun on forces dry mode", () => {
+    assert.strictEqual(dryOut.mode, "dry");
+  });
+  check("manual early trigger forces dry mode", () => {
+    assert.strictEqual(earlyOut.mode, "dry");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

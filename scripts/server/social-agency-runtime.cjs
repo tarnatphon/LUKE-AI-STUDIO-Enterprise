@@ -2311,7 +2311,9 @@ class SocialAgencyRuntime {
     const secrets = this._getSecrets(client.id);
     const secret = secrets[platform] || {};
     const meta = (client.connectors || {})[platform] || {};
-    const configured = this._connectorConfigured(platform, secrets);
+    // NOTE: _connectorConfigured expects per-platform secrets (secret), NOT the whole-client map (secrets).
+    // Passing the whole map made `configured` always false, so publishing silently dry-ran forever.
+    const configured = this._connectorConfigured(platform, secret);
     const dueMs = bangkokToUtcMs(entry.date, entry.time);
     const manualEarly = ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
     const live = configured && meta.dryRun === false && !manualEarly;
