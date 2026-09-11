@@ -48,6 +48,13 @@ const NODE_DEFS = [
   { key: "result", label: "ผลลัพธ์" },
 ];
 const MAX_RUNS_PER_CLIENT = 40;
+const MAX_FEWSHOTS_PER_CLIENT = 20;
+const PLATFORM_VERSION_RULES = {
+  demo: { maxChars: 2200, maxHashtags: 5 },
+  facebook: { maxChars: 2000, maxHashtags: 4 },
+  instagram: { maxChars: 2200, maxHashtags: 8 },
+  line: { maxChars: 400, maxHashtags: 2 },
+};
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
@@ -350,6 +357,33 @@ function buildTemplateImagePrompt(product, { angle } = {}) {
   return `ภาพถ่ายสินค้า ${name} วางบนโต๊ะไม้โทนอบอุ่น แสงธรรมชาติจากหน้าต่าง มุมมองสวยงามเห็นรายละเอียดงาน สไตล์ ${angle || "เปิดตัวสินค้า"} พื้นหลังเรียบๆ ไม่มีตัวหนังสือ`;
 }
 
+// ── group 4 helpers: per-platform caption versions ──
+function splitHashtags(text) {
+  const tags = String(text || "").match(/#[^\s#]+/g) || [];
+  const body = String(text || "")
+    .replace(/#[^\s#]+/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { body, tags: [...new Set(tags)] };
+}
+
+function truncateAtBoundary(text, max) {
+  const t = String(text || "");
+  if (t.length <= max) return { text: t, truncated: false };
+  const cut = t.slice(0, max);
+  const idx = Math.max(
+    cut.lastIndexOf("\n"),
+    cut.lastIndexOf("."),
+    cut.lastIndexOf("!"),
+    cut.lastIndexOf("?"),
+    cut.lastIndexOf("…"),
+    cut.lastIndexOf(" ")
+  );
+  const base = (idx > max * 0.5 ? cut.slice(0, idx) : cut).trim();
+  return { text: `${base}…`, truncated: true };
+}
+
 
 // ── Sample calendar (pre-filled demo month for the FIRST client only) ──────
 function buildSampleCalendar(client) {
@@ -604,6 +638,7 @@ class SocialAgencyRuntime {
       if (!Array.isArray(client.calendar)) client.calendar = [];
       if (!Array.isArray(client.workflowRuns)) client.workflowRuns = [];
       if (!Array.isArray(client.researcherRoles) || !client.researcherRoles.length) client.researcherRoles = defaultResearcherRoles();
+      if (!Array.isArray(client.fewShots)) client.fewShots = [];
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
@@ -869,6 +904,120 @@ class SocialAgencyRuntime {
       recentRuns,
       serverNow: new Date().toISOString(),
     };
+  }
+
+  // ── per-platform caption versions (group 4) ──
+  buildPlatformVersions({ caption, product, angle, tone } = {}) {
+    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone });
+    const { body, tags } = splitHashtags(base);
+    const fallbackTags = templateHashtags(product, "instagram");
+    const fill = (have, max) => {
+      const out = [...have];
+      for (const t of fallbackTags) {
+        if (out.length >= max) break;
+        if (!out.includes(t)) out.push(t);
+      }
+      return out.slice(0, max);
+    };
+    const assemble = (textBody, tagList) => (tagList.length ? `${textBody}\n\n${tagList.join(" ")}` : textBody);
+    const versions = { demo: base };
+    const meta = { demo: { chars: base.length, truncated: false, hashtags: tags.length } };
+    const jobs = [
+      { platform: "facebook", tagList: fill(tags, PLATFORM_VERSION_RULES.facebook.maxHashtags) },
+      { platform: "instagram", tagList: fill(tags, PLATFORM_VERSION_RULES.instagram.maxHashtags) },
+      { platform: "line", tagList: tags.slice(0, PLATFORM_VERSION_RULES.line.maxHashtags) },
+    ];
+    for (const { platform, tagList } of jobs) {
+      const rules = PLATFORM_VERSION_RULES[platform];
+      let textBody = body;
+      // LINE broadcast budget: reserve room for hashtags, then truncate the body
+      const tagSuffix = tagList.length ? tagList.join(" ").length + 2 : 0;
+      const bodyBudget = platform === "line" ? Math.max(80, rules.maxChars - tagSuffix) : rules.maxChars;
+      const cut = truncateAtBoundary(textBody, bodyBudget);
+      textBody = cut.text;
+      let text = assemble(textBody, tagList);
+      let truncated = cut.truncated;
+      if (text.length > rules.maxChars) {
+        const recut = truncateAtBoundary(text, rules.maxChars);
+        text = recut.text;
+        truncated = true;
+      }
+      versions[platform] = text;
+      meta[platform] = { chars: text.length, truncated, hashtags: (text.match(/#[^\s#]+/g) || []).length };
+    }
+    return { base, versions, meta };
+  }
+
+  previewPlatformVersions(clientId, body = {}) {
+    const { client } = this._resolveClient(clientId || body.clientId);
+    let caption = body.caption ? String(body.caption) : "";
+    let product = client.products.find((p) => p.sku === body.sku) || client.products[0];
+    let angle = CONTENT_ANGLES.includes(body.angle) ? body.angle : CONTENT_ANGLES[0];
+    let entryId = null;
+    if (body.entryId) {
+      const entry = (client.calendar || []).find((e) => e.id === body.entryId);
+      if (!entry) throw new Error("ไม่พบรายการในปฏิทิน");
+      entryId = entry.id;
+      caption = caption || entry.caption || "";
+      product = client.products.find((p) => p.sku === entry.sku) || product;
+      angle = entry.angle || angle;
+    }
+    if (!product) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า กรุณาเพิ่มสินค้าก่อน");
+    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone });
+    return {
+      entryId,
+      sku: product.sku,
+      productName: product.name,
+      angle,
+      ...this.buildPlatformVersions({ caption, product, angle, tone: client.tone }),
+    };
+  }
+
+  // ── few-shot style examples (group 4) ──
+  listFewShots(clientId) {
+    const { client } = this._resolveClient(clientId);
+    return [...(client.fewShots || [])].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+
+  addFewShot(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const platform = PLATFORMS.includes(body.platform) ? body.platform : "facebook";
+    const caption = String(body.caption || "").trim();
+    if (caption.length < 20) throw new Error("ตัวอย่างสั้นเกินไป (อย่างน้อย 20 ตัวอักษร)");
+    if (caption.length > 2000) throw new Error("ตัวอย่างยาวเกินไป (ไม่เกิน 2000 ตัวอักษร)");
+    if ((client.fewShots || []).length >= MAX_FEWSHOTS_PER_CLIENT) {
+      throw new Error(`เก็บตัวอย่างได้สูงสุด ${MAX_FEWSHOTS_PER_CLIENT} ชิ้นต่อลูกค้า ลบของเก่าออกก่อนนะ`);
+    }
+    const shot = {
+      id: newId("fs"),
+      platform,
+      caption,
+      note: body.note ? String(body.note).slice(0, 200) : "",
+      angle: CONTENT_ANGLES.includes(body.angle) ? body.angle : null,
+      createdAt: new Date().toISOString(),
+    };
+    client.fewShots = [...(client.fewShots || []), shot];
+    this._write(state);
+    return shot;
+  }
+
+  deleteFewShot(clientId, shotId) {
+    const { state, client } = this._resolveClient(clientId);
+    const before = (client.fewShots || []).length;
+    client.fewShots = (client.fewShots || []).filter((s) => s.id !== shotId);
+    if (client.fewShots.length === before) throw new Error("ไม่พบตัวอย่างสไตล์นี้");
+    this._write(state);
+    return { deleted: shotId };
+  }
+
+  _fewShotExamples(client, platform, limit = 3) {
+    const shots = (client?.fewShots || []).filter((s) => s && s.caption);
+    return [...shots]
+      .sort((a, b) => {
+        const score = (s) => (s.platform === platform ? 0 : 1);
+        return score(a) - score(b) || String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      })
+      .slice(0, limit);
   }
 
   _findEntry(clientId, entryId) {
@@ -1193,11 +1342,19 @@ class SocialAgencyRuntime {
       "- ประโยคสั้น-ยาวสลับกัน ใช้คำลงท้าย ครับ/ค่ะ/นะ ตามธรรมชาติ ใส่อีโมจิที่แอดมินจริงใช้",
       "- ห้ามอ้างราคา ขนาด จำนวนสต๊อก ใบรับรอง หรือสัญญาการจัดส่ง ถ้าไม่มีอยู่ในข้อมูลสินค้าที่ให้มา",
       "- ตอบกลับเฉพาะเนื้อโพสต์เท่านั้น ไม่มีคำอธิบาย ไม่มีเครื่องหมายคำพูด",
-    ].join("\n");
+    ];
+    const examples = this._fewShotExamples(client, platform);
+    if (examples.length) {
+      system.push(
+        "ตัวอย่างสไตล์ที่เจ้าของแบรนด์ชอบ (เขียนให้ใกล้เคียงสไตล์นี้ แต่ห้ามคัดลอกประโยคเดิม):",
+        ...examples.map((ex, i) => `--- ตัวอย่างที่ ${i + 1} (${ex.platform || platform}) ---\n${String(ex.caption).slice(0, 400)}`)
+      );
+    }
+    const systemPrompt = system.join("\n");
     const user = `Brief:\n${brief}\n\nเขียนโพสต์ 1 ชิ้นสำหรับมุม "${angle}" ของสินค้านี้`;
     const raw = await this._llmChat(
       [
-        { role: "system", content: system },
+        { role: "system", content: systemPrompt },
         { role: "user", content: user },
       ],
       { temperature: 0.8, maxTokens: 600, timeoutMs: 300000 }
@@ -2501,6 +2658,22 @@ class SocialAgencyRuntime {
       // overview dashboard (group 3)
       if (pathname === "/api/social-agency/overview" && method === "GET") {
         return json(res, 200, { ok: true, overview: this.getOverview(clientId) });
+      }
+      // platform versions + few-shot (group 4)
+      if (pathname === "/api/social-agency/platform-versions" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, preview: this.previewPlatformVersions(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/few-shots" && method === "GET") {
+        return json(res, 200, { ok: true, fewShots: this.listFewShots(clientId) });
+      }
+      if (pathname === "/api/social-agency/few-shots" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, fewShot: this.addFewShot(clientId || body.clientId, body) });
+      }
+      match = pathname.match(/^\/api\/social-agency\/few-shots\/([^/]+)$/);
+      if (match && method === "DELETE") {
+        return json(res, 200, { ok: true, ...this.deleteFewShot(clientId, decodeURIComponent(match[1])) });
       }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();

@@ -48,7 +48,7 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onCreateImage, onCreateVideo, onOpenChat, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, busy }) {
   const [date, setDate] = useState(entry.date);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
@@ -316,6 +316,9 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.facebook.dryRun} onChange={setFlag("facebook", "dryRun")} label="โหมดทดลอง (dry-run)" />
           <button className="sa-btn ghost sm" disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
+            <RefreshCw size={13} /> ทดสอบการเชื่อมต่อ
+          </button>
+disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
             <RefreshCw size={13} /> ทดสอบการเชื่อมต่อ
           </button>
         </div>

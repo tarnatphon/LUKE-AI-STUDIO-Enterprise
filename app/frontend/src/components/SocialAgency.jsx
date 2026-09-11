@@ -27,6 +27,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [workflowEntryId, setWorkflowEntryId] = useState(null);
+  const [styleEntryId, setStyleEntryId] = useState(null);
   const [clientMenu, setClientMenu] = useState(null);
   const railRef = useRef(null);
 
@@ -381,6 +382,15 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
         <ConfirmModal
           message={confirm.message}
           detail={confirm.detail}
+          confirmLabel={confirm.confirmLabel}
+          onConfirm={confirm.onConfirm}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </section>
+  );
+}
+il={confirm.detail}
           confirmLabel={confirm.confirmLabel}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}

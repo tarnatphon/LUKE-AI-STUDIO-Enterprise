@@ -94,6 +94,57 @@ async function main() {
     assert.ok(calRes.body.entries.some((e) => e.id === e3.id));
   });
 
+  // ── group 4: per-platform versions + few-shot ──
+  const longCaption = `มะม่วงอบแห้งล็อตใหม่มาแล้วนะครับ ${"หวานธรรมชาติไม่ใส่น้ำตาล ".repeat(30)}#มะม่วง #ของกิน #ขนม #ของฝาก #ผลไม้ #อร่อย #สุขภาพ`;
+  check("platform version rules", () => {
+    const out = rt.buildPlatformVersions({ caption: longCaption, product: state.clients[0].products[0], angle: "เปิดตัวสินค้า", tone: "เจ้าของแบรนด์" });
+    assert.strictEqual(out.versions.demo, longCaption, "demo stays verbatim");
+    assert.ok(out.versions.line.length <= 400, `line <= 400 chars (got ${out.versions.line.length})`);
+    assert.ok(out.meta.line.hashtags <= 2, "line <= 2 hashtags");
+    assert.ok(out.meta.facebook.hashtags <= 4, "facebook <= 4 hashtags");
+    assert.ok(out.meta.instagram.hashtags <= 8, "instagram <= 8 hashtags");
+    assert.strictEqual(out.meta.line.truncated, true, "long input truncates line version");
+  });
+
+  check("preview from entry", () => {
+    const preview = rt.previewPlatformVersions(clientId, { entryId: e2.id });
+    assert.strictEqual(preview.entryId, e2.id);
+    assert.ok(preview.versions.facebook.includes("มะม่วง"), "entry caption flows into versions");
+  });
+
+  const shot = rt.addFewShot(clientId, { platform: "facebook", caption: "ตัวอย่างสไตล์แบรนด์ที่เขียนดีมากๆ ยาวเกินยี่สิบตัวอักษรแน่นอน", note: "โพสต์ขายดี" });
+  check("few-shot add/list/rank", () => {
+    rt.addFewShot(clientId, { platform: "line", caption: "อีกหนึ่งตัวอย่างสไตล์สั้นกระชับสำหรับ LINE โดยเฉพาะเลยครับ" });
+    const shots = rt.listFewShots(clientId);
+    assert.strictEqual(shots.length, 2);
+    assert.throws(() => rt.addFewShot(clientId, { caption: "สั้นไป" }), /สั้นเกินไป/);
+    const ranked = rt._fewShotExamples({ fewShots: shots }, "line");
+    assert.strictEqual(ranked[0].platform, "line", "same-platform shot ranks first");
+  });
+
+  check("few-shot delete", () => {
+    rt.deleteFewShot(clientId, shot.id);
+    assert.strictEqual(rt.listFewShots(clientId).length, 1);
+    assert.throws(() => rt.deleteFewShot(clientId, "nope"), /ไม่พบ/);
+  });
+
+  const pvRes = await call("POST", `/api/social-agency/platform-versions?clientId=${clientId}`, { caption: longCaption });
+  check("POST /platform-versions", () => {
+    assert.strictEqual(pvRes.statusCode, 200);
+    assert.ok(pvRes.body.preview.versions.line.length <= 400);
+  });
+
+  const fsAdd = await call("POST", `/api/social-agency/few-shots?clientId=${clientId}`, { platform: "instagram", caption: "ตัวอย่างผ่าน HTTP ยาวเกินยี่สิบตัวอักษรเพื่อทดสอบ endpoint" });
+  check("POST /few-shots", () => {
+    assert.strictEqual(fsAdd.statusCode, 201);
+    assert.ok(fsAdd.body.fewShot.id);
+  });
+  const fsDel = await call("DELETE", `/api/social-agency/few-shots/${fsAdd.body.fewShot.id}?clientId=${clientId}`);
+  check("DELETE /few-shots/:id", () => {
+    assert.strictEqual(fsDel.statusCode, 200);
+    assert.strictEqual(fsDel.body.deleted, fsAdd.body.fewShot.id);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
