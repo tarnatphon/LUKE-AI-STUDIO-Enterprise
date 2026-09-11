@@ -7,6 +7,10 @@ const { promisify } = require("node:util");
 
 const execFileAsync = promisify(execFile);
 
+// Palette of commands the typed work terminal may run. Every entry is parsed
+// in-process (no shell) and strictly read-only: file reads and diffs only.
+const READ_ONLY_COMMANDS = ["cat", "head", "tail"];
+
 function createHttpError(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -54,7 +58,7 @@ async function runTypedWorkCommand({ root, command }) {
 
   const trimmed = command.trim();
   if (/[|;&`<>$]/.test(trimmed)) {
-    throw createHttpError("Shell operators, pipes, and chaining are not permitted.", 400);
+    throw createHttpError("Pipes, redirection, substitutions, and chaining are not permitted.", 400);
   }
 
   const tokens = trimmed.split(/\s+/).filter(Boolean);
@@ -62,9 +66,13 @@ async function runTypedWorkCommand({ root, command }) {
     throw createHttpError("Empty command.", 400);
   }
 
-  const [cmd, ...args] = tokens;
+  const [file, ...args] = tokens;
 
-  if (cmd === "cat") {
+  if (!READ_ONLY_COMMANDS.includes(file)) {
+    throw createHttpError(`Unsupported command: ${file}. Only parsed read-only commands (${READ_ONLY_COMMANDS.join(", ")}) are allowed.`, 400);
+  }
+
+  if (file === "cat") {
     if (args.length === 0) {
       throw createHttpError("cat requires a file path.", 400);
     }
@@ -78,7 +86,7 @@ async function runTypedWorkCommand({ root, command }) {
     }
   }
 
-  if (cmd === "head" || cmd === "tail") {
+  if (file === "head" || file === "tail") {
     let lineCount = 10;
     let targetPath = null;
 
@@ -96,7 +104,7 @@ async function runTypedWorkCommand({ root, command }) {
     }
 
     if (!targetPath) {
-      throw createHttpError(`${cmd} requires a file path.`, 400);
+      throw createHttpError(`${file} requires a file path.`, 400);
     }
 
     const targetFile = resolveSafePath(root, targetPath);
@@ -104,7 +112,7 @@ async function runTypedWorkCommand({ root, command }) {
       const content = await fs.readFile(targetFile, "utf8");
       const lines = content.split("\n");
       let selected;
-      if (cmd === "head") {
+      if (file === "head") {
         selected = lines.slice(0, lineCount);
       } else {
         selected = lines.slice(-lineCount);
@@ -116,7 +124,7 @@ async function runTypedWorkCommand({ root, command }) {
     }
   }
 
-  throw createHttpError(`Unsupported command: ${cmd}. Only parsed read-only commands (cat, head, tail) are allowed.`, 400);
+  throw createHttpError(`No handler implemented for read-only command: ${file}.`, 500);
 }
 
 async function runWorkFileDiff({ root, filePath }) {
@@ -127,7 +135,7 @@ async function runWorkFileDiff({ root, filePath }) {
   const relativePath = path.relative(root, targetFile);
 
   try {
-    const { stdout } = await execFileAsync("git", ["diff", "--", relativePath], { cwd: root });
+    const { stdout } = await execFileAsync("git", ["diff", "--", relativePath], { cwd: root, shell: false });
     const output = `# Unstaged\n${stdout || "(no changes)"}`;
     return {
       output,
@@ -145,6 +153,9 @@ class WorkActionRunner {
   }
 
   async executeCommand(command, options = {}) {
+    if (options.approvalGranted !== true) {
+      throw new Error("Command execution requires explicit user approval (approvalGranted).");
+    }
     return new Promise((resolve, reject) => {
       const blocked = ["rm -rf /", ":(){ :|:& };:"];
       if (blocked.some((b) => command.includes(b))) {

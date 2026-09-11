@@ -1,1 +1,7 @@
-{}
+{
+  "security": {
+    "terminateOnlyOwnedProcess": true,
+    "allowShellCommand": false,
+    "writePidToState": true
+  }
+}
