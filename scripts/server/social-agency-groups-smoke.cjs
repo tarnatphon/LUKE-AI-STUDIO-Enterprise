@@ -145,6 +145,45 @@ async function main() {
     assert.strictEqual(fsDel.body.deleted, fsAdd.body.fewShot.id);
   });
 
+  // ── serve.cjs wiring: health + scheduler lifecycle ──
+  check("getHealth shape", () => {
+    const health = rt.getHealth();
+    assert.strictEqual(health.version, 2);
+    assert.ok(health.scheduler && typeof health.scheduler.running === "boolean");
+    assert.ok(health.clients >= 1);
+    assert.strictEqual(health.llmReady, false, "no LLM injected in smoke env");
+    assert.ok(health.stateFile.endsWith("thai-modern-bags.json"));
+  });
+
+  check("scheduler start/stop idempotent", () => {
+    const started = rt.startScheduler();
+    assert.strictEqual(started.running, true);
+    const startedAgain = rt.startScheduler();
+    assert.strictEqual(startedAgain.running, true, "double start stays on");
+    const stopped = rt.stopScheduler();
+    assert.strictEqual(stopped.running, false);
+    const stoppedAgain = rt.stopScheduler();
+    assert.strictEqual(stoppedAgain.running, false, "double stop stays off");
+  });
+
+  const healthRes = await call("GET", "/api/social-agency/health");
+  check("GET /health", () => {
+    assert.strictEqual(healthRes.statusCode, 200);
+    assert.strictEqual(healthRes.body.ok, true);
+    assert.strictEqual(healthRes.body.health.version, 2);
+  });
+
+  const startRes = await call("POST", "/api/social-agency/scheduler/start", {});
+  check("POST /scheduler/start", () => {
+    assert.strictEqual(startRes.statusCode, 200);
+    assert.strictEqual(startRes.body.scheduler.running, true);
+  });
+  const stopRes = await call("POST", "/api/social-agency/scheduler/stop", {});
+  check("POST /scheduler/stop", () => {
+    assert.strictEqual(stopRes.statusCode, 200);
+    assert.strictEqual(stopRes.body.scheduler.running, false);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

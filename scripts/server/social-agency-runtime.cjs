@@ -2441,8 +2441,28 @@ class SocialAgencyRuntime {
   }
 
   // ── scheduler (automation core) ──
+  // ── serve.cjs wiring: health + scheduler lifecycle controls ──
+  getHealth() {
+    const state = this._read();
+    let llmReady = false;
+    try {
+      llmReady = Boolean(this.llm && typeof this.llm.isReady === "function" && this.llm.isReady());
+    } catch {
+      llmReady = false;
+    }
+    return {
+      version: 2,
+      scheduler: this.getSchedulerStatus(),
+      clients: state.clients.length,
+      activeClientId: state.activeClientId,
+      llmReady,
+      stateFile: this.filePath,
+      serverNow: new Date().toISOString(),
+    };
+  }
+
   startScheduler() {
-    if (this.schedulerTimer) return;
+    if (this.schedulerTimer) return this.getSchedulerStatus();
     this._recoverInFlightOnce();
     const tick = async () => {
       try {
@@ -2454,6 +2474,7 @@ class SocialAgencyRuntime {
     tick();
     this.schedulerTimer = setInterval(tick, SCHEDULER_TICK_MS);
     console.log("  [social-agency] Scheduler active (every 60s, Asia/Bangkok)");
+    return this.getSchedulerStatus();
   }
 
   stopScheduler() {
@@ -2461,6 +2482,7 @@ class SocialAgencyRuntime {
       clearInterval(this.schedulerTimer);
       this.schedulerTimer = null;
     }
+    return this.getSchedulerStatus();
   }
 
   _recoverInFlightOnce() {
@@ -2744,6 +2766,16 @@ class SocialAgencyRuntime {
       // scheduler
       if (pathname === "/api/social-agency/scheduler" && method === "GET") {
         return json(res, 200, { ok: true, scheduler: this.getSchedulerStatus() });
+      }
+      // health + scheduler lifecycle (serve.cjs wiring)
+      if (pathname === "/api/social-agency/health" && method === "GET") {
+        return json(res, 200, { ok: true, health: this.getHealth() });
+      }
+      if (pathname === "/api/social-agency/scheduler/start" && method === "POST") {
+        return json(res, 200, { ok: true, scheduler: this.startScheduler() });
+      }
+      if (pathname === "/api/social-agency/scheduler/stop" && method === "POST") {
+        return json(res, 200, { ok: true, scheduler: this.stopScheduler() });
       }
     } catch (error) {
       const code = /ไม่พบ/.test(error.message || "") ? 404 : 400;

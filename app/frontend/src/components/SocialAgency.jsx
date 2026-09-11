@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Megaphone, Settings, MoreVertical, Trash2, Clock, RefreshCw } from "lucide-react";
+import { Plus, Megaphone, Settings, MoreVertical, Trash2, Clock, RefreshCw, Play, Pause } from "lucide-react";
 import "../social-agency.css";
 import { api, postJson, clientMonthlyCounts, hasActiveWork, timeUntil, currentMonth } from "../social-agency/lib.js";
 import CalendarTab from "../social-agency/CalendarTab.jsx";
@@ -174,6 +174,11 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   };
 
+  const toggleScheduler = withBusy(async () => {
+    const running = state.scheduler?.running;
+    await postJson(`/api/social-agency/scheduler/${running ? "stop" : "start"}`, {});
+  });
+
   const openInWorkflow = async (clientId, entryId) => {
     setDrawerEntryId(null);
     if (clientId && clientId !== state.activeClientId) await switchClient(clientId);
@@ -277,6 +282,14 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
                   : "Scheduler ทำงานอยู่ · รอคิวถัดไป"
                 : "Scheduler หยุดอยู่"}
             </span>
+            <button
+              className="sa-icon-btn"
+              title={state.scheduler?.running ? "หยุด Scheduler ชั่วคราว" : "เริ่ม Scheduler"}
+              onClick={toggleScheduler}
+              disabled={busy}
+            >
+              {state.scheduler?.running ? <Pause size={16} /> : <Play size={16} />}
+            </button>
             <button className="sa-icon-btn" title="Connectors & การตั้งค่าของลูกค้านี้" onClick={openConnectors}>
               <Settings size={16} />
             </button>
