@@ -782,9 +782,93 @@ class SocialAgencyRuntime {
   }
 
   // ── calendar CRUD ──
-  listCalendar(clientId) {
+  listCalendar(clientId, filters = {}) {
     const { client } = this._resolveClient(clientId);
-    return client.calendar || [];
+    let entries = [...(client.calendar || [])];
+    const { status, platform, q, from, to } = filters || {};
+    if (status) {
+      const set = new Set(String(status).split(",").map((s) => s.trim()).filter(Boolean));
+      if (set.size) entries = entries.filter((e) => set.has(e.status));
+    }
+    if (platform) {
+      const set = new Set(String(platform).split(",").map((s) => s.trim()).filter(Boolean));
+      if (set.size) entries = entries.filter((e) => set.has(e.platform));
+    }
+    if (from) entries = entries.filter((e) => e.date && e.date >= String(from));
+    if (to) entries = entries.filter((e) => e.date && e.date <= String(to));
+    if (q && String(q).trim()) {
+      const needle = String(q).trim().toLowerCase();
+      entries = entries.filter((e) =>
+        [e.productName, e.angle, e.caption, e.brief, e.id, e.sku]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(needle)
+      );
+    }
+    entries.sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    return entries;
+  }
+
+  // ── overview dashboard (group 3: month stats, upcoming, review queue) ──
+  getOverview(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const month = bangkokMonthStr();
+    const today = bangkokDateStr();
+    const in7 = bangkokDateStr(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    const entries = client.calendar || [];
+    const inMonth = entries.filter((e) => e.date && e.date.startsWith(month));
+    const byStatus = {};
+    for (const e of inMonth) byStatus[e.status] = (byStatus[e.status] || 0) + 1;
+    const byPlatform = {};
+    for (const e of inMonth) byPlatform[e.platform] = (byPlatform[e.platform] || 0) + 1;
+    const slim = (e) => ({
+      id: e.id,
+      date: e.date,
+      time: e.time,
+      platform: e.platform,
+      productName: e.productName,
+      angle: e.angle,
+      status: e.status,
+    });
+    const upcoming = entries
+      .filter((e) => ["planned", "ready"].includes(e.status) && e.date >= today && e.date <= in7)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+      .slice(0, 10)
+      .map(slim);
+    const needsReview = entries
+      .filter((e) => e.status === "needs_review")
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+      .slice(0, 10)
+      .map((e) => ({ ...slim(e), caption: e.caption || "" }));
+    const recentRuns = [...(client.workflowRuns || [])]
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 5)
+      .map((r) => ({
+        id: r.id,
+        entryId: r.entryId,
+        status: r.status,
+        trigger: r.trigger,
+        createdAt: r.createdAt,
+        finishedAt: r.finishedAt || null,
+      }));
+    return {
+      clientId: client.id,
+      month,
+      counts: {
+        scheduled: (byStatus.planned || 0) + (byStatus.in_workflow || 0) + (byStatus.ready || 0) + (byStatus.publishing || 0),
+        awaiting: byStatus.needs_review || 0,
+        published: byStatus.published || 0,
+        failed: (byStatus.failed || 0) + (byStatus.missed || 0),
+        total: inMonth.length,
+      },
+      byStatus,
+      byPlatform,
+      upcoming,
+      needsReview,
+      recentRuns,
+      serverNow: new Date().toISOString(),
+    };
   }
 
   _findEntry(clientId, entryId) {
@@ -2405,7 +2489,18 @@ class SocialAgencyRuntime {
 
       // calendar
       if (pathname === "/api/social-agency/calendar" && method === "GET") {
-        return json(res, 200, { ok: true, entries: this.listCalendar(clientId) });
+        const filters = {
+          status: parsed.searchParams.get("status") || undefined,
+          platform: parsed.searchParams.get("platform") || undefined,
+          q: parsed.searchParams.get("q") || undefined,
+          from: parsed.searchParams.get("from") || undefined,
+          to: parsed.searchParams.get("to") || undefined,
+        };
+        return json(res, 200, { ok: true, entries: this.listCalendar(clientId, filters) });
+      }
+      // overview dashboard (group 3)
+      if (pathname === "/api/social-agency/overview" && method === "GET") {
+        return json(res, 200, { ok: true, overview: this.getOverview(clientId) });
       }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();

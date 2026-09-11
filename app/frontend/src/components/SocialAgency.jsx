@@ -5,10 +5,12 @@ import { api, postJson, clientMonthlyCounts, hasActiveWork, timeUntil, currentMo
 import CalendarTab from "../social-agency/CalendarTab.jsx";
 import WorkflowTab from "../social-agency/WorkflowTab.jsx";
 import RunsTab from "../social-agency/RunsTab.jsx";
+import OverviewTab from "../social-agency/OverviewTab.jsx";
 import { EntryDrawer, ConnectorsDrawer } from "../social-agency/drawers.jsx";
 import { AddClientModal, ConfirmModal } from "../social-agency/modals.jsx";
 
 const TABS = [
+  { id: "overview", label: "ภาพรวม" },
   { id: "calendar", label: "ปฏิทิน" },
   { id: "workflow", label: "Workflow" },
   { id: "runs", label: "อนุมัติ & การรัน" },
