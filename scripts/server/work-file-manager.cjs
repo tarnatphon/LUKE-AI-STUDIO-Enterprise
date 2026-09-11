@@ -11,6 +11,9 @@ function createStatusError(message, status) {
 
 const DOCUMENT_EXTS = new Set([".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf"]);
 
+// Bound extracted document previews so a single giant file cannot blow up chat context.
+const MAX_DOCUMENT_PREVIEW_BYTES = 256 * 1024;
+
 function isInsideRoot(realRoot, realTarget) {
   return realTarget === realRoot || realTarget.startsWith(realRoot + path.sep);
 }
@@ -35,7 +38,7 @@ async function safeRealTarget(realRoot, targetPath, filePath) {
   try {
     const realTarget = await fsp.realpath(targetPath);
     if (!isInsideRoot(realRoot, realTarget)) {
-      throw createStatusError("Symlink escaping project root is forbidden", 403);
+      throw createStatusError("Work file symlink escaped project root - forbidden", 403);
     }
     return realTarget;
   } catch (err) {
@@ -70,13 +73,15 @@ async function readWorkFile(options = {}) {
   if (DOCUMENT_EXTS.has(ext)) {
     const { extractProjectDocument } = require("./work-project-search.cjs");
     const content = await extractProjectDocument(buffer, ext);
+    const preview = content.length > MAX_DOCUMENT_PREVIEW_BYTES ? content.slice(0, MAX_DOCUMENT_PREVIEW_BYTES) : content;
     return {
-      content,
+      content: preview,
       filePath,
       size: buffer.length,
       modifiedAt,
       readOnly: true,
-      sourceFormat: ext.slice(1).toUpperCase()
+      sourceFormat: ext.slice(1).toUpperCase(),
+      truncated: content.length > MAX_DOCUMENT_PREVIEW_BYTES
     };
   }
   if (buffer.includes(0)) {
@@ -86,7 +91,7 @@ async function readWorkFile(options = {}) {
 }
 
 async function writeWorkFile(options = {}) {
-  if (options.approvalGranted === false) {
+  if (options.approvalGranted !== true) {
     throw createStatusError("Write approval is required", 403);
   }
   const { realRoot, filePath, targetPath } = await resolveTarget(options);
