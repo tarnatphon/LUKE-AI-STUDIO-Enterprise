@@ -1,6 +1,5 @@
 {
   "version": "1.0.0-beta.16",
-  "build": "enterprise-social-agency-v16",
   "releaseDate": "2026-09-11",
-  "channel": "beta"
+  "status": "ready"
 }
