@@ -6,6 +6,8 @@ import CalendarTab from "../social-agency/CalendarTab.jsx";
 import WorkflowTab from "../social-agency/WorkflowTab.jsx";
 import RunsTab from "../social-agency/RunsTab.jsx";
 import OverviewTab from "../social-agency/OverviewTab.jsx";
+import StyleTab from "../social-agency/StyleTab.jsx";
+import InsightsTab from "../social-agency/InsightsTab.jsx";
 import { EntryDrawer, ConnectorsDrawer } from "../social-agency/drawers.jsx";
 import { AddClientModal, ConfirmModal } from "../social-agency/modals.jsx";
 
@@ -14,13 +16,16 @@ const TABS = [
   { id: "calendar", label: "ปฏิทิน" },
   { id: "workflow", label: "Workflow" },
   { id: "runs", label: "อนุมัติ & การรัน" },
+  { id: "style", label: "สไตล์ & ฉบับ" },
+  { id: "insights", label: "สรุป & สำรอง" },
 ];
 
 export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat }) {
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState("calendar");
+  const [tab, setTab] = useState("overview");
+  const [refreshSeq, setRefreshSeq] = useState(0);
   const [drawerEntryId, setDrawerEntryId] = useState(null);
   const [connectors, setConnectors] = useState(null);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
@@ -35,6 +40,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     try {
       const data = await api("/api/social-agency/state");
       setState(data.state);
+      setRefreshSeq((n) => n + 1);
       setError("");
     } catch (err) {
       setError(err.message);
@@ -308,6 +314,13 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
         </nav>
 
         <div className="sa-content">
+          {tab === "overview" && (
+            <OverviewTab
+              activeClient={activeClient}
+              refreshKey={refreshSeq}
+              onOpenEntry={(id) => setDrawerEntryId(id)}
+            />
+          )}
           {tab === "calendar" && (
             <CalendarTab
               state={state}
@@ -350,6 +363,21 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               onOpenInWorkflow={openInWorkflow}
             />
           )}
+          {tab === "style" && (
+            <StyleTab
+              key={styleEntryId || "none"}
+              activeClient={activeClient}
+              refreshKey={refreshSeq}
+              initialEntryId={styleEntryId}
+            />
+          )}
+          {tab === "insights" && (
+            <InsightsTab
+              activeClient={activeClient}
+              refreshKey={refreshSeq}
+              onChanged={refresh}
+            />
+          )}
         </div>
       </div>
 
@@ -372,6 +400,11 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
             })
           }
           onOpenInWorkflow={(id) => openInWorkflow(activeClient.id, id)}
+          onOpenStyle={(id) => {
+            setDrawerEntryId(null);
+            setStyleEntryId(id);
+            setTab("style");
+          }}
           onCreateImage={onCreateImage}
           onCreateVideo={onCreateVideo}
           onOpenChat={onOpenChat}

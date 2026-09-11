@@ -82,6 +82,9 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
             </>
           )}
           <button className="sa-btn ghost" onClick={() => onOpenInWorkflow(entry.id)}><Clock size={14} /> เปิดใน Workflow</button>
+          {onOpenStyle && (
+            <button className="sa-btn ghost" onClick={() => onOpenStyle(entry.id)}><Copy size={14} /> ฉบับต่อแพลตฟอร์ม</button>
+          )}
           <div style={{ flex: 1 }} />
           <button
             className="sa-icon-btn danger"
@@ -244,6 +247,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       timezone: "Asia/Bangkok",
       dryRun: connectors?.settings?.dryRun !== false,
       notify: Boolean(connectors?.settings?.notify),
+      weeklySummaryLine: Boolean(connectors?.settings?.weeklySummaryLine),
     },
   }));
   const [tests, setTests] = useState({});
@@ -375,6 +379,7 @@ disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
         </div>
         <label className="sa-field"><span>เขตเวลา</span><input value="Asia/Bangkok" disabled /></label>
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
+        <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
       </section>
     </Drawer>
   );

@@ -77,6 +77,14 @@ function bangkokTimeStr(d = new Date()) {
 function bangkokMonthStr(d = new Date()) {
   return bangkokDateStr(d).slice(0, 7);
 }
+// Monday-start week range in Bangkok wall-clock; weekOffset=1 → last week
+function bangkokWeekRange(weekOffset = 0) {
+  const nowBkk = new Date(Date.now() + BANGKOK_OFFSET_MS);
+  const dow = (nowBkk.getUTCDay() + 6) % 7; // Monday = 0
+  const monday = new Date(Date.UTC(nowBkk.getUTCFullYear(), nowBkk.getUTCMonth(), nowBkk.getUTCDate() - dow - weekOffset * 7));
+  const sunday = new Date(monday.getTime() + 6 * 86400000);
+  return { weekKey: monday.toISOString().slice(0, 10), start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
+}
 function bangkokToUtcMs(dateStr, timeStr) {
   const time = String(timeStr || "18:30").slice(0, 5);
   const ms = Date.parse(`${dateStr}T${time}:00+07:00`);
@@ -300,6 +308,7 @@ function defaultSettings() {
     timezone: TZ_LABEL,
     dryRun: true,
     notify: false,
+    weeklySummaryLine: false,
   };
 }
 
@@ -511,6 +520,7 @@ class SocialAgencyRuntime {
     this.stateDir = path.join(root, "app", "runtime-state", "social-agency");
     this.filePath = path.join(this.stateDir, "thai-modern-bags.json");
     this.connectorsFile = path.join(this.stateDir, "connectors.json");
+    this.backupDir = path.join(this.stateDir, "backups");
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
     this.schedulerTimer = null;
     this.schedulerLastTickAt = null;
@@ -2187,6 +2197,7 @@ class SocialAgencyRuntime {
       if (s.timezone !== undefined) merged.timezone = TZ_LABEL; // scheduler is Asia/Bangkok
       if (typeof s.dryRun === "boolean") merged.dryRun = s.dryRun;
       if (typeof s.notify === "boolean") merged.notify = s.notify && process.platform === "darwin";
+      if (typeof s.weeklySummaryLine === "boolean") merged.weeklySummaryLine = s.weeklySummaryLine;
       client.settings = merged;
     }
     this._write(state);
@@ -2397,21 +2408,6 @@ class SocialAgencyRuntime {
     }
 
     if (platform === "line") {
-      const quota = await SocialAgencyRuntime._https({
-        host: LINE_HOST,
-        path: "/v2/bot/message/quota",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
-      });
-      const consumption = await SocialAgencyRuntime._https({
-        host: LINE_HOST,
-        path: "/v2/bot/message/quota/consumption",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
-      });
-      const total = Number(quota.json?.value);
-      const used = Number(consumption.json?.totalUsage);
-      if (Number.isFinite(total) && Number.isFinite(used) && total - used < 1) {
-        throw new Error(`โควตาข้อความรายเดือนของ LINE OA เหลือ ${Math.max(0, total - used)} ข้อความ — broadcast ถูกบล็อกเพื่อกันเกินโควตา`);
-      }
       const messages = [];
       const wantsImage = entry.image && (entry.image.publicUrl || entry.image.path) && meta.sendImageTextStack !== false;
       if (wantsImage) {
@@ -2421,23 +2417,171 @@ class SocialAgencyRuntime {
       } else {
         messages.push({ type: "text", text: entry.caption || "" });
       }
-      const res = await SocialAgencyRuntime._https({
-        method: "POST",
-        host: LINE_HOST,
-        path: "/v2/bot/message/broadcast",
-        headers: { Authorization: `Bearer ${secret.channelAccessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
-        timeoutMs: 60 * 1000,
-      });
-      if (res.status >= 300 || res.json?.message) throw new Error(res.json?.message || `LINE ตอบ HTTP ${res.status}`);
+      const { quotaNote } = await this._lineBroadcast(secret, messages);
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      const quotaNote = Number.isFinite(total) && Number.isFinite(used) ? ` (โควตาเหลือ ${Math.max(0, total - used)} ข้อความ)` : "";
       return { platform, mode: "live", postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
+  }
+
+  // ── LINE broadcast primitive (quota-guarded; shared by publish + weekly summary) ──
+  async _lineBroadcast(secret, messages) {
+    const quota = await SocialAgencyRuntime._https({
+      host: LINE_HOST,
+      path: "/v2/bot/message/quota",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
+    });
+    const consumption = await SocialAgencyRuntime._https({
+      host: LINE_HOST,
+      path: "/v2/bot/message/quota/consumption",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}` },
+    });
+    const total = Number(quota.json?.value);
+    const used = Number(consumption.json?.totalUsage);
+    if (Number.isFinite(total) && Number.isFinite(used) && total - used < 1) {
+      throw new Error(`โควตาข้อความรายเดือนของ LINE OA เหลือ ${Math.max(0, total - used)} ข้อความ — broadcast ถูกบล็อกเพื่อกันเกินโควตา`);
+    }
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: LINE_HOST,
+      path: "/v2/bot/message/broadcast",
+      headers: { Authorization: `Bearer ${secret.channelAccessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      timeoutMs: 60 * 1000,
+    });
+    if (res.status >= 300 || res.json?.message) throw new Error(res.json?.message || `LINE ตอบ HTTP ${res.status}`);
+    const quotaNote = Number.isFinite(total) && Number.isFinite(used) ? ` (โควตาเหลือ ${Math.max(0, total - used)} ข้อความ)` : "";
+    return { quotaNote };
+  }
+
+  // ── backup & restore (group 5) ──
+  exportBackup(clientId) {
+    const state = this._read();
+    const clients = clientId ? state.clients.filter((c) => c.id === clientId) : state.clients;
+    if (clientId && !clients.length) throw new Error("ไม่พบลูกค้ารายนี้ (client not found)");
+    const clean = JSON.parse(JSON.stringify(clients)).map((c) => ({
+      ...c,
+      calendar: (c.calendar || []).map((e) => ({ ...e, inFlight: false })),
+    }));
+    return { app: "luke-social-agency", version: 2, scope: clientId ? "client" : "all", exportedAt: new Date().toISOString(), clients: clean };
+  }
+
+  listBackups() {
+    try {
+      return fs.readdirSync(this.backupDir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => {
+          const stat = fs.statSync(path.join(this.backupDir, f));
+          return { file: f, size: stat.size, createdAt: stat.mtime.toISOString() };
+        })
+        .sort((a, b) => b.file.localeCompare(a.file));
+    } catch {
+      return [];
+    }
+  }
+
+  saveBackupSnapshot(clientId) {
+    const snapshot = this.exportBackup(clientId);
+    fs.mkdirSync(this.backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const name = clientId ? `backup-${clientId}-${stamp}.json` : `backup-all-${stamp}.json`;
+    fs.writeFileSync(path.join(this.backupDir, name), JSON.stringify(snapshot, null, 2), "utf8");
+    for (const extra of this.listBackups().slice(20)) {
+      try { fs.unlinkSync(path.join(this.backupDir, extra.file)); } catch {}
+    }
+    return { file: name, scope: snapshot.scope, clients: snapshot.clients.length, exportedAt: snapshot.exportedAt };
+  }
+
+  restoreBackup(clientId, snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.clients) || !snapshot.clients.length) {
+      throw new Error("ไฟล์สำรองไม่ถูกต้อง (ต้องมี clients อย่างน้อย 1 ราย)");
+    }
+    for (const c of snapshot.clients) {
+      if (!c || typeof c.id !== "string" || !Array.isArray(c.calendar)) throw new Error("ไฟล์สำรองไม่ถูกต้อง (โครงลูกค้าไม่ครบ)");
+    }
+    this.saveBackupSnapshot(); // safety copy of current state before overwriting
+    const state = this._read();
+    const wanted = clientId ? snapshot.clients.filter((c) => c.id === clientId) : snapshot.clients;
+    if (clientId && !wanted.length) throw new Error("ไฟล์สำรองไม่มีข้อมูลของลูกค้ารายนี้");
+    const restored = [];
+    for (const incoming of wanted) {
+      const clean = JSON.parse(JSON.stringify(incoming));
+      clean.calendar = (clean.calendar || []).map((e) => ({ ...e, inFlight: false }));
+      const idx = state.clients.findIndex((c) => c.id === incoming.id);
+      if (idx >= 0) state.clients[idx] = clean;
+      else state.clients.push(clean);
+      restored.push(incoming.id);
+    }
+    this._ensureClientShapes(state);
+    if (!state.clients.find((c) => c.id === state.activeClientId)) state.activeClientId = state.clients[0]?.id || null;
+    this._write(state);
+    return { restored };
+  }
+
+  // ── weekly summary + LINE push (group 5) ──
+  buildWeeklySummary(clientId, weekOffset = 0) {
+    const { client } = this._resolveClient(clientId);
+    const { weekKey, start, end } = bangkokWeekRange(Number(weekOffset) || 0);
+    const entries = (client.calendar || []).filter((e) => e.date >= start && e.date <= end);
+    const published = entries.filter((e) => e.status === "published");
+    const failed = entries.filter((e) => ["failed", "missed"].includes(e.status));
+    const byPlatform = {};
+    for (const e of published) byPlatform[e.platform] = (byPlatform[e.platform] || 0) + 1;
+    const angles = [...new Set(published.map((e) => e.angle).filter(Boolean))];
+    const runs = (client.workflowRuns || []).filter((r) => {
+      const day = String(r.createdAt || "").slice(0, 10);
+      return day >= start && day <= end;
+    });
+    return {
+      clientId: client.id,
+      clientName: client.name,
+      weekKey,
+      start,
+      end,
+      counts: { total: entries.length, published: published.length, failed: failed.length, runs: runs.length },
+      byPlatform,
+      angles,
+      publishedPosts: published.map((e) => ({ date: e.date, time: e.time, platform: e.platform, productName: e.productName, caption: (e.caption || "").slice(0, 160) })),
+      failedPosts: failed.map((e) => ({ date: e.date, time: e.time, platform: e.platform, productName: e.productName, status: e.status })),
+    };
+  }
+
+  formatWeeklySummaryText(summary) {
+    const lines = [
+      `📊 สรุปสัปดาห์ ${summary.start} – ${summary.end}`,
+      `${summary.clientName}`,
+      `เผยแพร่แล้ว ${summary.counts.published} / ทั้งหมด ${summary.counts.total} โพสต์${summary.counts.failed ? ` (พลาด ${summary.counts.failed})` : ""}`,
+    ];
+    const pfEntries = Object.entries(summary.byPlatform || {});
+    if (pfEntries.length) lines.push(pfEntries.map(([p, n]) => `• ${p}: ${n}`).join("  "));
+    if (summary.angles?.length) lines.push(`มุมที่ใช้: ${summary.angles.join(" / ")}`);
+    for (const p of (summary.publishedPosts || []).slice(0, 5)) {
+      const first = String(p.caption || "").split("\n").filter(Boolean)[0] || p.productName;
+      lines.push(`✓ ${p.date.slice(5)} ${p.platform} — ${first.slice(0, 60)}`);
+    }
+    const text = lines.join("\n");
+    return text.length > 900 ? `${text.slice(0, 897)}…` : text;
+  }
+
+  async sendWeeklySummary(clientId, { weekOffset = 0 } = {}) {
+    const { client } = this._resolveClient(clientId);
+    const summary = this.buildWeeklySummary(client.id, weekOffset);
+    const text = this.formatWeeklySummaryText(summary);
+    const secrets = this._getSecrets(client.id);
+    if (!this._connectorConfigured("line", secrets.line)) {
+      throw new Error("ลูกค้ารายนี้ยังไม่ได้ตั้งค่า LINE channelAccessToken");
+    }
+    if ((client.connectors?.line || {}).dryRun !== false) {
+      return { sent: false, reason: "dryRun", text, summary };
+    }
+    await this._lineBroadcast({ channelAccessToken: secrets.line.channelAccessToken }, [{ type: "text", text }]);
+    this._mutateClient(client.id, (c) => {
+      c.connectors.line.lastPublishAt = new Date().toISOString();
+    });
+    return { sent: true, text, summary };
   }
 
   // ── scheduler (automation core) ──
@@ -2568,6 +2712,39 @@ class SocialAgencyRuntime {
         console.warn("[social-agency] scheduled run failed to start:", err.message);
       }
     }
+    try {
+      await this._maybeWeeklySummary();
+    } catch (err) {
+      console.warn("[social-agency] weekly summary skipped:", err.message);
+    }
+  }
+
+  async _maybeWeeklySummary() {
+    // Bangkok wall-clock: Monday 09:00+ local time, once per week, opt-in per client
+    const bkk = new Date(Date.now() + BANGKOK_OFFSET_MS);
+    if ((bkk.getUTCDay() + 6) % 7 !== 0) return; // Monday only
+    if (bkk.getUTCHours() < 9) return;
+    const { weekKey } = bangkokWeekRange(0);
+    const seen = this._read().weeklySummary || {};
+    if (seen.sentFor === weekKey) return;
+    const results = [];
+    for (const client of this._read().clients) {
+      if (!client.settings?.weeklySummaryLine) continue;
+      const secrets = this._getSecrets(client.id);
+      if (!this._connectorConfigured("line", secrets.line) || (client.connectors?.line || {}).dryRun !== false) {
+        results.push({ clientId: client.id, sent: false, reason: "not-configured-or-dryRun" });
+        continue;
+      }
+      try {
+        await this.sendWeeklySummary(client.id, { weekOffset: 1 }); // summarize last week
+        results.push({ clientId: client.id, sent: true });
+      } catch (err) {
+        results.push({ clientId: client.id, sent: false, reason: err.message });
+      }
+    }
+    const fresh = this._read();
+    fresh.weeklySummary = { sentFor: weekKey, lastAt: new Date().toISOString(), results };
+    this._write(fresh);
   }
 
   getSchedulerStatus() {
@@ -2776,6 +2953,31 @@ class SocialAgencyRuntime {
       }
       if (pathname === "/api/social-agency/scheduler/stop" && method === "POST") {
         return json(res, 200, { ok: true, scheduler: this.stopScheduler() });
+      }
+      // backup + weekly summary (group 5)
+      if (pathname === "/api/social-agency/backup" && method === "GET") {
+        return json(res, 200, { ok: true, backup: this.exportBackup(clientId) });
+      }
+      if (pathname === "/api/social-agency/backups" && method === "GET") {
+        return json(res, 200, { ok: true, backups: this.listBackups() });
+      }
+      if (pathname === "/api/social-agency/backup/snapshot" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, snapshot: this.saveBackupSnapshot(clientId || body.clientId || undefined) });
+      }
+      if (pathname === "/api/social-agency/backup/restore" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...this.restoreBackup(clientId || body.clientId || undefined, body.snapshot) });
+      }
+      if (pathname === "/api/social-agency/weekly-summary" && method === "GET") {
+        const weekOffset = Number(parsed.searchParams.get("weekOffset") || 0) || 0;
+        const summary = this.buildWeeklySummary(clientId, weekOffset);
+        return json(res, 200, { ok: true, summary, text: this.formatWeeklySummaryText(summary) });
+      }
+      if (pathname === "/api/social-agency/weekly-summary/send" && method === "POST") {
+        const body = await readBody();
+        const result = await this.sendWeeklySummary(clientId || body.clientId, { weekOffset: Number(body.weekOffset) || 0 });
+        return json(res, result.sent ? 200 : 202, { ok: true, ...result });
       }
     } catch (error) {
       const code = /ไม่พบ/.test(error.message || "") ? 404 : 400;

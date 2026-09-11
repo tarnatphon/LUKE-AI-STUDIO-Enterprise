@@ -110,6 +110,43 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
 
       {error && <p className="sa-error-banner">{error}</p>}
 
+      <div className="sa-filterbar">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="กรองตามสถานะ">
+          <option value="all">ทุกสถานะ</option>
+          {Object.entries(STATUS_META).map(([value, meta]) => (
+            <option key={value} value={value}>{meta.label}</option>
+          ))}
+        </select>
+        <select value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} aria-label="กรองตามแพลตฟอร์ม">
+          <option value="all">ทุกแพลตฟอร์ม</option>
+          {Object.entries(PLATFORM_META).map(([value, meta]) => (
+            <option key={value} value={value}>{meta.label}</option>
+          ))}
+        </select>
+        <span className="sa-searchbox">
+          <Search size={13} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ค้นหา สินค้า/มุม/แคปชัน…"
+            aria-label="ค้นหารายการในปฏิทิน"
+          />
+          {query && (
+            <button className="sa-icon-btn sm" onClick={() => setQuery("")} aria-label="ล้างคำค้น">
+              <X size={12} />
+            </button>
+          )}
+        </span>
+        {filtering && (
+          <span className="sa-muted">
+            แสดง {filteredEntries.length} จาก {monthEntries.length} รายการ
+            <button className="sa-btn ghost sm" onClick={() => { setStatusFilter("all"); setPlatformFilter("all"); setQuery(""); }}>
+              ล้างฟิลเตอร์
+            </button>
+          </span>
+        )}
+      </div>
+
       <div className="sa-grid">
         <div className="sa-grid-head">
           {WEEKDAYS.map((d, i) => <div key={d} className={i >= 5 ? "weekend" : ""}>{d}</div>)}

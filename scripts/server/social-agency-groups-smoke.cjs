@@ -14,6 +14,13 @@ function bangkokToday(offsetDays = 0) {
   return bkk.toISOString().slice(0, 10);
 }
 
+function bangkokMonday(offsetWeeks = 0) {
+  const nowBkk = new Date(Date.now() + 7 * 3600000);
+  const dow = (nowBkk.getUTCDay() + 6) % 7; // Monday = 0
+  const monday = new Date(Date.UTC(nowBkk.getUTCFullYear(), nowBkk.getUTCMonth(), nowBkk.getUTCDate() - dow - offsetWeeks * 7));
+  return monday.toISOString().slice(0, 10);
+}
+
 // Minimal harness for handleApiRequest(req, res, { readJsonRequestBody, json })
 function makeHttp(rt) {
   const json = (res, code, body) => {
@@ -182,6 +189,108 @@ async function main() {
   check("POST /scheduler/stop", () => {
     assert.strictEqual(stopRes.statusCode, 200);
     assert.strictEqual(stopRes.body.scheduler.running, false);
+  });
+
+  // ── group 5: backup + weekly LINE summary ──
+  check("exportBackup shape + strips inFlight", () => {
+    const st = rt._read();
+    st.clients[0].calendar[0].inFlight = true;
+    rt._write(st);
+    const all = rt.exportBackup();
+    assert.strictEqual(all.scope, "all");
+    assert.ok(all.clients.length >= 1);
+    assert.ok(all.clients.every((c) => (c.calendar || []).every((e) => e.inFlight === false)), "inFlight stripped");
+    const one = rt.exportBackup(clientId);
+    assert.strictEqual(one.scope, "client");
+    assert.strictEqual(one.clients[0].id, clientId);
+    assert.throws(() => rt.exportBackup("nope"), /ไม่พบ/);
+    const st2 = rt._read();
+    st2.clients[0].calendar[0].inFlight = false;
+    rt._write(st2);
+  });
+
+  check("snapshot + listBackups", () => {
+    const snap = rt.saveBackupSnapshot(clientId);
+    assert.ok(snap.file.startsWith(`backup-${clientId}-`));
+    assert.ok(rt.listBackups().some((b) => b.file === snap.file));
+  });
+
+  check("restoreBackup round-trip + validation", () => {
+    const before = rt.exportBackup(clientId);
+    assert.ok(before.clients[0].calendar.some((e) => e.id === e1.id));
+    rt.deleteCalendarEntry(clientId, e1.id);
+    assert.ok(!rt.listCalendar(clientId).some((e) => e.id === e1.id));
+    const snapCount = rt.listBackups().length;
+    const res = rt.restoreBackup(clientId, before);
+    assert.deepStrictEqual(res.restored, [clientId]);
+    assert.ok(rt.listCalendar(clientId).some((e) => e.id === e1.id), "e1 restored");
+    assert.ok(rt.listBackups().length > snapCount, "safety copy written");
+    assert.throws(() => rt.restoreBackup(clientId, {}), /ไม่ถูกต้อง/);
+    assert.throws(() => rt.restoreBackup(clientId, { clients: [{ id: "x" }] }), /ไม่ถูกต้อง/);
+  });
+
+  const monEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokMonday(0), time: "06:06", platform: "facebook", sku, angle: "โปรโมชัน/ข้อเสนอ OEM" } });
+  rt.updateCalendarEntry(clientId, monEntry.id, { status: "published", caption: "สรุปสัปดาห์ทดสอบ: โปร OEM กระเป๋าผ้ารักษ์โลก สั่งขั้นต่ำ 50 ใบ" });
+  const monFail = rt.createCalendarEntry(clientId, { entry: { date: bangkokMonday(0), time: "06:07", platform: "line", sku, angle: "เรื่องจากลูกค้า" } });
+  rt.updateCalendarEntry(clientId, monFail.id, { status: "failed" });
+  check("buildWeeklySummary + format", () => {
+    const summary = rt.buildWeeklySummary(clientId, 0);
+    assert.strictEqual(summary.clientId, clientId);
+    assert.ok(summary.counts.published >= 1 && summary.counts.failed >= 1);
+    assert.ok(summary.byPlatform.facebook >= 1);
+    assert.ok(summary.publishedPosts.some((p) => p.caption.includes("สรุปสัปดาห์ทดสอบ")));
+    const text = rt.formatWeeklySummaryText(summary);
+    assert.ok(text.length <= 900, `summary text <= 900 (got ${text.length})`);
+    assert.ok(text.includes(summary.clientName) && text.includes("📊"));
+  });
+
+  check("sendWeeklySummary guards", async () => {
+    await assert.rejects(() => rt.sendWeeklySummary(clientId, {}), /LINE/);
+  });
+  // fake token on disk → dryRun gate (default on) blocks real send
+  fs.writeFileSync(
+    path.join(root, "app", "runtime-state", "social-agency", "connectors.json"),
+    JSON.stringify({ version: 1, clients: { [clientId]: { line: { channelAccessToken: "fake-token" } } } }),
+    "utf8"
+  );
+  const dryRes = await rt.sendWeeklySummary(clientId, {});
+  check("sendWeeklySummary dryRun", () => {
+    assert.strictEqual(dryRes.sent, false);
+    assert.strictEqual(dryRes.reason, "dryRun");
+    assert.ok(dryRes.text.includes("📊"));
+  });
+
+  const wsRes = await call("GET", `/api/social-agency/weekly-summary?clientId=${clientId}&weekOffset=0`);
+  check("GET /weekly-summary", () => {
+    assert.strictEqual(wsRes.statusCode, 200);
+    assert.ok(wsRes.body.summary.counts.published >= 1);
+    assert.ok(wsRes.body.text.length <= 900);
+  });
+  const wsSend = await call("POST", `/api/social-agency/weekly-summary/send?clientId=${clientId}`, { weekOffset: 0 });
+  check("POST /weekly-summary/send (dryRun)", () => {
+    assert.strictEqual(wsSend.statusCode, 202);
+    assert.strictEqual(wsSend.body.sent, false);
+  });
+  const bkRes = await call("GET", `/api/social-agency/backup?clientId=${clientId}`);
+  check("GET /backup", () => {
+    assert.strictEqual(bkRes.statusCode, 200);
+    assert.strictEqual(bkRes.body.backup.scope, "client");
+  });
+  const bksRes = await call("GET", "/api/social-agency/backups");
+  check("GET /backups", () => {
+    assert.strictEqual(bksRes.statusCode, 200);
+    assert.ok(bksRes.body.backups.length >= 1);
+  });
+  const snapRes = await call("POST", "/api/social-agency/backup/snapshot", { clientId });
+  check("POST /backup/snapshot", () => {
+    assert.strictEqual(snapRes.statusCode, 201);
+    assert.ok(snapRes.body.snapshot.file);
+  });
+  const noChangeSnap = rt.exportBackup();
+  const restoreRes = await call("POST", "/api/social-agency/backup/restore", { snapshot: noChangeSnap });
+  check("POST /backup/restore", () => {
+    assert.strictEqual(restoreRes.statusCode, 200);
+    assert.ok(restoreRes.body.restored.includes(clientId));
   });
 
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
