@@ -392,6 +392,28 @@ async function main() {
     assert.strictEqual(new Set(used).size, 15, "15 chained captions are all distinct");
   });
 
+  check("static research fallback includes custom roles", () => {
+    const client = { industry: "ผู้ผลิตถุงแบรนด์", researcherRoles: [
+      { name: "นักวิจัยตลาด", questions: ["q1"] },
+      { name: "นักวิจัยเทรนด์", questions: ["q2"] },
+      { name: "นักออกแบบกราฟฟิก", questions: ["ใช้รูปเล่าใน 1 วิ", "ฟอนต์ที่ตัดกับเทรนด์"] },
+    ] };
+    const notes = rt._staticResearchNotes(client, "เปิดตัวสินค้า");
+    assert.strictEqual(notes.length, 3);
+    assert.deepStrictEqual(notes.map((n) => n.role), ["นักวิจัยตลาด", "นักวิจัยเทรนด์", "นักออกแบบกราฟฟิก"]);
+    assert.ok(notes[2].notes.includes("ฟอนต์ที่ตัดกับเทรนด์"), "custom questions carried into fallback notes");
+    assert.ok(notes[0].notes.includes("ชอบดูของจริง"), "built-in crafted notes unchanged");
+  });
+  check("llm research payload includes all roles (up to 8)", () => {
+    const roles = Array.from({ length: 8 }, (_, i) => ({ name: `role-${i}`, questions: [`q${i}`] }));
+    const payload = rt._researchPayload({ researcherRoles: roles });
+    assert.strictEqual(payload.length, 8);
+    assert.strictEqual(payload[7].role, "role-7");
+    assert.deepStrictEqual(payload[0], { role: "role-0", questions: ["q0"] });
+    const six = rt._researchPayload({ researcherRoles: roles.slice(0, 6) });
+    assert.strictEqual(six.length, 6, "user with 6 roles keeps all of them");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

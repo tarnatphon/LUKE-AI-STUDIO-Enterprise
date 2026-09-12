@@ -1393,9 +1393,12 @@ class SocialAgencyRuntime {
     return "โพสต์สาธิต (Demo): เนื้อโพสต์อ่านสบายไม่เกิน ~300 ตัวอักษร แฮชแท็กไทยที่เกี่ยวข้อง 3-8 อัน";
   }
 
+  _researchPayload(client) {
+    return (client.researcherRoles || []).slice(0, 8).map((r) => ({ role: r.name, questions: r.questions }));
+  }
+
   async _llmResearchNotes(client, product, angle) {
-    const roles = (client.researcherRoles || []).slice(0, 5);
-    const payload = roles.map((r) => ({ role: r.name, questions: r.questions }));
+    const payload = this._researchPayload(client);
     const raw = await this._llmChat(
       [
         {
@@ -1408,7 +1411,7 @@ class SocialAgencyRuntime {
           content: `ลูกค้า: ${client.name} (${client.industry})\nสินค้า: ${product?.name || ""} หมวด ${product?.category || ""}\nมุมคอนเทนต์: ${angle}\nนักวิจัยและคำถาม: ${JSON.stringify(payload, null, 0)}`,
         },
       ],
-      { json: true, temperature: 0.6, maxTokens: 500, timeoutMs: 240000 }
+      { json: true, temperature: 0.6, maxTokens: 800, timeoutMs: 240000 }
     );
     const parsed = SocialAgencyRuntime.extractJson(raw);
     const notes = Array.isArray(parsed?.notes) ? parsed.notes : null;
@@ -1419,18 +1422,20 @@ class SocialAgencyRuntime {
   }
 
   _staticResearchNotes(client, angle) {
-    return [
-      {
-        role: "นักวิจัยตลาด",
-        notes: `กลุ่มเป้าหมายของ${client.industry}ส่วนใหญ่ชอบดูของจริงก่อนตัดสินใจ เน้นเล่าจุดที่ทีมใส่ใจ และกรณีใช้งานจริงของ ${angle}`,
-      },
-      {
-        role: "นักวิจัยเทรนด์",
-        notes: "คอนเทนต์สั้น + รูปงานจริงเวิร์กสุดตอนนี้ แฮชแท็กควรเกี่ยวกับสินค้าโดยตรง และควรตอบคอมเมนต์เร็วๆ",
-      },
-    ];
+    const crafted = {
+      "นักวิจัยตลาด": `กลุ่มเป้าหมายของ${client.industry}ส่วนใหญ่ชอบดูของจริงก่อนตัดสินใจ เน้นเล่าจุดที่ทีมใส่ใจ และกรณีใช้งานจริงของ ${angle}`,
+      "นักวิจัยเทรนด์": "คอนเทนต์สั้น + รูปงานจริงเวิร์กสุดตอนนี้ แฮชแท็กควรเกี่ยวกับสินค้าโดยตรง และควรตอบคอมเมนต์เร็วๆ",
+    };
+    const roles = (client.researcherRoles || []).slice(0, 8);
+    const list = roles.length ? roles : defaultResearcherRoles();
+    return list.map((r) => {
+      const name = String(r.name || "นักวิจัย");
+      if (crafted[name]) return { role: name, notes: crafted[name] };
+      const qs = (r.questions || []).filter(Boolean).slice(0, 3);
+      const hint = qs.length ? ` ประเด็นที่ต้องตอบ: ${qs.join(" / ")}` : "";
+      return { role: name, notes: `มุม${angle}ควรมีคำแนะนำด้าน${name}ประกอบด้วย${hint}` };
+    });
   }
-
   _composeBrief(client, product, angle, platform, researchNotes) {
     const notes = (researchNotes || []).map((n) => `- ${n.role}: ${n.notes}`).join("\n");
     return [
