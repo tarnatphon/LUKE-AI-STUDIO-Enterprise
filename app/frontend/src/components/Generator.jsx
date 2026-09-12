@@ -13,7 +13,11 @@ import {
   getLlmStatus,
   listLlmModels,
   startLlm,
-  chatWithLlm
+  chatWithLlm,
+  containsThai,
+  THAI_IMAGE_PROMPT_SYSTEM,
+  ENGLISH_IMAGE_PROMPT_SYSTEM,
+  cleanEnhancedPrompt
 } from "../services/api";
 
 const GalleryItem = memo(({ img, idx, isSelected, onClick }) => {
@@ -204,6 +208,11 @@ function Generator({
     ...referenceSettings,
   };
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [autoTranslateThai, setAutoTranslateThai] = useState(() => {
+    try { return localStorage.getItem("luke.autoTranslateThai") !== "off"; } catch { return true; }
+  });
+  const [translatedFromThai, setTranslatedFromThai] = useState(null);
+  const [thaiNotice, setThaiNotice] = useState("");
   const timerRef = useRef(null);
   const abortControllerRef = useRef(null);
   const hasRealGenerationStepRef = useRef(false);
@@ -269,66 +278,64 @@ function Generator({
     return `${activeReferences.length} appearance reference${activeReferences.length === 1 ? "" : "s"} active • Face / hair / clothing lock enabled`;
   }, [activeReferences]);
 
+  // Core prompt enhance/translate routine shared by the manual Enhance button
+  // and auto-translate on Generate. Returns the enhanced English prompt, or
+  // null when the user cancels the text-model load. Throws on hard failures.
+  const runPromptEnhance = async (sourceText) => {
+    const status = await getLlmStatus();
+    let targetModel = status.settings?.model;
+
+    if (!status.ready) {
+      const models = await listLlmModels();
+      if (models.length === 0) {
+        throw new Error("You haven't downloaded any text models yet. Please go to the 'Model Manager' or 'Text Chat' tab to download a GGUF model first.");
+      }
+
+      const savedLlm = localStorage.getItem("selectedLlmModel") || models[0]?.filename;
+      targetModel = models.some(m => m.filename === savedLlm) ? savedLlm : models[0]?.filename;
+
+      const confirm = await showConfirm({
+        title: "Load Text Model?",
+        message: `Enhancing your prompt requires loading the local text model "${targetModel}". This will temporarily unload the image model from memory. Do you want to proceed?`,
+        confirmLabel: "Load & Enhance",
+        cancelLabel: "Cancel"
+      });
+
+      if (!confirm) {
+        return null;
+      }
+
+      const cores = textSettings?.threads || specs?.cpu_cores_physical || 4;
+      const context = textSettings?.contextSize || 2048;
+      await startLlm(targetModel, {
+        threads: cores,
+        contextSize: context,
+        gpuLayers: -1,
+        preferredBackend: textSettings?.preferredBackend
+      });
+    }
+
+    const isThai = containsThai(sourceText);
+    const messages = [
+      { role: "system", content: isThai ? THAI_IMAGE_PROMPT_SYSTEM : ENGLISH_IMAGE_PROMPT_SYSTEM },
+      { role: "user", content: isThai ? `Translate and expand this image prompt into English: "${sourceText}"` : `Please expand this prompt: "${sourceText}"` }
+    ];
+
+    const temp = textSettings?.temperature || 0.7;
+    const response = await chatWithLlm(messages, { temperature: temp, maxTokens: 160 });
+    return cleanEnhancedPrompt(response.content);
+  };
+
   const handleEnhancePrompt = async () => {
     if (!prompt.trim() || isEnhancing || isGenerating) return;
     setIsEnhancing(true);
     try {
-      const status = await getLlmStatus();
-      let targetModel = status.settings?.model;
-      
-      if (!status.ready) {
-        const models = await listLlmModels();
-        if (models.length === 0) {
-          showAlert({
-            title: "No Text Models",
-            message: "You haven't downloaded any text models yet. Please go to the 'Model Manager' or 'Text Chat' tab to download a GGUF model first.",
-            danger: true
-          });
-          setIsEnhancing(false);
-          return;
-        }
-        
-        const savedLlm = localStorage.getItem("selectedLlmModel") || models[0]?.filename;
-        targetModel = models.some(m => m.filename === savedLlm) ? savedLlm : models[0]?.filename;
-        
-        const confirm = await showConfirm({
-          title: "Load Text Model?",
-          message: `Enhancing your prompt requires loading the local text model "${targetModel}". This will temporarily unload the image model from memory. Do you want to proceed?`,
-          confirmLabel: "Load & Enhance",
-          cancelLabel: "Cancel"
-        });
-        
-        if (!confirm) {
-          setIsEnhancing(false);
-          return;
-        }
-        
-        const cores = textSettings?.threads || specs?.cpu_cores_physical || 4;
-        const context = textSettings?.contextSize || 2048;
-        await startLlm(targetModel, {
-          threads: cores,
-          contextSize: context,
-          gpuLayers: -1,
-          preferredBackend: textSettings?.preferredBackend
-        });
+      const enhanced = await runPromptEnhance(prompt);
+      if (enhanced) {
+        setTranslatedFromThai(containsThai(prompt) ? prompt : null);
+        setPrompt(enhanced);
+        setThaiNotice("");
       }
-      
-      const systemPrompt = "You are a helpful assistant. Rewrite the user's image prompt to be more descriptive and detailed for image generation. Keep it under 80 words. Output ONLY the rewritten prompt, no explanation or introductory text.";
-      const messages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Please expand this prompt: "${prompt}"` }
-      ];
-      
-      const temp = textSettings?.temperature || 0.7;
-      const response = await chatWithLlm(messages, { temperature: temp, maxTokens: 128 });
-      let cleanResponse = response.content.trim();
-      if (cleanResponse.startsWith('"') && cleanResponse.endsWith('"')) {
-        cleanResponse = cleanResponse.slice(1, -1);
-      }
-      cleanResponse = cleanResponse.replace(/^Here is the expanded prompt:?\s*/i, "");
-      cleanResponse = cleanResponse.replace(/^Enhanced prompt:?\s*/i, "");
-      
-      setPrompt(cleanResponse);
     } catch (err) {
       showAlert({
         title: "Prompt Enhancement Failed",
@@ -339,7 +346,6 @@ function Generator({
       setIsEnhancing(false);
     }
   };
-
   React.useEffect(() => {
     if (constraints.backendType === "apple-npu" || constraints.backendType === "openvino-npu") {
       setBaseImage(null);
@@ -365,6 +371,28 @@ function Generator({
   // Trigger main image generation process
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+
+    let effectivePrompt = prompt;
+    let thaiOriginal = null;
+    setThaiNotice("");
+    if (autoTranslateThai && containsThai(prompt)) {
+      setIsEnhancing(true);
+      try {
+        const translated = await runPromptEnhance(prompt);
+        if (translated) {
+          effectivePrompt = translated;
+          thaiOriginal = prompt;
+          setPrompt(translated);
+          setTranslatedFromThai(prompt);
+        } else {
+          setThaiNotice("Thai prompt kept as-is (translation skipped). Results may not follow the prompt well.");
+        }
+      } catch (err) {
+        setThaiNotice("Translation failed (" + (err.message || err) + "); generating with the original Thai prompt.");
+      } finally {
+        setIsEnhancing(false);
+      }
+    }
 
     setErrorMsg(null);
     setIsRestartingBackend(true);
@@ -617,7 +645,7 @@ function Generator({
       abortControllerRef.current = new AbortController();
       const primaryReferenceSource = baseImage || getBestReferenceSource();
       const result = await generateImage(
-        prompt,
+        effectivePrompt,
         negativePrompt,
         constraints,
         activeModel,
@@ -635,7 +663,8 @@ function Generator({
       setGenerationSpeed("");
 
       const metadata = {
-        prompt: prompt,
+        prompt: effectivePrompt,
+        originalThaiPrompt: thaiOriginal,
         negativePrompt: negativePrompt,
         seed: result.seed,
         steps: constraints.steps,
@@ -903,6 +932,44 @@ function Generator({
                   disabled={isGenerating}
                 />
               </div>
+              {containsThai(prompt) && !translatedFromThai && (
+                <div style={{ fontSize: "0.8rem", color: "var(--md-sys-color-primary)", marginTop: "6px" }}>
+                  {autoTranslateThai
+                    ? "ตรวจพบภาษาไทย — จะแปลเป็นอังกฤษอัตโนมัติตอนกด Generate"
+                    : "ตรวจพบภาษาไทย — โมเดลรูปภาพอ่านไทยไม่ออก แนะนำให้กด Enhance หรือเปิด auto-translate"}
+                </div>
+              )}
+              {thaiNotice && (
+                <div style={{ fontSize: "0.8rem", color: "var(--md-sys-color-error)", marginTop: "6px" }}>{thaiNotice}</div>
+              )}
+              {translatedFromThai && (
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "8px", padding: "8px 12px", background: "var(--md-sys-color-surface-variant)", borderRadius: "8px", fontSize: "0.8rem" }}>
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    Translated from Thai: {translatedFromThai}
+                  </span>
+                  <button
+                    type="button"
+                    className="m3-btn m3-btn-outlined"
+                    style={{ height: "30px", flexShrink: 0 }}
+                    onClick={() => { setPrompt(translatedFromThai); setTranslatedFromThai(null); setThaiNotice(""); }}
+                    disabled={isGenerating || isEnhancing}
+                  >
+                    Revert
+                  </button>
+                </div>
+              )}
+              <label style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "0.85rem", marginTop: "10px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={autoTranslateThai}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setAutoTranslateThai(v);
+                    try { localStorage.setItem("luke.autoTranslateThai", v ? "on" : "off"); } catch {}
+                  }}
+                />
+                Auto-translate Thai prompt to English before Generate
+              </label>
 
               {constraints.backendType !== "apple-npu" && constraints.backendType !== "openvino-npu" && (
                 <div className="m3-text-field">
@@ -998,12 +1065,23 @@ function Generator({
                 </div>
               </div>
 
+              {/* Manual prompt enhance / Thai-to-English translate */}
+              <button
+                className="m3-btn m3-btn-outlined"
+                style={{ height: "48px", marginTop: "8px" }}
+                onClick={handleEnhancePrompt}
+                disabled={isGenerating || isEnhancing || !prompt.trim()}
+              >
+                <Sparkles size={18} />
+                <span>{isEnhancing ? "Enhancing..." : "Enhance Prompt"}</span>
+              </button>
+
               {/* Generate Trigger Button */}
               <button
                 className="m3-btn m3-btn-filled"
                 style={{ height: "48px", marginTop: "8px" }}
                 onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim() || !activeModel}
+                disabled={isGenerating || isEnhancing || !prompt.trim() || !activeModel}
               >
                 <Sparkles size={18} />
                 <span>{!activeModel ? "Select Model to Generate" : (baseImage || activeReferences.some((item) => item.role === "Source")) ? "Generate with References" : "Generate Local Image"}</span>
