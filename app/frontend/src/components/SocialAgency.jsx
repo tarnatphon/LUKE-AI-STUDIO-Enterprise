@@ -24,6 +24,8 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(null);
+  const [imageGenError, setImageGenError] = useState("");
   const [tab, setTab] = useState("overview");
   const [refreshSeq, setRefreshSeq] = useState(0);
   const [drawerEntryId, setDrawerEntryId] = useState(null);
@@ -52,7 +54,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   }, [refresh]);
 
   // Poll fast while workflows are in-flight, slow otherwise (scheduler indicator stays fresh)
-  const working = hasActiveWork(state);
+  const working = hasActiveWork(state) || generatingImage !== null;
   useEffect(() => {
     const id = setInterval(refresh, working ? 2500 : 30000);
     return () => clearInterval(id);
@@ -65,6 +67,30 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [clientMenu]);
+
+  const handleGenerateImage = useCallback(async (entryId) => {
+    if (!state?.activeClientId || generatingImage) return;
+    setImageGenError("");
+    setGeneratingImage(entryId);
+    try {
+      await postJson("/api/social-agency/generate-image", { clientId: state.activeClientId, entryId });
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const data = await api(`/api/social-agency/entry-image?clientId=${encodeURIComponent(state.activeClientId)}&entryId=${encodeURIComponent(entryId)}`);
+        if (data.job?.status === "done") break;
+        if (data.job?.status === "error") throw new Error(data.job.error || "สร้างภาพไม่สำเร็จ");
+        if (Date.now() - t0 > 10 * 60 * 1000) throw new Error("หมดเวลารอสร้างภาพ (10 นาที) — ลองใหม่อีกครั้ง");
+      }
+      refresh();
+    } catch (err) {
+      setImageGenError(err.message || "สร้างภาพไม่สำเร็จ");
+    } finally {
+      setGeneratingImage(null);
+    }
+  }, [state, generatingImage, refresh]);
+
+  useEffect(() => { setImageGenError(""); }, [drawerEntryId]);
 
   const activeClient = useMemo(
     () => state?.clients?.find((c) => c.id === state.activeClientId) || null,
@@ -407,6 +433,9 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           }}
           onCreateImage={onCreateImage}
           onCreateVideo={onCreateVideo}
+          onGenerateImage={handleGenerateImage}
+          generatingImage={generatingImage}
+          imageGenError={imageGenError}
           onOpenChat={onOpenChat}
         />
       )}

@@ -624,6 +624,8 @@ class SocialAgencyRuntime {
     this.connectorsFile = path.join(this.stateDir, "connectors.json");
     this.backupDir = path.join(this.stateDir, "backups");
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
+    this.imageSaver = null; // injected by serve.cjs: async (dataUrl, metadata) => saved { image, url, absPath }
+    this.imageBackend = process.env.SD_BACKEND_URL || "http://127.0.0.1:8080";
     this.schedulerTimer = null;
     this.schedulerLastTickAt = null;
     this.activeRunCount = 0;
@@ -2398,6 +2400,107 @@ class SocialAgencyRuntime {
     return res.json.data.display_url || res.json.data.url;
   }
 
+  // ── inline entry image generation (preview before publish) ──
+  setImageSaver(fn) {
+    this.imageSaver = fn;
+  }
+
+  _imageGenBody(prompt) {
+    return {
+      prompt: String(prompt || ""),
+      negative_prompt: "",
+      n: 1,
+      size: "768x768",
+      response_format: "b64_json",
+      steps: 20,
+      cfg_scale: 7.0,
+      seed: Math.floor(Math.random() * 1000000000),
+      sample_method: "euler_a",
+      reference_images: [],
+      reference_settings: {},
+    };
+  }
+
+  _ensureEntryImagePrompt(client, entry) {
+    if (entry.imagePrompt && String(entry.imagePrompt).trim()) return entry.imagePrompt;
+    const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
+    entry.imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
+    return entry.imagePrompt;
+  }
+
+  startEntryImageGen(clientId, entryId) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (entry.imageJob && entry.imageJob.status === "running") return { status: "running", entryId: entry.id };
+    const now = new Date().toISOString();
+    entry.imageJob = { status: "running", startedAt: now, finishedAt: null, error: "" };
+    entry.updatedAt = now;
+    this._write(state);
+    this._generateEntryImage(client.id, entry.id).catch((err) => {
+      try { this._failEntryImageGen(client.id, entry.id, err && err.message ? err.message : String(err)); }
+      catch (e2) { console.error("[social-agency] image job fail handler crashed:", e2); }
+    });
+    return { status: "running", entryId: entry.id };
+  }
+
+  _failEntryImageGen(clientId, entryId, message) {
+    try {
+      const { state, entry } = this._findEntry(clientId, entryId);
+      const now = new Date().toISOString();
+      entry.imageJob = { status: "error", startedAt: (entry.imageJob && entry.imageJob.startedAt) || now, finishedAt: now, error: String(message || "สร้างภาพไม่สำเร็จ") };
+      entry.updatedAt = now;
+      this._write(state);
+    } catch (err) {
+      console.error("[social-agency] _failEntryImageGen:", err);
+    }
+  }
+
+  async _generateEntryImage(clientId, entryId) {
+    const first = this._findEntry(clientId, entryId);
+    const prompt = this._ensureEntryImagePrompt(first.client, first.entry);
+    this._write(first.state);
+    let res;
+    try {
+      res = await fetch(`${this.imageBackend}/v1/images/generations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this._imageGenBody(prompt)),
+        signal: AbortSignal.timeout(10 * 60 * 1000),
+      });
+    } catch (err) {
+      throw new Error(`เชื่อมต่อ Image backend ไม่ได้ (${this.imageBackend}) — เปิด Image API ก่อน (${err.message})`);
+    }
+    if (!res.ok) throw new Error(`Image backend ตอบกลับ HTTP ${res.status}`);
+    const data = await res.json();
+    const raw = (data && data.data && data.data[0] && data.data[0].b64_json) || (data && data.images && data.images[0]);
+    const b64 = String(raw || "").replace(/^data:[^;]+;base64,/, "");
+    const buf = Buffer.from(b64, "base64");
+    const isPng = buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    const isJpeg = buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    const isWebp = buf.length > 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+    if (!b64 || (!isPng && !isJpeg && !isWebp)) throw new Error("Image backend ส่งรูปกลับมาไม่ถูกต้อง");
+    if (!this.imageSaver) throw new Error("image saver ยังไม่ได้เชื่อมต่อ (restart เซิร์ฟเวอร์)");
+    const seed = (data && data.data && data.data[0] && data.data[0].seed) ?? null;
+    const saved = await this.imageSaver(`data:image/png;base64,${b64}`, { prompt, seed, entryId, clientId, source: "social-agency" });
+    const second = this._findEntry(clientId, entryId);
+    const old = second.entry.image;
+    if (old && old.absPath && old.absPath !== saved.absPath) { try { fs.unlinkSync(old.absPath); } catch {} }
+    const now = new Date().toISOString();
+    second.entry.image = { path: saved.absPath || "", filename: saved.image || "", url: saved.url || "", seed, createdAt: now };
+    second.entry.imageJob = { status: "done", startedAt: (second.entry.imageJob && second.entry.imageJob.startedAt) || now, finishedAt: now, error: "" };
+    second.entry.updatedAt = now;
+    this._write(second.state);
+    return { status: "done", entryId };
+  }
+
+  getEntryImage(clientId, entryId) {
+    const { entry } = this._findEntry(clientId, entryId);
+    return {
+      entryId: entry.id,
+      job: entry.imageJob || { status: "idle", startedAt: null, finishedAt: null, error: "" },
+      image: entry.image && entry.image.url ? { url: entry.image.url, filename: entry.image.filename || "" } : null,
+    };
+  }
+
   async _publicImageUrl(client, entry) {
     const image = entry.image || {};
     if (image.publicUrl && /^https:\/\//.test(image.publicUrl)) return image.publicUrl;
@@ -3032,6 +3135,26 @@ class SocialAgencyRuntime {
         const body = await readBody();
         if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
         return json(res, 200, { ok: true, entry: this.rejectEntry(clientId || body.clientId, body.entryId) });
+      }
+
+      // inline entry image generation (preview before publish)
+      if (pathname === "/api/social-agency/generate-image" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 202, { ok: true, ...this.startEntryImageGen(clientId || body.clientId, body.entryId) });
+        } catch (error) {
+          return fail(error, 404);
+        }
+      }
+      if (pathname === "/api/social-agency/entry-image" && method === "GET") {
+        const entryId = parsed.searchParams.get("entryId") || undefined;
+        if (!entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.getEntryImage(clientId, entryId) });
+        } catch (error) {
+          return fail(error, 404);
+        }
       }
 
       // connectors

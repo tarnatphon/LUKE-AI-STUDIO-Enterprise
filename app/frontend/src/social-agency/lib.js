@@ -155,7 +155,7 @@ export function hasActiveWork(state) {
   return Boolean(
     state?.clients?.some(
       (c) =>
-        (c.calendar || []).some((e) => e.inFlight || e.status === "in_workflow" || e.status === "publishing") ||
+        (c.calendar || []).some((e) => e.inFlight || e.status === "in_workflow" || e.status === "publishing" || e.imageJob?.status === "running") ||
         (c.workflowRuns || []).some((r) => r.status === "running")
     )
   );

@@ -414,6 +414,71 @@ async function main() {
     assert.strictEqual(six.length, 6, "user with 6 roles keeps all of them");
   });
 
+  check("entry image request body matches SD backend schema", () => {
+    const body = rt._imageGenBody("a red bag on a table");
+    assert.strictEqual(body.prompt, "a red bag on a table");
+    assert.strictEqual(body.response_format, "b64_json");
+    assert.strictEqual(body.size, "768x768");
+    assert.strictEqual(body.n, 1);
+    assert.ok(Number.isInteger(body.seed));
+  });
+
+  // ── async checks (awaited in main body; future sync checks go above this marker) ──
+  await (async () => {
+    const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const realFetch = globalThis.fetch;
+    let seen = null;
+    rt.setImageSaver(async (dataUrl) => {
+      const name = `sa-test-${Date.now()}-${Math.floor(Math.random() * 1e6)}.png`;
+      const file = path.join(root, name);
+      fs.writeFileSync(file, Buffer.from(String(dataUrl).split(",")[1], "base64"));
+      return { image: name, url: `/api/output-file?filename=${name}`, absPath: file };
+    });
+    const waitJob = async (eid) => {
+      const t0 = Date.now();
+      for (;;) {
+        const { entry } = rt._findEntry(clientId, eid);
+        if (entry.imageJob && entry.imageJob.status !== "running") return entry.imageJob;
+        if (Date.now() - t0 > 15000) throw new Error("image job did not finish in 15s");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    try {
+      globalThis.fetch = async (url, opts) => {
+        seen = { url: String(url), body: JSON.parse(opts.body) };
+        return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: TINY_PNG, seed: 7 }] }) };
+      };
+      const e1 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(11), time: "10:30", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+      const started = rt.startEntryImageGen(clientId, e1.id);
+      assert.strictEqual(started.status, "running");
+      assert.strictEqual(rt.startEntryImageGen(clientId, e1.id).status, "running", "second start while running is a no-op");
+      const job = await waitJob(e1.id);
+      assert.strictEqual(job.status, "done");
+      const { entry: done } = rt._findEntry(clientId, e1.id);
+      assert.ok(done.imagePrompt && done.imagePrompt.length > 10, "prompt auto-built when missing");
+      assert.ok(done.image.url.startsWith("/api/output-file?filename="));
+      assert.ok(fs.existsSync(done.image.path));
+      assert.ok(seen.url.endsWith("/v1/images/generations"));
+      assert.strictEqual(seen.body.prompt, done.imagePrompt);
+      assert.strictEqual(seen.body.response_format, "b64_json");
+      fs.unlinkSync(done.image.path);
+      const got = rt.getEntryImage(clientId, e1.id);
+      assert.strictEqual(got.job.status, "done");
+      assert.strictEqual(got.image.url, done.image.url);
+      globalThis.fetch = async () => { throw new Error("backend down"); };
+      const e2 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(12), time: "11:30", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+      rt.startEntryImageGen(clientId, e2.id);
+      const job2 = await waitJob(e2.id);
+      assert.strictEqual(job2.status, "error");
+      assert.ok(job2.error.includes("backend down"), `error surfaced, got: ${job2.error}`);
+    } finally {
+      globalThis.fetch = realFetch;
+      rt.setImageSaver(null);
+    }
+    passed += 1;
+    console.log("  ok - entry image generation attaches preview (stubbed backend)");
+  })();
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

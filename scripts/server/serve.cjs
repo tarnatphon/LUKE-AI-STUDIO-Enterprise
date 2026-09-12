@@ -481,6 +481,10 @@ function getSocialAgencyRuntime() {
   if (!socialAgencyRuntime) {
     socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
     socialAgencyRuntime.setLlmClient(makeSocialAgencyLlmClient());
+    socialAgencyRuntime.setImageSaver(async (dataUrl, metadata) => {
+      const saved = saveGeneratedOutput(dataUrl, metadata);
+      return { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}`, absPath: path.join(OUTPUTS, saved.image) };
+    });
   }
   return socialAgencyRuntime;
 }

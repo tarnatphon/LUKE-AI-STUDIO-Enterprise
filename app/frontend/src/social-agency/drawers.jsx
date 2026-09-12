@@ -48,7 +48,7 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, busy }) {
   const [date, setDate] = useState(entry.date);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
@@ -170,15 +170,29 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         </section>
       )}
 
-      {entry.imagePrompt && (
+      {(entry.imagePrompt || entry.image?.url) && (
         <section className="sa-drawer-section">
           <h4>Image prompt (ส่งต่อไป Image workspace)</h4>
-          <pre className="sa-caption small">{entry.imagePrompt}</pre>
+          {entry.imagePrompt && <pre className="sa-caption small">{entry.imagePrompt}</pre>}
+          {entry.image?.url && (
+            <img className="sa-entry-image" src={entry.image.url} alt="พรีวิวภาพประกอบโพสต์" />
+          )}
+          {generatingImage === entry.id && (
+            <p className="sa-muted">⏳ กำลังสร้างภาพ… (ปกติ 1–4 นาที เสร็จแล้วรูปจะขึ้นตรงนี้เอง)</p>
+          )}
+          {imageGenError && (
+            <p className="sa-error-banner" role="alert">{imageGenError}</p>
+          )}
           <div className="sa-handoff">
-            <button className="sa-btn ghost sm" onClick={() => copy(entry.imagePrompt, "prompt")}>
-              <Copy size={13} /> {copied === "prompt" ? "คัดลอกแล้ว" : "คัดลอกพรอมต์"}
+            {entry.imagePrompt && (
+              <button className="sa-btn ghost sm" onClick={() => copy(entry.imagePrompt, "prompt")}>
+                <Copy size={13} /> {copied === "prompt" ? "คัดลอกแล้ว" : "คัดลอกพรอมต์"}
+              </button>
+            )}
+            <button className="sa-btn ghost sm" disabled={generatingImage === entry.id} onClick={() => onGenerateImage?.(entry.id)}>
+              <ImageIcon size={13} /> {generatingImage === entry.id ? "กำลังสร้าง…" : entry.image?.url ? "สร้างภาพใหม่" : "สร้างภาพ"}
             </button>
-            <button className="sa-btn ghost sm" onClick={onCreateImage}><ImageIcon size={13} /> สร้างภาพ</button>
+            <button className="sa-btn ghost sm" onClick={onCreateImage}><ExternalLink size={13} /> เปิดใน Generator</button>
             <button className="sa-btn ghost sm" onClick={onCreateVideo}><Film size={13} /> ทำภาพเคลื่อนไหว</button>
             <button className="sa-btn ghost sm" onClick={onOpenChat}><MessageSquare size={13} /> คุยกับ LLM</button>
           </div>
