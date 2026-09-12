@@ -331,36 +331,89 @@ function templateHashtags(product, platform) {
   return tags.slice(0, 4);
 }
 
-function buildTemplateCaption(product, { angle, platform, tone } = {}) {
+// Deterministic pick: stable per-entry variety without randomness, so
+// re-running an entry reproduces the same prompt/caption.
+function hashSeed(str) {
+  let h = 2166136261;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function pickBySeed(pool, seed, salt) {
+  return pool[hashSeed(salt + ":" + seed) % pool.length];
+}
+
+const CAPTION_LEADS = {
+  "เปิดตัวสินค้า": [
+    "{name} ตัวใหม่ของเรา มาแล้วนะครับ 🎉",
+    "เปิดตัวแล้วครับ {name} รุ่นใหม่ล่าสุดของร้าน ใครกำลังมองหาอยู่ต้องดู ✨",
+    "มาแล้วครับ {name} โฉมใหม่ สั่งทำตามแบบแบรนด์คุณได้เลย 🙌",
+  ],
+  "เบื้องหลังการผลิต": [
+    "วันนี้พาไปดูเบื้องหลังการทำงานจริงๆ กันนะครับ ทุกชิ้นเราใส่ใจตั้งแต่เลือกวัสดุจนส่งมอบ 🙌",
+    "กว่าจะเป็นแต่ละชิ้นต้องผ่านหลายขั้นตอน วันนี้เก็บภาพเบื้องหลังมาฝากครับ 🧵",
+    "โรงงานเราวันนี้คึกคักมาก พามาดูว่าทีมช่างใส่ใจรายละเอียดแค่ไหน 👀",
+  ],
+  "เคล็ดลับการใช้งาน": [
+    "ขอแนะนำวิธีดูแลให้ใช้ได้นานๆ แบบเข้าใจง่าย อ่านจบใช้ได้เลยครับ ✨",
+    "ใช้ยังไงให้คุ้มและทนที่สุด รวมทริคดีๆ มาฝากกันครับ 📌",
+    "หลายคนถามมาเยอะว่าดูแลรักษายังไง โพสต์นี้มีคำตอบครับ 💡",
+  ],
+  "เรื่องจากลูกค้า": [
+    "เมื่อสัปดาห์ที่ผ่านมามีลูกค้าเอาไปใช้แล้วส่งรูปมาให้ดู ขอบคุณมากๆ นะครับ 🥰",
+    "รีวิวจากลูกค้าตัวจริงเสียงจริง เอามาฝากกันครับ ขอบคุณที่ไว้ใจร้านเรา 🙏",
+    "ลูกค้าส่งฟีดแบ็กมาว่าใช้ดีมาก ดีใจจนต้องเอามาแชร์เลยครับ ⭐",
+  ],
+  "โปรโมชัน/ข้อเสนอ OEM": [
+    "ทีมรับปรึกษางาน OEM พร้อมช่วยดูแบบให้เหมาะกับแบรนด์ของคุณ ทักมาคุยกันก่อนได้เลยครับ 💬",
+    "โปรดีๆ สำหรับแบรนด์ที่กำลังหาผู้ผลิต สั่งขั้นต่ำไม่เยอะ เริ่มคุยกันก่อนได้ครับ 🎁",
+    "รับผลิต OEM ตามแบบที่ลูกค้าต้องการ ราคาโรงงานโดยตรง สนใจทักมาเลยครับ 📩",
+  ],
+};
+
+const CAPTION_TONES = {
+  "พนักงานขาย": [
+    "สนใจสอบถามรายละเอียดเพิ่มเติม ทักมาได้ทุกวันครับ ยินดีช่วยเลือกให้ครับ 🙏",
+    "อยากได้แบบไหนบอกมาได้เลยครับ ช่วยประเมินราคาและเวลาผลิตให้ฟรี 📋",
+    "พร้อมให้คำปรึกษาก่อนตัดสินใจครับ ไม่ซื้อไม่เป็นไร ทักมาคุยกันก่อนได้ 🤝",
+  ],
+  "แอดมินเพจ": [
+    "ทักมาแชทได้เลยนะ แอดมินตอบไวมากจ้า 💬",
+    "สนใจชิ้นไหนแคปมาจ้า เดี๋ยวแอดมินเช็กสต็อกและราคาให้เลย 📸",
+    "มีคำถามอะไรถามได้ตลอดเลยนะ แอดมินอยู่ตอบทั้งวันจ้า ☀️",
+  ],
+  "default": [
+    "อยากให้ลองดูของจริงแล้วตัดสินใจเองนะครับ ทักมาคุยกันได้เสมอ",
+    "ของดีต้องบอกต่อครับ ลองเปิดใจดูสักชิ้นแล้วจะติดใจ 🤍",
+    "ทำเองทุกขั้นตอน มั่นใจในคุณภาพครับ มีอะไรสงสัยทักมาได้เลย 💪",
+  ],
+};
+
+function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid = [] } = {}) {
   const name = product?.name || "สินค้าใหม่";
   const minOrder = product?.minimumOrder || "";
-  const leadText =
-    angle === "เบื้องหลังการผลิต"
-      ? "วันนี้พาไปดูเบื้องหลังการทำงานจริงๆ กันนะครับ ทุกชิ้นเราใส่ใจตั้งแต่เลือกวัสดุจนส่งมอบ 🙌"
-      : angle === "เคล็ดลับการใช้งาน"
-        ? "ขอแนะนำวิธีดูแลให้ใช้ได้นานๆ แบบเข้าใจง่าย อ่านจบใช้ได้เลยครับ ✨"
-        : angle === "เรื่องจากลูกค้า"
-          ? "เมื่อสัปดาห์ที่ผ่านมามีลูกค้าเอาไปใช้แล้วส่งรูปมาให้ดู ขอบคุณมากๆ นะครับ 🥰"
-          : angle === "โปรโมชัน/ข้อเสนอ OEM"
-            ? "ทีมรับปรึกษางาน OEM พร้อมช่วยดูแบบให้เหมาะกับแบรนด์ของคุณ ทักมาคุยกันก่อนได้เลยครับ 💬"
-            : `${name} ตัวใหม่ของเรา มาแล้วนะครับ 🎉`;
   const orderLine = [minOrder ? `สั่งขั้นต่ำ ${minOrder}` : "", product?.productionTime ? `ผลิต ${product.productionTime}` : ""]
     .filter(Boolean)
     .join(" · ");
-  const toneLine =
-    tone === "พนักงานขาย"
-      ? "สนใจสอบถามรายละเอียดเพิ่มเติม ทักมาได้ทุกวันครับ ยินดีช่วยเลือกให้ครับ 🙏"
-      : tone === "แอดมินเพจ"
-        ? "ทักมาแชทได้เลยนะ แอดมินตอบไวมากจ้า 💬"
-        : "อยากให้ลองดูของจริงแล้วตัดสินใจเองนะครับ ทักมาคุยกันได้เสมอ";
-  const hashtags = templateHashtags(product, platform).join(" ");
-  const body = [`${name}`, "", leadText, orderLine, "", toneLine, "", hashtags].filter((line, i) => !(line === "" && (i === 0 || i === 7))).join("\n");
-  if (platform === "line") {
-    return [`${name} นะครับ 😊`, leadText, orderLine, toneLine, hashtags].filter(Boolean).join("\n");
+  const tags = templateHashtags(product, platform);
+  const denied = new Set((avoid || []).filter(Boolean));
+  let last = "";
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const s = seed + "#" + attempt;
+    const leads = CAPTION_LEADS[angle] || CAPTION_LEADS["เปิดตัวสินค้า"];
+    const leadText = pickBySeed(leads, s, "lead").replace(/{name}/g, name);
+    const tonePool = CAPTION_TONES[tone] || CAPTION_TONES.default;
+    const toneLine = pickBySeed(tonePool, s, "tone");
+    const rot = tags.length ? hashSeed("tags:" + s) % tags.length : 0;
+    const hashtags = [...tags.slice(rot), ...tags.slice(0, rot)].join(" ");
+    const body = [`${name}`, "", leadText, orderLine, "", toneLine, "", hashtags].filter((line, i) => !(line === "" && (i === 0 || i === 7))).join("\n");
+    last = platform === "line"
+      ? [`${name} นะครับ 😊`, leadText, orderLine, toneLine, hashtags].filter(Boolean).join("\n")
+      : body;
+    if (!denied.has(last)) return last;
   }
-  return body;
+  return last;
 }
-
 // Image prompts are machine instructions for Stable Diffusion, which cannot
 // read Thai — so they are authored in English natively (no round-trip
 // translation). Audience-facing captions stay in Thai.
@@ -372,15 +425,49 @@ const IMAGE_ANGLE_EN = {
   "โปรโมชัน/ข้อเสนอ OEM": "promotional sale display, gift-ready packaging",
 };
 
-function buildTemplateImagePrompt(product, { angle } = {}) {
+const IMAGE_BACKDROPS = [
+  "on a warm wooden table",
+  "on a white marble countertop",
+  "on soft beige linen fabric",
+  "on a dark slate pedestal with dramatic contrast",
+  "on a light bamboo tray",
+  "on a clean pastel studio sweep",
+];
+const IMAGE_LIGHTING = [
+  "soft natural window light",
+  "bright airy daylight",
+  "warm golden-hour glow",
+  "soft diffused studio softbox light",
+  "gentle morning sunlight with soft shadows",
+  "clean high-key commercial lighting",
+];
+const IMAGE_CAMERA = [
+  "beautiful angle showing craftsmanship details",
+  "close-up macro shot of fine texture and stitching",
+  "elegant flat-lay top-down composition",
+  "45-degree hero shot with shallow depth of field",
+  "lifestyle in-context shot with softly blurred background",
+  "minimal centered composition with copy space",
+];
+
+function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [] } = {}) {
   const rawItem = product?.category || "product";
   const item = /[\u0E00-\u0E7F]/.test(rawItem) ? "product" : rawItem;
   const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
-  return `Professional product photography of ${item}${sku} on a warm wooden table, soft natural window light, beautiful angle showing craftsmanship details, ${style}, clean plain background, no text, no watermark, highly detailed`;
+  const denied = new Set((avoid || []).filter(Boolean));
+  let last = "";
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const s = seed + "#" + attempt;
+    const backdrop = pickBySeed(IMAGE_BACKDROPS, s, "bg");
+    const light = pickBySeed(IMAGE_LIGHTING, s, "lt");
+    const camera = pickBySeed(IMAGE_CAMERA, s, "cm");
+    last = `Professional product photography of ${item}${sku} ${backdrop}, ${light}, ${camera}, ${style}, clean plain background, no text, no watermark, highly detailed`;
+    if (!denied.has(last)) return last;
+  }
+  return last;
 }
-
 // ── group 4 helpers: per-platform caption versions ──
 function splitHashtags(text) {
   const tags = String(text || "").match(/#[^\s#]+/g) || [];
@@ -933,7 +1020,7 @@ class SocialAgencyRuntime {
 
   // ── per-platform caption versions (group 4) ──
   buildPlatformVersions({ caption, product, angle, tone } = {}) {
-    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone });
+    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone, seed: String(product?.sku || "") + ":" + String(angle || "") });
     const { body, tags } = splitHashtags(base);
     const fallbackTags = templateHashtags(product, "instagram");
     const fill = (have, max) => {
@@ -988,7 +1075,7 @@ class SocialAgencyRuntime {
       angle = entry.angle || angle;
     }
     if (!product) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า กรุณาเพิ่มสินค้าก่อน");
-    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone });
+    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone, seed: entryId, avoid: (client.calendar || []).filter((e) => e.id !== entryId).map((e) => e.caption) });
     return {
       entryId,
       sku: product.sku,
@@ -1849,11 +1936,11 @@ class SocialAgencyRuntime {
           caption = await this._llmCreateCaption({ client, product, angle: entry.angle, platform: entry.platform, brief: entry.brief });
         } catch (err) {
           console.warn("[social-agency] create fallback to template:", err.message);
-          caption = buildTemplateCaption(product, { angle: entry.angle, platform: entry.platform, tone: client.tone });
+          caption = buildTemplateCaption(product, { angle: entry.angle, platform: entry.platform, tone: client.tone, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.caption) });
           source = "template";
         }
       }
-      const imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle });
+      const imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
       return {
         output: caption.replace(/\n+/g, " ").slice(0, 110) + (caption.length > 110 ? "…" : ""),
         detail: `${caption}\n\n— image prompt สำหรับ Image workspace —\n${imagePrompt}\n(แหล่ง: ${source})`,
@@ -3006,5 +3093,6 @@ class SocialAgencyRuntime {
 
 // Test seam: lets the smoke suite assert the template output directly.
 SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
+SocialAgencyRuntime._templateCaption = buildTemplateCaption;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };

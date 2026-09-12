@@ -369,6 +369,29 @@ async function main() {
     assert.ok(/^[\x00-\x7F]*$/.test(fallback), `Thai-only input still yields ASCII: ${fallback}`);
   });
 
+  check("template imagePrompts vary per entry (no repeats)", () => {
+    const prod = { sku: "CAM-009", name: "กระเป๋ากล้อง CAM-009", category: "Camera bags" };
+    const used = [];
+    for (let i = 0; i < 12; i++) {
+      const out = SocialAgencyRuntime._templateImagePrompt(prod, { angle: "เปิดตัวสินค้า", seed: `entry-${i}`, avoid: used });
+      assert.ok(/^[\x00-\x7F]*$/.test(out), `ASCII-only: ${out}`);
+      used.push(out);
+    }
+    assert.strictEqual(new Set(used).size, 12, "12 chained prompts are all distinct");
+    const a = SocialAgencyRuntime._templateImagePrompt(prod, { angle: "เปิดตัวสินค้า", seed: "stable-1" });
+    const b = SocialAgencyRuntime._templateImagePrompt(prod, { angle: "เปิดตัวสินค้า", seed: "stable-1" });
+    assert.strictEqual(a, b, "same seed reproduces the same prompt");
+  });
+  check("template captions vary and never repeat siblings", () => {
+    const prod = { sku: "CAM-009", name: "กระเป๋ากล้อง CAM-009", category: "Camera bags", minimumOrder: "100 ใบ", productionTime: "30 วัน" };
+    const used = [];
+    for (let i = 0; i < 15; i++) {
+      const out = SocialAgencyRuntime._templateCaption(prod, { angle: "เปิดตัวสินค้า", platform: "facebook", tone: "เจ้าของแบรนด์", seed: `entry-${i}`, avoid: used });
+      used.push(out);
+    }
+    assert.strictEqual(new Set(used).size, 15, "15 chained captions are all distinct");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
