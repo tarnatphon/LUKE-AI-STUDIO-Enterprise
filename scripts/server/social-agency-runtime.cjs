@@ -361,9 +361,24 @@ function buildTemplateCaption(product, { angle, platform, tone } = {}) {
   return body;
 }
 
+// Image prompts are machine instructions for Stable Diffusion, which cannot
+// read Thai — so they are authored in English natively (no round-trip
+// translation). Audience-facing captions stay in Thai.
+const IMAGE_ANGLE_EN = {
+  "เปิดตัวสินค้า": "new product launch showcase",
+  "เบื้องหลังการผลิต": "behind-the-scenes artisan workshop",
+  "เคล็ดลับการใช้งาน": "product in everyday use, lifestyle context",
+  "เรื่องจากลูกค้า": "happy customer lifestyle testimonial scene",
+  "โปรโมชัน/ข้อเสนอ OEM": "promotional sale display, gift-ready packaging",
+};
+
 function buildTemplateImagePrompt(product, { angle } = {}) {
-  const name = product?.name || "สินค้า";
-  return `ภาพถ่ายสินค้า ${name} วางบนโต๊ะไม้โทนอบอุ่น แสงธรรมชาติจากหน้าต่าง มุมมองสวยงามเห็นรายละเอียดงาน สไตล์ ${angle || "เปิดตัวสินค้า"} พื้นหลังเรียบๆ ไม่มีตัวหนังสือ`;
+  const rawItem = product?.category || "product";
+  const item = /[\u0E00-\u0E7F]/.test(rawItem) ? "product" : rawItem;
+  const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+  const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
+  const sku = skuRaw ? ` (${skuRaw})` : "";
+  return `Professional product photography of ${item}${sku} on a warm wooden table, soft natural window light, beautiful angle showing craftsmanship details, ${style}, clean plain background, no text, no watermark, highly detailed`;
 }
 
 // ── group 4 helpers: per-platform caption versions ──
@@ -2988,5 +3003,8 @@ class SocialAgencyRuntime {
     return false; // not handled
   }
 }
+
+// Test seam: lets the smoke suite assert the template output directly.
+SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };
