@@ -351,6 +351,24 @@ async function main() {
     assert.strictEqual(earlyOut.mode, "dry");
   });
 
+  check("template imagePrompt is English-only (SD cannot read Thai)", () => {
+    const angles = ["เปิดตัวสินค้า", "เบื้องหลังการผลิต", "เคล็ดลับการใช้งาน", "เรื่องจากลูกค้า", "โปรโมชัน/ข้อเสนอ OEM", "มุมที่ไม่มีในแผนที่"];
+    for (const angle of angles) {
+      const out = SocialAgencyRuntime._templateImagePrompt(
+        { sku: "CAM-009", name: "กระเป๋ากล้อง CAM-009", category: "Camera bags" },
+        { angle }
+      );
+      assert.ok(/^[\x00-\x7F]*$/.test(out), `ASCII-only prompt for angle "${angle}": ${out}`);
+      assert.ok(out.includes("Camera bags"), `uses English category: ${out}`);
+      assert.ok(out.includes("CAM-009"), `keeps SKU reference: ${out}`);
+    }
+    const fallback = SocialAgencyRuntime._templateImagePrompt(
+      { sku: "สยาม-01", name: "กระเป๋าผ้า", category: "กระเป๋าผ้า" },
+      { angle: "มุมประหลาด" }
+    );
+    assert.ok(/^[\x00-\x7F]*$/.test(fallback), `Thai-only input still yields ASCII: ${fallback}`);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
