@@ -23964,6 +23964,7 @@ const server = http.createServer(async (req, res) => {
       ready: backendReady || openvinoReady,
       running: backendProc !== null || openvinoProc !== null,
       activeRuntimes: getActiveRuntimes(),
+      memoryBudget: evaluateModelMemoryBudget({ targetPaths: [], targetType: "status" }),
       port: PORT_BACKEND,
       preferredPort: PREFERRED_BACKEND_PORT,
       error: backendError,

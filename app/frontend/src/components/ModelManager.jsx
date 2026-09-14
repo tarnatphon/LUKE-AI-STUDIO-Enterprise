@@ -355,6 +355,7 @@ function ModelManager({
   const [pendingLoadModel, setPendingLoadModel] = useState(null);
   const [activeRuntimes, setActiveRuntimes] = useState([]);
   const [arenaInstances, setArenaInstances] = useState([]);
+  const [memoryBudget, setMemoryBudget] = useState(null);
   const [vramWarning, setVramWarning] = useState(null);
   const [backendInfo, setBackendInfo] = useState({ backendMode: "", backendBinary: "", backendDevice: "" });
   const [activeLlmModel, setActiveLlmModel] = useState(null);
@@ -709,6 +710,7 @@ function ModelManager({
         if (cancelled) return;
         
         setActiveRuntimes(Array.isArray(sdStatus.activeRuntimes) ? sdStatus.activeRuntimes : []);
+        setMemoryBudget(sdStatus.memoryBudget && typeof sdStatus.memoryBudget === "object" ? sdStatus.memoryBudget : null);
         try {
           const arenaStatus = await getModelArenaStatus();
           if (!cancelled) setArenaInstances(Array.isArray(arenaStatus.instances) ? arenaStatus.instances : []);
@@ -1584,6 +1586,56 @@ function ModelManager({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Memory budget — how much RAM / VRAM the loaded models are using */}
+      {memoryBudget && memoryBudget.enabled !== false && (
+        <div className="library-memory-budget">
+          <div className="library-memory-heading">
+            <strong>Memory budget</strong>
+            <span>
+              โมเดลที่โหลดอยู่ใช้ประมาณ {memoryBudget.residentGb || 0} GB · ว่าง {memoryBudget.freeRamGb || 0} / {memoryBudget.totalRamGb || 0} GB
+            </span>
+          </div>
+
+          <div className="library-memory-bars">
+            <div className="library-memory-row">
+              <span className="library-memory-label">RAM</span>
+              <div className="library-memory-track">
+                <div
+                  className={`library-memory-fill ${memoryBudget.blocking ? "danger" : (memoryBudget.warnings || []).length ? "warning" : ""}`}
+                  style={{ width: `${Math.min(100, Math.round(((memoryBudget.estimateGb || 0) / Math.max(0.1, memoryBudget.totalRamGb || 1)) * 100))}%` }}
+                />
+              </div>
+              <span className="library-memory-value">
+                {memoryBudget.estimateGb || 0} / {memoryBudget.totalRamGb || 0} GB
+              </span>
+            </div>
+
+            {memoryBudget.gpu && (
+              <div className="library-memory-row">
+                <span className="library-memory-label">VRAM</span>
+                <div className="library-memory-track">
+                  <div
+                    className={`library-memory-fill ${memoryBudget.blocking?.code === "GPU_MEMORY_BUDGET_EXCEEDED" ? "danger" : (memoryBudget.warnings || []).some((w) => w.code === "GPU_MEMORY_BUDGET") ? "warning" : ""}`}
+                    style={{ width: `${Math.min(100, Math.round(((memoryBudget.gpu.requiredGb || 0) / Math.max(0.1, memoryBudget.gpu.totalGb || 1)) * 100))}%` }}
+                  />
+                </div>
+                <span className="library-memory-value">
+                  {memoryBudget.gpu.requiredGb || 0} / {memoryBudget.gpu.totalGb || 0} GB
+                </span>
+              </div>
+            )}
+          </div>
+
+          {(memoryBudget.warnings || []).length > 0 && (
+            <div className="library-memory-warnings">
+              {memoryBudget.warnings.map((warning) => (
+                <span key={warning.code || warning.message}>{warning.message}</span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
