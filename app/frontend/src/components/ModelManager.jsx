@@ -1635,12 +1635,23 @@ function ModelManager({
                 VRAM ใช้หน่วยความจำร่วมกับ RAM (Apple Silicon) จึงตรวจสอบจาก RAM ก้อนเดียว
               </div>
             )}
+
+            {(memoryBudget.maxModelGb || 0) > 0 && (
+              <div className="library-memory-note">
+                โหลดโมเดลเพิ่มได้สูงสุดประมาณ {memoryBudget.maxModelGb} GB
+              </div>
+            )}
           </div>
 
           {(memoryBudget.warnings || []).length > 0 && (
             <div className="library-memory-warnings">
               {memoryBudget.warnings.map((warning) => (
-                <span key={warning.code || warning.message}>{warning.message}</span>
+                <span
+                  key={warning.code || warning.message}
+                  className={`library-memory-warning ${warning.severity === "danger" ? "danger" : ""}`}
+                >
+                  {warning.message}
+                </span>
               ))}
             </div>
           )}

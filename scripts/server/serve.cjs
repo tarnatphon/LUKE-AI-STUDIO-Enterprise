@@ -1360,6 +1360,8 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     freeRamGb: 0,
     totalRamGb: 0,
     residentGb: 0,
+    pressureRatio: 0,
+    maxModelGb: 0,
     gpu: null,
     unifiedMemory: false,
   };
@@ -1469,6 +1471,33 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     }
   }
 
+  // Pressure advisory for the AI Library card: warn before the next load is
+  // actually refused, so the user can unload something in time.
+  let pressureRatio = 0;
+  if (targetBytes === 0) {
+    const poolBytes = Math.max(0, totalRamBytes - reserveBytes);
+    pressureRatio = poolBytes > 0 ? Number((residentBytes / poolBytes).toFixed(2)) : 0;
+    const poolGb = Number((poolBytes / 1024 ** 3).toFixed(1));
+    const percent = Math.round(pressureRatio * 100);
+    if (residentBytes > 0 && pressureRatio >= blockRatio) {
+      warnings.push({
+        code: "MODEL_MEMORY_PRESSURE",
+        severity: "danger",
+        message:
+          `Loaded models already use ${residentGb} GB of the ${poolGb} GB usable pool (${percent}%). ` +
+          `Another model will be refused unless you unload one in AI Library.`,
+      });
+    } else if (residentBytes > 0 && pressureRatio >= warnRatio) {
+      warnings.push({
+        code: "MODEL_MEMORY_PRESSURE",
+        severity: "warning",
+        message:
+          `Loaded models use ${residentGb} GB of the ${poolGb} GB usable pool (${percent}%). ` +
+          `Only about ${availableGb} GB is left, so a large model may not fit.`,
+      });
+    }
+  }
+
   return {
     enabled: true,
     ok: !blocking,
@@ -1480,6 +1509,9 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     residentGb,
     freeRamGb,
     totalRamGb,
+    pressureRatio,
+    // Largest model that still fits: available = size * (1 + overhead).
+    maxModelGb: Number((availableBytes / (1 + overheadRatio) / 1024 ** 3).toFixed(2)),
     gpu,
     unifiedMemory,
   };
@@ -5277,6 +5309,13 @@ function chooseAutoContext(modelFilename, isGpu) {
     } catch (_) {}
   }
 
+  // Models that are already resident share the same memory pool, so they have
+  // to be subtracted before the context budget is calculated.
+  const residentGb = residentHeavyModelBytes() / (1024 * 1024 * 1024);
+  // Loading a second model is only useful if the first one still fits:
+  // cap the context so both can live side by side.
+  const sharedContextCap = 8192;
+
   const systemRamGb = os.totalmem() / (1024 * 1024 * 1024);
   let vramGb = 0;
   try {
@@ -5298,17 +5337,18 @@ function chooseAutoContext(modelFilename, isGpu) {
   }
 
   if (isGpu && vramGb > 0) {
-    const gpuBudgetGb = Math.max(0.5, vramGb - modelSizeGb - projectorSizeGb - bufferGb);
+    const gpuBudgetGb = Math.max(0.5, vramGb - modelSizeGb - projectorSizeGb - bufferGb - residentGb);
     const maxFastContext = vramGb < 10 ? 8192 : vramGb < 16 ? 16384 : 20000;
+    const maxContext = residentGb > 0 ? Math.min(maxFastContext, sharedContextCap) : maxFastContext;
     if (isVisionModel) {
-      return Math.min(maxFastContext, gpuBudgetGb >= 2.5 ? 8192 : 4096);
+      return Math.min(maxContext, gpuBudgetGb >= 2.5 ? 8192 : 4096);
     }
     if (gpuBudgetGb < 1.5) return 4096;
-    if (gpuBudgetGb < 3.0) return Math.min(maxFastContext, 8192);
-    return Math.min(maxFastContext, 16384);
+    if (gpuBudgetGb < 3.0) return Math.min(maxContext, 8192);
+    return Math.min(maxContext, 16384);
   }
 
-  const usableGb = Math.max(0.5, availableGb - modelSizeGb - projectorSizeGb - bufferGb);
+  const usableGb = Math.max(0.5, availableGb - modelSizeGb - projectorSizeGb - bufferGb - residentGb);
 
   let kvPer4096Gb = 0.55;
   if (modelSizeGb >= 5.5) {
@@ -5318,7 +5358,7 @@ function chooseAutoContext(modelFilename, isGpu) {
   }
 
   const estimatedMaxCtx = (usableGb / kvPer4096Gb) * 4096;
-  const contextLadder = [20000, 16384, 12288, 8192, 4096, 2048];
+  const contextLadder = (residentGb > 0 ? [sharedContextCap, 4096, 2048] : [20000, 16384, 12288, 8192, 4096, 2048]);
   
   for (const limit of contextLadder) {
     if (limit <= estimatedMaxCtx) {
@@ -5466,7 +5506,12 @@ async function startLlmWithBackend(settings = {}, backend) {
   if (!contextSize || contextSize <= 0) {
     const isGpu = backend.mode.includes("GPU") || backend.mode.includes("CUDA") || backend.mode.includes("Vulkan") || backend.mode.includes("Metal") || backend.mode.startsWith("Auto");
     contextSize = chooseAutoContext(filename, isGpu);
-    console.log(`  [llm] Auto-selected context size: ${contextSize} tokens based on memory limits.`);
+    const residentGb = residentHeavyModelBytes() / (1024 * 1024 * 1024);
+    console.log(
+      residentGb > 0
+        ? `  [llm] Auto-selected context size: ${contextSize} tokens (another model already uses ${residentGb.toFixed(1)} GB, so the context is capped at 8192).`
+        : `  [llm] Auto-selected context size: ${contextSize} tokens based on memory limits.`
+    );
   } else {
     contextSize = Math.max(512, Math.min(20000, contextSize));
   }

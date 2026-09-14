@@ -10436,6 +10436,9 @@ html[data-theme^="dark"] .settings-subsection:hover {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.library-memory-warning.danger {
+  color: var(--md-sys-color-error);
+}
 .library-memory-note {
   font-size: 0.72rem;
   color: var(--md-sys-color-outline);
