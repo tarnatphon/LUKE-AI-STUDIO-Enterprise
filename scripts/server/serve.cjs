@@ -1356,10 +1356,12 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     warnings: [],
     blocking: null,
     estimateGb: 0,
+    availableGb: 0,
     freeRamGb: 0,
     totalRamGb: 0,
     residentGb: 0,
     gpu: null,
+    unifiedMemory: false,
   };
 
   if (budget.enabled === false) return { ...empty, enabled: false };
@@ -1376,32 +1378,42 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     0
   );
   const residentBytes = residentHeavyModelBytes();
-  const requiredBytes = (targetBytes + residentBytes) * (1 + overheadRatio) + reserveGb * 1024 ** 3;
 
   const totalRamBytes = os.totalmem();
-  const freeRamBytes = os.freemem();
+  const reserveBytes = reserveGb * 1024 ** 3;
+  // On macOS most RAM is used by the file cache, so os.freemem() looks almost
+  // empty all the time. "Available" is measured against what the models we know
+  // about already hold, which is what actually matters for a new load.
+  const availableBytes = Math.max(0, totalRamBytes - residentBytes - reserveBytes);
+  const requiredBytes = targetBytes + targetBytes * overheadRatio + reserveBytes;
+
+  const totalRamGb = Number((totalRamBytes / 1024 ** 3).toFixed(2));
+  const freeRamGb = Number((os.freemem() / 1024 ** 3).toFixed(2));
+  const availableGb = Number((availableBytes / 1024 ** 3).toFixed(2));
+  const requiredGb = Number((requiredBytes / 1024 ** 3).toFixed(2));
+  const residentGb = Number((residentBytes / 1024 ** 3).toFixed(2));
+
   const warnings = [];
   let blocking = null;
 
-  const requiredGb = requiredBytes / 1024 ** 3;
-  const totalRamGb = Number((totalRamBytes / 1024 ** 3).toFixed(2));
-  const freeRamGb = Number((freeRamBytes / 1024 ** 3).toFixed(2));
-
-  if (requiredBytes > totalRamBytes * blockRatio) {
+  // A status query has no model to load: report the numbers without judging.
+  if (targetBytes > 0 && requiredBytes > availableBytes * blockRatio) {
     blocking = {
       code: "SYSTEM_MEMORY_BUDGET_EXCEEDED",
       message:
-        `Not enough memory to load this model while ${(residentBytes / 1024 ** 3).toFixed(1)} GB ` +
-        `is already resident. It needs about ${requiredGb.toFixed(1)} GB but this Mac has ` +
-        `${totalRamGb} GB. Unload a model in AI Library and try again.`,
+        `Not enough memory to load this model. It needs about ${requiredGb} GB ` +
+        `(weights + context + ${reserveGb} GB reserve) but only about ${availableGb} GB ` +
+        `is available while ${residentGb} GB is already loaded (${totalRamGb} GB total). ` +
+        `Unload a model in AI Library and try again.`,
     };
-  } else if (requiredBytes > freeRamBytes * warnRatio) {
+  } else if (targetBytes > 0 && availableBytes > 0 && requiredBytes > availableBytes * warnRatio) {
     warnings.push({
       code: "SYSTEM_MEMORY_BUDGET",
       severity: "warning",
       message:
-        `Memory is getting tight: this load needs about ${requiredGb.toFixed(1)} GB and only ` +
-        `${freeRamGb} GB is free. Loading continues, but generation may be slow.`,
+        `Memory is getting tight: this model needs about ${requiredGb} GB and only ` +
+        `about ${availableGb} GB is available while ${residentGb} GB is already loaded. ` +
+        `Loading continues, but generation may be slow.`,
     });
   }
 
@@ -1412,31 +1424,45 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
   } catch (_) {
     gpuInfo = null;
   }
-  if (gpuInfo && Number(gpuInfo.vram_gb) > 0) {
-    const vramGb = Number(gpuInfo.vram_gb);
+  const vramGb = gpuInfo ? Number(gpuInfo.vram_gb) || 0 : 0;
+  // Apple Silicon shares one memory pool with the CPU, so the RAM numbers above
+  // already describe the GPU budget. Reporting both would double count.
+  const unifiedMemory = Boolean(gpuInfo) && vramGb > 0 && vramGb >= totalRamGb * 0.9;
+
+  if (gpuInfo && vramGb > 0) {
     const margin = Number(gpuConfig.safetyMarginGb ?? 0.8);
-    const vramRequiredGb = (targetBytes + residentBytes) / 1024 ** 3 + margin;
+    const marginBytes = margin * 1024 ** 3;
+    const vramAvailableBytes = Math.max(0, vramGb * 1024 ** 3 - residentBytes - marginBytes);
+    const vramRequiredBytes = unifiedMemory
+      ? requiredBytes
+      : targetBytes + targetBytes * overheadRatio + marginBytes;
     gpu = {
       name: gpuInfo.name || "GPU",
       totalGb: Number(vramGb.toFixed(2)),
-      requiredGb: Number(vramRequiredGb.toFixed(2)),
+      requiredGb: Number((vramRequiredBytes / 1024 ** 3).toFixed(2)),
+      availableGb: Number((vramAvailableBytes / 1024 ** 3).toFixed(2)),
+      unified: unifiedMemory,
     };
-    if (vramRequiredGb > vramGb * Number(gpuConfig.blockRatio ?? 1)) {
-      blocking = {
-        code: "GPU_MEMORY_BUDGET_EXCEEDED",
-        message:
-          `Not enough GPU memory: this load needs about ${vramRequiredGb.toFixed(1)} GB of VRAM ` +
-          `but ${gpu.name} has ${vramGb.toFixed(1)} GB. Reduce GPU layers, run on CPU, or unload ` +
-          `another model in AI Library.`,
-      };
-    } else if (vramRequiredGb > vramGb * Number(gpuConfig.warnRatio ?? 0.85)) {
-      warnings.push({
-        code: "GPU_MEMORY_BUDGET",
-        severity: "warning",
-        message:
-          `GPU memory is getting tight: about ${vramRequiredGb.toFixed(1)} GB of ` +
-          `${vramGb.toFixed(1)} GB VRAM will be used. Loading continues, but it may slow down.`,
-      });
+
+    if (!unifiedMemory && targetBytes > 0) {
+      if (vramRequiredBytes > vramAvailableBytes * Number(gpuConfig.blockRatio ?? 1)) {
+        blocking = {
+          code: "GPU_MEMORY_BUDGET_EXCEEDED",
+          message:
+            `Not enough GPU memory: this load needs about ${gpu.requiredGb} GB of VRAM ` +
+            `but only about ${gpu.availableGb} GB is free on ${gpu.name} ` +
+            `(${vramGb.toFixed(1)} GB). Reduce GPU layers, run on CPU, or unload another model.`,
+        };
+      } else if (vramAvailableBytes > 0 && vramRequiredBytes > vramAvailableBytes * Number(gpuConfig.warnRatio ?? 0.85)) {
+        warnings.push({
+          code: "GPU_MEMORY_BUDGET",
+          severity: "warning",
+          message:
+            `GPU memory is getting tight: about ${gpu.requiredGb} GB of the ` +
+            `${gpu.availableGb} GB still free on ${gpu.name} will be used. ` +
+            `Loading continues, but it may slow down.`,
+        });
+      }
     }
   }
 
@@ -1446,11 +1472,13 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     warnings,
     blocking,
     targetType,
-    estimateGb: Number(requiredGb.toFixed(2)),
-    residentGb: Number((residentBytes / 1024 ** 3).toFixed(2)),
+    estimateGb: requiredGb,
+    availableGb,
+    residentGb,
     freeRamGb,
     totalRamGb,
     gpu,
+    unifiedMemory,
   };
 }
 

@@ -1595,7 +1595,8 @@ function ModelManager({
           <div className="library-memory-heading">
             <strong>Memory budget</strong>
             <span>
-              โมเดลที่โหลดอยู่ใช้ประมาณ {memoryBudget.residentGb || 0} GB · ว่าง {memoryBudget.freeRamGb || 0} / {memoryBudget.totalRamGb || 0} GB
+              โมเดลที่โหลดอยู่ {memoryBudget.residentGb || 0} GB · ว่างประมาณ {memoryBudget.availableGb || 0} GB จาก {memoryBudget.totalRamGb || 0} GB
+              {memoryBudget.unifiedMemory ? " (หน่วยความจำรวม Apple Silicon)" : ""}
             </span>
           </div>
 
@@ -1605,11 +1606,11 @@ function ModelManager({
               <div className="library-memory-track">
                 <div
                   className={`library-memory-fill ${memoryBudget.blocking ? "danger" : (memoryBudget.warnings || []).length ? "warning" : ""}`}
-                  style={{ width: `${Math.min(100, Math.round(((memoryBudget.estimateGb || 0) / Math.max(0.1, memoryBudget.totalRamGb || 1)) * 100))}%` }}
+                  style={{ width: `${Math.min(100, Math.round(((memoryBudget.estimateGb || 0) / Math.max(0.1, (memoryBudget.estimateGb || 0) + (memoryBudget.availableGb || 0))) * 100))}%` }}
                 />
               </div>
               <span className="library-memory-value">
-                {memoryBudget.estimateGb || 0} / {memoryBudget.totalRamGb || 0} GB
+                {memoryBudget.estimateGb || 0} / {Math.round(((memoryBudget.estimateGb || 0) + (memoryBudget.availableGb || 0)) * 100) / 100} GB
               </span>
             </div>
 
