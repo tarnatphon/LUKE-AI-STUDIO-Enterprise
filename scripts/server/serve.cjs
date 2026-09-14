@@ -1443,6 +1443,7 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
       totalGb: Number(vramGb.toFixed(2)),
       requiredGb: Number((vramRequiredBytes / 1024 ** 3).toFixed(2)),
       availableGb: Number((vramAvailableBytes / 1024 ** 3).toFixed(2)),
+      residentGb: Number((residentBytes / 1024 ** 3).toFixed(2)),
       unified: unifiedMemory,
     };
 

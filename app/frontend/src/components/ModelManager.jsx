@@ -1606,26 +1606,33 @@ function ModelManager({
               <div className="library-memory-track">
                 <div
                   className={`library-memory-fill ${memoryBudget.blocking ? "danger" : (memoryBudget.warnings || []).length ? "warning" : ""}`}
-                  style={{ width: `${Math.min(100, Math.round(((memoryBudget.estimateGb || 0) / Math.max(0.1, (memoryBudget.estimateGb || 0) + (memoryBudget.availableGb || 0))) * 100))}%` }}
+                  style={{ width: `${Math.min(100, Math.round((((memoryBudget.residentGb || 0) + (memoryBudget.estimateGb || 0)) / Math.max(0.1, memoryBudget.totalRamGb || 1)) * 100))}%` }}
                 />
               </div>
               <span className="library-memory-value">
-                {memoryBudget.estimateGb || 0} / {Math.round(((memoryBudget.estimateGb || 0) + (memoryBudget.availableGb || 0)) * 100) / 100} GB
+                {Math.round(((memoryBudget.residentGb || 0) + (memoryBudget.estimateGb || 0)) * 100) / 100} / {memoryBudget.totalRamGb || 0} GB
+                {(memoryBudget.estimateGb || 0) > 0 ? ` (+${memoryBudget.estimateGb} GB ที่กำลังโหลด)` : ""}
               </span>
             </div>
 
-            {memoryBudget.gpu && (
+            {memoryBudget.gpu && !memoryBudget.unifiedMemory && (
               <div className="library-memory-row">
                 <span className="library-memory-label">VRAM</span>
                 <div className="library-memory-track">
                   <div
                     className={`library-memory-fill ${memoryBudget.blocking?.code === "GPU_MEMORY_BUDGET_EXCEEDED" ? "danger" : (memoryBudget.warnings || []).some((w) => w.code === "GPU_MEMORY_BUDGET") ? "warning" : ""}`}
-                    style={{ width: `${Math.min(100, Math.round(((memoryBudget.gpu.requiredGb || 0) / Math.max(0.1, memoryBudget.gpu.totalGb || 1)) * 100))}%` }}
+                    style={{ width: `${Math.min(100, Math.round((((memoryBudget.gpu.residentGb || 0) + (memoryBudget.gpu.requiredGb || 0)) / Math.max(0.1, memoryBudget.gpu.totalGb || 1)) * 100))}%` }}
                   />
                 </div>
                 <span className="library-memory-value">
-                  {memoryBudget.gpu.requiredGb || 0} / {memoryBudget.gpu.totalGb || 0} GB
+                  {Math.round(((memoryBudget.gpu.residentGb || 0) + (memoryBudget.gpu.requiredGb || 0)) * 100) / 100} / {memoryBudget.gpu.totalGb || 0} GB
                 </span>
+              </div>
+            )}
+
+            {memoryBudget.unifiedMemory && (
+              <div className="library-memory-note">
+                VRAM ใช้หน่วยความจำร่วมกับ RAM (Apple Silicon) จึงตรวจสอบจาก RAM ก้อนเดียว
               </div>
             )}
           </div>
