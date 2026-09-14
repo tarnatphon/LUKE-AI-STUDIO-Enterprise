@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "product": "LUKE AI STUDIO",
+  "feature": "Text Model Arena (multi-model chat evaluation)",
+  "enabled": true,
+  "selection": {
+    "minimumModels": 2,
+    "maximumModels": 3,
+    "defaultModels": 2,
+    "requireUniqueModelIds": true,
+    "allowSameModelTwice": false
+  },
+  "runtime": {
+    "portRange": {
+      "start": 28200,
+      "end": 28240
+    },
+    "contextSize": 4096,
+    "threads": 4,
+    "gpuLayers": -1,
+    "parallelSlots": 1,
+    "cachePrompt": true,
+    "flashAttn": true,
+    "mlock": false,
+    "mmap": true,
+    "startupTimeoutMs": 240000,
+    "generationTimeoutMs": 300000,
+    "readinessPollMs": 500,
+    "idleUnloadMinutes": 45,
+    "idleSweepEnabled": true,
+    "stopGenerationOnAbort": true
+  },
+  "generation": {
+    "stream": true,
+    "temperature": 0.7,
+    "topP": 0.9,
+    "topK": 40,
+    "minP": 0.05,
+    "repeatPenalty": 1.1,
+    "maxTokens": 1024,
+    "continueWhenOneModelFails": true,
+    "stopAllOnUserRequest": true
+  },
+  "evaluation": {
+    "mode": "heuristic+judge",
+    "minimumResponseCharacters": 1,
+    "weights": {
+      "relevance": 0.3,
+      "completeness": 0.25,
+      "clarity": 0.15,
+      "detail": 0.15,
+      "uniqueness": 0.15
+    },
+    "penalties": {
+      "emptyResponse": 1,
+      "refusalOrApology": 0.25,
+      "excessiveRepetition": 0.2,
+      "truncatedResponse": 0.1
+    }
+  },
+  "judge": {
+    "enabled": true,
+    "mode": "top-heuristic-model",
+    "fallbackToHeuristic": true,
+    "weight": 0.4,
+    "heuristicWeight": 0.6,
+    "temperature": 0.2,
+    "topP": 0.85,
+    "maxTokens": 1024,
+    "timeoutMs": 180000,
+    "requireUniqueRanking": true,
+    "preserveUserLanguage": true
+  },
+  "feedback": {
+    "enabled": true,
+    "weight": 0.12,
+    "positiveScore": 1,
+    "negativeScore": 0,
+    "minimumSamples": 1
+  },
+  "memory": {
+    "warnOnly": true,
+    "systemReserveGb": 2,
+    "contextOverheadRatio": 0.25,
+    "vramSafetyMarginGb": 0.8
+  },
+  "history": {
+    "saveEvaluation": true,
+    "markBestResponse": true,
+    "preserveAllResponses": true,
+    "maximumRuns": 30
+  }
+}

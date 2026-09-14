@@ -511,6 +511,115 @@ export async function listLlmModels() {
   return (data.models || []).map(normalizeModel);
 }
 
+// ── Text Model Arena ────────────────────────────────────────────────────────
+// Several chat models answer the same prompt at the same time and the best
+// answer is selected automatically. See scripts/server/text-model-pool.cjs.
+
+export async function getModelArenaPolicy() {
+  const res = await fetch("/api/llm/arena/policy");
+  const data = await readJsonResponse(res, "The local server returned invalid arena settings.");
+  return data.policy || {};
+}
+
+export async function getModelArenaStatus() {
+  const res = await fetch("/api/llm/arena/status");
+  return await readJsonResponse(res, "The local server returned invalid arena status.");
+}
+
+export async function loadModelArenaModels(modelIds, options = {}) {
+  const res = await fetch("/api/llm/arena/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelIds, options }),
+  });
+  return await readJsonResponse(res, "The local server could not load the arena models.");
+}
+
+export async function unloadModelArenaModel(modelId) {
+  const res = await fetch("/api/llm/arena/unload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelId }),
+  });
+  return await readJsonResponse(res, "The local server could not unload the arena model.");
+}
+
+export async function unloadAllModelArenaModels() {
+  const res = await fetch("/api/llm/arena/unload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ all: true }),
+  });
+  return await readJsonResponse(res, "The local server could not unload the arena models.");
+}
+
+export async function stopModelArenaGeneration(conversationId) {
+  const res = await fetch("/api/llm/arena/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId }),
+  });
+  return await readJsonResponse(res, "The local server could not stop the arena round.");
+}
+
+export async function submitModelArenaChoice({ modelId, chosen = false, rating = null }) {
+  const res = await fetch("/api/llm/arena/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelId, chosen, rating }),
+  });
+  return await readJsonResponse(res, "The local server could not save the arena choice.");
+}
+
+/**
+ * Streams one arena round and forwards every server-sent event to onEvent.
+ * Events: arena-start, arena-ready, model-start, model-delta, model-complete,
+ * model-error, model-stopped, judging-start, judging-complete, arena-complete, error.
+ */
+export async function streamModelArena({ modelIds, messages, conversationId, options = {}, signal, onEvent }) {
+  const response = await fetch("/api/llm/arena/generate-stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelIds, messages, conversationId, options }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Arena request failed (HTTP ${response.status}).`;
+    try {
+      message = JSON.parse(text || "{}").error || message;
+    } catch (_) {}
+    throw new Error(message);
+  }
+  if (!response.body) throw new Error("Streaming is not supported by this browser.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    buffer += decoder.decode(result.value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() || "";
+    for (const frame of frames) {
+      const lines = frame.split(/\r?\n/);
+      let eventName = "message";
+      let dataText = "";
+      for (const line of lines) {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        if (line.startsWith("data:")) dataText += line.slice(5).trim();
+      }
+      if (!dataText) continue;
+      try {
+        onEvent?.(eventName, JSON.parse(dataText));
+      } catch (_) {}
+    }
+  }
+}
+
 export async function listLlmConversations() {
   const res = await fetch("/api/llm/conversations");
   const data = await readJsonResponse(res, "The local server returned invalid chat history.");

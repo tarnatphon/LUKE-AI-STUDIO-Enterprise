@@ -1,0 +1,1 @@
+Frontend bundle is stale: Text Model Arena (ModelArenaPanel.jsx, TextChat.jsx, ModelManager.jsx, TopStatusBar.jsx, App.css, api.js) changed after app/dist was built. Run the macOS first-run build (npm install && npm run build in app/frontend) before shipping.

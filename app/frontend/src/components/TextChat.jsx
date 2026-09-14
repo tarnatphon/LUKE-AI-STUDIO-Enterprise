@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy,
 import WorkToolsPanel from "./WorkToolsPanel";
 import WorkTerminalDock from "./WorkTerminalDock";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
+import ModelArenaPanel from "./ModelArenaPanel";
 import {
   getDownloadProgress,
   getSpeechStatus,
@@ -16,6 +17,13 @@ import {
   startSpeech,
   stopLlm,
   transcribeSpeech,
+  getModelArenaPolicy,
+  getModelArenaStatus,
+  loadModelArenaModels,
+  unloadAllModelArenaModels,
+  stopModelArenaGeneration,
+  submitModelArenaChoice,
+  streamModelArena,
 } from "../services/api";
 
 const processMessageContent = (rawText, apiReasoning = "", enableThinking = true) => {
@@ -443,6 +451,19 @@ function TextChat({
   }, [status.ready, status.settings?.model, setIsLlmLoaded]);
 
   const [showModelMenu, setShowModelMenu] = useState(false);
+
+  // LUKE_AI_TEXT_MODEL_ARENA_STATE_V1
+  const [arenaPolicy, setArenaPolicy] = useState(null);
+  const [arenaStatus, setArenaStatus] = useState({ instances: [], feedback: {}, maximumModels: 3, minimumModels: 2 });
+  const [arenaEnabled, setArenaEnabled] = useState(false);
+  const [arenaSelectedIds, setArenaSelectedIds] = useState([]);
+  const [arenaRunning, setArenaRunning] = useState(false);
+  const [arenaResults, setArenaResults] = useState({});
+  const [arenaEvaluation, setArenaEvaluation] = useState(null);
+  const [arenaWarnings, setArenaWarnings] = useState([]);
+  const [arenaLoadingIds, setArenaLoadingIds] = useState([]);
+  const [arenaChosenModelId, setArenaChosenModelId] = useState(null);
+  const arenaAbortRef = useRef(null);
   const modelMenuRef = useRef(null);
 
   useEffect(() => {
@@ -1147,6 +1168,15 @@ function TextChat({
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    // LUKE_AI_TEXT_MODEL_ARENA_STOP_V1
+    if (arenaAbortRef.current) {
+      arenaAbortRef.current.abort();
+      arenaAbortRef.current = null;
+    }
+    if (arenaRunning) {
+      setArenaRunning(false);
+      stopModelArenaGeneration(activeConversationId).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -1248,6 +1278,280 @@ function TextChat({
     setSelectedModel("");
   };
 
+  // ── Text Model Arena ──────────────────────────────────────────────────────
+  // LUKE_AI_TEXT_MODEL_ARENA_LOGIC_V1
+
+  const refreshArenaStatus = useCallback(async () => {
+    try {
+      const nextStatus = await getModelArenaStatus();
+      setArenaStatus({
+        instances: nextStatus.instances || [],
+        feedback: nextStatus.feedback || {},
+        maximumModels: Number(nextStatus.maximumModels || 3),
+        minimumModels: Number(nextStatus.minimumModels || 2),
+        installed: nextStatus.installed || [],
+        capacity: nextStatus.capacity || null,
+      });
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getModelArenaPolicy()
+      .then((policy) => {
+        if (!cancelled) setArenaPolicy(policy || {});
+      })
+      .catch(() => {});
+    refreshArenaStatus();
+    const timer = setInterval(refreshArenaStatus, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [refreshArenaStatus]);
+
+  // Pre-select two models the first time the library is loaded so the arena is
+  // usable immediately instead of requiring manual setup.
+  useEffect(() => {
+    if (arenaSelectedIds.length > 0 || models.length < 2) return;
+    const maximum = Number(arenaPolicy?.selection?.maximumModels || 3);
+    const preferred = models.find((model) => model.filename === selectedModel) || models[0];
+    const others = models.filter((model) => model.filename !== preferred.filename);
+    setArenaSelectedIds([preferred.filename, ...others.slice(0, Math.max(0, Math.min(maximum, 2) - 1)).map((model) => model.filename)]);
+  }, [models, selectedModel, arenaSelectedIds, arenaPolicy]);
+
+  const handleArenaToggleModel = useCallback((filename) => {
+    const maximum = Number(arenaPolicy?.selection?.maximumModels || 3);
+    setArenaSelectedIds((current) => {
+      if (current.includes(filename)) return current.filter((id) => id !== filename);
+      if (current.length >= maximum) return current;
+      return [...current, filename];
+    });
+  }, [arenaPolicy]);
+
+  const handleArenaPreload = async () => {
+    if (arenaSelectedIds.length === 0) return;
+    setArenaLoadingIds([...arenaSelectedIds]);
+    try {
+      const result = await loadModelArenaModels(arenaSelectedIds);
+      setArenaWarnings(result.warnings || []);
+      if ((result.failures || []).length > 0) {
+        await showAlert({
+          title: "Some arena models did not load",
+          message: result.failures.map((failure) => `${failure.modelId}: ${failure.error}`).join("\n"),
+          danger: false,
+        });
+      }
+    } catch (err) {
+      showAlert({ title: "Arena Load Failed", message: err.message || String(err), danger: true });
+    } finally {
+      setArenaLoadingIds([]);
+      await refreshArenaStatus();
+    }
+  };
+
+  const handleArenaUnloadAll = async () => {
+    try {
+      await unloadAllModelArenaModels();
+      setArenaWarnings([]);
+    } catch (err) {
+      showAlert({ title: "Unload Failed", message: err.message || String(err), danger: true });
+    } finally {
+      await refreshArenaStatus();
+    }
+  };
+
+  const handleArenaStop = async () => {
+    if (arenaAbortRef.current) {
+      arenaAbortRef.current.abort();
+      arenaAbortRef.current = null;
+    }
+    setArenaRunning(false);
+    try {
+      await stopModelArenaGeneration(activeConversationId);
+    } catch (_) {}
+  };
+
+  const handleArenaRate = useCallback(async (modelId, rating) => {
+    try {
+      await submitModelArenaChoice({ modelId, rating });
+      await refreshArenaStatus();
+    } catch (_) {}
+  }, [refreshArenaStatus]);
+
+  const handleArenaUseAnswer = useCallback(async (modelId) => {
+    const candidate = (arenaEvaluation?.responses || []).find((response) => response.modelId === modelId);
+    if (!candidate || !candidate.content) return;
+
+    const updated = [...messages];
+    for (let index = updated.length - 1; index >= 0; index -= 1) {
+      if (updated[index].role !== "assistant") continue;
+      updated[index] = {
+        ...updated[index],
+        content: candidate.content,
+        arena: {
+          ...(updated[index].arena || {}),
+          modelId: candidate.modelId,
+          score: candidate.score,
+          rank: candidate.rank,
+          chosen: true,
+        },
+      };
+      break;
+    }
+    setMessages(updated);
+    if (activeConversationId) saveConversationState(activeConversationId, updated, selectedModel);
+
+    setArenaChosenModelId(modelId);
+    try {
+      await submitModelArenaChoice({ modelId, chosen: true });
+      await refreshArenaStatus();
+    } catch (_) {}
+  }, [arenaEvaluation, messages, activeConversationId, saveConversationState, selectedModel, refreshArenaStatus]);
+
+  /**
+   * Runs one arena round: every selected model answers the same prompt in
+   * parallel, the evaluator ranks the answers, and the best answer is written
+   * into the conversation as the assistant reply.
+   */
+  const runArenaRound = async ({ convId, baseMessages, requestMessages, generationOptions }) => {
+    const modelIds = arenaSelectedIds.slice(0, Number(arenaPolicy?.selection?.maximumModels || 3));
+    if (modelIds.length < 2) {
+      showAlert({
+        title: "Select more models",
+        message: "Multi-Model Arena needs at least two text models selected.",
+        danger: false,
+      });
+      setIsBusy(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    arenaAbortRef.current = controller;
+    setArenaRunning(true);
+    setArenaResults({});
+    setArenaEvaluation(null);
+    setArenaChosenModelId(null);
+    setArenaLoadingIds([...modelIds]);
+    let completedEvaluation = null;
+
+    try {
+      await streamModelArena({
+        modelIds,
+        messages: requestMessages,
+        conversationId: convId,
+        options: generationOptions,
+        signal: controller.signal,
+        onEvent: (eventName, payload) => {
+          if (eventName === "arena-ready") {
+            setArenaLoadingIds([]);
+            setArenaWarnings(payload.warnings || []);
+            if ((payload.failures || []).length > 0) {
+              console.warn("[arena] some models failed to load", payload.failures);
+            }
+            return;
+          }
+          if (eventName === "model-start") {
+            setArenaResults((current) => ({
+              ...current,
+              [payload.modelId]: { content: "", status: "generating", error: null },
+            }));
+            return;
+          }
+          if (eventName === "model-delta") {
+            setArenaResults((current) => ({
+              ...current,
+              [payload.modelId]: {
+                content: `${current[payload.modelId]?.content || ""}${payload.content || ""}`,
+                status: "generating",
+                error: null,
+              },
+            }));
+            return;
+          }
+          if (eventName === "model-complete") {
+            setArenaResults((current) => ({
+              ...current,
+              [payload.modelId]: { content: payload.content || "", status: "completed", error: null },
+            }));
+            return;
+          }
+          if (eventName === "model-error" || eventName === "model-stopped") {
+            setArenaResults((current) => ({
+              ...current,
+              [payload.modelId]: {
+                content: current[payload.modelId]?.content || "",
+                status: eventName === "model-stopped" ? "stopped" : "failed",
+                error: payload.error || null,
+              },
+            }));
+            return;
+          }
+          if (eventName === "arena-complete") {
+            completedEvaluation = payload.evaluation || null;
+            if (payload.evaluation) setArenaEvaluation(payload.evaluation);
+            return;
+          }
+          if (eventName === "error") {
+            throw new Error(payload.error || "Arena generation failed.");
+          }
+        },
+      });
+
+      await refreshArenaStatus();
+
+      const evaluation = completedEvaluation;
+      const winner = evaluation?.winner
+        || (evaluation?.responses || []).find((response) => response.status === "completed" && response.content);
+
+      if (!winner || !winner.content) {
+        throw new Error("No model produced an answer for this prompt.");
+      }
+
+      const finalMessages = [
+        ...baseMessages,
+        {
+          role: "assistant",
+          content: winner.content,
+          generationStats: {
+            status: "complete",
+            tokens: winner.usage?.completion_tokens || 0,
+            tokensPerSecond: 0,
+            seconds: (winner.durationMs || 0) / 1000,
+          },
+          arena: {
+            source: "model-arena",
+            modelId: winner.modelId,
+            modelIds,
+            score: winner.score,
+            rank: winner.rank,
+            metrics: winner.metrics || null,
+            basis: winner.basis || "heuristic",
+            judgeUsed: Boolean(evaluation?.judge?.used),
+            judgeModelId: evaluation?.judge?.judgeModelId || null,
+            best: true,
+          },
+        },
+      ];
+
+      setMessages(finalMessages);
+      saveConversationState(convId, finalMessages, selectedModel);
+      setArenaChosenModelId(winner.modelId);
+      try {
+        await submitModelArenaChoice({ modelId: winner.modelId, chosen: true });
+      } catch (_) {}
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        showAlert({ title: "Arena Failed", message: err.message || String(err), danger: true });
+      }
+    } finally {
+      arenaAbortRef.current = null;
+      setArenaRunning(false);
+      setArenaLoadingIds([]);
+      setIsBusy(false);
+    }
+  };
+
   const handleNewChat = () => {
     setActiveConversationId(null);
   };
@@ -1301,7 +1605,11 @@ function TextChat({
     const sourceAttachments = queuedItem?.attachments || attachments;
     const text = String(queuedItem?.text ?? textareaRef.current?.value ?? "").trim();
     const hasAttachments = sourceAttachments.length > 0;
-    if ((!text && !hasAttachments) || !status.ready) return;
+    // LUKE_AI_TEXT_MODEL_ARENA_SEND_GUARD_V1
+    // An arena round loads its own models, so the single-model runtime does
+    // not have to be ready for the message to be accepted.
+    const arenaRoundRequested = arenaEnabled && arenaSelectedIds.length >= 2;
+    if ((!text && !hasAttachments) || (!status.ready && !arenaRoundRequested)) return;
     if (sourceAttachments.some((attachment) => attachment.status === "transcribing")) {
       showAlert({ title: "Transcription in progress", message: "Please wait for the attached audio transcript to finish. You can keep typing while it runs.", danger: false });
       return;
@@ -1542,6 +1850,26 @@ function TextChat({
         completion_tokens: 0,
         total_tokens: promptTokenEstimate,
       });
+
+      // LUKE_AI_TEXT_MODEL_ARENA_SEND_V1
+      // Multi-Model Arena: every selected model answers in parallel and the
+      // best answer becomes the assistant reply.
+      if (arenaRoundRequested && !imageAttachments.length) {
+        await runArenaRound({
+          convId,
+          baseMessages: nextMessages,
+          requestMessages,
+          generationOptions: {
+            temperature: textSettings?.temperature || 0.7,
+            maxTokens: effectiveMaxTokens,
+            topP: textSettings?.topP,
+            topK: textSettings?.topK,
+            minP: textSettings?.minP,
+            repeatPenalty: textSettings?.repeatPenalty,
+          },
+        });
+        return;
+      }
 
       let assistantText = "";
       let rawAssistantText = "";
@@ -2146,6 +2474,30 @@ function TextChat({
           )}
           <div ref={bottomRef} />
         </div>
+
+        {/* ─── Multi-Model Arena ──────────────────────────────── */}
+        {/* LUKE_AI_TEXT_MODEL_ARENA_RENDER_V1 */}
+        <ModelArenaPanel
+          models={models}
+          enabled={arenaEnabled}
+          onToggle={setArenaEnabled}
+          selectedIds={arenaSelectedIds}
+          onToggleModel={handleArenaToggleModel}
+          maximumModels={Number(arenaPolicy?.selection?.maximumModels || 3)}
+          loadedIds={(arenaStatus.instances || []).map((instance) => instance.modelId)}
+          loadingIds={arenaLoadingIds}
+          running={arenaRunning}
+          busy={isBusy && !arenaRunning}
+          results={arenaResults}
+          evaluation={arenaEvaluation}
+          warnings={arenaWarnings}
+          onPreload={handleArenaPreload}
+          onUnloadAll={handleArenaUnloadAll}
+          onStop={handleArenaStop}
+          onUseAnswer={handleArenaUseAnswer}
+          onRate={handleArenaRate}
+          chosenModelId={arenaChosenModelId}
+        />
 
         {/* ─── Composer ───────────────────────────────────────── */}
         <div className="chat-composer" onDragOver={(event) => { if (event.dataTransfer?.types?.includes("Files")) event.preventDefault(); }} onDrop={(event) => { if (!event.dataTransfer?.files?.length) return; event.preventDefault(); addAttachmentFiles(event.dataTransfer.files); }}>

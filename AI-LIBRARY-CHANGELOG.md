@@ -29,3 +29,15 @@ The production frontend bundle was not rebuilt in the Linux validation environme
 - Added hardware compatibility cards for SVD, SVD-XT, Wan I2V, and CogVideoX.
 - Added storage guidance for external SSD and USB model libraries.
 - Keeps technical dependency errors in logs while presenting user-friendly actions.
+
+## Phase 3 — Text Model Arena & concurrent models
+- Chat can now run 2-3 text models at the same time and pick the best answer.
+- Each arena model runs in its own llama.cpp process (scripts/server/text-model-pool.cjs).
+- Answers are scored on relevance, completeness, clarity, detail and uniqueness
+  (scripts/server/text-arena-evaluator.cjs), then cross-reviewed by a judge pass
+  before the winning answer is written into the conversation.
+- Users can keep any other answer, and thumbs up/down feeds future ranking.
+- Concurrency restored: image, chat, speech, TTS and arena models can stay loaded
+  together. Loading one model no longer unloads another; memory pressure is
+  reported as a warning instead of a block.
+- Status bar shows how many models are loaded at the same time.

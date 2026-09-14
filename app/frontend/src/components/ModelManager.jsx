@@ -481,21 +481,15 @@ function ModelManager({
     getRuntimeForType("text")
   );
 
+  /**
+   * Concurrency policy: models may stay loaded together.
+   * LUKE AI STUDIO used to force an unload before loading another runtime
+   * (image ↔ chat). Loading now runs in parallel; the server only logs a memory
+   * advisory when several heavy models share the same memory pool, and each
+   * loaded model keeps its own Unload button in AI Library.
+   */
   const blockLoadIfOtherRuntimeActive = (modelId, targetType) => {
-    if (targetType !== "image" && targetType !== "text") {
-      return false;
-    }
-
-    const runtime = getActiveHeavyRuntime();
-    if (!runtime || (runtime.type === targetType && runtime.model === modelId)) {
-      return false;
-    }
-    setPendingLoadModel({
-      modelId,
-      targetType,
-      activeRuntime: runtime,
-    });
-    return true;
+    return false;
   };
   
   let visibleModelLibrary = [];

@@ -47,7 +47,12 @@ function TopStatusBar({
     return number.toFixed(number >= 10 ? 0 : 1);
   };
 
+  // Several runtimes can be loaded at the same time, so the status bar shows
+  // how many models are resident instead of only the first one.
+  const loadedCount = (activeModel ? 1 : 0) + (typeof isLlmLoaded === "string" && isLlmLoaded ? 1 : 0);
+
   const getStatusText = () => {
+    if (loadedCount > 1) return `${loadedCount} Models Loaded`;
     if (isLlmLoaded) return "Model Loaded (Text)";
     if (activeModel) return "Model Loaded (Image)";
     if (serverRunning) return "Server Active";

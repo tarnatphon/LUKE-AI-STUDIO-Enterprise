@@ -41,6 +41,391 @@ const {
   ImageToVideoJobManager,
 } = require("./image-to-video-job-manager.cjs");
 
+// LUKE_AI_TEXT_MODEL_ARENA_IMPORT_V1
+const {
+  createTextModelPool,
+} = require("./text-model-pool.cjs");
+
+// LUKE_AI_TEXT_ARENA_EVALUATOR_IMPORT_V1
+const {
+  evaluateArenaResponses,
+  buildJudgePrompt,
+  parseJudgeResult,
+} = require("./text-arena-evaluator.cjs");
+
+// LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
+let textModelPoolInstance = null;
+
+// conversationId/runId → active arena run state
+const activeArenaRuns = new Map();
+
+function readModelArenaPolicy() {
+  try {
+    const stored = JSON.parse(
+      fs.readFileSync(
+        path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json"),
+        "utf8"
+      )
+    );
+    return stored && typeof stored === "object" ? stored : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/**
+ * Lazily builds the arena pool. The pool owns its own llama.cpp processes so
+ * several chat models can stay resident while the classic single-model runtime
+ * (`/api/llm/start`) keeps its own instance.
+ */
+function getTextModelPool() {
+  if (textModelPoolInstance) return textModelPoolInstance;
+
+  textModelPoolInstance = createTextModelPool({
+    root: ROOT,
+    modelsDir: LLM_MODELS,
+    policyPath: path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json"),
+    statePath: path.join(ROOT, "app", "runtime-state", "text-chat", "model-arena.json"),
+    resolveBackend: async () => {
+      const override = String(process.env.LUKE_AI_ARENA_LLAMA_SERVER || "").trim();
+      if (override && fs.existsSync(override)) {
+        return { key: "arena-override", path: override, mode: "Arena backend" };
+      }
+      const backend = getLlmBackend();
+      if (!backend) return null;
+      return { key: backend.key, path: backend.path, mode: backend.mode };
+    },
+    getGpuInfo: () => {
+      try {
+        return getGpuInfo();
+      } catch (_) {
+        return null;
+      }
+    },
+    listModels: () =>
+      getLlmModels()
+        .filter((model) => !model.isProjector)
+        .map((model) => ({
+          filename: model.filename,
+          name: model.name || model.filename,
+          sizeBytes: model.sizeBytes,
+          size: model.size,
+        })),
+    logger: {
+      info: (message) => console.log(`  ${message}`),
+      warn: (message) => console.warn(`  ${message}`),
+      error: (message) => console.error(`  ${message}`),
+    },
+  });
+
+  return textModelPoolInstance;
+}
+
+function normalizeArenaModelIds(modelIds, policy = {}) {
+  const maximum = Number(policy.selection?.maximumModels || 3);
+  const listed = Array.isArray(modelIds) ? modelIds : [];
+  const cleaned = [];
+  for (const entry of listed) {
+    const filename = path.basename(String(entry || "")).trim();
+    if (!filename || !filename.toLowerCase().endsWith(".gguf")) continue;
+    if (cleaned.includes(filename)) continue;
+    cleaned.push(filename);
+  }
+  return cleaned.slice(0, Math.max(1, maximum));
+}
+
+function extractArenaPrompt(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const message = list[index];
+    if (!message || message.role !== "user") continue;
+    if (typeof message.content === "string") return message.content;
+    if (Array.isArray(message.content)) {
+      return message.content
+        .map((part) => (part && typeof part.text === "string" ? part.text : ""))
+        .join("\n")
+        .trim();
+    }
+  }
+  return "";
+}
+
+/**
+ * Releases every model the arena pool keeps resident. Used on shutdown so no
+ * llama.cpp process is left behind when the app closes.
+ */
+async function unloadArenaPool() {
+  if (!textModelPoolInstance) return;
+  try {
+    await textModelPoolInstance.unloadAll();
+  } catch (error) {
+    console.warn(`  [arena] failed to unload arena models: ${error.message}`);
+  }
+}
+
+function stopArenaGeneration(conversationId) {
+  const target = String(conversationId || "").trim();
+  let stopped = false;
+  for (const state of activeArenaRuns.values()) {
+    if (target && state.conversationId !== target) continue;
+    state.stopped = true;
+    stopped = true;
+    for (const controller of state.controllers.values()) {
+      try {
+        controller.abort();
+      } catch (_) {}
+    }
+  }
+  return { stopped, reason: stopped ? "Arena generation is stopping." : "No active arena run." };
+}
+
+/**
+ * Cross-review pass: one loaded model ranks all candidate answers.
+ * Falls back to the next usable model when the first judge fails.
+ */
+async function runArenaJudge({ pool, prompt, responses, policy, signal = null }) {
+  const judgePolicy = policy.judge || {};
+  const candidates = responses
+    .filter((response) => response.usable && String(response.content || "").trim())
+    .map((response) => ({ modelId: response.modelId, content: response.content }));
+
+  if (candidates.length < 2) return null;
+
+  const language = /[฀-๿]/.test(prompt) ? "Thai (ภาษาไทย)" : "";
+  const judgePrompt = buildJudgePrompt({ prompt, responses: candidates, language });
+  const ordered =
+    judgePolicy.mode === "first-model"
+      ? candidates
+      : [...responses].sort((left, right) => right.score - left.score);
+
+  const attempts = ordered.slice(0, 2);
+  let lastError = null;
+
+  for (const candidate of attempts) {
+    if (signal?.aborted) return null;
+    try {
+      const result = await pool.generate({
+        modelId: candidate.modelId,
+        messages: [
+          { role: "system", content: judgePrompt.system },
+          { role: "user", content: judgePrompt.user },
+        ],
+        options: {
+          temperature: Number(judgePolicy.temperature ?? 0.2),
+          topP: Number(judgePolicy.topP ?? 0.85),
+          maxTokens: Number(judgePolicy.maxTokens ?? 1024),
+          timeoutMs: Number(judgePolicy.timeoutMs ?? 180000),
+        },
+        signal,
+      });
+      const parsed = parseJudgeResult(
+        result.content,
+        candidates.map((entry) => entry.modelId)
+      );
+      return { ...parsed, judgeModelId: candidate.modelId };
+    } catch (error) {
+      lastError = error;
+      console.warn(`  [arena] judge pass failed on ${candidate.modelId}: ${error.message}`);
+    }
+  }
+
+  return {
+    ok: false,
+    reason: lastError ? `judge-unavailable: ${lastError.message}` : "judge-unavailable",
+    ranking: [],
+    winnerModelId: null,
+    summary: "",
+    judgeModelId: null,
+  };
+}
+
+async function streamArenaGeneration(req, res, body) {
+  const policy = readModelArenaPolicy();
+  if (policy.enabled === false) {
+    json(res, 403, { ok: false, error: "Text Model Arena is disabled by policy." });
+    return;
+  }
+
+  const modelIds = normalizeArenaModelIds(body.modelIds, policy);
+  const minimum = Number(policy.selection?.minimumModels || 2);
+  if (modelIds.length < minimum) {
+    json(res, 400, {
+      ok: false,
+      error: `Select at least ${minimum} models for an arena round.`,
+    });
+    return;
+  }
+
+  const pool = getTextModelPool();
+  const conversationId = String(body.conversationId || "").trim();
+  const runId = createTextChatId("arena");
+  const controllers = new Map();
+  const state = {
+    runId,
+    conversationId,
+    modelIds,
+    status: "running",
+    startedAt: new Date().toISOString(),
+    stopped: false,
+    controllers,
+  };
+  activeArenaRuns.set(runId, state);
+
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  res.flushHeaders?.();
+
+  const emit = (event, data) => writeTextGenerationEvent(res, event, { runId, ...data });
+
+  try {
+    emit("arena-start", {
+      conversationId,
+      modelIds,
+      modelCount: modelIds.length,
+      status: "loading",
+    });
+
+    const loaded = await pool.ensureLoaded(modelIds, body.options || {});
+    emit("arena-ready", {
+      instances: loaded.instances,
+      failures: loaded.failures || [],
+      warnings: loaded.warnings || [],
+    });
+
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const prompt = extractArenaPrompt(messages);
+    const options = body.options || {};
+
+    const tasks = loaded.instances.map(async (instance) => {
+      const controller = new AbortController();
+      controllers.set(instance.modelId, controller);
+      emit("model-start", { modelId: instance.modelId, status: "generating" });
+      const startedAt = Date.now();
+      try {
+        const result = await pool.generate({
+          modelId: instance.modelId,
+          messages,
+          options,
+          signal: controller.signal,
+          onDelta: (delta) => {
+            emit("model-delta", { modelId: instance.modelId, content: delta });
+          },
+        });
+        emit("model-complete", {
+          modelId: instance.modelId,
+          content: result.content,
+          durationMs: result.durationMs,
+        });
+        return {
+          modelId: instance.modelId,
+          content: result.content,
+          reasoningContent: result.reasoningContent,
+          status: "completed",
+          finishReason: result.finishReason,
+          truncated: result.truncated,
+          durationMs: result.durationMs,
+          usage: result.usage,
+          timings: result.timings,
+          error: null,
+        };
+      } catch (error) {
+        const stopped = state.stopped || error?.name === "AbortError";
+        const response = {
+          modelId: instance.modelId,
+          content: "",
+          status: stopped ? "stopped" : "failed",
+          durationMs: Date.now() - startedAt,
+          finishReason: null,
+          truncated: false,
+          error: stopped ? null : error.message || String(error),
+        };
+        emit(stopped ? "model-stopped" : "model-error", {
+          modelId: instance.modelId,
+          error: response.error,
+        });
+        return response;
+      }
+    });
+
+    const rawResponses = await Promise.all(tasks);
+
+    if (state.stopped) {
+      emit("arena-complete", { stopped: true, evaluation: null });
+      return;
+    }
+
+    const feedbackByModel = pool.getFeedback();
+    const baseEvaluation = evaluateArenaResponses({
+      prompt,
+      responses: rawResponses,
+      judgeResult: null,
+      policy,
+      feedbackByModel,
+    });
+
+    let judgeResult = null;
+    const judgeEnabled =
+      policy.judge?.enabled !== false && policy.evaluation?.mode !== "heuristic";
+    const usable = baseEvaluation.responses.filter((response) => response.usable);
+
+    if (judgeEnabled && usable.length >= 2) {
+      emit("judging-start", {
+        modelIds: usable.map((response) => response.modelId),
+      });
+      judgeResult = await runArenaJudge({
+        pool,
+        prompt,
+        responses: baseEvaluation.responses,
+        policy,
+      });
+      emit("judging-complete", {
+        judge: {
+          used: Boolean(judgeResult?.ok),
+          judgeModelId: judgeResult?.judgeModelId || null,
+          winnerModelId: judgeResult?.winnerModelId || null,
+          summary: judgeResult?.summary || "",
+          reason: judgeResult?.reason || "",
+        },
+      });
+    }
+
+    const evaluation = evaluateArenaResponses({
+      prompt,
+      responses: rawResponses,
+      judgeResult,
+      policy,
+      feedbackByModel,
+    });
+
+    pool.recordRun({
+      runId,
+      conversationId,
+      startedAt: state.startedAt,
+      completedAt: new Date().toISOString(),
+      modelIds,
+      winnerModelId: evaluation.winner?.modelId || null,
+      judgeUsed: Boolean(judgeResult && judgeResult.ok),
+      scores: evaluation.responses.map((response) => ({
+        modelId: response.modelId,
+        score: response.score,
+        rank: response.rank,
+        status: response.status,
+      })),
+    });
+
+    emit("arena-complete", { stopped: false, evaluation, prompt });
+  } catch (error) {
+    emit("error", { error: error.message || String(error) });
+  } finally {
+    activeArenaRuns.delete(runId);
+    if (!res.writableEnded) res.end();
+  }
+}
+
 // LUKE_AI_I2V_JOB_MANAGER_SINGLETON_V1
 let imageToVideoJobManagerInstance = null;
 
@@ -776,29 +1161,113 @@ function modelName(value) {
   return path.basename(String(value || ""));
 }
 
-function getActiveHeavyRuntime() {
+/**
+ * Every runtime that currently holds a model in memory.
+ * Image, text, speech, TTS and the arena pool can all be resident at once.
+ */
+function getActiveRuntimes() {
+  const runtimes = [];
+
   if ((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model) {
-    return { type: "image", label: "Image", model: modelName(currentSettings.model) };
+    runtimes.push({
+      type: "image",
+      label: "Image",
+      model: modelName(currentSettings.model),
+      port: PORT_BACKEND,
+      ready: Boolean(backendReady || openvinoReady),
+    });
   }
+
   if ((llmReady || llmProc) && llmSettings.model) {
-    return { type: "text", label: "Text", model: modelName(llmSettings.model) };
+    runtimes.push({
+      type: "text",
+      label: "Text",
+      model: modelName(llmSettings.model),
+      port: PORT_LLM,
+      ready: Boolean(llmReady),
+    });
   }
-  return null;
+
+  if (speechReady && speechSettings.model) {
+    runtimes.push({
+      type: "speech",
+      label: "Speech",
+      model: modelName(speechSettings.model),
+      port: PORT_SPEECH,
+      ready: Boolean(speechReady),
+    });
+  }
+
+  if (ttsReady && ttsSettings.model) {
+    runtimes.push({
+      type: "tts",
+      label: "TTS",
+      model: modelName(ttsSettings.model),
+      port: PORT_TTS,
+      ready: Boolean(ttsReady),
+    });
+  }
+
+  if (textModelPoolInstance) {
+    for (const instance of textModelPoolInstance.instances.values()) {
+      runtimes.push({
+        type: "arena",
+        label: "Arena",
+        model: modelName(instance.modelId),
+        port: instance.port,
+        ready: instance.status === "ready",
+      });
+    }
+  }
+
+  return runtimes;
+}
+
+function getActiveHeavyRuntime() {
+  return (
+    getActiveRuntimes().find((runtime) => runtime.type === "image") ||
+    getActiveRuntimes().find((runtime) => runtime.type === "text") ||
+    null
+  );
+}
+
+/**
+ * Concurrency is allowed: LUKE AI STUDIO keeps every runtime resident and only
+ * warns when several heavy models share the same memory pool. Loading never
+ * stops another runtime and never kills a model the user is using.
+ */
+function describeRuntimeConcurrency(targetType, targetModel) {
+  const targetName = modelName(targetModel);
+  const others = getActiveRuntimes().filter(
+    (runtime) => !(runtime.type === targetType && runtime.model === targetName)
+  );
+
+  if (others.length === 0) {
+    return { concurrent: false, activeRuntimes: [], warnings: [] };
+  }
+
+  const heavyCount = others.filter(
+    (runtime) => runtime.type === "image" || runtime.type === "text" || runtime.type === "arena"
+  ).length;
+
+  const warnings = [];
+  if (heavyCount >= 2) {
+    warnings.push({
+      code: "MULTIPLE_HEAVY_MODELS",
+      severity: "info",
+      message:
+        `${others.map((runtime) => `${runtime.label} · ${runtime.model}`).join(", ")} ` +
+        `and "${targetName}" are loaded at the same time. Generation may be slower ` +
+        `and uses more memory; unload a model from AI Library if it becomes unstable.`,
+    });
+  }
+
+  return { concurrent: true, activeRuntimes: others, warnings };
 }
 
 function assertNoOtherActiveRuntime(targetType, targetModel) {
-  if (targetType !== "image" && targetType !== "text") return;
-
-  const runtime = getActiveHeavyRuntime();
-  const targetName = modelName(targetModel);
-  if (!runtime || (runtime.type === targetType && runtime.model === targetName)) return;
-
-  const err = new Error(`"${runtime.model}" is already loaded as a ${runtime.label} model. Unload it before loading "${targetName}".`);
-  err.statusCode = 409;
-  err.code = "MODEL_ALREADY_ACTIVE";
-  err.activeRuntime = runtime;
-  err.targetRuntime = { type: targetType, model: targetName };
-  throw err;
+  // Kept for compatibility with older call sites — concurrency is now allowed.
+  return describeRuntimeConcurrency(targetType, targetModel);
 }
 
 function jsonErrorStatus(err) {
@@ -4762,9 +5231,12 @@ async function startLlmWithBackend(settings = {}, backend) {
     throw new Error("llama.cpp is not installed. Run the platform setup script to install the text backend.");
   }
 
-  assertNoOtherActiveRuntime("text", filename);
-  await killBackend();
-  await killOpenVinoWorker();
+  // Concurrency: the image backend and the OpenVINO worker stay resident while
+  // a text model loads. describeRuntimeConcurrency() only produces warnings.
+  const textConcurrency = describeRuntimeConcurrency("text", filename);
+  for (const warning of textConcurrency.warnings) {
+    console.warn(`  [llm] ${warning.message}`);
+  }
   await killLlm();
   PORT_LLM = await findAvailableLlmPort();
   llmError = null;
@@ -4988,9 +5460,12 @@ async function startLlmWithBackend(settings = {}, backend) {
 async function startBackend(settings = {}) {
   const requestedSettings = { ...currentSettings, ...settings };
   if (!requestedSettings.model) requestedSettings.model = getDefaultModel();
-  assertNoOtherActiveRuntime("image", requestedSettings.model);
-
-  await killLlm();
+  // Concurrency: any loaded text model stays resident while the image backend
+  // starts. Loading one runtime never unloads another one.
+  const imageConcurrency = describeRuntimeConcurrency("image", requestedSettings.model);
+  for (const warning of imageConcurrency.warnings) {
+    console.warn(`  [backend] ${warning.message}`);
+  }
   if (settings.backendType === "openvino-npu") {
     await startOpenVinoWorker(settings);
     return;
@@ -23278,6 +23753,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       ready: backendReady || openvinoReady,
       running: backendProc !== null || openvinoProc !== null,
+      activeRuntimes: getActiveRuntimes(),
       port: PORT_BACKEND,
       preferredPort: PREFERRED_BACKEND_PORT,
       error: backendError,
@@ -23417,6 +23893,76 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       return json(res, 500, { ok: false, error: err.message || String(err) });
     }
+  }
+
+  // ── Text Model Arena — several chat models answer at once, best answer wins ──
+  // LUKE_AI_TEXT_MODEL_ARENA_API_V1
+
+  if (req.url === "/api/llm/arena/policy" && req.method === "GET") {
+    return json(res, 200, { ok: true, policy: readModelArenaPolicy() });
+  }
+
+  if (req.url === "/api/llm/arena/status" && req.method === "GET") {
+    try {
+      return json(res, 200, getTextModelPool().getStatus());
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/arena/load" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const modelIds = normalizeArenaModelIds(body.modelIds, readModelArenaPolicy());
+      const pool = getTextModelPool();
+      const result = await pool.ensureLoaded(modelIds, body.options || {});
+      return json(res, 200, {
+        ok: true,
+        instances: result.instances,
+        failures: result.failures || [],
+        warnings: result.warnings || [],
+        capacity: pool.estimateCapacity(modelIds),
+      });
+    } catch (err) {
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/llm/arena/unload" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const pool = getTextModelPool();
+    if (body.all === true) {
+      const result = await pool.unloadAll();
+      return json(res, 200, { ok: true, unloaded: result.unloaded });
+    }
+    const result = await pool.unloadModel(body.modelId);
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  if (req.url === "/api/llm/arena/generate-stream" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    await streamArenaGeneration(req, res, body);
+    return;
+  }
+
+  if (req.url === "/api/llm/arena/stop" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    return json(res, 200, { ok: true, ...stopArenaGeneration(body.conversationId) });
+  }
+
+  if (req.url === "/api/llm/arena/select" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const pool = getTextModelPool();
+    const feedback = pool.recordFeedback(path.basename(String(body.modelId || "")), {
+      chosen: body.chosen === true,
+      rating: body.rating === "up" || body.rating === "down" ? body.rating : null,
+    });
+    return json(res, 200, { ok: true, feedback });
   }
 
   if (req.url === "/api/speech/status" && req.method === "GET") {
@@ -26353,8 +26899,8 @@ function stopSocialAgencyScheduler() {
     if (socialAgencyRuntime) socialAgencyRuntime.stopScheduler();
   } catch {}
 }
-process.on("SIGINT",  async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
-process.on("SIGTERM", async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); process.exit(0); });
+process.on("SIGINT",  async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); await unloadArenaPool(); process.exit(0); });
+process.on("SIGTERM", async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); await unloadArenaPool(); process.exit(0); });
 
 
 // LUKE_AI_RUNTIME_SUPERVISOR_SHUTDOWN_V3
