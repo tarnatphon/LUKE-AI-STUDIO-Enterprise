@@ -65,3 +65,7 @@ app/runtime-state/social-agency/connectors.json
 *.tmp-*
 thai-tts.patch*
 SuperTrader/
+
+# Local app-generated backups (runtime state snapshots created on the user machine)
+*.bak-*
+app/runtime-state/**/*.bak-*
