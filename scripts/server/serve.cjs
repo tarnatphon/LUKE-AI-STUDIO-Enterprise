@@ -879,6 +879,17 @@ function getSocialAgencyRuntime() {
       const saved = saveGeneratedOutput(dataUrl, metadata);
       return { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}`, absPath: path.join(OUTPUTS, saved.image) };
     });
+    socialAgencyRuntime.setImageGenDefaultsProvider(() => ({
+      model: currentSettings.model || "",
+      steps: currentSettings.steps,
+      cfgScale: currentSettings.cfgScale,
+      sampler: currentSettings.sampler,
+      width: currentSettings.width,
+      height: currentSettings.height,
+    }));
+    // NOTE: setImageToVideoJobs is wired per-request in the /api/social-agency
+    // delegation below, because prepareImageToVideoJobExecution is declared
+    // inside the request handler and is not visible at module scope.
   }
   return socialAgencyRuntime;
 }
@@ -27053,6 +27064,19 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   if (req.url.startsWith("/api/social-agency")) {
     // All v2.2 agency routes + the legacy v1 endpoints live in social-agency-runtime.cjs
+    // Wire I2V jobs here (request scope): prepareImageToVideoJobExecution is declared
+    // inside this request handler, so module-scope code cannot see it.
+    getSocialAgencyRuntime().setImageToVideoJobs({
+      createJob: (payload) => getImageToVideoJobManager().createJob({ payload }),
+      prepare: (payload, jobId) => prepareImageToVideoJobExecution(payload, jobId),
+      start: (jobId, prepared) => getImageToVideoProcessRunner().startPreparedJob(jobId, {
+        args: prepared.workerArgs,
+        output: { videoUrl: prepared.outputRelative, output: prepared.outputRelative, modelId: prepared.modelId },
+      }),
+      getJob: (jobId) => getImageToVideoJobManager().getJob(jobId),
+      failJob: (jobId, error) => getImageToVideoJobManager().failJob(jobId, error),
+      cancelJob: (jobId) => getImageToVideoJobManager().cancelJob(jobId),
+    });
     const handled = await getSocialAgencyRuntime().handleApiRequest(req, res, { readJsonRequestBody, json });
     if (handled !== false) return;
   }

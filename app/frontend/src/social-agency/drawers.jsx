@@ -48,7 +48,7 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, busy }) {
   const [date, setDate] = useState(entry.date);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
@@ -193,8 +193,43 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
               <ImageIcon size={13} /> {generatingImage === entry.id ? "กำลังสร้าง…" : entry.image?.url ? "สร้างภาพใหม่" : "สร้างภาพ"}
             </button>
             <button className="sa-btn ghost sm" onClick={onCreateImage}><ExternalLink size={13} /> เปิดใน Generator</button>
-            <button className="sa-btn ghost sm" onClick={onCreateVideo}><Film size={13} /> ทำภาพเคลื่อนไหว</button>
+            <button className="sa-btn ghost sm" onClick={onCreateVideo}><ExternalLink size={13} /> เปิดใน Animate</button>
             <button className="sa-btn ghost sm" onClick={onOpenChat}><MessageSquare size={13} /> คุยกับ LLM</button>
+          </div>
+        </section>
+      )}
+
+      {(entry.animatePrompt || entry.image?.url || entry.video?.url || generatingVideo === entry.id || videoGenError) && (
+        <section className="sa-drawer-section">
+          <h4>Animate prompt (ไอเดียวิดีโอ 5 วินาที)</h4>
+          {entry.animateCameraLabel && (
+            <p className="sa-muted">🎥 มุมกล้อง: {entry.animateCameraLabel}</p>
+          )}
+          {entry.animatePrompt && <pre className="sa-caption small">{entry.animatePrompt}</pre>}
+          {entry.video?.url && (
+            <>
+              <video className="sa-entry-video" src={entry.video.url} controls preload="metadata" />
+              <p className="sa-muted">📎 วิดีโอนี้จะแนบไปกับโพสต์จริงด้วย (FB วิดีโอ / IG Reels / LINE วิดีโอ)</p>
+            </>
+          )}
+          {generatingVideo === entry.id && (
+            <>
+              <p className="sa-muted">⏳ กำลังสร้างวิดีโอ… {entry.videoJob?.progress ?? 0}% (SVD บน Mac ใช้เวลาหลายสิบนาที ประมาณ 45–60 นาที เสร็จแล้ววิดีโอจะขึ้นตรงนี้เอง)</p>
+              <div className="sa-progress"><div className="sa-progress-fill" style={{ width: `${entry.videoJob?.progress ?? 0}%` }} /></div>
+            </>
+          )}
+          {videoGenError && (
+            <p className="sa-error-banner" role="alert">{videoGenError}</p>
+          )}
+          <div className="sa-handoff">
+            {entry.animatePrompt && (
+              <button className="sa-btn ghost sm" onClick={() => copy(entry.animatePrompt, "aprompt")}>
+                <Copy size={13} /> {copied === "aprompt" ? "คัดลอกแล้ว" : "คัดลอก animate prompt"}
+              </button>
+            )}
+            <button className="sa-btn ghost sm" disabled={generatingVideo === entry.id || !entry.image?.url} title={entry.image?.url ? "" : "สร้างภาพนิ่งก่อน"} onClick={() => onGenerateVideo?.(entry.id)}>
+              <Film size={13} /> {generatingVideo === entry.id ? "กำลังสร้างวิดีโอ…" : entry.video?.url ? "สร้างวิดีโอใหม่" : "ทำภาพเคลื่อนไหว"}
+            </button>
           </div>
         </section>
       )}

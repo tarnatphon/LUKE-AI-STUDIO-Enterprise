@@ -418,9 +418,28 @@ async function main() {
     const body = rt._imageGenBody("a red bag on a table");
     assert.strictEqual(body.prompt, "a red bag on a table");
     assert.strictEqual(body.response_format, "b64_json");
-    assert.strictEqual(body.size, "768x768");
+    assert.strictEqual(body.size, "512x512");
     assert.strictEqual(body.n, 1);
     assert.ok(Number.isInteger(body.seed));
+  });
+
+  check("image gen body follows model presets (lightning 4 steps)", () => {
+    const fb = rt._imageGenBody("x");
+    assert.strictEqual(fb.steps, 20);
+    assert.strictEqual(fb.cfg_scale, 7.0);
+    assert.strictEqual(fb.size, "512x512");
+    rt.setImageGenDefaultsProvider(() => ({ model: "DreamShaperXL_Lightning.safetensors" }));
+    const li = rt._imageGenBody("x");
+    assert.strictEqual(li.steps, 4);
+    assert.strictEqual(li.cfg_scale, 1.5);
+    assert.strictEqual(li.size, "1024x1024");
+    rt.setImageGenDefaultsProvider(() => ({ model: "DreamShaperXL_Lightning.safetensors", steps: 6, cfgScale: 2, width: 768, height: 768, sampler: "dpmpp_2m" }));
+    const ov = rt._imageGenBody("x");
+    assert.strictEqual(ov.steps, 6);
+    assert.strictEqual(ov.cfg_scale, 2);
+    assert.strictEqual(ov.size, "768x768");
+    assert.strictEqual(ov.sample_method, "dpmpp_2m");
+    rt.setImageGenDefaultsProvider(null);
   });
 
   // ── async checks (awaited in main body; future sync checks go above this marker) ──
@@ -478,6 +497,130 @@ async function main() {
     passed += 1;
     console.log("  ok - entry image generation attaches preview (stubbed backend)");
   })();
+
+  await (async () => {
+    const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const imgFile = path.join(root, `sa-test-vid-${Date.now()}.png`);
+    fs.writeFileSync(imgFile, Buffer.from(TINY_PNG, "base64"));
+    let created = null;
+    const script = ["queued", "running", "running", "completed"];
+    let calls = 0;
+    rt.setImageToVideoJobs({
+      createJob: (payload) => { created = payload; return { id: "job-test-1", state: "queued" }; },
+      prepare: (payload, jobId) => ({ outputPath: path.join(root, `${jobId}.mp4`), outputRelative: `app/outputs/video/${jobId}.mp4`, workerArgs: [], modelId: "svd" }),
+      start: () => {},
+      getJob: () => {
+        const state = script[Math.min(calls++, script.length - 1)];
+        return { id: "job-test-1", state, progress: { percent: state === "running" ? 42 : 100 }, output: state === "completed" ? { videoUrl: "app/outputs/video/job-test-1.mp4" } : null, error: null };
+      },
+      failJob: () => {},
+    });
+    rt.i2vPollMs = 20;
+    try {
+      const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(13), time: "12:30", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+      assert.throws(() => rt.startEntryVideoGen(clientId, e.id), /สร้างภาพนิ่งก่อน/);
+      {
+        const f = rt._findEntry(clientId, e.id);
+        f.entry.image = { path: imgFile, filename: "x.png", url: "/api/output-file?filename=x.png" };
+        rt._write(f.state);
+      }
+      const started = rt.startEntryVideoGen(clientId, e.id);
+      assert.strictEqual(started.status, "running");
+      const t0 = Date.now();
+      let job;
+      for (;;) {
+        const { entry } = rt._findEntry(clientId, e.id);
+        if (entry.videoJob && entry.videoJob.status !== "running") { job = entry.videoJob; break; }
+        if (Date.now() - t0 > 15000) throw new Error("video job did not finish in 15s");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.strictEqual(job.status, "done");
+      assert.strictEqual(job.jobId, "job-test-1");
+      assert.strictEqual(job.progress, 100);
+      assert.strictEqual(created.modelId, "auto");
+      assert.strictEqual(created.seconds, 5);
+      assert.ok(String(created.imageDataUrl).startsWith("data:image/png;base64,"));
+      const { entry: done } = rt._findEntry(clientId, e.id);
+      assert.strictEqual(done.video.url, "/outputs/video/job-test-1.mp4");
+      assert.strictEqual(done.video.jobId, "job-test-1");
+      assert.ok(done.animatePrompt && /smooth camera motion/.test(done.animatePrompt), "video gen ensures animate prompt");
+      const got = rt.getEntryVideo(clientId, e.id);
+      assert.strictEqual(got.job.status, "done");
+      assert.strictEqual(got.video.url, "/outputs/video/job-test-1.mp4");
+      fs.unlinkSync(imgFile);
+    } finally {
+      rt.setImageToVideoJobs(null);
+      delete rt.i2vPollMs;
+    }
+    passed += 1;
+    console.log("  ok - entry video generation attaches preview (stubbed i2v)");
+  })();
+
+
+  check("entries get unique EN animate prompts with camera moves", () => {
+    const s = rt.getState();
+    const cal = s.clients.find((c) => c.id === clientId).calendar;
+    assert.ok(cal.length >= 2, "need 2+ entries, got " + cal.length);
+    for (const e of cal) {
+      assert.ok(e.animatePrompt && !/[\u0E00-\u0E7F]/.test(e.animatePrompt), "EN-only animate prompt for " + e.id);
+      assert.ok(/smooth camera motion/.test(e.animatePrompt), "motion suffix for " + e.id);
+      assert.ok(e.animateCamera && e.animateCameraLabel, "camera id+label for " + e.id);
+    }
+    assert.strictEqual(new Set(cal.map((e) => e.animatePrompt)).size, cal.length, "prompts unique");
+    assert.strictEqual(new Set(cal.map((e) => e.animateCamera)).size, cal.length, "cameras unique");
+  });
+
+  check("publish media selection prefers video, then image", () => {
+    assert.strictEqual(rt._selectPublishMedia({}), "text");
+    assert.strictEqual(rt._selectPublishMedia({ image: { path: "/tmp/x.jpg" } }), "image");
+    assert.strictEqual(rt._selectPublishMedia({ video: { publicUrl: "https://x/y.mp4" } }), "video");
+    assert.strictEqual(rt._selectPublishMedia({ image: { path: "/tmp/x.jpg" }, video: { path: "/tmp/x.mp4" } }), "video");
+  });
+
+  check("video file read + public host url parse", () => {
+    const vf = path.join(root, "clip.mp4");
+    fs.writeFileSync(vf, Buffer.from("fake-mp4-bytes"));
+    const got = rt._entryVideoFile({ video: { path: vf } });
+    assert.ok(got && got.buffer.length > 0, "reads video buffer");
+    assert.strictEqual(got.filename, "clip.mp4");
+    assert.strictEqual(rt._entryVideoFile({}), null);
+    assert.strictEqual(rt._entryVideoFile({ video: { path: path.join(root, "nope.mp4") } }), null);
+    assert.strictEqual(SocialAgencyRuntime._parsePublicFileUrl("https://0x0.st/abc123.mp4\n"), "https://0x0.st/abc123.mp4");
+    assert.throws(() => SocialAgencyRuntime._parsePublicFileUrl("error"), /โฮสต์สาธารณะ/);
+    fs.unlinkSync(vf);
+  });
+
+  check("stale running video job reconciles to error on read", () => {
+    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(4), time: "10:00", platform: "demo", sku, angle: "เปิดตัวสินค้า" } });
+    const f = rt._findEntry(clientId, e.id);
+    f.entry.videoJob = { status: "running", jobId: "job-stale-1", progress: 99, startedAt: new Date().toISOString(), finishedAt: null, error: "" };
+    rt._write(f.state);
+    rt.setImageToVideoJobs({ getJob: () => ({ state: "failed", error: { message: "The application restarted" } }) });
+    try {
+      const got = rt.getEntryVideo(clientId, e.id);
+      assert.strictEqual(got.job.status, "error");
+      assert.ok(/restarted/.test(got.job.error), "carries i2v reason: " + got.job.error);
+      const f2 = rt._findEntry(clientId, e.id);
+      assert.strictEqual(f2.entry.videoJob.status, "error");
+    } finally {
+      rt.setImageToVideoJobs(null);
+    }
+  });
+
+  check("completed i2v job late-attaches video on read", () => {
+    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(5), time: "11:00", platform: "demo", sku, angle: "เคล็ดลับการใช้งาน" } });
+    const f = rt._findEntry(clientId, e.id);
+    f.entry.videoJob = { status: "running", jobId: "job-late-1", progress: 99, startedAt: new Date().toISOString(), finishedAt: null, error: "" };
+    rt._write(f.state);
+    rt.setImageToVideoJobs({ getJob: () => ({ state: "completed", output: { videoUrl: "app/outputs/video/late.mp4" } }) });
+    try {
+      const got = rt.getEntryVideo(clientId, e.id);
+      assert.strictEqual(got.job.status, "done");
+      assert.strictEqual(got.video.url, "/outputs/video/late.mp4");
+    } finally {
+      rt.setImageToVideoJobs(null);
+    }
+  });
 
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
