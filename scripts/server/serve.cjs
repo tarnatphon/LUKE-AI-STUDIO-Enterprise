@@ -1385,7 +1385,9 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
   // empty all the time. "Available" is measured against what the models we know
   // about already hold, which is what actually matters for a new load.
   const availableBytes = Math.max(0, totalRamBytes - residentBytes - reserveBytes);
-  const requiredBytes = targetBytes + targetBytes * overheadRatio + reserveBytes;
+  // The reserve is subtracted from the pool once (below), so it must not be
+  // added to the requirement as well.
+  const requiredBytes = targetBytes + targetBytes * overheadRatio;
 
   const totalRamGb = Number((totalRamBytes / 1024 ** 3).toFixed(2));
   const freeRamGb = Number((os.freemem() / 1024 ** 3).toFixed(2));
@@ -1401,9 +1403,9 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     blocking = {
       code: "SYSTEM_MEMORY_BUDGET_EXCEEDED",
       message:
-        `Not enough memory to load this model. It needs about ${requiredGb} GB ` +
-        `(weights + context + ${reserveGb} GB reserve) but only about ${availableGb} GB ` +
-        `is available while ${residentGb} GB is already loaded (${totalRamGb} GB total). ` +
+        `Not enough memory to load this model. Its weights and context need about ` +
+        `${requiredGb} GB but only about ${availableGb} GB is available while ` +
+        `${residentGb} GB is already loaded (${totalRamGb} GB total). ` +
         `Unload a model in AI Library and try again.`,
     };
   } else if (targetBytes > 0 && availableBytes > 0 && requiredBytes > availableBytes * warnRatio) {
@@ -1435,7 +1437,7 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     const vramAvailableBytes = Math.max(0, vramGb * 1024 ** 3 - residentBytes - marginBytes);
     const vramRequiredBytes = unifiedMemory
       ? requiredBytes
-      : targetBytes + targetBytes * overheadRatio + marginBytes;
+      : targetBytes + targetBytes * overheadRatio;
     gpu = {
       name: gpuInfo.name || "GPU",
       totalGb: Number(vramGb.toFixed(2)),
