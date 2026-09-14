@@ -41,3 +41,7 @@ The production frontend bundle was not rebuilt in the Linux validation environme
   together. Loading one model no longer unloads another; memory pressure is
   reported as a warning instead of a block.
 - Status bar shows how many models are loaded at the same time.
+- Automatic memory budget (app/config/text-chat/model-memory-budget.json):
+  concurrent loads are still allowed, but a model that cannot fit in RAM or
+  VRAM is refused with a clear message instead of crashing the runtime.
+  Warnings appear in the log above warnRatio; loading stops above blockRatio.

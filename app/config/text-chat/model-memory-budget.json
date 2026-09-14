@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "product": "LUKE AI STUDIO",
+  "feature": "Automatic memory budget for concurrent models",
+  "enabled": true,
+  "system": {
+    "reserveGb": 2,
+    "contextOverheadRatio": 0.25,
+    "warnRatio": 0.85,
+    "blockRatio": 1
+  },
+  "gpu": {
+    "safetyMarginGb": 0.8,
+    "warnRatio": 0.85,
+    "blockRatio": 1
+  },
+  "ui": {
+    "showBudgetCard": true,
+    "showWarnings": true
+  },
+  "notes": {
+    "warn": "Above warnRatio LUKE AI STUDIO keeps loading but warns in the log and in AI Library.",
+    "block": "Above blockRatio the load is refused because the model cannot fit in memory."
+  }
+}

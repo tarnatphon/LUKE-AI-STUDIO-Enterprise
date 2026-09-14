@@ -289,6 +289,15 @@ async function streamArenaGeneration(req, res, body) {
       status: "loading",
     });
 
+    const arenaBudget = evaluateModelMemoryBudget({
+      targetPaths: modelIds.map((modelId) => path.join(LLM_MODELS, modelId)),
+      targetType: "arena",
+    });
+    if (arenaBudget.blocking) {
+      emit("error", { error: arenaBudget.blocking.message, code: arenaBudget.blocking.code });
+      return;
+    }
+
     const loaded = await pool.ensureLoaded(modelIds, body.options || {});
     emit("arena-ready", {
       instances: loaded.instances,
@@ -1263,6 +1272,175 @@ function describeRuntimeConcurrency(targetType, targetModel) {
   }
 
   return { concurrent: true, activeRuntimes: others, warnings };
+}
+
+/**
+ * Automatic memory budget.
+ *
+ * Concurrent loading is allowed, but a model that cannot fit is refused
+ * instead of crashing llama.cpp or the image backend. `warnRatio` only warns,
+ * `blockRatio` (1 = the whole memory pool) stops the load with a clear reason.
+ */
+function readModelMemoryBudget() {
+  try {
+    const stored = JSON.parse(
+      fs.readFileSync(
+        path.join(ROOT, "app", "config", "text-chat", "model-memory-budget.json"),
+        "utf8"
+      )
+    );
+    return stored && typeof stored === "object" ? stored : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function directorySizeBytes(dirPath, depth = 0) {
+  if (depth > 4) return 0;
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+      const entryPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) total += directorySizeBytes(entryPath, depth + 1);
+      else if (entry.isFile()) total += fs.statSync(entryPath).size;
+    }
+  } catch (_) {}
+  return total;
+}
+
+function estimateModelBytes(modelPath) {
+  if (!modelPath) return 0;
+  try {
+    const stats = fs.statSync(modelPath);
+    if (stats.isFile()) return stats.size;
+    if (stats.isDirectory()) return directorySizeBytes(modelPath);
+  } catch (_) {}
+  return 0;
+}
+
+function residentHeavyModelBytes() {
+  let bytes = 0;
+  if ((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model) {
+    const imageModel = path.isAbsolute(String(currentSettings.model))
+      ? String(currentSettings.model)
+      : path.join(MODELS, String(currentSettings.model));
+    bytes += estimateModelBytes(imageModel);
+  }
+  if ((llmReady || llmProc) && llmSettings.model) {
+    bytes += estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model))));
+  }
+  if (textModelPoolInstance) {
+    for (const instance of textModelPoolInstance.instances.values()) {
+      bytes += Number(instance.sizeBytes) || 0;
+    }
+  }
+  return bytes;
+}
+
+function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayers = null } = {}) {
+  const budget = readModelMemoryBudget();
+  const empty = {
+    enabled: budget.enabled !== false,
+    ok: true,
+    warnings: [],
+    blocking: null,
+    estimateGb: 0,
+    freeRamGb: 0,
+    totalRamGb: 0,
+    residentGb: 0,
+    gpu: null,
+  };
+
+  if (budget.enabled === false) return { ...empty, enabled: false };
+
+  const system = budget.system || {};
+  const gpuConfig = budget.gpu || {};
+  const reserveGb = Number(system.reserveGb ?? 2);
+  const overheadRatio = Number(system.contextOverheadRatio ?? 0.25);
+  const warnRatio = Number(system.warnRatio ?? 0.85);
+  const blockRatio = Number(system.blockRatio ?? 1);
+
+  const targetBytes = (Array.isArray(targetPaths) ? targetPaths : [targetPaths]).reduce(
+    (sum, entry) => sum + estimateModelBytes(entry),
+    0
+  );
+  const residentBytes = residentHeavyModelBytes();
+  const requiredBytes = (targetBytes + residentBytes) * (1 + overheadRatio) + reserveGb * 1024 ** 3;
+
+  const totalRamBytes = os.totalmem();
+  const freeRamBytes = os.freemem();
+  const warnings = [];
+  let blocking = null;
+
+  const requiredGb = requiredBytes / 1024 ** 3;
+  const totalRamGb = Number((totalRamBytes / 1024 ** 3).toFixed(2));
+  const freeRamGb = Number((freeRamBytes / 1024 ** 3).toFixed(2));
+
+  if (requiredBytes > totalRamBytes * blockRatio) {
+    blocking = {
+      code: "SYSTEM_MEMORY_BUDGET_EXCEEDED",
+      message:
+        `Not enough memory to load this model while ${(residentBytes / 1024 ** 3).toFixed(1)} GB ` +
+        `is already resident. It needs about ${requiredGb.toFixed(1)} GB but this Mac has ` +
+        `${totalRamGb} GB. Unload a model in AI Library and try again.`,
+    };
+  } else if (requiredBytes > freeRamBytes * warnRatio) {
+    warnings.push({
+      code: "SYSTEM_MEMORY_BUDGET",
+      severity: "warning",
+      message:
+        `Memory is getting tight: this load needs about ${requiredGb.toFixed(1)} GB and only ` +
+        `${freeRamGb} GB is free. Loading continues, but generation may be slow.`,
+    });
+  }
+
+  let gpu = null;
+  let gpuInfo = null;
+  try {
+    gpuInfo = gpuLayers === 0 ? null : getGpuInfo();
+  } catch (_) {
+    gpuInfo = null;
+  }
+  if (gpuInfo && Number(gpuInfo.vram_gb) > 0) {
+    const vramGb = Number(gpuInfo.vram_gb);
+    const margin = Number(gpuConfig.safetyMarginGb ?? 0.8);
+    const vramRequiredGb = (targetBytes + residentBytes) / 1024 ** 3 + margin;
+    gpu = {
+      name: gpuInfo.name || "GPU",
+      totalGb: Number(vramGb.toFixed(2)),
+      requiredGb: Number(vramRequiredGb.toFixed(2)),
+    };
+    if (vramRequiredGb > vramGb * Number(gpuConfig.blockRatio ?? 1)) {
+      blocking = {
+        code: "GPU_MEMORY_BUDGET_EXCEEDED",
+        message:
+          `Not enough GPU memory: this load needs about ${vramRequiredGb.toFixed(1)} GB of VRAM ` +
+          `but ${gpu.name} has ${vramGb.toFixed(1)} GB. Reduce GPU layers, run on CPU, or unload ` +
+          `another model in AI Library.`,
+      };
+    } else if (vramRequiredGb > vramGb * Number(gpuConfig.warnRatio ?? 0.85)) {
+      warnings.push({
+        code: "GPU_MEMORY_BUDGET",
+        severity: "warning",
+        message:
+          `GPU memory is getting tight: about ${vramRequiredGb.toFixed(1)} GB of ` +
+          `${vramGb.toFixed(1)} GB VRAM will be used. Loading continues, but it may slow down.`,
+      });
+    }
+  }
+
+  return {
+    enabled: true,
+    ok: !blocking,
+    warnings,
+    blocking,
+    targetType,
+    estimateGb: Number(requiredGb.toFixed(2)),
+    residentGb: Number((residentBytes / 1024 ** 3).toFixed(2)),
+    freeRamGb,
+    totalRamGb,
+    gpu,
+  };
 }
 
 function assertNoOtherActiveRuntime(targetType, targetModel) {
@@ -5261,6 +5439,15 @@ async function startLlmWithBackend(settings = {}, backend) {
   const effectiveUbatchSize = isSyclBackend ? Math.min(256, Number(loadProfile.ubatchSize ?? settings.ubatchSize) || llmSettings.ubatchSize || 512) : Number(loadProfile.ubatchSize ?? settings.ubatchSize) || llmSettings.ubatchSize || 512;
   const effectiveEnableThinking = isSyclBackend && effectiveGpuLayers === 0 ? false : (loadProfile.enableThinking ?? (settings.enableThinking === true));
 
+  // Automatic memory budget: refuse only when the model cannot possibly fit.
+  const textBudget = evaluateModelMemoryBudget({
+    targetPaths: [modelPath],
+    targetType: "text",
+    gpuLayers: effectiveGpuLayers,
+  });
+  for (const warning of textBudget.warnings) console.warn(`  [llm] ${warning.message}`);
+  if (textBudget.blocking) throw new Error(textBudget.blocking.message);
+
   llmSettings = {
     ...llmSettings,
     model: filename,
@@ -5501,6 +5688,18 @@ async function startBackend(settings = {}) {
   const resolvedBackendType = resolveBackendType(currentSettings.useGpu, currentSettings.backendType, currentSettings.model);
   currentSettings.backendType = resolvedBackendType;
   currentSettings.useGpu = resolvedBackendType !== "cpu";
+  // Automatic memory budget: refuse only when the model cannot possibly fit.
+  const imageModelPath = path.isAbsolute(String(currentSettings.model))
+    ? String(currentSettings.model)
+    : path.join(MODELS, String(currentSettings.model));
+  const imageBudget = evaluateModelMemoryBudget({
+    targetPaths: [imageModelPath],
+    targetType: "image",
+    gpuLayers: currentSettings.useGpu ? -1 : 0,
+  });
+  for (const warning of imageBudget.warnings) console.warn(`  [backend] ${warning.message}`);
+  if (imageBudget.blocking) throw new Error(imageBudget.blocking.message);
+
   const backendPath = selectBackendPath(currentSettings.useGpu, currentSettings.backendType, currentSettings.model);
   if (!backendPath) {
     const setupHint = resolvedBackendType === "apple-npu"
@@ -23904,7 +24103,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === "/api/llm/arena/status" && req.method === "GET") {
     try {
-      return json(res, 200, getTextModelPool().getStatus());
+      return json(res, 200, {
+        ...getTextModelPool().getStatus(),
+        memoryBudget: evaluateModelMemoryBudget({ targetPaths: [], targetType: "arena" }),
+      });
     } catch (err) {
       return json(res, 500, { ok: false, error: err.message || String(err) });
     }
@@ -23916,6 +24118,18 @@ const server = http.createServer(async (req, res) => {
     try {
       const modelIds = normalizeArenaModelIds(body.modelIds, readModelArenaPolicy());
       const pool = getTextModelPool();
+      const arenaBudget = evaluateModelMemoryBudget({
+        targetPaths: modelIds.map((modelId) => path.join(LLM_MODELS, modelId)),
+        targetType: "arena",
+      });
+      if (arenaBudget.blocking) {
+        return json(res, 507, {
+          ok: false,
+          error: arenaBudget.blocking.message,
+          code: arenaBudget.blocking.code,
+          memoryBudget: arenaBudget,
+        });
+      }
       const result = await pool.ensureLoaded(modelIds, body.options || {});
       return json(res, 200, {
         ok: true,

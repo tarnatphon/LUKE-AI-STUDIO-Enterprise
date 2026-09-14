@@ -1,94 +1,730 @@
 {
-  "version": 1,
-  "client": {
-    "id": "thai-modern-bags",
-    "name": "Thai Modern Bags Co.,Ltd.",
-    "website": "https://www.thaimodernbags.com"
-  },
-  "products": [
+  "version": 2,
+  "activeClientId": "thai-modern-bags",
+  "clients": [
     {
-      "sku": "CAM-009",
-      "name": "กระเป๋ากล้อง CAM-009",
-      "category": "Camera bags",
-      "minimumOrder": "100–200 ใบ",
-      "productionTime": "30–45 วัน",
-      "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
-      "status": "verified-source",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html"
+      "id": "thai-modern-bags",
+      "name": "Thai Modern Bags Co.,Ltd.",
+      "industry": "ผู้ผลิตถุงแบรนด์",
+      "tone": "เจ้าของแบรนด์",
+      "website": "https://www.thaimodernbags.com",
+      "createdAt": "2026-08-25T05:27:06.436Z",
+      "products": [
+        {
+          "sku": "CAM-009",
+          "name": "กระเป๋ากล้อง CAM-009",
+          "category": "Camera bags",
+          "minimumOrder": "100–200 ใบ",
+          "productionTime": "30–45 วัน",
+          "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
+          "status": "verified-source",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html"
+        },
+        {
+          "sku": "SGB-012",
+          "name": "กระเป๋าเชือกรูด SGB-012",
+          "category": "Drawstring bags",
+          "minimumOrder": "100–200 ใบ",
+          "productionTime": "30–45 วัน",
+          "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
+          "status": "verified-source",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html"
+        }
+      ],
+      "drafts": [
+        {
+          "id": "a04382ce-c290-4343-962f-fc575610735f",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+          "status": "needs-approval",
+          "evidence": "verified-source",
+          "createdAt": "2026-09-07T05:18:13.753Z",
+          "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา"
+        },
+        {
+          "id": "003199a5-9b34-4921-8d8d-6776001d04b1",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+          "status": "approved",
+          "evidence": "verified-source",
+          "createdAt": "2026-09-03T07:19:43.463Z",
+          "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+          "updatedAt": "2026-09-03T07:21:02.377Z"
+        },
+        {
+          "id": "22de68e8-79fb-43b0-922d-c925873f8a36",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
+          "status": "approved",
+          "evidence": "verified-source",
+          "createdAt": "2026-09-03T07:19:36.741Z",
+          "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+          "updatedAt": "2026-09-03T07:20:57.746Z"
+        },
+        {
+          "id": "8c1ec1fc-1e59-4a69-a361-e21d86629d87",
+          "sku": "SGB-012",
+          "productName": "กระเป๋าเชือกรูด SGB-012",
+          "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html",
+          "status": "approved",
+          "evidence": "verified-source",
+          "createdAt": "2026-08-25T05:27:06.441Z",
+          "caption": "กระเป๋าเชือกรูด SGB-012\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
+          "updatedAt": "2026-09-03T07:20:44.371Z"
+        }
+      ],
+      "selectionHistory": [
+        {
+          "sku": "SGB-012",
+          "selectedAt": "2026-08-25T05:27:06.441Z"
+        },
+        {
+          "sku": "CAM-009",
+          "selectedAt": "2026-09-03T07:19:36.741Z"
+        },
+        {
+          "sku": "CAM-009",
+          "selectedAt": "2026-09-03T07:19:43.463Z"
+        },
+        {
+          "sku": "CAM-009",
+          "selectedAt": "2026-09-07T05:18:13.753Z"
+        }
+      ],
+      "calendar": [
+        {
+          "id": "cal-9ac09371-cd99",
+          "date": "2026-09-15",
+          "time": "18:30",
+          "platform": "demo",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "angle": "เปิดตัวสินค้า",
+          "status": "planned",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-edf874a2-9a82",
+          "date": "2026-09-17",
+          "time": "18:30",
+          "platform": "demo",
+          "sku": "SGB-012",
+          "productName": "กระเป๋าเชือกรูด SGB-012",
+          "angle": "เบื้องหลังการผลิต",
+          "status": "planned",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-282d715d-a48c",
+          "date": "2026-09-20",
+          "time": "11:00",
+          "platform": "demo",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "angle": "เคล็ดลับการใช้งาน",
+          "status": "planned",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-f595a395-3147",
+          "date": "2026-09-23",
+          "time": "18:30",
+          "platform": "demo",
+          "sku": "SGB-012",
+          "productName": "กระเป๋าเชือกรูด SGB-012",
+          "angle": "เรื่องจากลูกค้า",
+          "status": "planned",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-666eb230-edf8",
+          "date": "2026-09-26",
+          "time": "11:00",
+          "platform": "demo",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "angle": "โปรโมชัน/ข้อเสนอ OEM",
+          "status": "planned",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-73de15b3-3afb",
+          "date": "2026-09-13",
+          "time": "11:00",
+          "platform": "demo",
+          "sku": "CAM-009",
+          "productName": "กระเป๋ากล้อง CAM-009",
+          "angle": "เปิดตัวสินค้า",
+          "status": "published",
+          "publishedAt": "2026-09-13T04:26:40.167Z",
+          "postId": "demo-8ca11b98",
+          "caption": "กระเป๋ากล้อง CAM-009\n\nเปิดตัวแล้วครับ กระเป๋ากล้อง CAM-009 รุ่นใหม่ล่าสุดของร้าน ใครกำลังมองหาอยู่ต้องดู ✨\nสั่งขั้นต่ำ 100–200 ใบ · ผลิต 30–45 วัน\n\nของดีต้องบอกต่อครับ ลองเปิดใจดูสักชิ้นแล้วจะติดใจ 🤍\n\n#ผลิตกระเป๋า #OEMกระเป๋า #กระเป๋าสั่งทำ #กระเป๋าผ้า",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z"
+        },
+        {
+          "id": "cal-01252772-e37c",
+          "date": "2026-09-16",
+          "time": "18:30",
+          "platform": "demo",
+          "sku": "SGB-012",
+          "productName": "กระเป๋าเชือกรูด SGB-012",
+          "angle": "โปรโมชัน/ข้อเสนอ OEM",
+          "status": "needs_review",
+          "caption": "ในยุคที่ทุกคนมองหาความคุ้มค่า กระเป๋าเชือกรูด SGB-012 คือคำตอบที่สำคัญอย่างยิ่งครับ ราคาเพียง 1,200 บาท พร้อมส่งทันทีทุกชิ้น #กระเป๋า #แบรนด์",
+          "createdAt": "2026-09-14T06:26:40.167Z",
+          "updatedAt": "2026-09-14T06:26:40.167Z",
+          "workflowRunId": "run-22c9951e-46f7"
+        }
+      ],
+      "workflowRuns": [
+        {
+          "id": "run-22c9951e-46f7",
+          "clientId": "thai-modern-bags",
+          "entryId": "cal-01252772-e37c",
+          "label": "กระเป๋าเชือกรูด SGB-012 · demo · 2026-09-16 18:30",
+          "trigger": "schedule",
+          "status": "needs_review",
+          "startedAt": "2026-09-14T04:26:40.168Z",
+          "finishedAt": "2026-09-14T04:27:25.168Z",
+          "durationMs": 45000,
+          "nodes": [
+            {
+              "key": "schedule",
+              "label": "ตั้งเวลา",
+              "status": "done",
+              "durationMs": 5,
+              "output": "กำหนดเผยแพร่ 2026-09-16 18:30 (Asia/Bangkok)",
+              "detail": ""
+            },
+            {
+              "key": "research",
+              "label": "วิจัย",
+              "status": "done",
+              "durationMs": 8200,
+              "output": "โน้ตวิจัยตลาด + เทรนด์ (ตัวอย่างสาธิต)",
+              "detail": "นักวิจัยตลาด: เน้นกลุ่มผู้ผลิตแบรนด์ที่มองหาโรงงานที่ทำได้จริง\nนักวิจัยเทรนด์: รูปงานจริง + คอนเทนต์สั้นตอบคอมเมนต์ไว"
+            },
+            {
+              "key": "brief",
+              "label": "ร่าง Brief",
+              "status": "done",
+              "durationMs": 600,
+              "output": "Brief: เปิดตัวสินค้า + ข้อเสนอ OEM (ตัวอย่างสาธิต)",
+              "detail": "สินค้า: กระเป๋าเชือกรูด SGB-012\nมุม: โปรโมชัน/ข้อเสนอ OEM"
+            },
+            {
+              "key": "create",
+              "label": "เขียนคอนเทนต์",
+              "status": "done",
+              "durationMs": 15400,
+              "output": "ในยุคที่ทุกคนมองหาความคุ้มค่า กระเป๋าเชือกรูด SGB-012 คือคำตอบที่สำคัญอย่างยิ่งค…",
+              "detail": "ในยุคที่ทุกคนมองหาความคุ้มค่า กระเป๋าเชือกรูด SGB-012 คือคำตอบที่สำคัญอย่างยิ่งครับ ราคาเพียง 1,200 บาท พร้อมส่งทันทีทุกชิ้น #กระเป๋า #แบรนด์"
+            },
+            {
+              "key": "check",
+              "label": "AI Check",
+              "status": "done",
+              "durationMs": 9100,
+              "output": "score 48 · verdict review",
+              "detail": "ปัญหา: อ้างราคาที่ไม่มีในหลักฐาน · ใช้คำต้องห้าม (ในยุคที่, สำคัญอย่างยิ่ง) · สัญญาการส่งที่ไม่ได้รับอนุมัติ · แฮชแท็กน้อยเกินไป · ไม่มีอีโมจิ",
+              "check": {
+                "score": 48,
+                "verdict": "review",
+                "issues": [
+                  "อ้างราคาที่ไม่มีในหลักฐานสินค้า",
+                  "ใช้คำต้องห้าม: ในยุคที่ / สำคัญอย่างยิ่ง",
+                  "สัญญา 'พร้อมส่งทันที' ที่ไม่ได้รับอนุมัติ",
+                  "แฮชแท็กน้อยกว่า 3 อัน",
+                  "ไม่มีอีโมจิเลย อ่านแข็งไป"
+                ],
+                "categories": {
+                  "evidence": 20,
+                  "natural": 45,
+                  "tone": 55,
+                  "platform": 60,
+                  "accuracy": 65
+                }
+              }
+            },
+            {
+              "key": "autofix",
+              "label": "แก้อัตโนมัติ",
+              "status": "waiting",
+              "durationMs": 0,
+              "output": "คะแนนต่ำกว่า 60 ไม่เข้าเงื่อนไข auto-fix",
+              "detail": ""
+            },
+            {
+              "key": "gate",
+              "label": "ประตูอนุมัติ",
+              "status": "waiting",
+              "durationMs": 0,
+              "output": "รอการอนุมัติจากคน (score 48 < 80)",
+              "detail": ""
+            },
+            {
+              "key": "publish",
+              "label": "เผยแพร่",
+              "status": "idle",
+              "durationMs": 0,
+              "output": "",
+              "detail": ""
+            },
+            {
+              "key": "result",
+              "label": "ผลลัพธ์",
+              "status": "idle",
+              "durationMs": 0,
+              "output": "",
+              "detail": ""
+            }
+          ],
+          "check": {
+            "score": 48,
+            "verdict": "review",
+            "issues": [
+              "อ้างราคาที่ไม่มีในหลักฐานสินค้า",
+              "ใช้คำต้องห้าม: ในยุคที่ / สำคัญอย่างยิ่ง",
+              "สัญญา 'พร้อมส่งทันที' ที่ไม่ได้รับอนุมัติ",
+              "แฮชแท็กน้อยกว่า 3 อัน",
+              "ไม่มีอีโมจิเลย อ่านแข็งไป"
+            ]
+          },
+          "gate": {
+            "decision": "review",
+            "reason": "score 48 ต่ำกว่าเกณฑ์ 80"
+          },
+          "publish": null
+        }
+      ],
+      "researcherRoles": [
+        {
+          "id": "role-market",
+          "name": "นักวิจัยตลาด",
+          "builtIn": true,
+          "questions": [
+            "กลุ่มเป้าหมายหลักของสินค้านี้คือใคร",
+            "จุดขายที่ควรเน้นย้ำในช่วงนี้คืออะไร",
+            "มุมที่คู่แข่งยังไม่ได้พูดถึงคืออะไร"
+          ]
+        },
+        {
+          "id": "role-trend",
+          "name": "นักวิจัยเทรนด์",
+          "builtIn": true,
+          "questions": [
+            "แฮชแท็กไทยที่เกี่ยวกับสินค้าและกำลังมาแรง",
+            "รูปแบบคอนเทนต์ที่คนอ่านง่ายในตอนนี้",
+            "ช่วงเวลาที่คนออนไลน์พร้อมเห็นโพสต์"
+          ]
+        }
+      ],
+      "connectors": {
+        "demo": {
+          "dryRun": false,
+          "testedAt": null,
+          "testOk": true
+        },
+        "facebook": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null
+        },
+        "instagram": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "counter": null
+        },
+        "line": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "sendImageTextStack": true
+        }
+      },
+      "settings": {
+        "threshold": 80,
+        "postsPerWeek": 5,
+        "timezone": "Asia/Bangkok",
+        "dryRun": true,
+        "notify": false,
+        "weeklySummaryLine": false
+      },
+      "fewShots": []
     },
     {
-      "sku": "SGB-012",
-      "name": "กระเป๋าเชือกรูด SGB-012",
-      "category": "Drawstring bags",
-      "minimumOrder": "100–200 ใบ",
-      "productionTime": "30–45 วัน",
-      "decoration": "ซิลค์สกรีน, โลโก้ยาง, ปัก, ป้ายทอ",
-      "status": "verified-source",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html"
+      "id": "oven-ban-bakery",
+      "name": "บ้านขนมอบ Oven บ้านๆ",
+      "industry": "เบเกอรี่/ขนมเค้กสั่งทำ",
+      "tone": "แอดมินเพจ",
+      "createdAt": "2026-09-14T06:26:40.167Z",
+      "products": [
+        {
+          "sku": "CK-BD01",
+          "name": "เค้กวันเกิดสั่งทำ",
+          "category": "Birthday cakes",
+          "minimumOrder": "1 ชิ้น",
+          "productionTime": "สั่งล่วงหน้า 3 วัน",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/ovenbanba"
+        },
+        {
+          "sku": "CK-GF02",
+          "name": "คุกกี้ของขวัญ",
+          "category": "Gift cookies",
+          "minimumOrder": "6 กล่อง",
+          "productionTime": "สั่งล่วงหน้า 2 วัน",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/ovenbanba"
+        }
+      ],
+      "drafts": [],
+      "calendar": [],
+      "workflowRuns": [],
+      "researcherRoles": [
+        {
+          "id": "role-market",
+          "name": "นักวิจัยตลาด",
+          "builtIn": true,
+          "questions": [
+            "กลุ่มเป้าหมายหลักของสินค้านี้คือใคร",
+            "จุดขายที่ควรเน้นย้ำในช่วงนี้คืออะไร",
+            "มุมที่คู่แข่งยังไม่ได้พูดถึงคืออะไร"
+          ]
+        },
+        {
+          "id": "role-trend",
+          "name": "นักวิจัยเทรนด์",
+          "builtIn": true,
+          "questions": [
+            "แฮชแท็กไทยที่เกี่ยวกับสินค้าและกำลังมาแรง",
+            "รูปแบบคอนเทนต์ที่คนอ่านง่ายในตอนนี้",
+            "ช่วงเวลาที่คนออนไลน์พร้อมเห็นโพสต์"
+          ]
+        }
+      ],
+      "connectors": {
+        "demo": {
+          "dryRun": false,
+          "testedAt": null,
+          "testOk": true
+        },
+        "facebook": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null
+        },
+        "instagram": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "counter": null
+        },
+        "line": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "sendImageTextStack": true
+        }
+      },
+      "settings": {
+        "threshold": 80,
+        "postsPerWeek": 5,
+        "timezone": "Asia/Bangkok",
+        "dryRun": true,
+        "notify": false,
+        "weeklySummaryLine": false
+      },
+      "fewShots": []
+    },
+    {
+      "id": "doi-hom-coffee",
+      "name": "กาแฟดอยหอม",
+      "industry": "ร้านกาแฟ/เมล็ดกาแฟคั่ว",
+      "tone": "เจ้าของแบรนด์",
+      "createdAt": "2026-09-14T06:26:40.167Z",
+      "products": [
+        {
+          "sku": "CF-GR250",
+          "name": "กาแฟคั่วบด 250g",
+          "category": "Ground coffee",
+          "minimumOrder": "1 ถุง",
+          "productionTime": "คั่วสดทุกสัปดาห์",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/doihomcoffee"
+        },
+        {
+          "sku": "CF-BEAN",
+          "name": "เมล็ดอาราบิก้าดอย",
+          "category": "Arabica beans",
+          "minimumOrder": "1 กิโลกรัม",
+          "productionTime": "คั่วสดทุกสัปดาห์",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/doihomcoffee"
+        }
+      ],
+      "drafts": [],
+      "calendar": [],
+      "workflowRuns": [],
+      "researcherRoles": [
+        {
+          "id": "role-market",
+          "name": "นักวิจัยตลาด",
+          "builtIn": true,
+          "questions": [
+            "กลุ่มเป้าหมายหลักของสินค้านี้คือใคร",
+            "จุดขายที่ควรเน้นย้ำในช่วงนี้คืออะไร",
+            "มุมที่คู่แข่งยังไม่ได้พูดถึงคืออะไร"
+          ]
+        },
+        {
+          "id": "role-trend",
+          "name": "นักวิจัยเทรนด์",
+          "builtIn": true,
+          "questions": [
+            "แฮชแท็กไทยที่เกี่ยวกับสินค้าและกำลังมาแรง",
+            "รูปแบบคอนเทนต์ที่คนอ่านง่ายในตอนนี้",
+            "ช่วงเวลาที่คนออนไลน์พร้อมเห็นโพสต์"
+          ]
+        }
+      ],
+      "connectors": {
+        "demo": {
+          "dryRun": false,
+          "testedAt": null,
+          "testOk": true
+        },
+        "facebook": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null
+        },
+        "instagram": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "counter": null
+        },
+        "line": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "sendImageTextStack": true
+        }
+      },
+      "settings": {
+        "threshold": 80,
+        "postsPerWeek": 5,
+        "timezone": "Asia/Bangkok",
+        "dryRun": true,
+        "notify": false,
+        "weeklySummaryLine": false
+      },
+      "fewShots": []
+    },
+    {
+      "id": "plai-fon-yoga",
+      "name": "สตูดิโอโยคะปลายฝน",
+      "industry": "สตูดิโอโยคะ/ฟิตเนส",
+      "tone": "พนักงานขาย",
+      "createdAt": "2026-09-14T06:26:40.167Z",
+      "products": [
+        {
+          "sku": "YG-B01",
+          "name": "คลาสโยคะสำหรับมือใหม่",
+          "category": "Yoga classes",
+          "minimumOrder": "1 คลาส",
+          "productionTime": "เปิดคลาสทุกสัปดาห์",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/plaifonyoga"
+        },
+        {
+          "sku": "YG-A01",
+          "name": "คลาสเย็นบนเตียง",
+          "category": "Aerial yoga classes",
+          "minimumOrder": "1 คลาส",
+          "productionTime": "นัดเวลาล่วงหน้า 1 วัน",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/plaifonyoga"
+        }
+      ],
+      "drafts": [],
+      "calendar": [],
+      "workflowRuns": [],
+      "researcherRoles": [
+        {
+          "id": "role-market",
+          "name": "นักวิจัยตลาด",
+          "builtIn": true,
+          "questions": [
+            "กลุ่มเป้าหมายหลักของสินค้านี้คือใคร",
+            "จุดขายที่ควรเน้นย้ำในช่วงนี้คืออะไร",
+            "มุมที่คู่แข่งยังไม่ได้พูดถึงคืออะไร"
+          ]
+        },
+        {
+          "id": "role-trend",
+          "name": "นักวิจัยเทรนด์",
+          "builtIn": true,
+          "questions": [
+            "แฮชแท็กไทยที่เกี่ยวกับสินค้าและกำลังมาแรง",
+            "รูปแบบคอนเทนต์ที่คนอ่านง่ายในตอนนี้",
+            "ช่วงเวลาที่คนออนไลน์พร้อมเห็นโพสต์"
+          ]
+        }
+      ],
+      "connectors": {
+        "demo": {
+          "dryRun": false,
+          "testedAt": null,
+          "testOk": true
+        },
+        "facebook": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null
+        },
+        "instagram": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "counter": null
+        },
+        "line": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "sendImageTextStack": true
+        }
+      },
+      "settings": {
+        "threshold": 80,
+        "postsPerWeek": 5,
+        "timezone": "Asia/Bangkok",
+        "dryRun": true,
+        "notify": false,
+        "weeklySummaryLine": false
+      },
+      "fewShots": []
+    },
+    {
+      "id": "plant-club",
+      "name": "คนรักต้นไม้ Plant Club",
+      "industry": "ร้านต้นไม้/กระถาง",
+      "tone": "แอดมินเพจ",
+      "createdAt": "2026-09-14T06:26:40.167Z",
+      "products": [
+        {
+          "sku": "PL-MS01",
+          "name": "มอนสเตอร่า",
+          "category": "Indoor plants",
+          "minimumOrder": "1 ต้น",
+          "productionTime": "มีต้นสวยๆ ทุกสัปดาห์",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/plantclubth"
+        },
+        {
+          "sku": "PL-PT02",
+          "name": "กระถางพ่นทราย",
+          "category": "Sand pots",
+          "minimumOrder": "1 ใบ",
+          "productionTime": "สั่งทำได้เลย",
+          "status": "verified-source",
+          "sourceUrl": "https://www.facebook.com/plantclubth"
+        }
+      ],
+      "drafts": [],
+      "calendar": [],
+      "workflowRuns": [],
+      "researcherRoles": [
+        {
+          "id": "role-market",
+          "name": "นักวิจัยตลาด",
+          "builtIn": true,
+          "questions": [
+            "กลุ่มเป้าหมายหลักของสินค้านี้คือใคร",
+            "จุดขายที่ควรเน้นย้ำในช่วงนี้คืออะไร",
+            "มุมที่คู่แข่งยังไม่ได้พูดถึงคืออะไร"
+          ]
+        },
+        {
+          "id": "role-trend",
+          "name": "นักวิจัยเทรนด์",
+          "builtIn": true,
+          "questions": [
+            "แฮชแท็กไทยที่เกี่ยวกับสินค้าและกำลังมาแรง",
+            "รูปแบบคอนเทนต์ที่คนอ่านง่ายในตอนนี้",
+            "ช่วงเวลาที่คนออนไลน์พร้อมเห็นโพสต์"
+          ]
+        }
+      ],
+      "connectors": {
+        "demo": {
+          "dryRun": false,
+          "testedAt": null,
+          "testOk": true
+        },
+        "facebook": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null
+        },
+        "instagram": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "counter": null
+        },
+        "line": {
+          "dryRun": true,
+          "testedAt": null,
+          "testOk": false,
+          "lastPublishAt": null,
+          "sendImageTextStack": true
+        }
+      },
+      "settings": {
+        "threshold": 80,
+        "postsPerWeek": 5,
+        "timezone": "Asia/Bangkok",
+        "dryRun": true,
+        "notify": false,
+        "weeklySummaryLine": false
+      },
+      "fewShots": []
     }
   ],
-  "drafts": [
-    {
-      "id": "a04382ce-c290-4343-962f-fc575610735f",
-      "sku": "CAM-009",
-      "productName": "กระเป๋ากล้อง CAM-009",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
-      "status": "needs-approval",
-      "evidence": "verified-source",
-      "createdAt": "2026-09-07T05:18:13.753Z",
-      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา"
-    },
-    {
-      "id": "003199a5-9b34-4921-8d8d-6776001d04b1",
-      "sku": "CAM-009",
-      "productName": "กระเป๋ากล้อง CAM-009",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
-      "status": "approved",
-      "evidence": "verified-source",
-      "createdAt": "2026-09-03T07:19:43.463Z",
-      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
-      "updatedAt": "2026-09-03T07:21:02.377Z"
-    },
-    {
-      "id": "22de68e8-79fb-43b0-922d-c925873f8a36",
-      "sku": "CAM-009",
-      "productName": "กระเป๋ากล้อง CAM-009",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋ากล้อง/ผลิตภัณฑ์/กระเป๋ากล้อง-cam-009.html",
-      "status": "approved",
-      "evidence": "verified-source",
-      "createdAt": "2026-09-03T07:19:36.741Z",
-      "caption": "กระเป๋ากล้อง CAM-009\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
-      "updatedAt": "2026-09-03T07:20:57.746Z"
-    },
-    {
-      "id": "8c1ec1fc-1e59-4a69-a361-e21d86629d87",
-      "sku": "SGB-012",
-      "productName": "กระเป๋าเชือกรูด SGB-012",
-      "sourceUrl": "https://www.thaimodernbags.com/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าเชือกรูด/ผลิตภัณฑ์/กระเป๋าเชือกรูด-sgb-012.html",
-      "status": "approved",
-      "evidence": "verified-source",
-      "createdAt": "2026-08-25T05:27:06.441Z",
-      "caption": "กระเป๋าเชือกรูด SGB-012\n\nออกแบบให้เหมาะกับแบรนด์ การใช้งาน และงบประมาณของคุณ พร้อมเลือกการตกแต่งโลโก้ได้\n\nขั้นต่ำ 100–200 ใบ · ระยะเวลาผลิต 30–45 วัน\n\nทักเพื่อขอคำแนะนำและใบเสนอราคา",
-      "updatedAt": "2026-09-03T07:20:44.371Z"
-    }
-  ],
-  "selectionHistory": [
-    {
-      "sku": "SGB-012",
-      "selectedAt": "2026-08-25T05:27:06.441Z"
-    },
-    {
-      "sku": "CAM-009",
-      "selectedAt": "2026-09-03T07:19:36.741Z"
-    },
-    {
-      "sku": "CAM-009",
-      "selectedAt": "2026-09-03T07:19:43.463Z"
-    },
-    {
-      "sku": "CAM-009",
-      "selectedAt": "2026-09-07T05:18:13.753Z"
-    }
-  ],
-  "createdAt": "2026-08-25T05:27:06.436Z"
+  "runLog": [],
+  "createdAt": "2026-08-25T05:27:06.436Z",
+  "migratedAt": "2026-09-14T06:26:40.167Z",
+  "migratedFromVersion": 1,
+  "weeklySummary": {
+    "sentFor": "2026-09-14",
+    "lastAt": "2026-09-14T06:26:40.170Z",
+    "results": []
+  }
 }
