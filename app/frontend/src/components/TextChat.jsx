@@ -455,8 +455,21 @@ function TextChat({
   // LUKE_AI_TEXT_MODEL_ARENA_STATE_V1
   const [arenaPolicy, setArenaPolicy] = useState(null);
   const [arenaStatus, setArenaStatus] = useState({ instances: [], feedback: {}, maximumModels: 3, minimumModels: 2 });
-  const [arenaEnabled, setArenaEnabled] = useState(false);
-  const [arenaSelectedIds, setArenaSelectedIds] = useState([]);
+  const [arenaEnabled, setArenaEnabled] = useState(() => {
+    try {
+      return localStorage.getItem("luke-arena-enabled") === "true";
+    } catch (_) {
+      return false;
+    }
+  });
+  const [arenaSelectedIds, setArenaSelectedIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("luke-arena-model-ids") || "[]");
+      return Array.isArray(saved) ? saved.filter((id) => typeof id === "string") : [];
+    } catch (_) {
+      return [];
+    }
+  });
   const [arenaRunning, setArenaRunning] = useState(false);
   const [arenaResults, setArenaResults] = useState({});
   const [arenaEvaluation, setArenaEvaluation] = useState(null);
@@ -1309,6 +1322,14 @@ function TextChat({
       clearInterval(timer);
     };
   }, [refreshArenaStatus]);
+
+  // Remember the arena setup between sessions.
+  useEffect(() => {
+    try {
+      localStorage.setItem("luke-arena-enabled", arenaEnabled ? "true" : "false");
+      localStorage.setItem("luke-arena-model-ids", JSON.stringify(arenaSelectedIds));
+    } catch (_) {}
+  }, [arenaEnabled, arenaSelectedIds]);
 
   // Pre-select two models the first time the library is loaded so the arena is
   // usable immediately instead of requiring manual setup.

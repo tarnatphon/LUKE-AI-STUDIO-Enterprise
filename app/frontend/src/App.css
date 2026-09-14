@@ -10448,3 +10448,25 @@ html[data-theme^="dark"] .settings-subsection:hover {
   font-size: 0.74rem;
   line-height: 1.4;
 }
+
+/* LUKE_AI_TEXT_MODEL_ARENA_DETAILS_V1 */
+.chat-arena-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: var(--md-sys-color-outline);
+}
+.chat-arena-meta span {
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+.chat-arena-judge-reason {
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-high);
+}

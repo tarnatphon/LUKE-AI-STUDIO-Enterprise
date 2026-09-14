@@ -217,6 +217,24 @@ function ModelArenaPanel({
                       </div>
                     )}
 
+                    <div className="chat-arena-meta">
+                      {typeof card.durationMs === "number" && (
+                        <span>{card.durationMs >= 1000 ? `${(card.durationMs / 1000).toFixed(1)}s` : `${card.durationMs}ms`}</span>
+                      )}
+                      {card.usage?.completion_tokens ? (
+                        <span>
+                          {card.durationMs > 0
+                            ? `${(card.usage.completion_tokens / (card.durationMs / 1000)).toFixed(1)} tok/s`
+                            : `${card.usage.completion_tokens} tokens`}
+                        </span>
+                      ) : null}
+                      {card.basis ? <span>{card.basis}</span> : null}
+                    </div>
+
+                    {card.judgeReason ? (
+                      <div className="chat-arena-judge-reason">กรรมการ: {card.judgeReason}</div>
+                    ) : null}
+
                     {card.metrics && (
                       <div className="chat-arena-metrics">
                         <span title="ความเกี่ยวข้องกับคำถาม">เกี่ยวข้อง {formatScore(card.metrics.relevance)}</span>
