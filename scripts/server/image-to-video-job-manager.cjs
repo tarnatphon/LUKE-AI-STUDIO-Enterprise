@@ -511,40 +511,64 @@ class ImageToVideoJobManager {
         incomingPercent
       );
 
+    // Keep (percent, step, total, message) atomic: step/total/message only move
+    // with the observation that advances the percent. Independent max() merging
+    // produced impossible records like step 520 / total 25.
+    const stepNumber =
+      Number(step);
+
+    const totalNumber =
+      Number(total);
+
+    const hasTriple =
+      Number.isFinite(
+        stepNumber
+      ) &&
+      Number.isFinite(
+        totalNumber
+      );
+
+    const firstTriple =
+      job.progress
+        ?.step ==
+        null &&
+      job.progress
+        ?.total ==
+        null;
+
+    const takeTriple =
+      hasTriple &&
+      (
+        firstTriple ||
+        incomingPercent >
+          previousPercent
+      );
+
     job.progress = {
       percent:
         monotonicPercent,
 
       step:
-        Number.isFinite(
-          Number(step)
-        )
-          ? Math.max(
-              Number(
-                job.progress
-                  ?.step ||
-                0
-              ),
-              Number(step)
-            )
+        takeTriple
+          ? stepNumber
           : job.progress
               ?.step ??
             null,
 
       total:
-        Number.isFinite(
-          Number(total)
-        )
-          ? Number(total)
+        takeTriple
+          ? totalNumber
           : job.progress
               ?.total ??
             null,
 
       message:
-        message ||
-        job.progress
-          ?.message ||
-        "Generating",
+        takeTriple &&
+        message
+          ? message
+          : job.progress
+              ?.message ||
+            "Generating",
     };
 
     job.updatedAt =

@@ -1,9 +1,9 @@
 {
   "capability": "image-to-video",
   "installed": true,
-  "python": "/Users/ekky/Desktop/Luke ai/app/runtimes/image-to-video/venv/bin/python",
-  "pythonVersion": "3.14.6",
-  "torchVersion": "2.13.0",
+  "python": "/Volumes/AI/app/runtimes/image-to-video/venv/bin/python",
+  "pythonVersion": "3.14.7",
+  "torchVersion": "2.14.0",
   "packages": [
     "torch",
     "torchvision",

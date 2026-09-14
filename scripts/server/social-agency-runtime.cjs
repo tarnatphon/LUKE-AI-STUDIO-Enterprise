@@ -65,6 +65,8 @@ const FB_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const IG_24H_LIMIT = 50;
 const LINE_HOST = "api.line.me";
 const IMGBB_HOST = "api.imgbb.com";
+const VIDEO_PUBLIC_HOST = "0x0.st";
+const VIDEO_UPLOAD_TIMEOUT_MS = 120 * 1000;
 const HTTP_TIMEOUT_MS = 30 * 1000;
 
 // ── Time helpers (Asia/Bangkok) ─────────────────────────────────────────────
@@ -468,6 +470,81 @@ function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [] } = {}
   }
   return last;
 }
+
+const ANIMATE_CAMERA_MOVES = [
+  { id: "slow-dolly-in", label: "Slow Dolly In", move: "slow dolly-in toward the subject, camera gliding forward and expanding background perspective" },
+  { id: "slow-dolly-out", label: "Slow Dolly Out", move: "slow dolly-out pulling back from the subject, gradually revealing the surroundings" },
+  { id: "fast-dolly-in", label: "Fast Dolly In (Rush)", move: "fast dolly-in rush surging toward the subject, compressing space with urgency" },
+  { id: "dolly-zoom", label: "Vertigo Dolly Zoom", move: "dolly-zoom (zolly), camera pulling back while zooming in, warping the background around a locked subject" },
+  { id: "macro-zoom", label: "Macro Zoom", move: "extreme macro zoom pushing from portrait into microscopic detail" },
+  { id: "hyper-zoom", label: "Cosmic Hyper-Zoom", move: "single unbroken hyper-zoom racing from vast heights down to street level" },
+  { id: "ots", label: "Over-The-Shoulder", move: "over-the-shoulder shot from behind a soft-focus foreground figure" },
+  { id: "fisheye", label: "Fisheye Peephole", move: "fisheye lens with ultra-wide distortion and pronounced center bulge" },
+  { id: "wipe-reveal", label: "Lateral Wipe Reveal", move: "lateral wipe reveal sliding sideways from behind a foreground element to unveil the subject" },
+  { id: "fly-through", label: "Fly-Through Aperture", move: "fly-through gliding through a narrow opening to unveil the subject beyond" },
+  { id: "focus-pull-reveal", label: "Focus-Pull Reveal", move: "focus-pull reveal opening on full bokeh then snapping the subject into sharp clarity" },
+  { id: "rack-focus", label: "Rack Focus", move: "rack focus shifting smoothly from sharp foreground to sharp background mid-shot" },
+  { id: "tilt-up", label: "Tilt Up", move: "slow tilt up rising vertically from boots to face on a locked axis" },
+  { id: "tilt-down", label: "Tilt Down", move: "slow tilt down descending from face to boots on a fixed axis" },
+  { id: "truck-left", label: "Truck Left", move: "truck left gliding laterally with strong parallax between layers" },
+  { id: "truck-right", label: "Truck Right", move: "truck right sliding laterally with pronounced parallax" },
+  { id: "orbit-180", label: "Orbit 180", move: "half orbit arcing 180 degrees around the subject from front to back" },
+  { id: "orbit-360-fast", label: "Fast 360 Orbit", move: "fast 360-degree orbit whipping around the subject as the environment streaks" },
+  { id: "arc-slow", label: "Slow Cinematic Arc", move: "slow wide arc gliding in a gentle curve around the subject" },
+  { id: "pedestal-down", label: "Pedestal Down", move: "pedestal down lowering smoothly from eye level to waist level" },
+  { id: "pedestal-up", label: "Pedestal Up", move: "pedestal up rising smoothly from waist level to eye level" },
+  { id: "crane-up", label: "Crane Up Reveal", move: "crane up rising and pulling back to a high-angle reveal" },
+  { id: "crane-down", label: "Crane Down Landing", move: "crane down gliding from bird's-eye view to eye level" },
+  { id: "zoom-in-optical", label: "Smooth Optical Zoom In", move: "smooth optical zoom-in from a locked camera, face gradually filling the frame" },
+  { id: "zoom-out-optical", label: "Smooth Optical Zoom Out", move: "smooth optical zoom-out expanding spatial context around a centered subject" },
+  { id: "snap-zoom", label: "Snap Zoom", move: "snap zoom punching aggressively into the subject's eyes" },
+  { id: "drone-flyover", label: "Drone Flyover", move: "high-altitude drone flyover pushing forward with ultra-stable aerial motion" },
+  { id: "drone-reveal", label: "Epic Drone Reveal", move: "epic drone reveal pedestaling up from behind a ridge while tilting down to unveil the scene" },
+  { id: "drone-orbit", label: "Large Drone Orbit", move: "wide-scale drone orbit circling smoothly to showcase environmental magnitude" },
+  { id: "top-down", label: "Top-Down God's Eye", move: "top-down god's-eye view locked directly overhead, slowly rotating" },
+  { id: "fpv-dive", label: "FPV Drone Dive", move: "aggressive FPV drone dive plunging toward the subject" },
+  { id: "handheld", label: "Handheld Documentary", move: "handheld camera with natural micro-jitter and human breathing drift" },
+  { id: "whip-pan", label: "Whip Pan", move: "whip pan with aggressive lateral snap and heavy motion blur" },
+  { id: "dutch-angle", label: "Dutch Angle", move: "dutch angle with fixed roll, horizon cutting diagonally" },
+  { id: "leading-shot", label: "Leading Shot", move: "backward-tracking leading shot retreating smoothly to lock the subject" },
+  { id: "following-shot", label: "Following Shot", move: "forward-tracking follow shot advancing behind the subject" },
+  { id: "side-tracking", label: "Side Tracking", move: "side-tracking parallel truck holding a locked profile" },
+  { id: "pov-walk", label: "POV Walk", move: "first-person POV walk with gentle sway and natural step bob" },
+  { id: "drone-sweep", label: "Cinematic Sweeping Drone", move: "cinematic sweeping drone shot gliding across the landscape to establish scale" },
+  { id: "drone-topdown-track", label: "Bird's-Eye Tracking", move: "bird's-eye top-down tracking following the subject from 90 degrees above" },
+  { id: "drone-fpv-style", label: "FPV Drone Style", move: "FPV drone style flight with high speed and thrilling swooping motion" },
+  { id: "drone-orbit-close", label: "Orbiting Drone Shot", move: "orbiting drone shot circling the subject to emphasize it in 360 degrees" },
+  { id: "drone-altitude-reveal", label: "High-Altitude Reveal", move: "high-altitude reveal rising from low to unveil the hidden scene beyond" },
+];
+
+function pickAnimateCamera(seed, avoidIds) {
+  const denied = new Set((avoidIds || []).filter(Boolean));
+  for (let attempt = 0; attempt < ANIMATE_CAMERA_MOVES.length + 5; attempt++) {
+    const m = pickBySeed(ANIMATE_CAMERA_MOVES, seed + "#" + attempt, "ac");
+    if (!denied.has(m.id)) return m;
+  }
+  return pickBySeed(ANIMATE_CAMERA_MOVES, seed + "#x", "ac");
+}
+
+function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [] } = {}) {
+  const rawItem = product?.category || "product";
+  const item = /[\u0E00-\u0E7F]/.test(rawItem) ? "product" : rawItem;
+  const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+  const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
+  const sku = skuRaw ? ` (${skuRaw})` : "";
+  const denied = new Set((avoid || []).filter(Boolean));
+  let last = "";
+  let lastCamera = ANIMATE_CAMERA_MOVES[0];
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const s = seed + "#" + attempt;
+    const cam = pickAnimateCamera(s, avoidCameras);
+    const cap = cam.move.charAt(0).toUpperCase() + cam.move.slice(1);
+    last = `${cap} featuring ${item}${sku}, ${style}, smooth camera motion`;
+    lastCamera = cam;
+    if (!denied.has(last)) return { prompt: last, cameraId: cam.id, cameraLabel: cam.label };
+  }
+  return { prompt: last, cameraId: lastCamera.id, cameraLabel: lastCamera.label };
+}
 // ── group 4 helpers: per-platform caption versions ──
 function splitHashtags(text) {
   const tags = String(text || "").match(/#[^\s#]+/g) || [];
@@ -625,6 +702,8 @@ class SocialAgencyRuntime {
     this.backupDir = path.join(this.stateDir, "backups");
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
     this.imageSaver = null; // injected by serve.cjs: async (dataUrl, metadata) => saved { image, url, absPath }
+    this.imageDefaultsProvider = null; // injected by serve.cjs: () => { model, steps, cfgScale, sampler, width, height }
+    this.i2v = null; // injected by serve.cjs: { createJob, prepare, start, getJob, failJob }
     this.imageBackend = process.env.SD_BACKEND_URL || "http://127.0.0.1:8080";
     this.schedulerTimer = null;
     this.schedulerLastTickAt = null;
@@ -790,6 +869,9 @@ class SocialAgencyRuntime {
   getState() {
     const state = this._read();
     this._mirrorLegacy(state);
+    try {
+      for (const c of state.clients || []) for (const e of c.calendar || []) this._ensureEntryAnimatePrompt(c, e);
+    } catch {}
     state.scheduler = this.getSchedulerStatus();
     state.serverNow = new Date().toISOString();
     return state;
@@ -1948,10 +2030,12 @@ class SocialAgencyRuntime {
         }
       }
       const imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
+      const animateSib = (client.calendar || []).filter((e) => e.id !== entry.id);
+      const animateBuilt = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: animateSib.map((e) => e.animatePrompt), avoidCameras: animateSib.map((e) => e.animateCamera) });
       return {
         output: caption.replace(/\n+/g, " ").slice(0, 110) + (caption.length > 110 ? "…" : ""),
-        detail: `${caption}\n\n— image prompt สำหรับ Image workspace —\n${imagePrompt}\n(แหล่ง: ${source})`,
-        entryPatch: { caption, imagePrompt, captionSource: source },
+        detail: `${caption}\n\n— image prompt สำหรับ Image workspace —\n${imagePrompt}\n\n— animate prompt สำหรับวิดีโอ —\n${animateBuilt.prompt} (มุมกล้อง: ${animateBuilt.cameraLabel})\n(แหล่ง: ${source})`,
+        entryPatch: { caption, imagePrompt, animatePrompt: animateBuilt.prompt, animateCamera: animateBuilt.cameraId, animateCameraLabel: animateBuilt.cameraLabel, captionSource: source },
       };
     });
 
@@ -2405,27 +2489,24 @@ class SocialAgencyRuntime {
     this.imageSaver = fn;
   }
 
-  _imageGenBody(prompt) {
-    return {
-      prompt: String(prompt || ""),
-      negative_prompt: "",
-      n: 1,
-      size: "768x768",
-      response_format: "b64_json",
-      steps: 20,
-      cfg_scale: 7.0,
-      seed: Math.floor(Math.random() * 1000000000),
-      sample_method: "euler_a",
-      reference_images: [],
-      reference_settings: {},
-    };
-  }
+  // _imageGenBody lives in the inline-video block above (model-aware).
 
   _ensureEntryImagePrompt(client, entry) {
     if (entry.imagePrompt && String(entry.imagePrompt).trim()) return entry.imagePrompt;
     const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
     entry.imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
     return entry.imagePrompt;
+  }
+
+  _ensureEntryAnimatePrompt(client, entry) {
+    if (entry.animatePrompt && String(entry.animatePrompt).trim()) return entry.animatePrompt;
+    const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
+    const siblings = (client.calendar || []).filter((e) => e.id !== entry.id);
+    const built = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: siblings.map((e) => e.animatePrompt), avoidCameras: siblings.map((e) => e.animateCamera) });
+    entry.animatePrompt = built.prompt;
+    entry.animateCamera = built.cameraId;
+    entry.animateCameraLabel = built.cameraLabel;
+    return entry.animatePrompt;
   }
 
   startEntryImageGen(clientId, entryId) {
@@ -2501,6 +2582,213 @@ class SocialAgencyRuntime {
     };
   }
 
+  // ── inline entry video generation (SVD via the I2V job system) ──
+  setImageGenDefaultsProvider(fn) {
+    this.imageDefaultsProvider = fn;
+  }
+
+  setImageToVideoJobs(jobs) {
+    this.i2v = jobs;
+  }
+
+  _modelPreset(modelName) {
+    const name = String(modelName || "").toLowerCase();
+    if (name.includes("flux") || name.includes("schnell")) return { steps: 4, cfg_scale: 1.0, width: 1024, height: 1024 };
+    if (name.includes("lightning") || name.includes("turbo")) return { steps: 4, cfg_scale: 1.5, width: 1024, height: 1024 };
+    if (name.includes("sd15")) return { steps: 25, cfg_scale: 7.0, width: 512, height: 512 };
+    if (name.includes("sd35")) return { steps: 20, cfg_scale: 4.5, width: 1024, height: 1024 };
+    return { steps: 20, cfg_scale: 7.0, width: 512, height: 512 };
+  }
+
+  _imageGenBody(prompt) {
+    const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
+    const preset = this._modelPreset(d.model);
+    const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
+    const width = Math.round(num(d.width, preset.width));
+    const height = Math.round(num(d.height, preset.height));
+    return {
+      prompt: String(prompt || ""),
+      negative_prompt: "",
+      n: 1,
+      size: `${width}x${height}`,
+      response_format: "b64_json",
+      steps: Math.round(num(d.steps, preset.steps)),
+      cfg_scale: num(d.cfgScale, preset.cfg_scale),
+      seed: Math.floor(Math.random() * 1000000000),
+      sample_method: d.sampler || "euler_a",
+      reference_images: [],
+      reference_settings: {},
+    };
+  }
+
+  // Heal video jobs left behind by a server restart: the in-memory poll loop is
+  // gone, but entry.videoJob may still say "running". Sync it with the real
+  // I2V job record. Mutates entry in place; returns true if caller should _write.
+  _reconcileEntryVideo(entry) {
+    const vj = entry.videoJob;
+    if (!vj || vj.status !== "running" || !vj.jobId || !this.i2v) return false;
+    let cur = null;
+    try { cur = this.i2v.getJob(vj.jobId); } catch { cur = null; }
+    const now = new Date().toISOString();
+    const markError = (msg) => {
+      entry.videoJob = { status: "error", jobId: vj.jobId, progress: vj.progress || 0, startedAt: vj.startedAt || now, finishedAt: now, error: msg };
+      entry.updatedAt = now;
+    };
+    if (!cur) {
+      markError("งานสร้างวิดีโอหายไปตอน restart เซิร์ฟเวอร์ — กดสร้างใหม่ได้เลย");
+      return true;
+    }
+    if (cur.state === "completed") {
+      const rel = cur.output && (cur.output.videoUrl || cur.output.output || (cur.output.worker && cur.output.worker.output));
+      if (!rel) {
+        markError("งานวิดีโอเสร็จแต่ไม่พบไฟล์ — กดสร้างใหม่ได้เลย");
+        return true;
+      }
+      const url = String(rel).startsWith("app/outputs/") ? "/" + String(rel).slice("app/".length) : String(rel);
+      entry.video = { path: "", url, jobId: vj.jobId, seconds: 5, createdAt: now };
+      entry.videoJob = { status: "done", jobId: vj.jobId, progress: 100, startedAt: vj.startedAt || now, finishedAt: now, error: "" };
+      entry.updatedAt = now;
+      return true;
+    }
+    if (cur.state === "failed" || cur.state === "cancelled") {
+      const reason = (cur.error && cur.error.message) || (cur.state === "cancelled" ? "งานถูกยกเลิก" : "งานล้มเหลว");
+      markError(`${String(reason).slice(0, 160)} — กดสร้างใหม่ได้เลย`);
+      return true;
+    }
+    // genuinely active → sync live progress so the UI is truthful after restart
+    try {
+      const pct = Math.max(0, Math.min(100, Math.round(Number(cur.progress && cur.progress.percent) || 0)));
+      const step = (cur.progress && (cur.progress.message || cur.progress.step)) || "";
+      if (vj.progress !== pct || (step && vj.progressStep !== step)) {
+        vj.progress = pct;
+        if (step) vj.progressStep = step;
+        entry.updatedAt = now;
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  startEntryVideoGen(clientId, entryId) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (!entry.image || !entry.image.path) throw new Error("สร้างภาพนิ่งก่อน แล้วค่อยทำภาพเคลื่อนไหวครับ");
+    try {
+      if (this._reconcileEntryVideo(entry)) this._write(state);
+    } catch {}
+    if (entry.videoJob && entry.videoJob.status === "running") return { status: "running", entryId: entry.id };
+    // A previous run may have timed out while its worker kept going — cancel the
+    // orphan so two GPU workers never run concurrently (prevents double-slowness).
+    try {
+      const prevId = entry.videoJob && entry.videoJob.jobId;
+      if (prevId && this.i2v && typeof this.i2v.getJob === "function") {
+        const prev = this.i2v.getJob(prevId);
+        if (prev && !["completed", "failed", "cancelled"].includes(prev.state) && typeof this.i2v.cancelJob === "function") {
+          try { this.i2v.cancelJob(prevId); } catch {}
+        }
+      }
+    } catch {}
+    const now = new Date().toISOString();
+    entry.videoJob = { status: "running", jobId: null, progress: 0, progressStep: "", startedAt: now, finishedAt: null, error: "" };
+    entry.updatedAt = now;
+    this._write(state);
+    this._generateEntryVideo(client.id, entry.id).catch((err) => {
+      try { this._failEntryVideoGen(client.id, entry.id, err && err.message ? err.message : String(err)); }
+      catch (e2) { console.error("[social-agency] video job fail handler crashed:", e2); }
+    });
+    return { status: "running", entryId: entry.id };
+  }
+
+  _failEntryVideoGen(clientId, entryId, message) {
+    try {
+      const { state, entry } = this._findEntry(clientId, entryId);
+      const now = new Date().toISOString();
+      entry.videoJob = { status: "error", jobId: (entry.videoJob && entry.videoJob.jobId) || null, startedAt: (entry.videoJob && entry.videoJob.startedAt) || now, finishedAt: now, error: String(message || "สร้างวิดีโอไม่สำเร็จ") };
+      entry.updatedAt = now;
+      this._write(state);
+    } catch (err) {
+      console.error("[social-agency] _failEntryVideoGen:", err);
+    }
+  }
+
+  _sniffImageDataUrl(filePath) {
+    const buf = fs.readFileSync(filePath);
+    const isPng = buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    const isJpeg = buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    const isWebp = buf.length > 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+    if (!isPng && !isJpeg && !isWebp) throw new Error("ไฟล์ภาพนิ่งเสียหายหรือไม่ใช่ PNG/JPEG/WebP");
+    const mime = isPng ? "image/png" : isJpeg ? "image/jpeg" : "image/webp";
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  }
+
+  async _generateEntryVideo(clientId, entryId) {
+    if (!this.i2v) throw new Error("i2v jobs ยังไม่ได้เชื่อมต่อ (restart เซิร์ฟเวอร์)");
+    const found = this._findEntry(clientId, entryId);
+    this._ensureEntryAnimatePrompt(found.client, found.entry);
+    this._write(found.state);
+    const imageDataUrl = this._sniffImageDataUrl(found.entry.image.path);
+    const payload = { modelId: "auto", imageDataUrl, prompt: found.entry.animatePrompt || found.entry.imagePrompt || found.entry.caption || "", seconds: 5, source: "social-agency", entryId };
+    const job = this.i2v.createJob(payload);
+    let prepared;
+    try {
+      prepared = this.i2v.prepare(payload, job.id);
+    } catch (err) {
+      try { this.i2v.failJob(job.id, { message: err.message }); } catch {}
+      throw err;
+    }
+    this.i2v.start(job.id, prepared);
+    {
+      const s = this._findEntry(clientId, entryId);
+      s.entry.videoJob.jobId = job.id;
+      this._write(s.state);
+    }
+    const pollMs = this.i2vPollMs || 5000;
+    const t0 = Date.now();
+    for (;;) {
+      await sleep(pollMs);
+      const cur = this.i2v.getJob(job.id);
+      if (cur.state === "completed") break;
+      if (cur.state === "failed" || cur.state === "cancelled") throw new Error((cur.error && cur.error.message) || `I2V job ${cur.state}`);
+      if (Date.now() - t0 > 60 * 60 * 1000) {
+        try { if (this.i2v && typeof this.i2v.cancelJob === "function") this.i2v.cancelJob(job.id); } catch {}
+        throw new Error("หมดเวลารอวิดีโอ (60 นาที)");
+      }
+      try {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(cur.progress && cur.progress.percent) || 0)));
+        const ps = this._findEntry(clientId, entryId);
+        if (ps.entry.videoJob && ps.entry.videoJob.progress !== pct) {
+          ps.entry.videoJob.progress = pct;
+          ps.entry.videoJob.progressStep = (cur.progress && (cur.progress.message || cur.progress.step)) || "";
+          this._write(ps.state);
+        }
+      } catch {}
+    }
+    const done = this.i2v.getJob(job.id);
+    const rel = done.output && (done.output.videoUrl || done.output.output || (done.output.worker && done.output.worker.output));
+    if (!rel) throw new Error("I2V job เสร็จแต่ไม่พบไฟล์วิดีโอ");
+    const url = String(rel).startsWith("app/outputs/") ? "/" + String(rel).slice("app/".length) : String(rel);
+    const third = this._findEntry(clientId, entryId);
+    const old = third.entry.video;
+    if (old && old.path && old.path !== prepared.outputPath) { try { fs.unlinkSync(old.path); } catch {} }
+    const now = new Date().toISOString();
+    third.entry.video = { path: prepared.outputPath || "", url, jobId: job.id, seconds: 5, createdAt: now };
+    third.entry.videoJob = { status: "done", jobId: job.id, progress: 100, startedAt: (third.entry.videoJob && third.entry.videoJob.startedAt) || now, finishedAt: now, error: "" };
+    third.entry.updatedAt = now;
+    this._write(third.state);
+    return { status: "done", entryId };
+  }
+
+  getEntryVideo(clientId, entryId) {
+    const { state, entry } = this._findEntry(clientId, entryId);
+    try {
+      if (this._reconcileEntryVideo(entry)) this._write(state);
+    } catch {}
+    return {
+      entryId: entry.id,
+      job: entry.videoJob || { status: "idle", jobId: null, progress: 0, startedAt: null, finishedAt: null, error: "" },
+      video: entry.video && entry.video.url ? { url: entry.video.url, jobId: entry.video.jobId || "" } : null,
+    };
+  }
+
   async _publicImageUrl(client, entry) {
     const image = entry.image || {};
     if (image.publicUrl && /^https:\/\//.test(image.publicUrl)) return image.publicUrl;
@@ -2509,6 +2797,78 @@ class SocialAgencyRuntime {
     if (!apiKey) throw new Error("ต้องมี URL รูปแบบสาธารณะ (https) หรือใส่ imgbb API key เพื่ออัปโหลดรูปก่อน");
     if (!image.path && !image.buffer) throw new Error("ไม่มีรูปภาพแนบอยู่ในรายการนี้");
     return this._imgbbUpload(image, apiKey);
+  }
+
+  // ── video attach for live publish (FB video / IG Reels / LINE video) ──
+  _selectPublishMedia(entry) {
+    const v = entry.video || {};
+    if (v.publicUrl || v.path || v.buffer) return "video";
+    const img = entry.image || {};
+    if (img.publicUrl || img.path || img.buffer) return "image";
+    return "text";
+  }
+
+  _entryVideoFile(entry) {
+    const v = entry.video || {};
+    let buffer = v.buffer || null;
+    if (!buffer && v.path) {
+      try { buffer = fs.readFileSync(v.path); } catch { return null; }
+    }
+    if (!buffer || !buffer.length) return null;
+    let filename = "clip.mp4";
+    try {
+      if (v.path) {
+        const base = path.basename(String(v.path));
+        if (base && /\.(mp4|mov|m4v|webm)$/i.test(base)) filename = base;
+      }
+    } catch {}
+    return { buffer, filename };
+  }
+
+  static _parsePublicFileUrl(text) {
+    const url = String(text || "").trim().split(/\s+/)[0] || "";
+    if (!/^https:\/\//.test(url)) throw new Error("อัปโหลดวิดีโอขึ้นโฮสต์สาธารณะไม่สำเร็จ");
+    return url;
+  }
+
+  async _uploadVideoPublic(buffer, filename) {
+    const { body, contentType } = SocialAgencyRuntime._multipart({}, "file", buffer, filename || "clip.mp4");
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: VIDEO_PUBLIC_HOST,
+      path: "/",
+      headers: { "Content-Type": contentType, "User-Agent": "LUKE-AI-STUDIO/1.0" },
+      body,
+      timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS,
+    });
+    if (res.status >= 300) throw new Error(`อัปโหลดวิดีโอขึ้นโฮสต์สาธารณะไม่สำเร็จ (HTTP ${res.status})`);
+    return SocialAgencyRuntime._parsePublicFileUrl(res.text);
+  }
+
+  async _publicVideoUrl(client, entry) {
+    const v = entry.video || {};
+    if (v.publicUrl && /^https:\/\//.test(v.publicUrl)) return v.publicUrl;
+    const file = this._entryVideoFile(entry);
+    if (!file) throw new Error("ไม่มีไฟล์วิดีโอแนบอยู่ในรายการนี้");
+    const url = await this._uploadVideoPublic(file.buffer, file.filename);
+    try {
+      this._mutateClient(client.id, (c) => {
+        const e = (c.calendar || []).find((x) => x.id === entry.id);
+        if (e && e.video) e.video.publicUrl = url;
+      });
+    } catch {}
+    return url;
+  }
+
+  _bumpInstagramCounter(clientId) {
+    const now = Date.now();
+    this._mutateClient(clientId, (c) => {
+      const m = c.connectors.instagram;
+      const prev = m.counter;
+      if (prev && now - Date.parse(prev.windowStart) < 24 * 60 * 60 * 1000) m.counter = { count: prev.count + 1, windowStart: prev.windowStart };
+      else m.counter = { count: 1, windowStart: new Date().toISOString() };
+      m.lastPublishAt = new Date().toISOString();
+    });
   }
 
   async _publishEntry(client, entry, ctx) {
@@ -2533,6 +2893,35 @@ class SocialAgencyRuntime {
     if (platform === "facebook") {
       if (meta.lastPublishAt && Date.now() - Date.parse(meta.lastPublishAt) < FB_MIN_INTERVAL_MS) {
         throw new Error("Facebook Page ควรเว้นจังหวะโพสต์อย่างน้อย 5 นาที — ลองอีกครั้งเร็วๆ นี้");
+      }
+      let videoFallbackNote = "";
+      if (this._selectPublishMedia(entry) === "video") {
+        try {
+          const file = this._entryVideoFile(entry);
+          if (!file) throw new Error("no video file");
+          const { body: vbody, contentType: vct } = SocialAgencyRuntime._multipart(
+            { description: entry.caption || "", access_token: secret.accessToken },
+            "source",
+            file.buffer,
+            file.filename
+          );
+          const vres = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.pageId)}/videos`,
+            headers: { "Content-Type": vct },
+            body: vbody,
+            timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS,
+          });
+          if (vres.status >= 300 || vres.json?.error) throw new Error(vres.json?.error?.message || `Facebook videos ตอบ HTTP ${vres.status}`);
+          this._mutateClient(client.id, (c) => {
+            c.connectors.facebook.lastPublishAt = new Date().toISOString();
+          });
+          return { platform, mode: "live", postId: vres.json?.id, latencyMs: Date.now() - t0, note: `โพสต์วิดีโอบนเพจ ${secret.pageId}` };
+        } catch (err) {
+          videoFallbackNote = ` (วิดีโอส่งไม่สำเร็จ จึงโพสต์รูปแทน: ${err.message || err})`;
+          console.warn("[social-agency] facebook video fallback to photo:", err.message || err);
+        }
       }
       let postId;
       if (entry.image && (entry.image.publicUrl || entry.image.path)) {
@@ -2569,7 +2958,7 @@ class SocialAgencyRuntime {
       this._mutateClient(client.id, (c) => {
         c.connectors.facebook.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", postId, latencyMs: Date.now() - t0, note: `โพสต์บนเพจ ${secret.pageId}` };
+      return { platform, mode: "live", postId, latencyMs: Date.now() - t0, note: `โพสต์บนเพจ ${secret.pageId}${videoFallbackNote}` };
     }
 
     if (platform === "instagram") {
@@ -2577,6 +2966,47 @@ class SocialAgencyRuntime {
       const now = Date.now();
       if (counter && counter.count >= IG_24H_LIMIT && now - Date.parse(counter.windowStart) < 24 * 60 * 60 * 1000) {
         throw new Error("ถึงขีดจำกัด Instagram 50 โพสต์/24 ชม. แล้ว — รอให้หน้าต่าง 24 ชม. ผ่านไปก่อน");
+      }
+      let videoFallbackNote = "";
+      if (this._selectPublishMedia(entry) === "video") {
+        try {
+          const videoUrl = await this._publicVideoUrl(client, entry);
+          const vcreate = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media`,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: entry.caption || "", access_token: secret.accessToken }),
+            timeoutMs: 60 * 1000,
+          });
+          if (vcreate.status >= 300 || vcreate.json?.error) throw new Error(vcreate.json?.error?.message || `Instagram ตอบ HTTP ${vcreate.status}`);
+          const vcontainerId = vcreate.json?.id;
+          let vstatusCode = "IN_PROGRESS";
+          for (let i = 0; i < 30 && vstatusCode === "IN_PROGRESS"; i += 1) {
+            await sleep(5000);
+            const vpoll = await SocialAgencyRuntime._https({
+              host: FB_GRAPH_HOST,
+              path: `/${FB_API_VERSION}/${vcontainerId}?fields=status_code&access_token=${encodeURIComponent(secret.accessToken)}`,
+            });
+            if (vpoll.status >= 300 || vpoll.json?.error) throw new Error(vpoll.json?.error?.message || `Instagram poll ตอบ HTTP ${vpoll.status}`);
+            vstatusCode = vpoll.json?.status_code || "IN_PROGRESS";
+          }
+          if (vstatusCode !== "FINISHED") throw new Error(`คอนเทนเนอร์ Reels ยังไม่พร้อม (สถานะ ${vstatusCode})`);
+          const vpublish = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media_publish`,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ creation_id: vcontainerId, access_token: secret.accessToken }),
+            timeoutMs: 60 * 1000,
+          });
+          if (vpublish.status >= 300 || vpublish.json?.error) throw new Error(vpublish.json?.error?.message || `Instagram publish ตอบ HTTP ${vpublish.status}`);
+          this._bumpInstagramCounter(client.id);
+          return { platform, mode: "live", postId: vpublish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ Reels IG ${secret.igUserId} (คอนเทนเนอร์ ${vcontainerId})` };
+        } catch (err) {
+          videoFallbackNote = ` (Reels ส่งไม่สำเร็จ จึงโพสต์รูปแทน: ${err.message || err})`;
+          console.warn("[social-agency] instagram reels fallback to photo:", err.message || err);
+        }
       }
       const imageUrl = await this._publicImageUrl(client, entry);
       const create = await SocialAgencyRuntime._https({
@@ -2609,31 +3039,37 @@ class SocialAgencyRuntime {
         timeoutMs: 60 * 1000,
       });
       if (publish.status >= 300 || publish.json?.error) throw new Error(publish.json?.error?.message || `Instagram publish ตอบ HTTP ${publish.status}`);
-      this._mutateClient(client.id, (c) => {
-        const m = c.connectors.instagram;
-        const prev = m.counter;
-        if (prev && now - Date.parse(prev.windowStart) < 24 * 60 * 60 * 1000) m.counter = { count: prev.count + 1, windowStart: prev.windowStart };
-        else m.counter = { count: 1, windowStart: new Date().toISOString() };
-        m.lastPublishAt = new Date().toISOString();
-      });
-      return { platform, mode: "live", postId: publish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ IG ${secret.igUserId} (คอนเทนเนอร์ ${containerId})` };
+      this._bumpInstagramCounter(client.id);
+      return { platform, mode: "live", postId: publish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ IG ${secret.igUserId} (คอนเทนเนอร์ ${containerId})${videoFallbackNote}` };
     }
 
     if (platform === "line") {
       const messages = [];
+      let videoFallbackNote = "";
+      if (this._selectPublishMedia(entry) === "video") {
+        try {
+          const videoUrl = await this._publicVideoUrl(client, entry);
+          const previewUrl = await this._publicImageUrl(client, entry);
+          messages.push({ type: "video", originalContentUrl: videoUrl, previewImageUrl: previewUrl });
+          messages.push({ type: "text", text: entry.caption || "" });
+        } catch (err) {
+          videoFallbackNote = ` (วิดีโอส่งไม่สำเร็จ จึงส่งรูปแบบเดิมแทน: ${err.message || err})`;
+          console.warn("[social-agency] line video fallback:", err.message || err);
+        }
+      }
       const wantsImage = entry.image && (entry.image.publicUrl || entry.image.path) && meta.sendImageTextStack !== false;
-      if (wantsImage) {
+      if (messages.length === 0 && wantsImage) {
         const url = await this._publicImageUrl(client, entry);
         messages.push({ type: "image", originalContentUrl: url, previewImageUrl: url });
         messages.push({ type: "text", text: entry.caption || "" });
-      } else {
+      } else if (messages.length === 0) {
         messages.push({ type: "text", text: entry.caption || "" });
       }
       const { quotaNote } = await this._lineBroadcast(secret, messages);
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
+      return { platform, mode: "live", postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}${videoFallbackNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
@@ -3152,6 +3588,26 @@ class SocialAgencyRuntime {
         if (!entryId) return fail(new Error("ต้องระบุ entryId"), 400);
         try {
           return json(res, 200, { ok: true, ...this.getEntryImage(clientId, entryId) });
+        } catch (error) {
+          return fail(error, 404);
+        }
+      }
+
+      // inline entry video generation (preview before publish)
+      if (pathname === "/api/social-agency/generate-video" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 202, { ok: true, ...this.startEntryVideoGen(clientId || body.clientId, body.entryId) });
+        } catch (error) {
+          return fail(error, 409);
+        }
+      }
+      if (pathname === "/api/social-agency/entry-video" && method === "GET") {
+        const entryId = parsed.searchParams.get("entryId") || undefined;
+        if (!entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.getEntryVideo(clientId, entryId) });
         } catch (error) {
           return fail(error, 404);
         }

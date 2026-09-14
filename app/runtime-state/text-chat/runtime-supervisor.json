@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-03T06:17:41.131Z",
+  "updatedAt": "2026-09-14T01:44:33.580Z",
   "status": "stopped",
   "desiredState": "stopped",
   "pid": null,
@@ -9,7 +9,7 @@
   "healthySince": null,
   "lastHealthCheckAt": null,
   "lastHealthyAt": null,
-  "lastStoppedAt": "2026-09-03T06:17:41.131Z",
+  "lastStoppedAt": "2026-09-14T01:44:33.580Z",
   "lastExitCode": null,
   "lastSignal": null,
   "lastError": null,
@@ -214,6 +214,120 @@
       "id": "runtime-event-1788416261126-7c8ea72f129a1",
       "type": "runtime-stop-requested",
       "createdAt": "2026-09-03T06:17:41.126Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789222264944-3ded5882a4d88",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:11:04.944Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789222682920-4958f22965b25",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:18:02.920Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789223634009-ec3412df85409",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:33:54.009Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789223977244-6204d4ca02209",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:39:37.244Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789224206573-2465c2c446677",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:43:26.573Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789224600638-596a1840e65a7",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T14:50:00.638Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789228736943-39a90c896425",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T15:58:56.943Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789228888804-48ccf6d42c41d",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T16:01:28.804Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789230803874-4d34ff1bc3d1c",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T16:33:23.874Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789231887150-0994bd8d5b4f9",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T16:51:27.150Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789233491971-44f752af86aed",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T17:18:11.971Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789234081924-4989c13f712da",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-12T17:28:01.924Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789265850777-1ccd185ad655e",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T02:17:30.777Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789266289286-9ab72b5bf8914",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T02:24:49.286Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789268242562-29282ad38664c",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T02:57:22.562Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789312975565-614459077bdaf",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T15:22:55.565Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789313802528-5948c87f3008d",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T15:36:42.528Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789316318072-8b1572bff7bdd",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-13T16:18:38.072Z",
+      "reason": "supervisor-shutdown"
+    },
+    {
+      "id": "runtime-event-1789350272937-a977aaf280a8f",
+      "type": "runtime-stop-requested",
+      "createdAt": "2026-09-14T01:44:32.937Z",
       "reason": "supervisor-shutdown"
     }
   ]

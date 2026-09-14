@@ -26,6 +26,8 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   const [busy, setBusy] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(null);
   const [imageGenError, setImageGenError] = useState("");
+  const [generatingVideo, setGeneratingVideo] = useState(null);
+  const [videoGenError, setVideoGenError] = useState("");
   const [tab, setTab] = useState("overview");
   const [refreshSeq, setRefreshSeq] = useState(0);
   const [drawerEntryId, setDrawerEntryId] = useState(null);
@@ -54,7 +56,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   }, [refresh]);
 
   // Poll fast while workflows are in-flight, slow otherwise (scheduler indicator stays fresh)
-  const working = hasActiveWork(state) || generatingImage !== null;
+  const working = hasActiveWork(state) || generatingImage !== null || generatingVideo !== null;
   useEffect(() => {
     const id = setInterval(refresh, working ? 2500 : 30000);
     return () => clearInterval(id);
@@ -90,7 +92,30 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   }, [state, generatingImage, refresh]);
 
-  useEffect(() => { setImageGenError(""); }, [drawerEntryId]);
+  useEffect(() => { setImageGenError(""); setVideoGenError(""); }, [drawerEntryId]);
+
+  const handleGenerateVideo = useCallback(async (entryId) => {
+    if (!state?.activeClientId || generatingVideo || generatingImage) return;
+    setVideoGenError("");
+    setGeneratingVideo(entryId);
+    try {
+      await postJson("/api/social-agency/generate-video", { clientId: state.activeClientId, entryId });
+      const t0 = Date.now();
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const data = await api(`/api/social-agency/entry-video?clientId=${encodeURIComponent(state.activeClientId)}&entryId=${encodeURIComponent(entryId)}`);
+        refresh(); // live progress
+        if (data.job?.status === "done") break;
+        if (data.job?.status === "error") throw new Error(data.job.error || "สร้างวิดีโอไม่สำเร็จ");
+        if (Date.now() - t0 > 60 * 60 * 1000) throw new Error("หมดเวลารอสร้างวิดีโอ (60 นาที) — งานอาจยังรันอยู่เบื้องหลัง ลองเปิดดูใหม่ภายหลัง");
+      }
+      refresh();
+    } catch (err) {
+      setVideoGenError(err.message || "สร้างวิดีโอไม่สำเร็จ");
+    } finally {
+      setGeneratingVideo(null);
+    }
+  }, [state, generatingVideo, generatingImage, refresh]);
 
   const activeClient = useMemo(
     () => state?.clients?.find((c) => c.id === state.activeClientId) || null,
@@ -436,6 +461,9 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           onGenerateImage={handleGenerateImage}
           generatingImage={generatingImage}
           imageGenError={imageGenError}
+          onGenerateVideo={handleGenerateVideo}
+          generatingVideo={generatingVideo}
+          videoGenError={videoGenError}
           onOpenChat={onOpenChat}
         />
       )}

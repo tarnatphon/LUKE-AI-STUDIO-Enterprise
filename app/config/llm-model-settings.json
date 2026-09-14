@@ -127,6 +127,22 @@
         "flashAttn": true
       },
       "updatedAt": "2026-09-04T07:47:11.958Z"
+    },
+    "typhoon-1.5-8b-Q4_K_M.gguf": {
+      "preferredBackend": "metal",
+      "lastBackendMode": "Metal GPU",
+      "lastBackendBinary": "llama-server",
+      "lastSettings": {
+        "threads": 9,
+        "contextSize": 16384,
+        "gpuLayers": -1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "batchSize": 512,
+        "ubatchSize": 512,
+        "flashAttn": true
+      },
+      "updatedAt": "2026-09-13T02:09:56.297Z"
     }
   }
 }
