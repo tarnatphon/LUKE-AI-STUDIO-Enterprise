@@ -39,7 +39,10 @@ import {
   isLocalServerMode,
   getImageToVideoCapabilityStatus,
   installImageToVideoCapability,
-  getImageToVideoCompatibility
+  getImageToVideoCompatibility,
+  getModelArenaStatus,
+  unloadModelArenaModel,
+  unloadAllModelArenaModels
 } from "../services/api";
 
 
@@ -350,6 +353,8 @@ function ModelManager({
   const [isUnloading, setIsUnloading] = useState(false);
   const [unloadProgress, setUnloadProgress] = useState({ progress: 0, phase: "" });
   const [pendingLoadModel, setPendingLoadModel] = useState(null);
+  const [activeRuntimes, setActiveRuntimes] = useState([]);
+  const [arenaInstances, setArenaInstances] = useState([]);
   const [vramWarning, setVramWarning] = useState(null);
   const [backendInfo, setBackendInfo] = useState({ backendMode: "", backendBinary: "", backendDevice: "" });
   const [activeLlmModel, setActiveLlmModel] = useState(null);
@@ -490,6 +495,54 @@ function ModelManager({
    */
   const blockLoadIfOtherRuntimeActive = (modelId, targetType) => {
     return false;
+  };
+
+  // LUKE_AI_LIBRARY_LOADED_MODELS_V1
+  // Every runtime can be resident at the same time, so AI Library shows one
+  // overview of everything that is currently loaded in memory.
+  const loadedModels = [
+    ...(Array.isArray(activeRuntimes) ? activeRuntimes : [])
+      .filter((runtime) => runtime && runtime.type !== "arena" && runtime.model)
+      .map((runtime) => ({
+        type: runtime.type,
+        label: runtime.label || "Model",
+        model: runtime.model,
+        ready: runtime.ready !== false,
+      })),
+    ...(Array.isArray(arenaInstances) ? arenaInstances : []).map((instance) => ({
+      type: "arena",
+      label: "Arena",
+      model: instance.modelId,
+      ready: instance.status === "ready",
+    })),
+  ];
+
+  const handleUnloadRuntime = async (runtime) => {
+    if (!runtime || isUnloading) return;
+    if (runtime.type === "arena") {
+      setIsUnloading(true);
+      try {
+        await unloadModelArenaModel(runtime.model);
+      } catch (err) {
+        showAlert({ title: "Unload Failed", message: err.message || String(err), danger: true });
+      } finally {
+        setIsUnloading(false);
+      }
+      return;
+    }
+    await handleUnloadModel(runtime);
+  };
+
+  const handleUnloadAllRuntimes = async () => {
+    if (isUnloading || loadedModels.length === 0) return;
+    for (const runtime of loadedModels) {
+      await handleUnloadRuntime(runtime);
+    }
+    try {
+      await unloadAllModelArenaModels();
+    } catch (_) {}
+    setActiveRuntimes([]);
+    setArenaInstances([]);
   };
   
   let visibleModelLibrary = [];
@@ -655,6 +708,12 @@ function ModelManager({
         ]);
         if (cancelled) return;
         
+        setActiveRuntimes(Array.isArray(sdStatus.activeRuntimes) ? sdStatus.activeRuntimes : []);
+        try {
+          const arenaStatus = await getModelArenaStatus();
+          if (!cancelled) setArenaInstances(Array.isArray(arenaStatus.instances) ? arenaStatus.instances : []);
+        } catch (_) {}
+
         setBackendInfo({
           backendMode: sdStatus.settings?.backendMode || sdStatus.loading?.backendMode || "",
           backendBinary: sdStatus.settings?.backendBinary || sdStatus.loading?.backendBinary || "",
@@ -1489,6 +1548,44 @@ function ModelManager({
       </div>
 
 
+
+      {/* Loaded models overview — several runtimes can be resident at once */}
+      {loadedModels.length > 0 && (
+        <div className="library-loaded-models">
+          <div className="library-loaded-heading">
+            <div>
+              <strong>Loaded models ({loadedModels.length})</strong>
+              <span>โมเดลเหล่านี้โหลดอยู่พร้อมกัน — นำออกเฉพาะตัวที่ต้องการได้เลย</span>
+            </div>
+            <button
+              className="m3-btn m3-btn-outlined"
+              onClick={handleUnloadAllRuntimes}
+              disabled={isUnloading}
+              style={{ height: "34px", padding: "0 14px" }}
+            >
+              Unload all
+            </button>
+          </div>
+
+          <div className="library-loaded-list">
+            {loadedModels.map((runtime) => (
+              <div key={`${runtime.type}:${runtime.model}`} className="library-loaded-item">
+                <span className={`library-loaded-dot ${runtime.ready ? "ready" : ""}`} />
+                <span className="library-loaded-type">{runtime.label}</span>
+                <span className="library-loaded-name" title={runtime.model}>{runtime.model}</span>
+                <button
+                  className="m3-btn m3-btn-error"
+                  onClick={() => handleUnloadRuntime(runtime)}
+                  disabled={isUnloading}
+                  style={{ height: "28px", padding: "0 10px", marginLeft: "auto" }}
+                >
+                  Unload
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Active Model Status Tonal Box */}
       {activeModelType === "image" && activeModel && (
