@@ -521,6 +521,16 @@ export async function getModelArenaPolicy() {
   return data.policy || {};
 }
 
+export async function updateModelArenaPolicy(patch = {}) {
+  const res = await fetch("/api/llm/arena/policy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await readJsonResponse(res, "The local server could not save the arena settings.");
+  return data.policy || {};
+}
+
 export async function getModelArenaStatus() {
   const res = await fetch("/api/llm/arena/status");
   return await readJsonResponse(res, "The local server returned invalid arena status.");

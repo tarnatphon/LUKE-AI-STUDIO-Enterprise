@@ -24113,6 +24113,30 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, policy: readModelArenaPolicy() });
   }
 
+  if (req.url === "/api/llm/arena/policy" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    try {
+      const policyPath = path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json");
+      const current = readModelArenaPolicy();
+      const patch = body && typeof body === "object" ? body : {};
+      const next = {
+        ...current,
+        selection: { ...(current.selection || {}), ...(patch.selection || {}) },
+        judge: { ...(current.judge || {}), ...(patch.judge || {}) },
+        evaluation: { ...(current.evaluation || {}), ...(patch.evaluation || {}) },
+      };
+      const maximum = Math.max(2, Math.min(4, Number(next.selection.maximumModels) || 3));
+      next.selection.maximumModels = maximum;
+      next.selection.minimumModels = Math.min(2, maximum);
+      next.judge.enabled = next.judge.enabled !== false;
+      fs.writeFileSync(policyPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+      return json(res, 200, { ok: true, policy: next });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message || String(err) });
+    }
+  }
+
   if (req.url === "/api/llm/arena/status" && req.method === "GET") {
     try {
       return json(res, 200, {

@@ -10470,3 +10470,27 @@ html[data-theme^="dark"] .settings-subsection:hover {
   border-radius: 8px;
   background: var(--md-sys-color-surface-container-high);
 }
+
+/* LUKE_AI_TEXT_MODEL_ARENA_SETTINGS_V1 */
+.chat-arena-settings {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: var(--md-sys-color-outline);
+}
+.chat-arena-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.chat-arena-setting select {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 2px 6px;
+  font-size: 0.74rem;
+}

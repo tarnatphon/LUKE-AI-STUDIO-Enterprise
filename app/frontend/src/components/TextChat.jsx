@@ -18,6 +18,7 @@ import {
   stopLlm,
   transcribeSpeech,
   getModelArenaPolicy,
+  updateModelArenaPolicy,
   getModelArenaStatus,
   loadModelArenaModels,
   unloadAllModelArenaModels,
@@ -1341,6 +1342,20 @@ function TextChat({
     setArenaSelectedIds([preferred.filename, ...others.slice(0, Math.max(0, Math.min(maximum, 2) - 1)).map((model) => model.filename)]);
   }, [models, selectedModel, arenaSelectedIds, arenaPolicy]);
 
+  const handleArenaPolicyChange = useCallback(async (patch) => {
+    setArenaPolicy((current) => ({
+      ...(current || {}),
+      selection: { ...(current?.selection || {}), ...(patch.selection || {}) },
+      judge: { ...(current?.judge || {}), ...(patch.judge || {}) },
+    }));
+    try {
+      const saved = await updateModelArenaPolicy(patch);
+      setArenaPolicy(saved || {});
+    } catch (err) {
+      console.warn("[arena] policy update failed", err);
+    }
+  }, []);
+
   const handleArenaToggleModel = useCallback((filename) => {
     const maximum = Number(arenaPolicy?.selection?.maximumModels || 3);
     setArenaSelectedIds((current) => {
@@ -2518,6 +2533,8 @@ function TextChat({
           onUseAnswer={handleArenaUseAnswer}
           onRate={handleArenaRate}
           chosenModelId={arenaChosenModelId}
+          policy={arenaPolicy}
+          onPolicyChange={handleArenaPolicyChange}
         />
 
         {/* ─── Composer ───────────────────────────────────────── */}

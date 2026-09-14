@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { Trophy, Users, Loader2, Square, ThumbsUp, ThumbsDown, Check, AlertTriangle, Layers } from "lucide-react";
+import { Trophy, Users, Loader2, Square, ThumbsUp, ThumbsDown, Check, AlertTriangle, Layers, Settings2 } from "lucide-react";
 
 /**
  * Text Model Arena panel.
@@ -40,6 +40,8 @@ function ModelArenaPanel({
   onRate,
   chosenModelId = null,
   busy = false,
+  policy = null,
+  onPolicyChange,
 }) {
   const selectionFull = selectedIds.length >= maximumModels;
 
@@ -148,6 +150,32 @@ function ModelArenaPanel({
                 <span>หยุดการเปรียบเทียบ</span>
               </button>
             )}
+          </div>
+
+          <div className="chat-arena-settings">
+            <Settings2 size={13} />
+            <label className="chat-arena-setting">
+              <input
+                type="checkbox"
+                checked={policy?.judge?.enabled !== false}
+                disabled={running}
+                onChange={(event) => onPolicyChange?.({ judge: { enabled: event.target.checked } })}
+              />
+              ใช้กรรมการตรวจคำตอบ
+            </label>
+
+            <label className="chat-arena-setting">
+              สูงสุด
+              <select
+                value={Number(policy?.selection?.maximumModels || 3)}
+                disabled={running}
+                onChange={(event) => onPolicyChange?.({ selection: { maximumModels: Number(event.target.value) } })}
+              >
+                <option value={2}>2 โมเดล</option>
+                <option value={3}>3 โมเดล</option>
+                <option value={4}>4 โมเดล</option>
+              </select>
+            </label>
           </div>
 
           {warnings.length > 0 && (
