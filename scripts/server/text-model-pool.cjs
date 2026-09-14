@@ -26,6 +26,11 @@ const DEFAULT_POLICY = {
     threads: 4,
     gpuLayers: -1,
     parallelSlots: 1,
+    // Arena instances answer one prompt at a time, so they do not need the big
+    // compute buffers an interactive chat server uses. Smaller batches cut the
+    // per-process memory enough for a small machine to keep 2-3 models resident.
+    batchSize: 256,
+    ubatchSize: 128,
     cachePrompt: true,
     flashAttn: true,
     mlock: false,
@@ -119,6 +124,7 @@ class TextModelPool {
       error: () => {},
     };
     this.now = options.now || (() => Date.now());
+    this.onBackendOutput = options.onBackendOutput || (() => {});
 
     /** @type {Map<string, object>} */
     this.instances = new Map();
@@ -377,16 +383,18 @@ class TextModelPool {
     }
 
     const warnings = this.estimateCapacity(wanted).warnings;
-    const results = await Promise.all(
-      wanted.map(async (modelId) => {
-        try {
-          const instance = await this.loadModel(modelId, options);
-          return { modelId, ok: true, instance };
-        } catch (error) {
-          return { modelId, ok: false, error: error.message || String(error) };
-        }
-      })
-    );
+    // Load one model at a time. Starting them in parallel doubles the peak
+    // (two models being read, converted and copied to the GPU at once) which
+    // is exactly what pushes a small machine over the edge.
+    const results = [];
+    for (const modelId of wanted) {
+      try {
+        const instance = await this.loadModel(modelId, options);
+        results.push({ modelId, ok: true, instance });
+      } catch (error) {
+        results.push({ modelId, ok: false, error: error.message || String(error) });
+      }
+    }
 
     const failures = results.filter((result) => !result.ok);
     if (failures.length > 0 && failures.length === results.length) {
@@ -446,6 +454,8 @@ class TextModelPool {
       flashAttn: options.flashAttn ?? policy.runtime.flashAttn,
       mlock: options.mlock ?? policy.runtime.mlock,
       mmap: options.mmap ?? policy.runtime.mmap,
+      batchSize: Number(options.batchSize ?? policy.runtime.batchSize ?? 256),
+      ubatchSize: Number(options.ubatchSize ?? policy.runtime.ubatchSize ?? 128),
     };
 
     const args = [
@@ -464,6 +474,8 @@ class TextModelPool {
       "--parallel",
       String(settings.parallelSlots),
     ];
+    if (settings.batchSize > 0) args.push("--batch-size", String(settings.batchSize));
+    if (settings.ubatchSize > 0) args.push("--ubatch-size", String(settings.ubatchSize));
     if (settings.cachePrompt !== false) args.push("--cache-prompt");
     if (settings.flashAttn === true) args.push("--flash-attn", "on");
     if (settings.mlock === true) args.push("--mlock");
@@ -516,6 +528,11 @@ class TextModelPool {
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (chunk) => {
         instance.stderrTail = `${instance.stderrTail}${chunk}`.slice(-2000);
+        try {
+          this.onBackendOutput(String(chunk));
+        } catch (_) {
+          /* diagnostics must never break a load */
+        }
       });
     }
     if (child.stdout) {

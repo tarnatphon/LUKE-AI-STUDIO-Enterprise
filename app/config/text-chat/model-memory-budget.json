@@ -1,18 +1,21 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "product": "LUKE AI STUDIO",
   "feature": "Automatic memory budget for concurrent models",
   "enabled": true,
   "system": {
     "reserveGb": 2,
-    "contextOverheadRatio": 0.25,
+    "contextOverheadRatio": 0.15,
+    "perModelOverheadGb": 0.6,
     "warnRatio": 0.85,
     "blockRatio": 1
   },
   "gpu": {
     "safetyMarginGb": 0.8,
     "warnRatio": 0.85,
-    "blockRatio": 1
+    "blockRatio": 1,
+    "unifiedWorkingSetRatio": 0.78,
+    "workingSetGb": null
   },
   "ui": {
     "showBudgetCard": true,
@@ -20,6 +23,14 @@
   },
   "notes": {
     "warn": "Above warnRatio LUKE AI STUDIO keeps loading but warns in the log and in AI Library.",
-    "block": "Above blockRatio the load is refused because the model cannot fit in memory."
+    "block": "Above blockRatio the load is refused because the model cannot fit in memory.",
+    "workingSet": "On unified memory the pool is the Metal recommendedMaxWorkingSetSize learned from backend output (about 14.3 GB on an 18 GB M3 Pro), not os.totalmem(). Until it is measured, gpu.unifiedWorkingSetRatio of the total RAM is used.",
+    "calibration": "Every out-of-memory crash shrinks the usable pool by calibration.penaltyPerIncidentGb (up to maxPenaltyGb) for incidentTtlMinutes, so the machine stops repeating the same crash."
+  },
+  "calibration": {
+    "enabled": true,
+    "penaltyPerIncidentGb": 0.5,
+    "maxPenaltyGb": 2,
+    "incidentTtlMinutes": 1440
   }
 }

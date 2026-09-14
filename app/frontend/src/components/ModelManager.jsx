@@ -1641,6 +1641,18 @@ function ModelManager({
                 โหลดโมเดลเพิ่มได้สูงสุดประมาณ {memoryBudget.maxModelGb} GB
               </div>
             )}
+
+            {(memoryBudget.poolGb || 0) > 0 && (
+              <div className="library-memory-note">
+                งบรวมสำหรับโมเดล {memoryBudget.poolGb} GB{" "}
+                {memoryBudget.measuredWorkingSetGb
+                  ? "(อ่านค่าจริงจาก Metal)"
+                  : "(ประมาณการ)"}
+                {memoryBudget.calibration?.recentIncidents > 0
+                  ? ` · หักเพิ่ม ${Math.min(2, memoryBudget.calibration.recentIncidents * 0.5)} GB หลังเครื่องเคยหน่วยความจำไม่พอ ${memoryBudget.calibration.recentIncidents} ครั้ง`
+                  : ""}
+              </div>
+            )}
           </div>
 
           {(memoryBudget.warnings || []).length > 0 && (

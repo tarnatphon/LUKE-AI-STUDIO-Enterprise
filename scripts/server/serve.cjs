@@ -52,9 +52,13 @@ const {
   buildJudgePrompt,
   parseJudgeResult,
 } = require("./text-arena-evaluator.cjs");
+const { MemoryCalibration } = require("./memory-calibration.cjs");
 
 // LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
 let textModelPoolInstance = null;
+// Learns the real GPU/Metal working set from backend output and remembers
+// out-of-memory crashes so the budget tightens itself on small machines.
+const memoryCalibration = new MemoryCalibration({ logger: console });
 
 // conversationId/runId → active arena run state
 const activeArenaRuns = new Map();
@@ -95,6 +99,9 @@ function getTextModelPool() {
       if (!backend) return null;
       return { key: backend.key, path: backend.path, mode: backend.mode };
     },
+    onBackendOutput: (text) => {
+      memoryCalibration.scan(text);
+    },
     getGpuInfo: () => {
       try {
         return getGpuInfo();
@@ -132,6 +139,110 @@ function normalizeArenaModelIds(modelIds, policy = {}) {
     cleaned.push(filename);
   }
   return cleaned.slice(0, Math.max(1, maximum));
+}
+
+/**
+ * Plans an arena round and, when the round only fits without the classic
+ * single-model chat server, releases it for the duration of the round.
+ *
+ * On a small machine the chat model and two arena models cannot be resident at
+ * the same time. The chat model is not needed while the arena answers, so it is
+ * unloaded and reloads lazily the next time the user chats normally.
+ */
+async function planArenaRound(modelIds = [], policy = {}) {
+  const minimum = Number(policy.selection?.minimumModels || 2);
+  const notes = [];
+  let plan = planArenaModels(modelIds, { minimumModels: minimum });
+  if (!plan.blocking || policy.arena?.releaseMainModelDuringRound === false) {
+    return { plan, notes };
+  }
+
+  const mainBytes = mainChatModelBytes();
+  if (mainBytes <= 0) return { plan, notes };
+  const mainGb = Number((mainBytes / 1024 ** 3).toFixed(2));
+  if (plan.budget.estimateGb > plan.budget.availableGb + mainGb) return { plan, notes };
+
+  const mainModelName = path.basename(String(llmSettings.model || "text model"));
+  await killLlm();
+  notes.push({
+    code: "ARENA_RELEASED_MAIN_MODEL",
+    severity: "warning",
+    message:
+      `Unloaded the main chat model (${mainModelName}, ${mainGb} GB) to make room for this arena ` +
+      `round. It reloads automatically the next time you chat without the arena.`,
+  });
+  plan = planArenaModels(modelIds, { minimumModels: minimum });
+  return { plan, notes };
+}
+
+function mainChatModelBytes() {
+  if (!(llmReady || llmProc) || !llmSettings.model) return 0;
+  return estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model))));
+}
+
+/**
+ * Arena load planner.
+ *
+ * A round is only useful if every selected model can actually answer. Instead
+ * of loading everything and letting the GPU run out of memory half way through
+ * (which crashes the whole run), the planner measures the requested set against
+ * the real pool and drops the biggest offenders until what remains fits.
+ * The user is told exactly which model was removed and why.
+ */
+function planArenaModels(modelIds = [], { minimumModels = 2 } = {}) {
+  const sizes = new Map(
+    modelIds.map((modelId) => [modelId, estimateModelBytes(path.join(LLM_MODELS, modelId))])
+  );
+  const dropped = [];
+  let selected = modelIds.slice();
+  let budget = evaluateModelMemoryBudget({
+    targetPaths: selected.map((modelId) => path.join(LLM_MODELS, modelId)),
+    targetType: "arena",
+  });
+
+  // Comparing one model with itself is pointless, so once the plan drops below
+  // the minimum the whole round is refused with an actionable message.
+  const minimum = Math.max(1, Number(minimumModels) || 1);
+  let blocking = null;
+
+  while (budget.blocking && selected.length > 1) {
+    const ordered = selected.slice().sort((left, right) => (sizes.get(right) || 0) - (sizes.get(left) || 0));
+    const victim = ordered[0];
+    selected = selected.filter((modelId) => modelId !== victim);
+    const victimGb = Number(((sizes.get(victim) || 0) / 1024 ** 3).toFixed(2));
+    dropped.push({
+      modelId: victim,
+      code: "ARENA_MODEL_DROPPED",
+      severity: "warning",
+      message:
+        `Removed ${victim} (${victimGb} GB) from this round: the models already loaded leave ` +
+        `about ${budget.availableGb} GB and this one would need about ${budget.estimateGb} GB. ` +
+        `Unload a model in AI Library to compare ${modelIds.length} models again.`,
+    });
+    budget = evaluateModelMemoryBudget({
+      targetPaths: selected.map((modelId) => path.join(LLM_MODELS, modelId)),
+      targetType: "arena",
+    });
+  }
+
+  if (selected.length < minimum && modelIds.length >= minimum) {
+    const biggest = modelIds
+      .slice()
+      .sort((left, right) => (sizes.get(right) || 0) - (sizes.get(left) || 0))
+      .slice(0, minimum);
+    const neededGb = Number(
+      ((biggest.reduce((sum, id) => sum + (sizes.get(id) || 0), 0) * 1.15) / 1024 ** 3 + 0.6 * minimum).toFixed(2)
+    );
+    blocking = {
+      code: "ARENA_NEEDS_MORE_MEMORY",
+      message:
+        `Not enough memory for a ${minimum}-model arena: it needs about ${neededGb} GB but only ` +
+        `about ${budget.availableGb} GB is left while ${budget.residentGb} GB is already loaded ` +
+        `(pool ${budget.poolGb} GB). Unload a model in AI Library and run the round again.`,
+    };
+  }
+
+  return { modelIds: selected, dropped, budget, blocking };
 }
 
 function extractArenaPrompt(messages) {
@@ -289,20 +400,24 @@ async function streamArenaGeneration(req, res, body) {
       status: "loading",
     });
 
-    const arenaBudget = evaluateModelMemoryBudget({
-      targetPaths: modelIds.map((modelId) => path.join(LLM_MODELS, modelId)),
-      targetType: "arena",
-    });
-    if (arenaBudget.blocking) {
-      emit("error", { error: arenaBudget.blocking.message, code: arenaBudget.blocking.code });
+    const { plan, notes } = await planArenaRound(modelIds, policy);
+    if (plan.blocking) {
+      emit("error", {
+        error: plan.blocking.message,
+        code: plan.blocking.code,
+        memoryBudget: plan.budget,
+      });
       return;
     }
+    const activeModelIds = plan.modelIds;
+    state.modelIds = activeModelIds;
 
-    const loaded = await pool.ensureLoaded(modelIds, body.options || {});
+    const loaded = await pool.ensureLoaded(activeModelIds, body.options || {});
     emit("arena-ready", {
+      modelIds: activeModelIds,
       instances: loaded.instances,
       failures: loaded.failures || [],
-      warnings: loaded.warnings || [],
+      warnings: [...notes, ...plan.dropped, ...(loaded.warnings || [])],
     });
 
     const messages = Array.isArray(body.messages) ? body.messages : [];
@@ -1361,6 +1476,9 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     totalRamGb: 0,
     residentGb: 0,
     pressureRatio: 0,
+    poolGb: 0,
+    workingSetGb: 0,
+    measuredWorkingSetGb: 0,
     maxModelGb: 0,
     gpu: null,
     unifiedMemory: false,
@@ -1370,26 +1488,64 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
 
   const system = budget.system || {};
   const gpuConfig = budget.gpu || {};
+  const calibrationConfig = budget.calibration || {};
   const reserveGb = Number(system.reserveGb ?? 2);
-  const overheadRatio = Number(system.contextOverheadRatio ?? 0.25);
+  const overheadRatio = Number(system.contextOverheadRatio ?? 0.15);
+  // Every running backend also needs KV cache, compute buffers and metal
+  // residency on top of its weights. That cost is roughly constant per process,
+  // so it is charged per model instead of as a percentage of the file size.
+  const perModelOverheadGb = Number(system.perModelOverheadGb ?? 0.6);
   const warnRatio = Number(system.warnRatio ?? 0.85);
   const blockRatio = Number(system.blockRatio ?? 1);
 
-  const targetBytes = (Array.isArray(targetPaths) ? targetPaths : [targetPaths]).reduce(
-    (sum, entry) => sum + estimateModelBytes(entry),
-    0
-  );
+  const targetList = Array.isArray(targetPaths) ? targetPaths : [targetPaths];
+  const targetBytes = targetList.reduce((sum, entry) => sum + estimateModelBytes(entry), 0);
   const residentBytes = residentHeavyModelBytes();
 
   const totalRamBytes = os.totalmem();
   const reserveBytes = reserveGb * 1024 ** 3;
+  // Extra margin learned from previous out-of-memory crashes.
+  const calibrationBytes = memoryCalibration.penaltyGb(calibrationConfig) * 1024 ** 3;
+
+  // How much memory the models may share. The naive answer is "all the RAM",
+  // but a unified-memory GPU can only address part of it: Metal prints
+  // recommendedMaxWorkingSetSize (e.g. 14.3 GB on an 18 GB M3 Pro). Loading
+  // beyond that number is what produced the Insufficient Memory crashes, so the
+  // measured working set — when we know it — is the pool, not os.totalmem().
+  const totalRamGbRaw = totalRamBytes / 1024 ** 3;
+  const measuredWorkingSetGb = memoryCalibration.workingSetGb();
+  const fallbackWorkingSetGb = totalRamGbRaw * Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78);
+  const workingSetGb = measuredWorkingSetGb > 0 ? measuredWorkingSetGb : fallbackWorkingSetGb;
+  const learningUnified = measuredWorkingSetGb > 0;
+
+  let gpuInfo = null;
+  try {
+    gpuInfo = gpuLayers === 0 ? null : getGpuInfo();
+  } catch (_) {
+    gpuInfo = null;
+  }
+  const vramGb = gpuInfo ? Number(gpuInfo.vram_gb) || 0 : 0;
+  // Unified memory: the GPU and the CPU share one pool, so the RAM numbers
+  // already describe the GPU budget and checking both would double count.
+  // Metal prints its working set during start-up; seeing that line is proof
+  // enough that the pool is shared.
+  const unifiedMemory =
+    learningUnified ||
+    gpuInfo?.unified === true ||
+    (process.platform === "darwin" && vramGb > 0 && vramGb >= totalRamGbRaw * 0.9);
+
+  // With a measured working set the operating system's own needs are already
+  // priced in by the driver, so the reserve is only applied to the fallback.
+  const poolBytes = unifiedMemory
+    ? Math.max(0, workingSetGb * 1024 ** 3 - calibrationBytes - (learningUnified ? 0 : reserveBytes))
+    : Math.max(0, totalRamBytes - reserveBytes - calibrationBytes);
+
   // On macOS most RAM is used by the file cache, so os.freemem() looks almost
   // empty all the time. "Available" is measured against what the models we know
   // about already hold, which is what actually matters for a new load.
-  const availableBytes = Math.max(0, totalRamBytes - residentBytes - reserveBytes);
-  // The reserve is subtracted from the pool once (below), so it must not be
-  // added to the requirement as well.
-  const requiredBytes = targetBytes + targetBytes * overheadRatio;
+  const availableBytes = Math.max(0, poolBytes - residentBytes);
+  const requiredBytes =
+    targetBytes + targetBytes * overheadRatio + perModelOverheadGb * targetList.length * 1024 ** 3;
 
   const totalRamGb = Number((totalRamBytes / 1024 ** 3).toFixed(2));
   const freeRamGb = Number((os.freemem() / 1024 ** 3).toFixed(2));
@@ -1422,16 +1578,6 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
   }
 
   let gpu = null;
-  let gpuInfo = null;
-  try {
-    gpuInfo = gpuLayers === 0 ? null : getGpuInfo();
-  } catch (_) {
-    gpuInfo = null;
-  }
-  const vramGb = gpuInfo ? Number(gpuInfo.vram_gb) || 0 : 0;
-  // Apple Silicon shares one memory pool with the CPU, so the RAM numbers above
-  // already describe the GPU budget. Reporting both would double count.
-  const unifiedMemory = Boolean(gpuInfo) && vramGb > 0 && vramGb >= totalRamGb * 0.9;
 
   if (gpuInfo && vramGb > 0) {
     const margin = Number(gpuConfig.safetyMarginGb ?? 0.8);
@@ -1510,8 +1656,13 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     freeRamGb,
     totalRamGb,
     pressureRatio,
-    // Largest model that still fits: available = size * (1 + overhead).
-    maxModelGb: Number((availableBytes / (1 + overheadRatio) / 1024 ** 3).toFixed(2)),
+    poolGb: Number((poolBytes / 1024 ** 3).toFixed(2)),
+    workingSetGb: Number(workingSetGb.toFixed(2)),
+    measuredWorkingSetGb: Number(measuredWorkingSetGb.toFixed(2)),
+    // Largest model that still fits: available = size * (1 + overhead) + fixed.
+    maxModelGb: Number(
+      (Math.max(0, availableBytes - perModelOverheadGb * 1024 ** 3) / (1 + overheadRatio) / 1024 ** 3).toFixed(2)
+    ),
     gpu,
     unifiedMemory,
   };
@@ -5707,6 +5858,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     if (llmProc !== proc) return;
     const output = data.toString();
     process.stderr.write("  [llm-err] " + output);
+    memoryCalibration.scan(output);
     if (/Vulkan\d+\s*:/i.test(output)) llmSettings.backendMode = "Vulkan GPU";
     else if (/CUDA\d+\s*:/i.test(output)) llmSettings.backendMode = "CUDA GPU";
     else if (/(HIP|ROCm)\d*\s*:/i.test(output)) llmSettings.backendMode = "ROCm GPU";
@@ -6006,6 +6158,7 @@ async function startBackend(settings = {}) {
   proc.stderr.on("data", d => {
     const output = d.toString();
     process.stderr.write("  [sd-err] " + output);
+    memoryCalibration.scan(output);
     updateCoreMLLoadProgress(output);
     const cleanOutput = stripAnsi(output);
     const runtimeLinkerError = describeLinuxRuntimeLinkerError(cleanOutput);
@@ -24040,7 +24193,10 @@ const server = http.createServer(async (req, res) => {
       ready: backendReady || openvinoReady,
       running: backendProc !== null || openvinoProc !== null,
       activeRuntimes: getActiveRuntimes(),
-      memoryBudget: evaluateModelMemoryBudget({ targetPaths: [], targetType: "status" }),
+      memoryBudget: {
+        ...evaluateModelMemoryBudget({ targetPaths: [], targetType: "status" }),
+        calibration: memoryCalibration.status(),
+      },
       port: PORT_BACKEND,
       preferredPort: PREFERRED_BACKEND_PORT,
       error: backendError,
@@ -24217,7 +24373,10 @@ const server = http.createServer(async (req, res) => {
     try {
       return json(res, 200, {
         ...getTextModelPool().getStatus(),
-        memoryBudget: evaluateModelMemoryBudget({ targetPaths: [], targetType: "arena" }),
+        memoryBudget: {
+          ...evaluateModelMemoryBudget({ targetPaths: [], targetType: "arena" }),
+          calibration: memoryCalibration.status(),
+        },
       });
     } catch (err) {
       return json(res, 500, { ok: false, error: err.message || String(err) });
@@ -24228,27 +24387,27 @@ const server = http.createServer(async (req, res) => {
     const body = await readJsonBody(req, res);
     if (!body) return;
     try {
-      const modelIds = normalizeArenaModelIds(body.modelIds, readModelArenaPolicy());
+      const arenaPolicy = readModelArenaPolicy();
+      const requestedModelIds = normalizeArenaModelIds(body.modelIds, arenaPolicy);
       const pool = getTextModelPool();
-      const arenaBudget = evaluateModelMemoryBudget({
-        targetPaths: modelIds.map((modelId) => path.join(LLM_MODELS, modelId)),
-        targetType: "arena",
-      });
-      if (arenaBudget.blocking) {
+      const { plan, notes } = await planArenaRound(requestedModelIds, arenaPolicy);
+      if (plan.blocking) {
         return json(res, 507, {
           ok: false,
-          error: arenaBudget.blocking.message,
-          code: arenaBudget.blocking.code,
-          memoryBudget: arenaBudget,
+          error: plan.blocking.message,
+          code: plan.blocking.code,
+          memoryBudget: plan.budget,
         });
       }
-      const result = await pool.ensureLoaded(modelIds, body.options || {});
+      const result = await pool.ensureLoaded(plan.modelIds, body.options || {});
       return json(res, 200, {
         ok: true,
+        modelIds: plan.modelIds,
+        dropped: plan.dropped,
         instances: result.instances,
         failures: result.failures || [],
-        warnings: result.warnings || [],
-        capacity: pool.estimateCapacity(modelIds),
+        warnings: [...notes, ...plan.dropped, ...(result.warnings || [])],
+        capacity: pool.estimateCapacity(plan.modelIds),
       });
     } catch (err) {
       return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });

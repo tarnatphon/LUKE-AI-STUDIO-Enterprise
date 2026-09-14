@@ -28,7 +28,9 @@
     "readinessPollMs": 500,
     "idleUnloadMinutes": 45,
     "idleSweepEnabled": true,
-    "stopGenerationOnAbort": true
+    "stopGenerationOnAbort": true,
+    "batchSize": 256,
+    "ubatchSize": 128
   },
   "generation": {
     "stream": true,
@@ -81,13 +83,18 @@
   "memory": {
     "warnOnly": true,
     "systemReserveGb": 2,
-    "contextOverheadRatio": 0.25,
-    "vramSafetyMarginGb": 0.8
+    "contextOverheadRatio": 0.15,
+    "vramSafetyMarginGb": 0.8,
+    "perModelOverheadGb": 0.6
   },
   "history": {
     "saveEvaluation": true,
     "markBestResponse": true,
     "preserveAllResponses": true,
     "maximumRuns": 30
+  },
+  "arena": {
+    "releaseMainModelDuringRound": true,
+    "loadSequentially": true
   }
 }
