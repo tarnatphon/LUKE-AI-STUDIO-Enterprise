@@ -141,6 +141,30 @@ function normalizeArenaModelIds(modelIds, policy = {}) {
   return cleaned.slice(0, Math.max(1, maximum));
 }
 
+// Set when an arena round had to release the classic single-model chat server.
+// The model is restored automatically the next time the user chats normally,
+// so "making room" never leaves the machine without a chat model.
+let arenaReleasedMainModel = null;
+
+async function restoreReleasedMainModel() {
+  if (!arenaReleasedMainModel) return false;
+  const snapshot = arenaReleasedMainModel;
+  arenaReleasedMainModel = null;
+  if (llmReady || llmProc) return false;
+  try {
+    await startLlm({
+      model: snapshot.model,
+      contextSize: snapshot.contextSize || undefined,
+      gpuLayers: snapshot.gpuLayers,
+      threads: snapshot.threads || undefined,
+    });
+    return true;
+  } catch (error) {
+    console.warn(`  [llm] could not restore ${snapshot.model}: ${error.message || error}`);
+    return false;
+  }
+}
+
 /**
  * Plans an arena round and, when the round only fits without the classic
  * single-model chat server, releases it for the duration of the round.
@@ -163,6 +187,12 @@ async function planArenaRound(modelIds = [], policy = {}) {
   if (plan.budget.estimateGb > plan.budget.availableGb + mainGb) return { plan, notes };
 
   const mainModelName = path.basename(String(llmSettings.model || "text model"));
+  arenaReleasedMainModel = {
+    model: mainModelName,
+    contextSize: Number(llmSettings.contextSize) || 0,
+    gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
+    threads: Number(llmSettings.threads) || 0,
+  };
   await killLlm();
   notes.push({
     code: "ARENA_RELEASED_MAIN_MODEL",
@@ -25164,7 +25194,17 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
   if (req.url === "/api/llm/chat" && req.method === "POST") {
     const body = await readJsonBody(req, res);
     if (!body) return;
-    if (!llmReady) return json(res, 409, { ok: false, error: "Load a text model before sending a message." });
+    if (!llmReady) {
+      // The arena may have released the chat model to make room; bring it back
+      // instead of making the user reload it by hand.
+      const restored = await restoreReleasedMainModel();
+      if (!llmReady) {
+        return json(res, 409, { ok: false, error: "Load a text model before sending a message." });
+      }
+      if (restored) {
+        console.log("  [llm] restored the chat model that the arena released.");
+      }
+    }
     await doLlmChat(req, res, body);
     return;
   }
