@@ -68,11 +68,11 @@ function ModelArenaPanel({
           </span>
         </div>
 
-        <label className="chat-arena-toggle">
+        <label className="chat-arena-toggle" title={running ? "กำลังเปรียบเทียบอยู่" : "เปิด/ปิดโหมดเปรียบเทียบ"}>
           <input
             type="checkbox"
             checked={enabled}
-            disabled={busy}
+            disabled={running}
             onChange={(event) => onToggle?.(event.target.checked)}
           />
           เปิดใช้งาน
@@ -84,14 +84,20 @@ function ModelArenaPanel({
           <div className="chat-arena-models" role="group" aria-label="เลือกโมเดลสำหรับเปรียบเทียบ">
             {models.length === 0 && (
               <span className="chat-arena-empty">
-                ยังไม่มีโมเดลข้อความในเครื่อง — ดาวน์โหลดโมเดล GGUF ใน AI Library ก่อน
+                ยังไม่พบโมเดลข้อความในเครื่อง — ดาวน์โหลดโมเดล GGUF ใน AI Library ก่อน
+              </span>
+            )}
+
+            {models.length === 1 && (
+              <span className="chat-arena-empty">
+                ต้องมีอย่างน้อย 2 โมเดลจึงจะเปรียบเทียบได้ — ดาวน์โหลดโมเดล GGUF เพิ่มใน AI Library
               </span>
             )}
 
             {models.map((model) => {
               const filename = model.filename || model.name;
               const selected = selectedIds.includes(filename);
-              const disabled = (selectionFull && !selected) || running || busy;
+              const disabled = (selectionFull && !selected) || running;
               const loaded = loadedIds.includes(filename);
               const loading = loadingIds.includes(filename);
               return (
@@ -102,7 +108,13 @@ function ModelArenaPanel({
                   onClick={() => !disabled && onToggleModel?.(filename)}
                   disabled={disabled}
                   aria-pressed={selected}
-                  title={filename}
+                  title={
+                    selected
+                      ? `${filename} — กดเพื่อยกเลิก`
+                      : disabled
+                        ? `เลือกได้สูงสุด ${maximumModels} โมเดล — ยกเลิกโมเดลอื่นก่อน`
+                        : filename
+                  }
                 >
                   <span className={`chat-arena-dot ${loaded ? "loaded" : loading ? "loading" : ""}`} />
                   <span className="chat-arena-chip-name">{filename}</span>
