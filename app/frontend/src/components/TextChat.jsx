@@ -861,6 +861,14 @@ function TextChat({
     return /\.(jpe?g|png|webp)$/i.test(file.name) || file.type.startsWith("image/");
   };
 
+  // Browsers can only decode jpeg/png/webp on a canvas. iPhone photos and some
+  // macOS exports arrive as HEIC/HEIF/AVIF and would fail later with a cryptic
+  // error, so they are recognised up front with an actionable message.
+  const isUndecodableImage = (file) => {
+    return /\.(heic|heif|heifs|hevc|avif|tiff?)$/i.test(file.name) ||
+      ["image/heic", "image/heif", "image/avif", "image/tiff"].includes(String(file.type || "").toLowerCase());
+  };
+
   const isTextFile = (file) => {
     return /\.(txt|md|csv|log|rtf|tex|diff|patch|properties|conf|cfg|js|jsx|ts|tsx|py|json|jsonl|css|scss|html|java|cpp|c|h|rs|go|sh|bat|ps1|xml|yaml|yml|toml|ini|env|sql|vue|svelte|php|rb|swift|kt|gradle|cmake)$/i.test(file.name) || /^(Dockerfile|Makefile)$/i.test(file.name) || file.type.startsWith("text/") || file.type === "application/rtf";
   };
@@ -953,6 +961,13 @@ function TextChat({
           setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
           showAlert({ title: "Audio Transcription Failed", message: err.message || String(err), danger: true });
         });
+      } else if (isUndecodableImage(file)) {
+        showAlert({
+          title: "Convert this image first",
+          message: `“${file.name}” is in a format browsers cannot open (HEIC/HEIF/AVIF/TIFF). Open it in Preview and export it as JPEG or PNG, then attach it again.`,
+          danger: false,
+        });
+        return;
       } else if (isImage(file)) {
         if (!supportsVision) {
           showAlert({ title: "Vision Model Required", message: `Load a vision-capable model to analyze image “${file.name}”. Text, code and spreadsheet files can still be attached with the current model.`, danger: false });
@@ -2638,8 +2653,13 @@ function TextChat({
                 <button
                   className="chat-composer-attach-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={!status.ready}
-                  title={supportsVision ? "Attach, paste, or drop files, images, and audio" : "Attach audio, text, code, or XLSX files. Images require a vision model."}
+                  title={
+                    !status.ready
+                      ? "Attach files now — load a text model to send them"
+                      : supportsVision
+                        ? "Attach, paste, or drop files, images, and audio"
+                        : "Attach audio, text, code, or XLSX files. Images require a vision model."
+                  }
                 >
                   <Paperclip size={17} />
                 </button>
