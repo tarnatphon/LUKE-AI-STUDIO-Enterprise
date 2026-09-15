@@ -27441,6 +27441,20 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     return json(res, 404, { ok: false, error: "Unknown API endpoint" });
   }
 
+function cacheControlForStaticFile(requestUrl) {
+  const pathname = String(requestUrl || "/").split("?")[0].split("#")[0];
+  // index.html changes with every build (it points at the new hashes), so it
+  // must always be revalidated. Fingerprinted bundles never change their
+  // content, so they can be cached forever.
+  if (pathname === "/" || pathname === "/index.html") {
+    return "no-cache, must-revalidate";
+  }
+  if (pathname.startsWith("/assets/")) {
+    return "public, max-age=31536000, immutable";
+  }
+  return "no-cache";
+}
+
   // ── Static frontend files ─────────────────────────────────────────────────
   let filePath = path.join(DIST, req.url === "/" ? "index.html" : req.url);
   filePath = filePath.split("?")[0];
@@ -27453,7 +27467,14 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end("Not found"); return; }
-    res.writeHead(200, { "Content-Type": mime, "Access-Control-Allow-Origin": "*" });
+    res.writeHead(200, {
+      "Content-Type": mime,
+      "Access-Control-Allow-Origin": "*",
+      // Vite fingerprints every bundle (TextChat-BTsA6k4P.js). Without these
+      // headers the browser keeps the old bundle after an update and the user
+      // sees a UI that no longer exists in the code.
+      "Cache-Control": cacheControlForStaticFile(req.url || "/"),
+    });
     res.end(data);
   });
 });

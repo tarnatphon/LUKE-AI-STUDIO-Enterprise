@@ -37,6 +37,21 @@ PLATFORM_LABEL="macOS"
 
 DIST_INDEX="$APP_DIR/dist/index.html"
 SETUP_SCRIPT="$SCRIPT_DIR/scripts/setup/setup.sh"
+
+# ── Self-heal the built frontend: every bundle referenced by index.html ──────
+#    must exist, otherwise the browser loads a half broken app.
+if [[ -f "$DIST_INDEX" ]] && command -v git >/dev/null 2>&1; then
+  MISSING_ASSET=0
+  while IFS= read -r asset; do
+    [[ -z "$asset" ]] && continue
+    [[ -f "$APP_DIR/dist/$asset" ]] || MISSING_ASSET=1
+  done < <(grep -o 'assets/[A-Za-z0-9._-]*' "$DIST_INDEX" | sort -u)
+  if [[ "$MISSING_ASSET" == "1" ]]; then
+    echo "  [dist] Restoring missing frontend files..."
+    git -C "$SCRIPT_DIR" checkout -- app/dist || true
+  fi
+fi
+
 SERVE_SCRIPT="$SCRIPT_DIR/scripts/server/serve.cjs"
 
 FRONTEND_PORT="${FRONTEND_PORT:-1420}"

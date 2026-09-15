@@ -13,6 +13,8 @@
  *   merge: app/config/text-chat/model-arena-policy.json
  *
  * This validation proves the split: the shipped config is read-only for the
+ * app, user choices live outside of git, and the browser always receives the
+ * current frontend.
  * app, user choices are stored outside of git, and both are merged at runtime.
  */
 
@@ -127,6 +129,21 @@ async function main() {
     assert(
       Number(reread.policy.selection.maximumModels) === 4 && reread.policy.judge.enabled === false,
       "a later read still returns the user's choice"
+    );
+
+    // A stale bundle in the browser cache is the classic reason a shipped
+    // feature "does not exist" for the user, so the headers are part of the
+    // contract: index.html is revalidated, hashed assets are immutable.
+    const indexResponse = await fetch(`${baseUrl}/`);
+    assert(
+      (indexResponse.headers.get("cache-control") || "").includes("no-cache"),
+      "index.html is always revalidated, so an update reaches the browser"
+    );
+
+    const assetResponse = await fetch(`${baseUrl}/assets/does-not-exist.js`);
+    assert(
+      (assetResponse.headers.get("cache-control") || "").includes("max-age=31536000"),
+      "fingerprinted bundles are cached immutably (fast reloads)"
     );
 
     const shipped = JSON.parse(fs.readFileSync(policyFile, "utf8"));
