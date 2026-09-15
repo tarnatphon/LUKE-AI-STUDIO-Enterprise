@@ -6,6 +6,12 @@ import WorkTerminalDock from "./WorkTerminalDock";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
 import {
+  ZIP_MAX_BYTES,
+  describeZipLimit,
+  extractZipAttachment,
+  isZipFile,
+} from "../lib/zip-attachment.mjs";
+import {
   getDownloadProgress,
   getSpeechStatus,
   getLlmStatus,
@@ -1015,6 +1021,39 @@ function TextChat({
           const content = sheets.map((sheet) => `[Sheet: ${sheet.sheet}]\n${sheet.data.map((row) => row.map((cell) => String(cell ?? "").replace(/\t|\r?\n/g, " ")).join("\t")).join("\n")}`).join("\n\n");
           setAttachments((prev) => [...prev, { id: Math.random().toString(36).substring(7), file, type: "document", name: file.name, content: content.slice(0, MAX_ATTACHED_TEXT_CHARS), truncated: content.length > MAX_ATTACHED_TEXT_CHARS }]);
         }).catch((err) => showAlert({ title: "Spreadsheet Error", message: err.message || String(err), danger: true }));
+      } else if (isZipFile(file)) {
+        const archiveId = Math.random().toString(36).substring(7);
+        setAttachments((prev) => [...prev, { id: archiveId, file, type: "archive", name: file.name, status: "reading" }]);
+        (async () => {
+          try {
+            if (Number(file.size || 0) > ZIP_MAX_BYTES) {
+              const error = new Error(
+                `“${file.name}” is ${Math.round(Number(file.size || 0) / (1024 * 1024))} MB. ZIP attachments are limited to ${describeZipLimit(ZIP_MAX_BYTES)}.`
+              );
+              error.code = "ZIP_TOO_LARGE";
+              throw error;
+            }
+            const { default: JSZip } = await import("jszip");
+            const archive = await extractZipAttachment(file, { JSZip, maxBytes: ZIP_MAX_BYTES });
+            setAttachments((prev) =>
+              prev.map((attachment) =>
+                attachment.id === archiveId
+                  ? {
+                      ...attachment,
+                      type: "document",
+                      status: "ready",
+                      content: archive.content.slice(0, MAX_ATTACHED_TEXT_CHARS),
+                      truncated: archive.truncated || archive.content.length > MAX_ATTACHED_TEXT_CHARS,
+                      archive: { entries: archive.entries, included: archive.included, skipped: archive.skipped },
+                    }
+                  : attachment
+              )
+            );
+          } catch (err) {
+            setAttachments((current) => current.filter((attachment) => attachment.id !== archiveId));
+            showAlert({ title: "ZIP Error", message: err.message || String(err), danger: true });
+          }
+        })();
       } else if (isTextFile(file)) {
         if (file.size > MAX_ATTACHED_TEXT_CHARS * 4) {
           showAlert({ title: "File Too Large", message: `“${file.name}” is too large to attach safely. Add its folder to the Project and ask Work Chat to inspect the file directly.`, danger: false });
@@ -1039,7 +1078,7 @@ function TextChat({
       } else {
         showAlert({
           title: "Unsupported File",
-          message: `File "${file.name}" is not supported yet. Select an image, common audio file, PDF, Word, PowerPoint, XLSX spreadsheet, or text/code/config file.`,
+          message: `File "${file.name}" is not supported yet. Select an image, common audio file, PDF, Word, PowerPoint, XLSX spreadsheet, ZIP archive (up to ${describeZipLimit(ZIP_MAX_BYTES)}), or a text/code/config file.`,
           danger: true,
         });
       }
@@ -2593,11 +2632,16 @@ function TextChat({
                     <img src={att.dataUrl} alt={att.name} style={{ width: "24px", height: "24px", objectFit: "cover", borderRadius: "3px" }} />
                   ) : att.type === "audio" ? (
                     <LoaderCircle size={17} className="spin" aria-label="Transcribing audio" />
+                  ) : att.archive ? (
+                    <span style={{ fontWeight: 600 }}>🗜️</span>
                   ) : (
                     <span style={{ fontWeight: 600 }}>{att.transcript ? "🎙️" : "📄"}</span>
                   )}
                   <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--md-sys-color-on-surface-variant)" }} title={att.name}>
-                    {att.name}{att.status === "transcribing" ? " · Transcribing…" : att.transcript ? " · Transcript ready" : ""}
+                    {att.name}
+                    {att.status === "transcribing" ? " · Transcribing…" : att.transcript ? " · Transcript ready" : ""}
+                    {att.archive ? ` · ${att.archive.included}/${att.archive.entries} ไฟล์ข้อความ` : ""}
+                    {att.status === "reading" ? " · Reading archive…" : ""}
                   </span>
                   <button
                     onClick={() => setAttachments(prev => prev.filter(item => item.id !== att.id))}
@@ -2649,7 +2693,7 @@ function TextChat({
 
             <div className="chat-composer-toolbar">
               <div className="chat-composer-toolbar-left">
-                <input type="file" ref={fileInputRef} style={{ display: "none" }} multiple accept="image/jpeg,image/png,image/webp,audio/wav,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/webm,audio/flac,.wav,.mp3,.m4a,.aac,.ogg,.webm,.flac,.pdf,.doc,.docx,.pptx,.xlsx,.txt,.md,.markdown,.csv,.tsv,.log,.rtf,.tex,.diff,.patch,.properties,.conf,.cfg,.js,.jsx,.ts,.tsx,.py,.json,.jsonl,.css,.scss,.html,.java,.cpp,.c,.h,.rs,.go,.sh,.bat,.ps1,.xml,.yaml,.yml,.toml,.ini,.env,.sql,.vue,.svelte,.php,.rb,.swift,.kt,.gradle,.cmake" onChange={handleFileChange} />
+                <input type="file" ref={fileInputRef} style={{ display: "none" }} multiple accept="image/jpeg,image/png,image/webp,audio/wav,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/webm,audio/flac,.wav,.mp3,.m4a,.aac,.ogg,.webm,.flac,.pdf,.doc,.docx,.pptx,.xlsx,.zip,application/zip,application/x-zip-compressed,.txt,.md,.markdown,.csv,.tsv,.log,.rtf,.tex,.diff,.patch,.properties,.conf,.cfg,.js,.jsx,.ts,.tsx,.py,.json,.jsonl,.css,.scss,.html,.java,.cpp,.c,.h,.rs,.go,.sh,.bat,.ps1,.xml,.yaml,.yml,.toml,.ini,.env,.sql,.vue,.svelte,.php,.rb,.swift,.kt,.gradle,.cmake" onChange={handleFileChange} />
                 <button
                   className="chat-composer-attach-btn"
                   onClick={() => fileInputRef.current?.click()}
