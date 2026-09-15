@@ -125,6 +125,10 @@ class TextModelPool {
     };
     this.now = options.now || (() => Date.now());
     this.onBackendOutput = options.onBackendOutput || (() => {});
+    // Host applications keep user choices outside of git; the pool has to see
+    // them on top of the shipped defaults.
+    this.getPolicyOverrides =
+      options.getPolicyOverrides || (() => null);
 
     /** @type {Map<string, object>} */
     this.instances = new Map();
@@ -139,14 +143,29 @@ class TextModelPool {
   // ── policy & state ────────────────────────────────────────────────────────
 
   readPolicy() {
-    const stored = safeReadJson(this.policyPath, null);
+    const stored = safeReadJson(this.policyPath, null) || {};
+    const overrides = (typeof this.getPolicyOverrides === "function"
+      ? this.getPolicyOverrides()
+      : null) || {};
     return {
       ...DEFAULT_POLICY,
-      ...(stored || {}),
-      runtime: { ...DEFAULT_POLICY.runtime, ...(stored?.runtime || {}) },
-      generation: { ...DEFAULT_POLICY.generation, ...(stored?.generation || {}) },
-      memory: { ...DEFAULT_POLICY.memory, ...(stored?.memory || {}) },
-      selection: { maximumModels: 3, minimumModels: 2, ...(stored?.selection || {}) },
+      ...stored,
+      ...overrides,
+      runtime: { ...DEFAULT_POLICY.runtime, ...(stored.runtime || {}), ...(overrides.runtime || {}) },
+      generation: {
+        ...DEFAULT_POLICY.generation,
+        ...(stored.generation || {}),
+        ...(overrides.generation || {}),
+      },
+      memory: { ...DEFAULT_POLICY.memory, ...(stored.memory || {}), ...(overrides.memory || {}) },
+      arena: { ...(stored.arena || {}), ...(overrides.arena || {}) },
+      selection: {
+        maximumModels: 3,
+        minimumModels: 2,
+        ...(stored.selection || {}),
+        ...(overrides.selection || {}),
+      },
+      judge: { ...(stored.judge || {}), ...(overrides.judge || {}) },
     };
   }
 

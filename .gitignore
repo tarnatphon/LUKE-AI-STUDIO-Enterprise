@@ -69,3 +69,5 @@ SuperTrader/
 # Local app-generated backups (runtime state snapshots created on the user machine)
 *.bak-*
 app/runtime-state/**/*.bak-*
+app/runtime-state/**/*.overrides.json
+app/runtime-state/**/*.local.json

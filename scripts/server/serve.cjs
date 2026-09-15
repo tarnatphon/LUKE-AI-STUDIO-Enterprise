@@ -63,18 +63,62 @@ const memoryCalibration = new MemoryCalibration({ logger: console });
 // conversationId/runId → active arena run state
 const activeArenaRuns = new Map();
 
-function readModelArenaPolicy() {
+function readJsonFile(filePath, fallback = null) {
   try {
-    const stored = JSON.parse(
-      fs.readFileSync(
-        path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json"),
-        "utf8"
-      )
-    );
-    return stored && typeof stored === "object" ? stored : {};
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : fallback;
   } catch (_) {
-    return {};
+    return fallback;
   }
+}
+
+/**
+ * Arena policy = shipped defaults (tracked config) + user choices (untracked).
+ *
+ * Settings the user changes in the UI used to be written straight into
+ * app/config/text-chat/model-arena-policy.json. That file is tracked, so every
+ * `git pull` on a machine that had been used was refused with "Your local
+ * changes would be overwritten by merge". Machine specific state must never
+ * live in a tracked file, so user choices now go to runtime-state instead.
+ */
+// path/ROOT are declared further down the file, so the locations are resolved
+// lazily.
+function arenaPolicyPath() {
+  return path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json");
+}
+
+function arenaPolicyOverridesPath() {
+  return path.join(ROOT, "app", "runtime-state", "text-chat", "model-arena-policy.overrides.json");
+}
+
+function readArenaPolicyOverrides() {
+  return readJsonFile(arenaPolicyOverridesPath(), {}) || {};
+}
+
+function writeArenaPolicyOverrides(overrides) {
+  try {
+    const target = arenaPolicyOverridesPath();
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${JSON.stringify(overrides, null, 2)}\n`, "utf8");
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function readModelArenaPolicy() {
+  const defaults = readJsonFile(arenaPolicyPath(), {}) || {};
+  const overrides = readArenaPolicyOverrides();
+  return {
+    ...defaults,
+    ...overrides,
+    selection: { ...(defaults.selection || {}), ...(overrides.selection || {}) },
+    runtime: { ...(defaults.runtime || {}), ...(overrides.runtime || {}) },
+    judge: { ...(defaults.judge || {}), ...(overrides.judge || {}) },
+    evaluation: { ...(defaults.evaluation || {}), ...(overrides.evaluation || {}) },
+    arena: { ...(defaults.arena || {}), ...(overrides.arena || {}) },
+    memory: { ...(defaults.memory || {}), ...(overrides.memory || {}) },
+  };
 }
 
 /**
@@ -102,6 +146,7 @@ function getTextModelPool() {
     onBackendOutput: (text) => {
       memoryCalibration.scan(text);
     },
+    getPolicyOverrides: () => readArenaPolicyOverrides(),
     getGpuInfo: () => {
       try {
         return getGpuInfo();
@@ -24379,8 +24424,8 @@ const server = http.createServer(async (req, res) => {
     const body = await readJsonBody(req, res);
     if (!body) return;
     try {
-      const policyPath = path.join(ROOT, "app", "config", "text-chat", "model-arena-policy.json");
       const current = readModelArenaPolicy();
+      const overrides = readArenaPolicyOverrides();
       const patch = body && typeof body === "object" ? body : {};
       const next = {
         ...current,
@@ -24389,11 +24434,22 @@ const server = http.createServer(async (req, res) => {
         evaluation: { ...(current.evaluation || {}), ...(patch.evaluation || {}) },
       };
       const maximum = Math.max(2, Math.min(4, Number(next.selection.maximumModels) || 3));
+      // Only the choices the user made are persisted — and they are persisted
+      // outside of git so an update never collides with local usage.
+      const nextOverrides = {
+        ...overrides,
+        selection: {
+          ...(overrides.selection || {}),
+          maximumModels: maximum,
+          minimumModels: Math.min(2, maximum),
+        },
+        judge: { ...(overrides.judge || {}), enabled: next.judge.enabled !== false },
+      };
       next.selection.maximumModels = maximum;
       next.selection.minimumModels = Math.min(2, maximum);
       next.judge.enabled = next.judge.enabled !== false;
-      fs.writeFileSync(policyPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-      return json(res, 200, { ok: true, policy: next });
+      const saved = writeArenaPolicyOverrides(nextOverrides);
+      return json(res, 200, { ok: true, policy: next, saved: saved });
     } catch (err) {
       return json(res, 500, { ok: false, error: err.message || String(err) });
     }

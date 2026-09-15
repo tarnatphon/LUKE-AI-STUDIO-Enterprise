@@ -15,6 +15,11 @@ if [[ "$PLATFORM" != "Darwin" ]]; then
   exit 1
 fi
 
+# ── Keep machine state out of git so updates never collide with local usage ──
+if [[ -f "$SCRIPT_DIR/scripts/setup/git-local-state.sh" ]]; then
+  bash "$SCRIPT_DIR/scripts/setup/git-local-state.sh" || true
+fi
+
 NODE_DIR="$APP_DIR/tools/node-mac"
 NODE_BIN="$NODE_DIR/bin/node"
 NPM_CLI="$NODE_DIR/lib/node_modules/npm/bin/npm-cli.js"

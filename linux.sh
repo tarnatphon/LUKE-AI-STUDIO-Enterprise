@@ -9,6 +9,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$SCRIPT_DIR/app"
+
+if [[ -f "$SCRIPT_DIR/scripts/setup/git-local-state.sh" ]]; then
+  bash "$SCRIPT_DIR/scripts/setup/git-local-state.sh" || true
+fi
+
 PLATFORM="$(uname -s)"
 
 if [[ "$PLATFORM" != "Linux" ]]; then
