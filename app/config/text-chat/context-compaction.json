@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "product": "LUKE AI STUDIO",
+  "feature": "Automatic chat context compaction",
+  "enabled": true,
+  "strategy": "hybrid",
+  "triggerRatio": 0.7,
+  "answerReserveRatio": 0.15,
+  "keepLastMessages": 6,
+  "keepLastMessagesWithSummary": 4,
+  "minMessagesBeforeSummary": 6,
+  "maxSummaryTokens": 600,
+  "summaryTemperature": 0.2,
+  "summaryTimeoutMs": 120000,
+  "preserveFullHistory": true,
+  "notes": {
+    "summary": "Only the payload sent to llama.cpp is compacted. The conversation shown in the UI is never modified or shortened.",
+    "trigger": "Compaction starts once the prompt is expected to use more than triggerRatio of the context window minus room for the answer.",
+    "hybrid": "Step 1 trims injected bulk (web results, long attachments), step 2 drops the oldest turns, step 3 asks the loaded model for a summary of the dropped span."
+  }
+}

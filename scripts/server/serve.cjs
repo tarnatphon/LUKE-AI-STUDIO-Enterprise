@@ -53,6 +53,11 @@ const {
   parseJudgeResult,
 } = require("./text-arena-evaluator.cjs");
 const { MemoryCalibration } = require("./memory-calibration.cjs");
+const {
+  readConfig: readContextCompactionConfig,
+  compactForChat,
+  payloadTokens,
+} = require("./context-compaction.cjs");
 
 // LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
 let textModelPoolInstance = null;
@@ -24920,9 +24925,38 @@ async function doLlmChat(req, res, body, retryCount = 0) {
     const isStream = body.stream === true;
     const rawMessages = Array.isArray(body.messages) ? body.messages : [];
     const webAugmentation = await augmentMessagesWithWebSearch(rawMessages, body);
+
+    // Continuous chat: the conversation the user sees is never shortened, only
+    // the payload that goes to llama.cpp is compacted once it approaches the
+    // context window.
+    const compactionConfig = readContextCompactionConfig(ROOT);
+    const answerTokens = Math.max(
+      128,
+      Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)
+    );
+    const requestMessages = compactionConfig.enabled === false
+      ? webAugmentation.messages
+      : (
+          await compactForChat(webAugmentation.messages, {
+            config: compactionConfig,
+            contextTokens: Number(llmSettings.contextSize) || 4096,
+            answerTokens,
+            summaryPort: PORT_LLM,
+            model: llmSettings.model || "local-model",
+          })
+        ).messages;
+
+    if (requestMessages.length !== webAugmentation.messages.length) {
+      const saved = payloadTokens(webAugmentation.messages) - payloadTokens(requestMessages);
+      console.log(
+        `  [chat] context compaction: ${webAugmentation.messages.length} → ${requestMessages.length} ` +
+          `messages (saved about ${saved} tokens of ${Number(llmSettings.contextSize) || 4096}).`
+      );
+    }
+
     const requestData = JSON.stringify({
       model: llmSettings.model || "local-model",
-      messages: webAugmentation.messages,
+      messages: requestMessages,
       temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.7,
       max_tokens: Math.max(1, Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)),
       stream: isStream,
