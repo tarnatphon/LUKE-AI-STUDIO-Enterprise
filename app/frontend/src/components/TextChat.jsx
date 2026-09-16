@@ -2174,11 +2174,36 @@ function TextChat({
     const folderSummary = chatFolders.length
       ? `[Using ${chatFolders.length} approved folder${chatFolders.length > 1 ? "s" : ""}: ${chatFolders.map((folder) => `${folder.root}${folder.canWrite ? " (editable)" : " (read-only)"}`).join(", ")}]`
       : "";
+    // ── Keep the system prompt byte-stable ────────────────────────────────
+    // llama.cpp runs with --cache-prompt, so a request whose beginning is
+    // identical to the previous one reuses the KV cache instead of
+    // re-evaluating the whole chat. Anything that changes from turn to turn
+    // therefore belongs at the END of the newest user message, so the long
+    // prefix (system prompt + older messages) stays cacheable.
+    const checkCommands = assistantMode === "work" ? await loadCheckPlan() : [];
+    const volatileContext = [
+      visionInstruction,
+      assistantMode === "work"
+        ? [
+            checkCommands.length
+              ? `Verification commands available in this project: ${checkCommands.map((entry) => `${entry.id} (${entry.label})`).join(", ")}.`
+              : "No test, lint or build command was detected in this project, so say so instead of inventing one.",
+            `This autonomous Work run is on tool round ${agentRound} of ${MAX_WORK_AGENT_ROUNDS}. Do not request more tools after the final round.`,
+            workTasks.length
+              ? "Your current plan (keep it up to date with update_tasks):" + "\n" + workTasks.map((task) => `- [${task.status}] ${task.text}`).join("\n")
+              : (agentRound === 0 ? "Post your plan with update_tasks before you start editing." : ""),
+          ].filter(Boolean).join("\n")
+        : "",
+      assistantMode === "work" && activeProject?.id && getProjectMemory(activeProject.id).length
+        ? `Project memory:` + "\n" + getProjectMemory(activeProject.id).map((item) => `- [${item.type}${item.pinned ? ", pinned" : ""}] ${item.text}`).join("\n")
+        : "",
+    ].filter(Boolean).join("\n\n");
     const requestCombinedText = [
       requestText,
       documentContext,
       projectSearchContext,
       chatFolderContext,
+      volatileContext,
     ].filter(Boolean).join("\n\n").trim();
     const attachmentSummary = documentAttachments.length
       ? `[Attached documents: ${documentAttachments.map((attachment) => attachment.name).join(", ")}. Relevant sections selected automatically.]`
@@ -2259,10 +2284,6 @@ function TextChat({
 
     try {
       const systemPrompt = textSettings?.systemPrompt || "You are a helpful local AI assistant.";
-      const checkCommands = assistantMode === "work" ? await loadCheckPlan() : [];
-      const checkCommandList = checkCommands.length
-        ? checkCommands.map((entry) => `${entry.id} (${entry.label})`).join(", ")
-        : "none detected for this project — say so instead of inventing one";
       const workInstruction = assistantMode === "work"
         ? [
             "You are in Work mode. Help complete multi-step project work with clear plans, checkpoints, and concrete deliverables.",
@@ -2295,7 +2316,7 @@ function TextChat({
               '{\"tool\":\"read_file\",\"path\":\"src/file.js\"} — the full file, only when you truly need all of it.',
               '{\"tool\":\"apply_patch\",\"path\":\"src/file.js\",\"edits\":[{\"op\":\"replace\",\"old\":\"exact text to find\",\"new\":\"replacement\"}]} — ops: replace, delete, insert_after, insert_before, append, prepend. "old" and "anchor" must match the file EXACTLY, including indentation; if the edit is refused, read the file again and copy the text from it.',
               '{\"tool\":\"create_file\",\"path\":\"src/new.js\",\"content\":\"complete new file\"} — only for files that do not exist yet.',
-              '{\"tool\":\"run_check\",\"commandId\":\"npm-test\"} — run the project\'s own test/lint/build command. Available here: ' + checkCommandList + ".",
+              '{\"tool\":\"run_check\",\"commandId\":\"npm-test\"} — run the project\'s own test, lint or build command. Use one of the ids listed under "Verification commands available" above.',
               '{\"tool\":\"update_tasks\",\"tasks\":[{\"id\":\"1\",\"text\":\"...\",\"status\":\"doing\"}]} — status is todo, doing or done.',
               '{\"tool\":\"list_directory\",\"path\":\"src\"} and {\"tool\":\"review_diff\",\"path\":\"src/file.js\"} also remain available.',
             ].join("\n"),
@@ -2304,10 +2325,9 @@ function TextChat({
               "Do not ask the user to copy commands. Do not ask them to paste or run anything either: use the tools, read their results, and carry on by yourself.",
             ].join(" "),
             "Relevant Project Search excerpts may be included with the user request. When relying on them, cite the relative file path shown in the excerpt and do not imply that unrelated files were read.",
-            `This autonomous Work run is on tool round ${agentRound} of ${MAX_WORK_AGENT_ROUNDS}. Do not request more tools after the final round.`,
-            workTasks.length
-              ? `Your current plan (keep it up to date with update_tasks):\n${workTasks.map((task) => `- [${task.status}] ${task.text}`).join("\n")}`
-              : (agentRound === 0 ? "Post your plan with update_tasks before you start editing." : ""),
+            activeProject?.sourceFolders?.length
+              ? "The tools below work on the project's Source Folders. Anything outside them is refused by the server."
+              : "",
           ].join("\n")
         : "You are in Chat mode. Prioritize natural conversation, direct answers, learning, and exploration.";
       const approvalInstruction = assistantMode === "work"
@@ -2333,18 +2353,15 @@ function TextChat({
             "Commands and the terminal are not available in chat. Use tools, read their results, and finish with a short summary of what you did.",
           ].join("\n")
         : "";
+      // Stable for the whole conversation on purpose — see the note above.
       const combinedSystemPrompt = [
         systemPrompt.trim(),
         workInstruction,
         chatFolderInstruction,
         approvalInstruction,
-        visionInstruction,
-        assistantMode === "work" && activeProject?.id && getProjectMemory(activeProject.id).length
-          ? `Project memory:\n${getProjectMemory(activeProject.id).map((item) => `- [${item.type}${item.pinned ? ", pinned" : ""}] ${item.text}`).join("\n")}`
-          : "",
       ].filter(Boolean).join("\n\n");
       const contextLimit = getAdaptiveContextLimit();
-      const reservedSystemTokens = estimateTokens(combinedSystemPrompt) + 16;
+      const reservedSystemTokens = estimateTokens(combinedSystemPrompt) + estimateTokens(volatileContext) + 16;
       const managedContext = compactConversationContext(
         requestConversationMessages,
         contextLimit,

@@ -716,6 +716,26 @@ function App() {
           ...prev,
           threads: prev.threads || hardware.cpu_cores_physical || 4
         }));
+        // One-time runtime tune. The server knows the machine it is running
+        // on, so it picks thread and batch counts instead of leaving them at
+        // "one thread per core", which is wrong once the GPU runs the model.
+        try {
+          const tuneResponse = await fetch("/api/llm/performance-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isGpuMode: true }),
+          });
+          const tuneData = await tuneResponse.json();
+          if (tuneResponse.ok && tuneData?.recommended) {
+            setTextSettings((prev) => (prev.runtimeTuned ? prev : {
+              ...prev,
+              threads: tuneData.recommended.threads,
+              batchSize: tuneData.recommended.batchSize,
+              ubatchSize: tuneData.recommended.ubatchSize,
+              runtimeTuned: true,
+            }));
+          }
+        } catch (_) {}
       } catch (err) {
         console.error("Error fetching hardware specs:", err);
       }

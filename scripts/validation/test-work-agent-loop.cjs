@@ -312,7 +312,7 @@ async function main() {
     check("the model is told the workflow", /UNDERSTAND first/.test(chat) && /VERIFY with run_check/.test(chat));
     check("the model is told never to re-emit a whole file", /Never re-emit an entire file/.test(chat));
     check("the model is told not to invent a command", /never invent a commandId/.test(chat));
-    check("the available check commands are injected", /checkCommandList/.test(chat) && /loadCheckPlan/.test(chat));
+    check("the available check commands are injected", /Verification commands available in this project/.test(chat) && /loadCheckPlan/.test(chat));
     check("the project plan is kept in the prompt", /Your current plan/.test(chat));
     check("running a check asks first when the policy says so", /run the project check/.test(chat));
     check("the panel shows the plan", /Plan/.test(panel));

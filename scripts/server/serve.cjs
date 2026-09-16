@@ -1013,6 +1013,10 @@ const { detectProjectCommands, runProjectCheck } = require("./work-command-runne
 const { applyFilePatch } = require("./work-patch-editor.cjs");
 const { repoMap, outlineFile, findSymbol, searchCode, invalidateRepoIndex } = require("./work-repo-index.cjs");
 const { beginRun, snapshotFile, reviewRun, revertRun, listRuns, gitSummary } = require("./work-run-guard.cjs");
+// Speed: settings chosen from this machine, speculative decoding, and a model
+// that loads from the internal disk instead of an external one.
+const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
+const modelCache = require("./model-cache.cjs");
 
 // LUKE_AI_STORAGE_DESTINATION_MANAGER_IMPORT_V2
 const {
@@ -5754,6 +5758,18 @@ async function startLlmWithBackend(settings = {}, backend) {
   if (!filename.toLowerCase().endsWith(".gguf")) {
     throw new Error("Text generation requires a .gguf model.");
   }
+  // A model kept on an external disk is copied to the internal disk once and
+  // loaded from there — tens of seconds become a couple of seconds.
+  let loadPath = modelPath;
+  try {
+    const plan = await modelCache.cachePlan(modelPath);
+    if (plan.cached) {
+      loadPath = plan.cachedPath;
+      console.log(`  [llm] Loading ${filename} from the internal disk cache (${plan.sizeGb} GB).`);
+    } else if (plan.shouldCache) {
+      console.log(`  [llm] ${filename} is on an external volume — cache it in Settings > Performance to load it faster.`);
+    }
+  } catch (_) {}
 
   if (!backend) {
     throw new Error("llama.cpp is not installed. Run the platform setup script to install the text backend.");
@@ -5887,7 +5903,7 @@ async function startLlmWithBackend(settings = {}, backend) {
   }
 
   const args = [
-    "--model", modelPath,
+    "--model", loadPath,
     "--host", "127.0.0.1",
     "--port", String(PORT_LLM),
     "-lv", "1",
@@ -5932,6 +5948,22 @@ async function startLlmWithBackend(settings = {}, backend) {
   }
   if (llmSettings.enableThinking === true && llmSettings.supportsThinking) {
     args.push("--reasoning-format", "deepseek"); // ✅ Extract thoughts into reasoning_content
+  }
+  // Speculative decoding: a small draft model guesses ahead and the big model
+  // only checks, which is where most of the speed comes from.
+  if (llmSettings.draftModel) {
+    const draftPath = path.join(LLM_MODELS, path.basename(String(llmSettings.draftModel)));
+    if (fs.existsSync(draftPath)) {
+      args.push(...draftArgs({
+        draftModelPath: draftPath,
+        isGpuMode,
+        draftMax: Number(llmSettings.draftMax) || 0,
+        draftMin: Number(llmSettings.draftMin) || 0,
+      }));
+      console.log(`  [llm] Speculative decoding on with ${path.basename(draftPath)}.`);
+    } else {
+      console.warn(`  [llm] Draft model ${llmSettings.draftModel} is not in the model folder, so it was skipped.`);
+    }
   }
   if (mmprojPath) {
     args.push("--mmproj", mmprojPath);
@@ -27516,6 +27548,101 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   // GET /api/hardware-specs
   if (req.url === "/api/hardware-specs" && req.method === "GET") {
     return json(res, 200, getHardwareSpecs());
+  }
+
+  // POST /api/llm/performance-plan — the settings this machine should use
+  if (req.url === "/api/llm/performance-plan" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const specs = getHardwareSpecs();
+      const isGpuMode = body.isGpuMode !== false;
+      const modelSizeGb = Number(body.modelSizeGb) || 0;
+      const recommended = planRuntimeSettings({
+        cpuCores: specs.cpu_cores_physical || specs.cpu_cores_logical || 4,
+        appleSilicon: /apple|darwin/.test(String(specs.cpu_name || "")) && osPlatform === "darwin",
+        isGpuMode,
+        systemRamGb: specs.ram_total_gb || 8,
+        modelSizeGb,
+      });
+      const draft = planDraftSettings({
+        systemRamGb: specs.ram_total_gb || 8,
+        modelSizeGb,
+        draftModelSizeGb: Number(body.draftModelSizeGb) || 0,
+        contextTokens: Number(body.contextTokens) || 0,
+        kvBytesPerToken: Number(body.kvBytesPerToken) || 0,
+        isGpuMode,
+      });
+      return json(res, 200, {
+        ok: true,
+        hardware: {
+          cpu: specs.cpu_name,
+          coresPhysical: specs.cpu_cores_physical,
+          coresLogical: specs.cpu_cores_logical,
+          ramGb: specs.ram_total_gb,
+          gpu: specs.gpu_name,
+          tier: specs.tier,
+        },
+        recommended,
+        draft,
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // POST /api/llm/measure — measure the model that is already loaded.
+  // (POST /api/llm/benchmark, earlier in this file, loads and benchmarks a
+  // model file; this one costs nothing but a few seconds of the running one.)
+  if (req.url === "/api/llm/measure" && req.method === "POST") {
+    try {
+      if (!llmReady || !llmProc) {
+        return json(res, 409, { ok: false, error: "Load a text model first, then measure it." });
+      }
+      // Takes its turn in the same queue as chat, so it never fights a reply.
+      const result = await withLlmSlot("speed benchmark", () => benchmarkRunningLlm({ port: PORT_LLM }));
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // GET /api/model-cache/status — is the model on the internal disk yet?
+  if (req.url === "/api/model-cache/status" && req.method === "GET") {
+    try {
+      const modelPaths = fs.readdirSync(LLM_MODELS)
+        .filter(isModelFile)
+        .map((filename) => path.join(LLM_MODELS, filename));
+      const status = await modelCache.cacheStatus(modelPaths);
+      return json(res, 200, { ok: true, result: status });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // POST /api/model-cache/prime — copy a model onto the internal disk
+  if (req.url === "/api/model-cache/prime" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const filename = path.basename(String(body.model || ""));
+      const modelPath = path.join(LLM_MODELS, filename);
+      if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
+        return json(res, 400, { ok: false, error: "That model is not in the text model folder." });
+      }
+      const result = await modelCache.primeCache(modelPath);
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // POST /api/model-cache/clear — give the internal disk space back
+  if (req.url === "/api/model-cache/clear" && req.method === "POST") {
+    try {
+      const result = await modelCache.clearCache();
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
   }
 
   // GET /api/backend-options

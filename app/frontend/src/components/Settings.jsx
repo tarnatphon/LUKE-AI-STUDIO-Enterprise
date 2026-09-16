@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useState, useCallback } from "react";
+import PerformancePanel from "./PerformancePanel";
 import {
   Crop, Sliders, Cpu, Info, MessageSquare, SlidersHorizontal, Zap,
   ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
@@ -268,7 +269,8 @@ function Settings({
   const EDITABLE_TEXT_KEYS = [
     "systemPrompt", "contextSize", "temperature", "responseTokenMode", 
     "maxTokens", "seed", "performanceProfile", "threads", 
-    "gpuLayers", "batchSize", "cacheTypeK", "cacheTypeV", "preferredBackend"
+    "gpuLayers", "batchSize", "cacheTypeK", "cacheTypeV", "preferredBackend",
+    "draftModel"
   ];
 
   const hasPendingChanges = textSettings && pendingTextSettings && EDITABLE_TEXT_KEYS.some(key => {
@@ -1013,6 +1015,13 @@ function Settings({
                   Model memory limit. 0 uses default limit. (Recommended: 0)
                 </span>
               </div>
+
+              <PerformancePanel
+                pendingTextSettings={pendingTextSettings}
+                updateTextSetting={updateTextSetting}
+                onApply={handleSaveTextSettings}
+                showAlert={showAlert}
+              />
             </div>
           </div>
 
