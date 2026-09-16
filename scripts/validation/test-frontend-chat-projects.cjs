@@ -14,6 +14,9 @@ const actionRunner = fs.readFileSync("scripts/server/work-action-runner.cjs", "u
 const terminalDock = fs.readFileSync("app/frontend/src/components/WorkTerminalDock.jsx", "utf8");
 const projectMemory = fs.readFileSync("app/frontend/src/components/ProjectMemoryPanel.jsx", "utf8");
 const workFiles = fs.readFileSync("scripts/server/work-file-manager.cjs", "utf8");
+// Every path decision now lives in one shared guard, so the containment rules
+// are asserted against that module instead of each caller re-implementing them.
+const pathGuard = fs.readFileSync("scripts/server/work-path-guard.cjs", "utf8");
 const folderGrants = fs.readFileSync("scripts/server/work-folder-grants.cjs", "utf8");
 const projectSearch = fs.readFileSync("scripts/server/work-project-search.cjs", "utf8");
 
@@ -225,7 +228,10 @@ requireText(server, "assertWorkFolderGrant", "WORK_FOLDER_SERVER_GUARD_MISSING")
 requireText(folderGrants, "grant.projectId !== owner", "WORK_FOLDER_PROJECT_BINDING_MISSING");
 requireText(folderGrants, "grant.root !== canonicalRoot", "WORK_FOLDER_ROOT_BINDING_MISSING");
 requireText(workFiles, "approvalGranted !== true", "WORK_FILE_APPROVAL_GUARD_MISSING");
-requireText(workFiles, "Work file symlink escaped", "WORK_FILE_SYMLINK_GUARD_MISSING");
+requireText(workFiles, "work-path-guard.cjs", "WORK_FILE_SHARED_GUARD_MISSING");
+requireText(pathGuard, "leaves the granted folder through a link", "WORK_FILE_SYMLINK_GUARD_MISSING");
+requireText(pathGuard, "Path traversal outside the granted folder is forbidden", "WORK_FILE_TRAVERSAL_GUARD_MISSING");
+requireText(actionRunner, "resolveInsideRoot", "TERMINAL_SHARED_GUARD_MISSING");
 requireText(workFiles, "MAX_DOCUMENT_PREVIEW_BYTES", "WORK_DOCUMENT_PREVIEW_BUDGET_MISSING");
 requireText(workFiles, "extractProjectDocument", "WORK_DOCUMENT_PREVIEW_PARSER_MISSING");
 requireText(workTools, "openFile.readOnly", "WORK_DOCUMENT_READONLY_UI_MISSING");

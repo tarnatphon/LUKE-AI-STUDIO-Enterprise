@@ -21258,7 +21258,11 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/api/chat/folder/grant" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
-      const granted = grantChatFolder({ conversationId: body.conversationId, root: body.root });
+      const granted = grantChatFolder({
+        conversationId: body.conversationId,
+        root: body.root,
+        canWrite: body.canWrite === true,
+      });
       return json(res, 200, {
         ok: true,
         grantId: granted.grantId,

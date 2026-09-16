@@ -1,6 +1,11 @@
 const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
+const {
+  assertStaysInsideRoot,
+  createHttpError: createGuardError,
+  resolveInsideRoot,
+} = require("./work-path-guard.cjs");
 
 function createStatusError(message, status) {
   const err = new Error(message);
@@ -14,37 +19,24 @@ const DOCUMENT_EXTS = new Set([".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"
 // Bound extracted document previews so a single giant file cannot blow up chat context.
 const MAX_DOCUMENT_PREVIEW_BYTES = 256 * 1024;
 
-function isInsideRoot(realRoot, realTarget) {
-  return realTarget === realRoot || realTarget.startsWith(realRoot + path.sep);
-}
-
+// Every path decision is delegated to the shared guard so Work Mode and the
+// approved chat folder cannot drift apart.
 async function resolveTarget(options = {}) {
-  const root = options.root || options.projectRoot;
   const filePath = options.filePath || options.path || options.directoryPath || "";
-  if (!root) throw createStatusError("Project root is required", 400);
-  const realRoot = await fsp.realpath(root);
-  if (typeof filePath !== "string" || path.isAbsolute(filePath)) {
-    throw createStatusError("Path traversal not permitted outside project root", 400);
-  }
-  const targetPath = path.resolve(realRoot, filePath);
-  const rel = path.relative(realRoot, targetPath);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw createStatusError("Path traversal not permitted outside project root", 400);
-  }
-  return { realRoot, filePath, targetPath };
+  const { realRoot, targetPath, relativePath } = await resolveInsideRoot({
+    root: options.root || options.projectRoot,
+    targetPath: filePath,
+    allowMissing: true,
+  });
+  return { realRoot, filePath: relativePath, targetPath };
 }
 
 async function safeRealTarget(realRoot, targetPath, filePath) {
   try {
-    const realTarget = await fsp.realpath(targetPath);
-    if (!isInsideRoot(realRoot, realTarget)) {
-      throw createStatusError("Work file symlink escaped project root - forbidden", 403);
-    }
-    return realTarget;
-  } catch (err) {
-    if (err && err.statusCode) throw err;
-    if (err && err.code === "ENOENT") throw createStatusError("File not found: " + filePath, 404);
-    throw err;
+    return await assertStaysInsideRoot(realRoot, targetPath, { allowMissing: false });
+  } catch (error) {
+    if (error && error.statusCode === 404) throw createGuardError(`File not found: ${filePath}`, 404);
+    throw error;
   }
 }
 
@@ -90,36 +82,15 @@ async function readWorkFile(options = {}) {
   return { content: buffer.toString("utf8"), filePath, size: buffer.length, modifiedAt };
 }
 
-/**
- * A brand new file has no realpath yet, so walk up to the closest ancestor that
- * exists and prove IT is inside the root. Without this, a symlinked directory
- * inside the project (root/link -> /somewhere-else) would let a write escape.
- */
-async function assertWritableInsideRoot(realRoot, targetPath) {
-  let probe = targetPath;
-  for (;;) {
-    try {
-      const realProbe = await fsp.realpath(probe);
-      if (!isInsideRoot(realRoot, realProbe)) {
-        throw createStatusError("Work file symlink escaped project root - forbidden", 403);
-      }
-      return;
-    } catch (error) {
-      if (error && error.statusCode) throw error;
-      if (!error || error.code !== "ENOENT") throw error;
-      const parent = path.dirname(probe);
-      if (parent === probe) throw createStatusError("Path traversal not permitted outside project root", 400);
-      probe = parent;
-    }
-  }
-}
-
 async function writeWorkFile(options = {}) {
   if (options.approvalGranted !== true) {
     throw createStatusError("Write approval is required", 403);
   }
   const { realRoot, filePath, targetPath } = await resolveTarget(options);
-  await assertWritableInsideRoot(realRoot, targetPath);
+  // A brand new file has no realpath yet, so prove the closest existing
+  // ancestor is inside the root as well (resolveInsideRoot already did, this
+  // re-checks right before the write so nothing changed in between).
+  await assertStaysInsideRoot(realRoot, targetPath, { allowMissing: true });
   const body = options.content;
   if (typeof body !== "string") throw createStatusError("Text content is required", 400);
   const dir = path.dirname(targetPath);

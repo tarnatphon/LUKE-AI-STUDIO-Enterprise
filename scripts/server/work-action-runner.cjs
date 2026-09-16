@@ -1,9 +1,10 @@
 "use strict";
 
-const { exec, execFile } = require("node:child_process");
+const { execFile } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { resolveInsideRoot, createHttpError } = require("./work-path-guard.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -11,31 +12,42 @@ const execFileAsync = promisify(execFile);
 // in-process (no shell) and strictly read-only: file reads and diffs only.
 const READ_ONLY_COMMANDS = ["cat", "head", "tail"];
 
-function createHttpError(message, statusCode) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
+// The only command ids the Work terminal palette can ask for. They are fixed
+// argv arrays executed without a shell, so the model can never inject text.
+const READ_ONLY_COMMAND_IDS = {
+  "git-status": { file: "git", args: ["status", "--short"] },
+  "git-diff": { file: "git", args: ["diff", "--stat"] },
+  "git-log": { file: "git", args: ["log", "--oneline", "-n", "20"] },
+};
+
+// Targets the Work panel may reveal. Anything else is refused, and every one
+// of them stays inside the granted folder.
+const OPEN_TARGETS = new Set(["files", "terminal", "vscode", "browser"]);
+
+function reject(message, statusCode = 400) {
+  return createHttpError(message, statusCode);
 }
 
-function resolveSafePath(root, targetPath) {
+/**
+ * Resolve a relative path against the granted folder. Uses the shared guard, so
+ * an absolute path, a ".." walk, a "~" home shortcut and a symlink that points
+ * out of the folder are all refused the same way as a normal file read.
+ */
+async function resolveSafePath(root, targetPath) {
   if (!root || !targetPath) {
-    throw createHttpError("Root directory and file path are required.", 400);
+    throw reject("Root directory and file path are required.", 400);
   }
-  const normalized = path.normalize(targetPath);
-  if (normalized.startsWith("..") || path.isAbsolute(normalized)) {
-    throw createHttpError("Path traversal outside project root is forbidden.", 400);
-  }
-  const resolved = path.resolve(root, normalized);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw createHttpError("Path traversal outside project root is forbidden.", 400);
-  }
+  const { targetPath: resolved } = await resolveInsideRoot({
+    root,
+    targetPath,
+    allowMissing: false,
+  });
   return resolved;
 }
 
 async function getWorkTerminalSession({ root }) {
   if (!root) {
-    throw createHttpError("Project root is required.", 400);
+    throw reject("Project root is required.", 400);
   }
   let canonicalCwd;
   try {
@@ -53,36 +65,36 @@ async function getWorkTerminalSession({ root }) {
 
 async function runTypedWorkCommand({ root, command }) {
   if (!root || !command || typeof command !== "string") {
-    throw createHttpError("Root directory and command string are required.", 400);
+    throw reject("Root directory and command string are required.", 400);
   }
 
   const trimmed = command.trim();
   if (/[|;&`<>$]/.test(trimmed)) {
-    throw createHttpError("Pipes, redirection, substitutions, and chaining are not permitted.", 400);
+    throw reject("Pipes, redirection, substitutions, and chaining are not permitted.", 400);
   }
 
   const tokens = trimmed.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) {
-    throw createHttpError("Empty command.", 400);
+    throw reject("Empty command.", 400);
   }
 
   const [file, ...args] = tokens;
 
   if (!READ_ONLY_COMMANDS.includes(file)) {
-    throw createHttpError(`Unsupported command: ${file}. Only parsed read-only commands (${READ_ONLY_COMMANDS.join(", ")}) are allowed.`, 400);
+    throw reject(`Unsupported command: ${file}. Only parsed read-only commands (${READ_ONLY_COMMANDS.join(", ")}) are allowed.`, 400);
   }
 
   if (file === "cat") {
     if (args.length === 0) {
-      throw createHttpError("cat requires a file path.", 400);
+      throw reject("cat requires a file path.", 400);
     }
-    const targetFile = resolveSafePath(root, args[0]);
+    const targetFile = await resolveSafePath(root, args[0]);
     try {
       const content = await fs.readFile(targetFile, "utf8");
       return { output: content };
     } catch (err) {
       if (err.statusCode) throw err;
-      throw createHttpError(`Failed to read file: ${err.message}`, 400);
+      throw reject(`Failed to read file: ${err.message}`, 400);
     }
   }
 
@@ -104,10 +116,10 @@ async function runTypedWorkCommand({ root, command }) {
     }
 
     if (!targetPath) {
-      throw createHttpError(`${file} requires a file path.`, 400);
+      throw reject(`${file} requires a file path.`, 400);
     }
 
-    const targetFile = resolveSafePath(root, targetPath);
+    const targetFile = await resolveSafePath(root, targetPath);
     try {
       const content = await fs.readFile(targetFile, "utf8");
       const lines = content.split("\n");
@@ -120,22 +132,128 @@ async function runTypedWorkCommand({ root, command }) {
       return { output: selected.join("\n") };
     } catch (err) {
       if (err.statusCode) throw err;
-      throw createHttpError(`Failed to read file: ${err.message}`, 400);
+      throw reject(`Failed to read file: ${err.message}`, 400);
     }
   }
 
-  throw createHttpError(`No handler implemented for read-only command: ${file}.`, 500);
+  throw reject(`No handler implemented for read-only command: ${file}.`, 500);
+}
+
+/**
+ * Fixed palette commands (git status / diff / log, list files). The id selects
+ * a hard-coded argv array — there is no way for a caller to inject arguments —
+ * and every process runs in the granted folder without a shell.
+ */
+async function runReadOnlyWorkCommand({ root, commandId }) {
+  if (!root) throw reject("Project root is required.", 400);
+  const canonicalRoot = await fs.realpath(root).catch(() => path.resolve(root));
+
+  if (commandId === "list-files") {
+    const entries = [];
+    const queue = [""];
+    while (queue.length && entries.length < 200) {
+      const directory = queue.shift();
+      const dirents = await fs.readdir(path.join(canonicalRoot, directory), { withFileTypes: true }).catch(() => []);
+      for (const dirent of dirents) {
+        if (entries.length >= 200) break;
+        const relative = directory ? `${directory}/${dirent.name}` : dirent.name;
+        if (dirent.isDirectory()) {
+          if (![".git", "node_modules", "dist", "build", ".cache"].includes(dirent.name)) queue.push(relative);
+          continue;
+        }
+        if (dirent.isFile()) entries.push(relative);
+      }
+    }
+    return { output: entries.sort().join("\n") || "(empty)" };
+  }
+
+  const command = READ_ONLY_COMMAND_IDS[String(commandId || "")];
+  if (!command) {
+    throw reject(`Unsupported command: ${commandId}. The palette only offers ${Object.keys(READ_ONLY_COMMAND_IDS).join(", ")} and list-files.`, 400);
+  }
+
+  try {
+    const { stdout } = await execFileAsync(command.file, command.args, {
+      cwd: canonicalRoot,
+      shell: false,
+      timeout: 20000,
+      maxBuffer: 1024 * 1024,
+    });
+    return { output: stdout || "(no output)" };
+  } catch (err) {
+    if (err.statusCode) throw err;
+    throw reject(`Command failed: ${err.message}`, 400);
+  }
+}
+
+function revealCommand(target, canonicalRoot, url) {
+  if (process.platform === "darwin") {
+    if (target === "terminal") return { file: "open", args: ["-a", "Terminal", canonicalRoot] };
+    if (target === "vscode") return { file: "code", args: [canonicalRoot] };
+    if (target === "browser") return { file: "open", args: [url] };
+    return { file: "open", args: [canonicalRoot] };
+  }
+  if (process.platform === "win32") {
+    if (target === "terminal") return { file: "cmd", args: ["/c", "start", "cmd", "/k", `cd /d "${canonicalRoot}"`] };
+    if (target === "vscode") return { file: "code", args: [canonicalRoot] };
+    if (target === "browser") return { file: "cmd", args: ["/c", "start", "", url] };
+    return { file: "explorer", args: [canonicalRoot] };
+  }
+  if (target === "terminal") return { file: "x-terminal-emulator", args: ["--working-directory", canonicalRoot] };
+  if (target === "vscode") return { file: "code", args: [canonicalRoot] };
+  if (target === "browser") return { file: "xdg-open", args: [url] };
+  return { file: "xdg-open", args: [canonicalRoot] };
+}
+
+/**
+ * Revealing something on the user's machine is a real action, so it needs an
+ * explicit approval flag and a target from the fixed list. A folder target is
+ * always the granted folder itself; only an http(s) URL may open the browser.
+ */
+async function openWorkTarget({ root, target, url, approvalGranted }) {
+  if (approvalGranted !== true) {
+    throw reject("Opening anything on this computer requires explicit approval.", 403);
+  }
+  if (!root) throw reject("Project root is required.", 400);
+  if (!OPEN_TARGETS.has(String(target || ""))) {
+    throw reject(`Unsupported open target: ${target}.`, 400);
+  }
+
+  const canonicalRoot = await fs.realpath(root).catch(() => path.resolve(root));
+
+  if (target === "browser") {
+    const raw = String(url || "").trim();
+    if (!raw) throw reject("A website address is required.", 400);
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw reject("That is not a valid website address.", 400);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw reject("Only http and https addresses can be opened.", 400);
+    }
+  }
+
+  const command = revealCommand(target, canonicalRoot, String(url || ""));
+  try {
+    await execFileAsync(command.file, command.args, { shell: false, timeout: 15000 });
+  } catch (err) {
+    throw reject(`Could not open ${target}: ${err.message}`, 400);
+  }
+  return { opened: true, target };
 }
 
 async function runWorkFileDiff({ root, filePath }) {
   if (!root || !filePath) {
-    throw createHttpError("Project root and file path are required.", 400);
+    throw reject("Project root and file path are required.", 400);
   }
-  const targetFile = resolveSafePath(root, filePath);
-  const relativePath = path.relative(root, targetFile);
+  const targetFile = await resolveSafePath(root, filePath);
+  const canonicalRoot = await fs.realpath(root).catch(() => path.resolve(root));
+  const relativePath = path.relative(canonicalRoot, targetFile);
 
   try {
-    const { stdout } = await execFileAsync("git", ["diff", "--", relativePath], { cwd: root, shell: false });
+    const { stdout } = await execFileAsync("git", ["diff", "--", relativePath], { cwd: canonicalRoot, shell: false, timeout: 20000 });
     const output = `# Unstaged\n${stdout || "(no changes)"}`;
     return {
       output,
@@ -143,10 +261,15 @@ async function runWorkFileDiff({ root, filePath }) {
     };
   } catch (err) {
     if (err.statusCode) throw err;
-    throw createHttpError(`Failed to execute diff: ${err.message}`, 400);
+    throw reject(`Failed to execute diff: ${err.message}`, 400);
   }
 }
 
+/**
+ * Kept for backwards compatibility with older callers. Arbitrary shell strings
+ * are no longer executed anywhere: Work Mode runs the typed read-only palette
+ * and the fixed command ids instead, both without a shell.
+ */
 class WorkActionRunner {
   constructor(projectRoot = process.cwd()) {
     this.projectRoot = projectRoot;
@@ -156,21 +279,8 @@ class WorkActionRunner {
     if (options.approvalGranted !== true) {
       throw new Error("Command execution requires explicit user approval (approvalGranted).");
     }
-    return new Promise((resolve, reject) => {
-      const blocked = ["rm -rf /", ":(){ :|:& };:"];
-      if (blocked.some((b) => command.includes(b))) {
-        return reject(new Error("Command blocked for safety reasons."));
-      }
-
-      exec(command, { cwd: options.cwd || this.projectRoot, timeout: 60000 }, (error, stdout, stderr) => {
-        resolve({
-          success: !error,
-          stdout: stdout ? stdout.trim() : "",
-          stderr: stderr ? stderr.trim() : "",
-          exitCode: error ? error.code : 0
-        });
-      });
-    });
+    void command;
+    throw new Error("Free-form commands were removed. Use the read-only command palette instead.");
   }
 
   async listProjectFiles(subDir = "") {
@@ -197,6 +307,8 @@ class WorkActionRunner {
 module.exports = {
   WorkActionRunner,
   getWorkTerminalSession,
+  openWorkTarget,
+  runReadOnlyWorkCommand,
   runTypedWorkCommand,
   runWorkFileDiff
 };

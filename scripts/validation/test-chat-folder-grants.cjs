@@ -184,6 +184,7 @@ const chatEndpointBlock = serveSource.slice(
 check("every chat folder endpoint checks the grant first", (chatEndpointBlock.match(/assertWorkFolderGrant/g) || []).length >= 3);
 check("chat folder endpoints derive the scope on the server", /conversationId: body\.conversationId/.test(serveSource) && /`chat:\$\{/.test(serveSource));
 check("the grant endpoint reports the edit permission", /canWrite: granted\.canWrite === true/.test(serveSource));
+check("the grant endpoint forwards the edit choice to the store", /canWrite: body\.canWrite === true/.test(serveSource));
 check("chat edits go through their own guarded endpoint", serveSource.includes("assertChatFolderWrite({") && serveSource.includes("req.url === \"/api/chat/folder/write\""));
 check("chat edits still need the approved root", (() => {
   const start = serveSource.indexOf('req.url === "/api/chat/folder/write"');
