@@ -58,6 +58,13 @@ const {
   compactForChat,
   payloadTokens,
 } = require("./context-compaction.cjs");
+const {
+  countPromptTokens,
+  fitMessagesToContext,
+  holdLlmSlot,
+  isConnectionLossError,
+  withLlmSlot,
+} = require("./llm-request-guard.cjs");
 
 // LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
 let textModelPoolInstance = null;
@@ -1108,14 +1115,14 @@ function makeSocialAgencyLlmClient() {
       if (options.json) body.response_format = { type: "json_object" };
       const url = `http://127.0.0.1:${PORT_LLM}/v1/chat/completions`;
       try {
-        const result = await requestJson(url, body, options.timeoutMs || 300000);
+        const result = await withLlmSlot("agency", () => requestJson(url, body, options.timeoutMs || 300000));
         const content = result?.choices?.[0]?.message?.content;
         if (!content) throw new Error("Empty local LLM response.");
         return content;
       } catch (err) {
         if (/response_format/i.test(String(err?.message || "")) && options.json) {
           // older llama-server builds: retry without response_format and parse leniently
-          const retry = await requestJson(url, { ...body, response_format: undefined }, options.timeoutMs || 300000);
+          const retry = await withLlmSlot("agency", () => requestJson(url, { ...body, response_format: undefined }, options.timeoutMs || 300000));
           const content = retry?.choices?.[0]?.message?.content;
           if (!content) throw new Error("Empty local LLM response.");
           return content;
@@ -25052,6 +25059,31 @@ async function augmentMessagesWithWebSearch(messages, body) {
   };
 }
 
+/**
+ * Is llama.cpp still answering? Used to tell the difference between "the model
+ * died" and "this one request was rejected".
+ */
+async function isLlmPortAlive() {
+  try {
+    await requestJson(`http://127.0.0.1:${PORT_LLM}/health`, null, 1500);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function describeStreamFailure(error) {
+  const alive = await isLlmPortAlive();
+  if (!alive) {
+    llmReady = false;
+    return "The text model stopped running and has to be loaded again. This usually means llama.cpp ran out of memory or was closed; load the model once more, or use a smaller context size.";
+  }
+  if (isConnectionLossError(error?.message)) {
+    return "The text model closed the connection before it finished. The request was most likely too large for its context window — start a new chat, or load the model with a larger context size.";
+  }
+  return error?.message || "The text model did not respond.";
+}
+
 async function doLlmChat(req, res, body, retryCount = 0) {
   try {
     const isStream = body.stream === true;
@@ -25075,6 +25107,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
             answerTokens,
             summaryPort: PORT_LLM,
             model: llmSettings.model || "local-model",
+            acquireSlot: () => holdLlmSlot("compaction summary"),
           })
         ).messages;
 
@@ -25086,9 +25119,17 @@ async function doLlmChat(req, res, body, retryCount = 0) {
       );
     }
 
+    const fittedMessages = await fitMessagesToContext(requestMessages, {
+      contextTokens: Number(llmSettings.contextSize) || 4096,
+      answerTokens,
+      estimate: (messages) => payloadTokens(messages),
+      countTokens: (messages) => countPromptTokens(messages, { port: PORT_LLM, requestJson }),
+      log: (message) => console.log(`  [chat] ${message}`),
+    });
+
     const requestData = JSON.stringify({
       model: llmSettings.model || "local-model",
-      messages: requestMessages,
+      messages: fittedMessages,
       temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.7,
       max_tokens: Math.max(1, Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)),
       stream: isStream,
@@ -25105,6 +25146,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
     });
 
     if (isStream) {
+      await withLlmSlot("chat stream", () => new Promise((releaseStream) => {
       const clientReq = http.request({
         hostname: "127.0.0.1",
         port: PORT_LLM,
@@ -25125,8 +25167,9 @@ async function doLlmChat(req, res, body, retryCount = 0) {
             try {
               message = JSON.parse(errorBody || "{}").error?.message || message;
             } catch (_) {}
-            
+
             if (isOomError(message) && retryCount === 0) {
+              releaseStream();
               try {
                 await retryLowerContext();
                 return doLlmChat(req, res, body, retryCount + 1);
@@ -25135,6 +25178,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
               }
             }
             json(res, clientRes.statusCode || 500, { ok: false, error: message });
+            releaseStream();
           });
           return;
         }
@@ -25152,13 +25196,19 @@ async function doLlmChat(req, res, body, retryCount = 0) {
           res.write(`event: web_sources\ndata: ${JSON.stringify({ sources: webAugmentation.webSources })}\n\n`);
         }
         clientRes.on("data", (chunk) => res.write(chunk));
-        clientRes.on("end", () => res.end());
-        clientRes.on("error", (err) => res.destroy(err));
+        clientRes.on("end", () => { res.end(); releaseStream(); });
+        clientRes.on("error", (err) => { res.destroy(err); releaseStream(); });
       });
 
       clientReq.on("error", async (err) => {
+        // The browser went away (stop button, closed tab): nothing to report.
+        if (res.destroyed || res.writableEnded) {
+          releaseStream();
+          return;
+        }
         console.error("LLM stream request error:", err);
         if (isOomError(err.message) && retryCount === 0) {
+          releaseStream();
           try {
             await retryLowerContext();
             return doLlmChat(req, res, body, retryCount + 1);
@@ -25166,12 +25216,16 @@ async function doLlmChat(req, res, body, retryCount = 0) {
             console.error("Failed OOM recovery retry:", retryErr);
           }
         }
+        const friendlyError = isConnectionLossError(err?.message) || !(await isLlmPortAlive())
+          ? await describeStreamFailure(err)
+          : (err?.message || "The text model did not respond.");
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: err.message }));
+          res.end(JSON.stringify({ ok: false, error: friendlyError }));
         } else {
           res.end();
         }
+        releaseStream();
       });
 
       clientReq.write(requestData);
@@ -25179,10 +25233,12 @@ async function doLlmChat(req, res, body, retryCount = 0) {
       res.on("close", () => {
         if (!res.writableEnded && !clientReq.destroyed) clientReq.destroy();
       });
+      }));
       return;
     } else {
       try {
-        const result = await requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, JSON.parse(requestData), 300000);
+        const result = await withLlmSlot("chat request", () =>
+          requestJson(`http://127.0.0.1:${PORT_LLM}/v1/chat/completions`, JSON.parse(requestData), 300000));
         if (webAugmentation.webSources.length) {
           result.web_sources = webAugmentation.webSources;
         }

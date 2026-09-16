@@ -314,12 +314,23 @@ async function compactForChat(messages, options = {}) {
   if (!plan.compacted) return plan;
   if (!plan.needsSummary || !options.summaryPort) return plan;
 
-  const summary = await requestSummary(options.summaryPort, plan.summarizedSpan, {
-    model: options.model,
-    temperature: (options.config || {}).summaryTemperature,
-    maxSummaryTokens: (options.config || {}).maxSummaryTokens,
-    timeoutMs: (options.config || {}).summaryTimeoutMs,
-  });
+  // The summariser is a second request to the same llama.cpp instance, so it
+  // has to take its turn like everything else instead of arriving mid-stream.
+  let releaseSlot = null;
+  if (typeof options.acquireSlot === "function") {
+    releaseSlot = await options.acquireSlot();
+  }
+  let summary;
+  try {
+    summary = await requestSummary(options.summaryPort, plan.summarizedSpan, {
+      model: options.model,
+      temperature: (options.config || {}).summaryTemperature,
+      maxSummaryTokens: (options.config || {}).maxSummaryTokens,
+      timeoutMs: (options.config || {}).summaryTimeoutMs,
+    });
+  } finally {
+    if (typeof releaseSlot === "function") releaseSlot();
+  }
 
   if (!summary.ok) {
     plan.summaryError = summary.error;
