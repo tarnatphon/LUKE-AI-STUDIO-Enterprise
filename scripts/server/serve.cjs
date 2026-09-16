@@ -59,6 +59,12 @@ const {
   payloadTokens,
 } = require("./context-compaction.cjs");
 const {
+  parseKvSelfSizeMib,
+  planContextSize,
+  readKvProfile,
+  recordKvProfile,
+} = require("./context-size-planner.cjs");
+const {
   countPromptTokens,
   fitMessagesToContext,
   holdLlmSlot,
@@ -1332,6 +1338,11 @@ const OPENVINO_NPU_MODELS = [
 let backendProc  = null;
 let backendProcSeq = 0;
 let backendReady = false;
+// The image backend starts empty and only loads a model when one is asked for.
+// Counting "a model is configured" as "a model is in memory" used to shrink the
+// text context to 8192 even though nothing else was loaded, so the resident
+// size is tracked from the backend's own load messages instead.
+let imageModelResidentBytes = 0;
 let backendError = null;
 let openvinoProc = null;
 let openvinoReady = false;
@@ -1536,12 +1547,7 @@ function estimateModelBytes(modelPath) {
 
 function residentHeavyModelBytes() {
   let bytes = 0;
-  if ((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model) {
-    const imageModel = path.isAbsolute(String(currentSettings.model))
-      ? String(currentSettings.model)
-      : path.join(MODELS, String(currentSettings.model));
-    bytes += estimateModelBytes(imageModel);
-  }
+  bytes += Number(imageModelResidentBytes) || 0;
   if ((llmReady || llmProc) && llmSettings.model) {
     bytes += estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model))));
   }
@@ -5513,6 +5519,7 @@ function killBackend() {
     }
     backendUnloadState = { active: true, phase: "Stopping backend process...", progress: 10 };
     backendReady = false;
+    imageModelResidentBytes = 0;
     try { proc.kill("SIGTERM"); } catch (_) {}
     backendUnloadState = { active: true, phase: "Waiting for process exit...", progress: 50 };
     setTimeout(() => {
@@ -5524,7 +5531,22 @@ function killBackend() {
   });
 }
 
-function chooseAutoContext(modelFilename, isGpu) {
+/** Says which runtimes are really holding memory, so the log is trustworthy. */
+function residentBreakdown() {
+  const parts = [];
+  if (Number(imageModelResidentBytes) > 0) {
+    parts.push(`the image model (${(imageModelResidentBytes / (1024 ** 3)).toFixed(1)} GB)`);
+  }
+  if ((llmReady || llmProc) && llmSettings.model) {
+    parts.push(`the current text model (${(estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model)))) / (1024 ** 3)).toFixed(1)} GB)`);
+  }
+  if (textModelPoolInstance && textModelPoolInstance.instances.size > 0) {
+    parts.push(`${textModelPoolInstance.instances.size} arena model(s)`);
+  }
+  return parts.length ? parts.join(" + ") : "another runtime";
+}
+
+function evaluateContextPlan(modelFilename, isGpu) {
   let modelSizeGb = 4;
   try {
     const modelPath = path.join(LLM_MODELS, modelFilename);
@@ -5553,10 +5575,6 @@ function chooseAutoContext(modelFilename, isGpu) {
   // Models that are already resident share the same memory pool, so they have
   // to be subtracted before the context budget is calculated.
   const residentGb = residentHeavyModelBytes() / (1024 * 1024 * 1024);
-  // Loading a second model is only useful if the first one still fits:
-  // cap the context so both can live side by side.
-  const sharedContextCap = 8192;
-
   const systemRamGb = os.totalmem() / (1024 * 1024 * 1024);
   let vramGb = 0;
   try {
@@ -5577,36 +5595,40 @@ function chooseAutoContext(modelFilename, isGpu) {
     bufferGb = 2.5;
   }
 
-  if (isGpu && vramGb > 0) {
-    const gpuBudgetGb = Math.max(0.5, vramGb - modelSizeGb - projectorSizeGb - bufferGb - residentGb);
-    const maxFastContext = vramGb < 10 ? 8192 : vramGb < 16 ? 16384 : 20000;
-    const maxContext = residentGb > 0 ? Math.min(maxFastContext, sharedContextCap) : maxFastContext;
-    if (isVisionModel) {
-      return Math.min(maxContext, gpuBudgetGb >= 2.5 ? 8192 : 4096);
-    }
-    if (gpuBudgetGb < 1.5) return 4096;
-    if (gpuBudgetGb < 3.0) return Math.min(maxContext, 8192);
-    return Math.min(maxContext, 16384);
-  }
+  // The KV cache cost is learned from llama.cpp itself once the model has run:
+  // it prints "KV self size = 604.00 MiB" at start-up, which is exact, while
+  // any guess from the file size is either pessimistic or dangerous.
+  const kvGbPerToken = readKvProfile(
+    (typeof RUNTIME_STATE_DIR === "string" && RUNTIME_STATE_DIR) ? RUNTIME_STATE_DIR : path.join(ROOT, "app", "runtime-state"),
+    modelFilename,
+  );
 
-  const usableGb = Math.max(0.5, availableGb - modelSizeGb - projectorSizeGb - bufferGb - residentGb);
+  const plan = planContextSize({
+    modelSizeGb,
+    projectorSizeGb,
+    isVision: isVisionModel,
+    isGpu,
+    vramGb,
+    systemRamGb,
+    workingSetGb: memoryCalibration.workingSetGb(),
+    residentGb,
+    kvGbPerToken,
+  });
 
-  let kvPer4096Gb = 0.55;
-  if (modelSizeGb >= 5.5) {
-    kvPer4096Gb = 1.05;
-  } else if (modelSizeGb >= 4.0) {
-    kvPer4096Gb = 0.85;
-  }
+  const residentNote = residentGb > 0
+    ? `${residentGb.toFixed(1)} GB is already used by ${residentBreakdown()}`
+    : "nothing else is loaded";
+  return { plan, residentNote };
+}
 
-  const estimatedMaxCtx = (usableGb / kvPer4096Gb) * 4096;
-  const contextLadder = (residentGb > 0 ? [sharedContextCap, 4096, 2048] : [20000, 16384, 12288, 8192, 4096, 2048]);
-  
-  for (const limit of contextLadder) {
-    if (limit <= estimatedMaxCtx) {
-      return limit;
-    }
-  }
-  return 2048;
+function chooseAutoContext(modelFilename, isGpu) {
+  const { plan, residentNote } = evaluateContextPlan(modelFilename, isGpu);
+  console.log(
+    `  [llm] Auto-selected context size: ${plan.contextSize} tokens ` +
+      `(pool ${plan.poolGb} GB, ${plan.freeGb} GB free, ${residentNote}, ` +
+      `KV cache ${plan.usedLearnedKv ? "measured" : "estimated"} at ${plan.kvGbPer4096} GB per 4096 tokens).`
+  );
+  return plan.contextSize;
 }
 
 function isVisionModelFilename(filename = "") {
@@ -5744,16 +5766,21 @@ async function startLlmWithBackend(settings = {}, backend) {
 
   const loadProfile = settings.__loadProfile || {};
   let contextSize = Number(loadProfile.contextSize ?? settings.contextSize);
+  const isGpu = backend.mode.includes("GPU") || backend.mode.includes("CUDA") || backend.mode.includes("Vulkan") || backend.mode.includes("Metal") || backend.mode.startsWith("Auto");
   if (!contextSize || contextSize <= 0) {
-    const isGpu = backend.mode.includes("GPU") || backend.mode.includes("CUDA") || backend.mode.includes("Vulkan") || backend.mode.includes("Metal") || backend.mode.startsWith("Auto");
     contextSize = chooseAutoContext(filename, isGpu);
-    const residentGb = residentHeavyModelBytes() / (1024 * 1024 * 1024);
-    console.log(
-      residentGb > 0
-        ? `  [llm] Auto-selected context size: ${contextSize} tokens (another model already uses ${residentGb.toFixed(1)} GB, so the context is capped at 8192).`
-        : `  [llm] Auto-selected context size: ${contextSize} tokens based on memory limits.`
-    );
   } else {
+    // A context size saved earlier is still respected, but say so when the
+    // machine could clearly afford more — otherwise 8192 sticks forever.
+    try {
+      const { plan } = evaluateContextPlan(filename, isGpu);
+      if (plan.contextSize >= contextSize * 2) {
+        console.log(
+          `  [llm] Using the saved context size ${contextSize}; ${plan.contextSize} would fit in this memory ` +
+            `(pool ${plan.poolGb} GB, ${plan.freeGb} GB free). Set it to Auto or raise it in Model settings for a longer memory.`
+        );
+      }
+    } catch (_) {}
     contextSize = Math.max(512, Math.min(20000, contextSize));
   }
 
@@ -5949,6 +5976,17 @@ async function startLlmWithBackend(settings = {}, backend) {
     const output = data.toString();
     process.stderr.write("  [llm-err] " + output);
     memoryCalibration.scan(output);
+    // "KV self size  =  604.00 MiB" is the exact cost of this context for this
+    // model. Remembering it lets the next start pick the largest window that
+    // really fits instead of guessing from the file size.
+    const kvMib = parseKvSelfSizeMib(output);
+    if (kvMib > 0 && llmSettings.contextSize) {
+      recordKvProfile(
+        (typeof RUNTIME_STATE_DIR === "string" && RUNTIME_STATE_DIR) ? RUNTIME_STATE_DIR : path.join(ROOT, "app", "runtime-state"),
+        filename,
+        { contextSize: Number(llmSettings.contextSize), kvMib },
+      );
+    }
     if (/Vulkan\d+\s*:/i.test(output)) llmSettings.backendMode = "Vulkan GPU";
     else if (/CUDA\d+\s*:/i.test(output)) llmSettings.backendMode = "CUDA GPU";
     else if (/(HIP|ROCm)\d*\s*:/i.test(output)) llmSettings.backendMode = "ROCm GPU";
@@ -6192,6 +6230,11 @@ async function startBackend(settings = {}) {
         backendLoadState.active = true;
         backendLoadState.phase = "Initializing model...";
         backendLoadState.progress = Math.max(backendLoadState.progress, 95);
+        imageModelResidentBytes = estimateModelBytes(
+          path.isAbsolute(String(currentSettings.model || ""))
+            ? String(currentSettings.model)
+            : path.join(MODELS, String(currentSettings.model || ""))
+        );
       }
 
       const loadMatch = cleanLine.match(/\|\s*(\d+)\/(\d+)\s*-\s*([^|]+)$/);
