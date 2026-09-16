@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, SquareTerminal, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
+import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -33,7 +34,7 @@ function readTerminalSession(key) {
   }
 }
 
-export default function WorkTerminalDock({ project, onClose }) {
+export default function WorkTerminalDock({ project, setProjects = null, onClose }) {
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeCommand, setActiveCommand] = useState("");
@@ -44,6 +45,8 @@ export default function WorkTerminalDock({ project, onClose }) {
   const [copied, setCopied] = useState(false);
   const [commandQueue, setCommandQueue] = useState([]);
   const [terminalSession, setTerminalSession] = useState(null);
+  const [needsGrant, setNeedsGrant] = useState(false);
+  const [granting, setGranting] = useState(false);
   const roots = project?.sourceFolders || [];
   const [root, setRoot] = useState(() => roots[0] || "");
   const sessionKey = terminalSessionKey(project?.id, root);
@@ -64,21 +67,27 @@ export default function WorkTerminalDock({ project, onClose }) {
       setOutput("Select a granted source folder to start Work Terminal.");
       return () => { active = false; };
     }
-    void fetch("/api/work/terminal/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ root, projectId: project?.id, grantId: project?.folderGrants?.[root] }),
-    }).then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not start Work Terminal in this folder.");
-      if (!active) return;
-      setTerminalSession(data.session);
-      setOutput(`${data.session.changeDirectoryCommand}\n${data.session.prompt}`);
-    }).catch((error) => {
-      if (!active) return;
-      setTerminalSession(null);
-      setOutput(error instanceof Error ? error.message : String(error));
-    });
+    void (async () => {
+      try {
+        const response = await fetch("/api/work/terminal/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ root, projectId: project?.id, grantId: project?.folderGrants?.[root] }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not start Work Terminal in this folder.");
+        if (!active) return;
+        setNeedsGrant(false);
+        setTerminalSession(data.session);
+        setOutput(`${data.session.changeDirectoryCommand}\n${data.session.prompt}`);
+      } catch (error) {
+        if (!active) return;
+        setTerminalSession(null);
+        const message = error instanceof Error ? error.message : String(error);
+        setNeedsGrant(/permission/i.test(message));
+        setOutput(message);
+      }
+    })();
     return () => { active = false; };
   }, [project?.id, project?.folderGrants, root]);
   useEffect(() => {
@@ -96,6 +105,23 @@ export default function WorkTerminalDock({ project, onClose }) {
     return () => window.removeEventListener("luke:work-terminal-command", receiveCommand);
   }, []);
 
+  const grantAccess = useCallback(async () => {
+    if (!project || !root) return;
+    setGranting(true);
+    try {
+      const { grants } = await restoreProjectGrants(project);
+      if (typeof setProjects === "function") {
+        setProjects((current) => (current || []).map((entry) => (entry.id === project.id ? withRestoredGrants(entry, grants) : entry)));
+      }
+      setNeedsGrant(false);
+      setOutput((current) => `${current}\nAccess granted for this session. Type your command again.`);
+    } catch (error) {
+      setOutput((current) => `${current}\n${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setGranting(false);
+    }
+  }, [project, root, setProjects]);
+
   const executeCommand = useCallback(async (command) => {
     if (!root || !command) return;
     setBusy(true);
@@ -111,9 +137,12 @@ export default function WorkTerminalDock({ project, onClose }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Work command failed.");
+      setNeedsGrant(false);
       setOutput((current) => current.replace(/Running…$/, data.result?.output || "No output."));
     } catch (error) {
-      setOutput((current) => current.replace(/Running…$/, error instanceof Error ? error.message : String(error)));
+      const message = error instanceof Error ? error.message : String(error);
+      setNeedsGrant(/permission/i.test(message));
+      setOutput((current) => current.replace(/Running…$/, message));
     } finally {
       setBusy(false);
     }
@@ -152,7 +181,7 @@ export default function WorkTerminalDock({ project, onClose }) {
           <div className="work-terminal-dock-commands">
             {COMMANDS.map((command) => <button type="button" key={command.id} disabled={!root} onClick={() => setCommandText(command.label)}>{command.label}</button>)}
           </div>
-          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><input autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
+          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><input autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
             if (event.key === "ArrowUp") {
               event.preventDefault();
               const nextIndex = Math.min(history.length - 1, historyIndex + 1);

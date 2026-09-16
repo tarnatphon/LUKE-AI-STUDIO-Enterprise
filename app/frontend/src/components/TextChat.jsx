@@ -386,6 +386,7 @@ function TextChat({
   setIsLlmLoaded,
   assistantMode = "chat",
   activeProject = null,
+  setProjects = null,
   speechSettings = {},
 }) {
   const formatGenerationTime = (seconds) => {
@@ -3075,7 +3076,7 @@ function TextChat({
           </div>
           <div className="chat-composer-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
         </div>
-        {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} onClose={() => setShowBottomTerminal(false)} />}
+        {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onClose={() => setShowBottomTerminal(false)} />}
       </section>
       {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
       {assistantMode === "work" && showProjectMemory && <ProjectMemoryPanel project={activeProject} messages={messages} onRestore={(checkpoint) => { setMessages(checkpoint.messages); if (activeConversationId) saveConversationState(activeConversationId, checkpoint.messages, selectedModel); }} onClose={() => setShowProjectMemory(false)} />}

@@ -21635,6 +21635,48 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // POST /api/work/folder/restore
+  // Grants are session state, so they are gone after a restart while the
+  // project still lists the folders the user chose. This re-grants exactly the
+  // folders the project already saved — never a folder that is not in it.
+  if (req.url === "/api/work/folder/restore" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const projectId = String(body.projectId || "").trim();
+      if (!projectId) {
+        return json(res, 400, { ok: false, error: "A Work project is required." });
+      }
+      const remote = String(req.socket?.remoteAddress || "");
+      const fromThisComputer = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+      if (!fromThisComputer) {
+        return json(res, 403, { ok: false, error: "Folder access can only be restored from this computer." });
+      }
+      const roots = Array.isArray(body.roots) ? body.roots.slice(0, 20) : [];
+      const grants = {};
+      const failed = [];
+      const restored = [];
+      for (const root of roots) {
+        try {
+          const granted = grantWorkFolder({ projectId, root });
+          grants[String(root)] = granted.grantId;
+          grants[granted.root] = granted.grantId;
+          restored.push(granted.root);
+        } catch (error) {
+          failed.push({ root: String(root), error: error.message || String(error) });
+        }
+      }
+      if (restored.length > 0) {
+        console.log(`  [work] restored folder access for this session (${projectId}): ${restored.join(", ")}`);
+      }
+      if (failed.length > 0) {
+        console.warn(`  [work] ${failed.length} saved folder(s) could not be granted — open Edit project to pick them again.`);
+      }
+      return json(res, 200, { ok: true, grants, failed });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
   if (req.url === "/api/work/folder/revoke" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);

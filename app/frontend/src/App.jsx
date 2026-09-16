@@ -4,6 +4,7 @@ import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
 import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
 import "./App.css";
+import { missingGrants, restoreProjectGrants, withRestoredGrants } from "./lib/work-grants.mjs";
 
 const workspaceLoaders = {
   generator: () => import("./components/Generator"),
@@ -370,6 +371,32 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem("chat_projects", JSON.stringify(chatProjects));
+  }, [chatProjects]);
+
+  // Folder permissions live in the server's memory, so they are gone after a
+  // restart while the projects still list the folders the user chose. Re-grant
+  // those saved folders once per launch instead of asking the user to open
+  // Edit project for every single project.
+  const projectGrantsRestoredRef = useRef(false);
+  useEffect(() => {
+    if (projectGrantsRestoredRef.current) return;
+    const pending = chatProjects.filter((project) => missingGrants(project).length > 0);
+    if (pending.length === 0) return;
+    projectGrantsRestoredRef.current = true;
+    void (async () => {
+      const patches = [];
+      for (const project of pending) {
+        try {
+          const { grants } = await restoreProjectGrants(project);
+          if (Object.keys(grants).length > 0) patches.push({ id: project.id, grants });
+        } catch (_) {}
+      }
+      if (patches.length === 0) return;
+      setChatProjects((current) => current.map((project) => {
+        const patch = patches.find((entry) => entry.id === project.id);
+        return patch ? withRestoredGrants(project, patch.grants) : project;
+      }));
+    })();
   }, [chatProjects]);
 
   useEffect(() => {
@@ -1068,6 +1095,7 @@ function App() {
             setIsLlmLoaded={setIsLlmLoaded}
             assistantMode={assistantMode}
             activeProject={chatProjects.find((project) => project.id === activeProjectId) || null}
+            setProjects={setChatProjects}
             speechSettings={speechSettings}
           />
         </WorkspacePanel>
