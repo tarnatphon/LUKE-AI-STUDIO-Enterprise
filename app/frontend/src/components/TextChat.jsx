@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import readXlsxFile from "read-excel-file/browser";
-import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, Hand, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, FolderPlus, Hand, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
 import WorkToolsPanel from "./WorkToolsPanel";
 import WorkTerminalDock from "./WorkTerminalDock";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
@@ -734,6 +734,16 @@ function TextChat({
 
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
+
+  // Chat folders: the user picks ONE folder, approves it by hand, and LUKE AI
+  // may read inside it for this conversation only. The grant lives in the
+  // server's memory and disappears when the app closes, so nothing is stored.
+  const [chatFoldersByConversation, setChatFoldersByConversation] = useState({});
+  const [folderPickerBusy, setFolderPickerBusy] = useState(false);
+  const [folderApproval, setFolderApproval] = useState(null);
+  const chatScopeRef = useRef(`chat_${Date.now()}`);
+  const chatScope = activeConversationId || chatScopeRef.current;
+  const chatFolders = chatFoldersByConversation[chatScope] || [];
   const audioTranscriptionChainRef = useRef(Promise.resolve());
   const supportsVision = Boolean(status.ready && status.settings?.supportsVision);
   const supportsThinking = Boolean(status.ready && status.settings?.supportsThinking);
@@ -1642,7 +1652,97 @@ function TextChat({
     }
   };
 
+  const revokeChatFolder = async (folder, { silent = false } = {}) => {
+    setChatFoldersByConversation((current) => {
+      const next = { ...current };
+      const remaining = (next[chatScope] || []).filter((entry) => entry.root !== folder.root);
+      if (remaining.length) next[chatScope] = remaining;
+      else delete next[chatScope];
+      return next;
+    });
+    try {
+      await fetch("/api/chat/folder/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: chatScope, grantId: folder.grantId }),
+      });
+    } catch (error) {
+      if (!silent) console.warn("Could not revoke the folder grant:", error);
+    }
+  };
+
+  const chooseChatFolder = async () => {
+    if (folderPickerBusy) return;
+    setFolderPickerBusy(true);
+    try {
+      const response = await fetch("/api/storage/choose-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Choose the folder LUKE AI may read in this chat",
+          purpose: "chat-folder-read",
+          conversationId: chatScope,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.cancelled) return;
+        throw new Error(data.error || "Could not choose folder.");
+      }
+      const selectedPath = String(data.selectedPath || "").trim();
+      if (!selectedPath) return;
+      if (chatFolders.some((folder) => folder.root === selectedPath)) return;
+      setFolderApproval({
+        root: selectedPath,
+        name: selectedPath.split(/[\\/]/).filter(Boolean).pop() || selectedPath,
+      });
+    } catch (error) {
+      showAlert({ title: "Folder Picker Failed", message: error instanceof Error ? error.message : String(error), danger: true });
+    } finally {
+      setFolderPickerBusy(false);
+    }
+  };
+
+  const approveChatFolder = async () => {
+    const pending = folderApproval;
+    if (!pending || folderPickerBusy) return;
+    setFolderPickerBusy(true);
+    try {
+      const response = await fetch("/api/chat/folder/grant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: chatScope, root: pending.root }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not grant folder access.");
+      const root = String(data.root || pending.root);
+      let files = [];
+      try {
+        const treeResponse = await fetch("/api/chat/folder/tree", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: chatScope, root, grantId: data.grantId, path: "", recursive: true }),
+        });
+        const treeData = await treeResponse.json();
+        if (treeResponse.ok) files = (treeData.files || []).slice(0, 300);
+      } catch (error) {
+        console.warn("Could not list the approved folder:", error);
+      }
+      setChatFoldersByConversation((current) => ({
+        ...current,
+        [chatScope]: [...(current[chatScope] || []), { root, grantId: data.grantId, name: pending.name, files }],
+      }));
+      setFolderApproval(null);
+    } catch (error) {
+      showAlert({ title: "Folder Access Failed", message: error instanceof Error ? error.message : String(error), danger: true });
+    } finally {
+      setFolderPickerBusy(false);
+    }
+  };
+
   const handleNewChat = () => {
+    (chatFoldersByConversation[chatScope] || []).forEach((folder) => void revokeChatFolder(folder, { silent: true }));
+    chatScopeRef.current = `chat_${Date.now()}`;
     setActiveConversationId(null);
   };
 
@@ -1737,10 +1837,12 @@ function TextChat({
     const conversationBase = Array.isArray(queuedItem?.baseMessages) ? queuedItem.baseMessages : messages;
     const recentUserContext = conversationBase.filter((message) => message.role === "user").slice(-2).map((message) => messageText(message).slice(0, 600)).filter(Boolean);
     const retrievalQuery = text.length < 120 ? [...recentUserContext, text].join("\n") : text;
+    // The id doubles as the folder-grant scope, so it has to be the same value
+    // the grant was approved with (chatScopeRef) even before the chat is saved.
     let convId = activeConversationId;
     let isNew = false;
     if (!convId) {
-      convId = "chat_" + Date.now();
+      convId = chatScopeRef.current;
       setActiveConversationId(convId);
       isNew = true;
     }
@@ -1783,6 +1885,38 @@ function TextChat({
       }
     }
 
+    // Approved chat folders: read-only retrieval, still bound to the grant the
+    // user approved by hand. Nothing outside the folder can be reached.
+    let chatFolderContext = "";
+    if (chatFolders.length > 0) {
+      const folderSections = [];
+      for (const folder of chatFolders) {
+        const listing = folder.files?.length
+          ? `[Approved folder: ${folder.root} — ${folder.files.length} readable file(s)]\n${folder.files.slice(0, 150).map((filePath) => `- ${filePath}`).join("\n")}`
+          : `[Approved folder: ${folder.root}]`;
+        let searchSection = "";
+        if (text.length >= 2) {
+          try {
+            const response = await fetch("/api/chat/folder/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ conversationId: chatScope, root: folder.root, grantId: folder.grantId, query: retrievalQuery, limit: 5 }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Folder search failed.");
+            searchSection = (data.results || []).slice(0, 4).map((result, index) =>
+              `[Folder Search ${index + 1}: ${result.path} (${result.start}-${result.end})]\n${result.text}`
+            ).join("\n\n");
+          } catch (error) {
+            console.warn("Approved folder search unavailable:", error);
+          }
+        }
+        folderSections.push([listing, searchSection].filter(Boolean).join("\n\n"));
+      }
+      chatFolderContext = folderSections.join("\n\n").slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
+        + `\n\n[These folders were approved for reading only. You may read and quote them, but you cannot edit files, run commands, or use the terminal here: writing requires Work Mode. Paths outside the approved folders are refused by the server.]`;
+    }
+
     const imageAttachments = sourceAttachments.filter(att => att.type === "image");
     const conversationHasImage = conversationBase.some(messageContainsImage);
     const requestHasImage = imageAttachments.length > 0 || conversationHasImage;
@@ -1793,15 +1927,19 @@ function TextChat({
       ? (text && text !== "?" ? text : "Describe what is visible in the image.")
       : text;
     const displayText = text || (imageAttachments.length > 0 ? "Describe what is visible in the image." : "");
+    const folderSummary = chatFolders.length
+      ? `[Reading ${chatFolders.length} approved folder${chatFolders.length > 1 ? "s" : ""}: ${chatFolders.map((folder) => folder.root).join(", ")} — read-only]`
+      : "";
     const requestCombinedText = [
       requestText,
       documentContext,
       projectSearchContext,
+      chatFolderContext,
     ].filter(Boolean).join("\n\n").trim();
     const attachmentSummary = documentAttachments.length
       ? `[Attached documents: ${documentAttachments.map((attachment) => attachment.name).join(", ")}. Relevant sections selected automatically.]`
       : "";
-    const displayCombinedText = [displayText, attachmentSummary].filter(Boolean).join("\n\n").trim();
+    const displayCombinedText = [displayText, attachmentSummary, folderSummary].filter(Boolean).join("\n\n").trim();
 
     let userMessageContent;
     let requestUserMessageContent;
@@ -2658,6 +2796,28 @@ function TextChat({
             </div>
           )}
 
+          {chatFolders.length > 0 && (
+            <div className="chat-folder-strip" role="group" aria-label="Approved folders">
+              {chatFolders.map((folder) => (
+                <div className="chat-folder-chip" key={folder.root} title={`${folder.root}\nApproved for this session · read-only in chat`}>
+                  <ShieldCheck size={14} className="chat-folder-chip-badge" />
+                  <span className="chat-folder-chip-name">{folder.name}</span>
+                  <span className="chat-folder-chip-meta">
+                    {folder.files?.length ? `${folder.files.length} files` : "approved"} · read-only
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void revokeChatFolder(folder)}
+                    aria-label={`Revoke access to ${folder.root}`}
+                    title="Revoke access to this folder"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Input container with vertical layout */}
           <div className="chat-composer-inner">
             <div className="chat-composer-textarea-container">
@@ -2706,6 +2866,19 @@ function TextChat({
                   }
                 >
                   <Paperclip size={17} />
+                </button>
+                <button
+                  className={`chat-composer-folder-btn ${chatFolders.length > 0 ? "active" : ""}`}
+                  onClick={chooseChatFolder}
+                  disabled={folderPickerBusy}
+                  title={
+                    folderPickerBusy
+                      ? "Choosing folder…"
+                      : "Attach a folder — LUKE AI reads only the folder you approve, and only after you approve it"
+                  }
+                  aria-label="Attach an approved folder"
+                >
+                  <FolderPlus size={17} />
                 </button>
                 <button
                   className={`chat-composer-deepthink-btn web-search-btn ${useWebSearch ? "active" : ""}`}
@@ -2789,6 +2962,25 @@ function TextChat({
       </section>
       {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
       {assistantMode === "work" && showProjectMemory && <ProjectMemoryPanel project={activeProject} messages={messages} onRestore={(checkpoint) => { setMessages(checkpoint.messages); if (activeConversationId) saveConversationState(activeConversationId, checkpoint.messages, selectedModel); }} onClose={() => setShowProjectMemory(false)} />}
+      {folderApproval && (
+        <div className="chat-folder-approval-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !folderPickerBusy) setFolderApproval(null); }}>
+          <div className="chat-folder-approval" role="dialog" aria-modal="true" aria-labelledby="chat-folder-approval-title">
+            <h2 id="chat-folder-approval-title"><ShieldCheck size={18} /> Approve folder access</h2>
+            <p className="chat-folder-approval-question">Allow LUKE AI to read this folder?</p>
+            <p className="chat-folder-approval-path" title={folderApproval.root}>{folderApproval.root}</p>
+            <ul className="chat-folder-approval-guarantees">
+              <li><Check size={14} /> It can read <strong>only this folder</strong> and the files inside it.</li>
+              <li><Check size={14} /> It <strong>cannot</strong> open, list, or read any other folder on this computer.</li>
+              <li><Check size={14} /> In chat this is <strong>read-only</strong>: no editing, no commands, no terminal. Editing needs Work Mode.</li>
+            </ul>
+            <p className="chat-folder-approval-note">The approval stays in memory for this session only. Close LUKE AI STUDIO and it is gone — you approve again next time. Remove the folder chip to revoke it instantly.</p>
+            <div className="chat-folder-approval-actions">
+              <button type="button" onClick={() => setFolderApproval(null)} disabled={folderPickerBusy}>Cancel</button>
+              <button type="button" className="primary" onClick={approveChatFolder} disabled={folderPickerBusy}>{folderPickerBusy ? "Approving…" : "Approve for me"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

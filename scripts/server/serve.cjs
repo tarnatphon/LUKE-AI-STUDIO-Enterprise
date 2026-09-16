@@ -988,10 +988,12 @@ const {
 } = require("./work-action-runner.cjs");
 const {
   assertWorkFolderGrant,
+  assertNotChatScope,
   grantWorkFolder,
+  grantChatFolder,
   revokeWorkFolderGrant,
 } = require("./work-folder-grants.cjs");
-const { invalidateProjectIndex, searchProjectFiles } = require("./work-project-search.cjs");
+const { buildProjectIndex, invalidateProjectIndex, searchProjectFiles } = require("./work-project-search.cjs");
 
 // LUKE_AI_STORAGE_DESTINATION_MANAGER_IMPORT_V2
 const {
@@ -21247,6 +21249,104 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ── Chat folder grants ────────────────────────────────────────────────────
+  // Normal chat can be given read access to exactly one folder the user picks.
+  // The grant lives in memory only (it dies with the app) and every call is
+  // checked against it, exactly like a Work project folder.
+
+  if (req.url === "/api/chat/folder/grant" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const granted = grantChatFolder({ conversationId: body.conversationId, root: body.root });
+      return json(res, 200, {
+        ok: true,
+        grantId: granted.grantId,
+        root: granted.root,
+        scope: granted.projectId,
+        readOnly: true,
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  if (req.url === "/api/chat/folder/revoke" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      revokeWorkFolderGrant({
+        projectId: `chat:${String(body.conversationId || "").trim()}`,
+        grantId: body.grantId,
+      });
+      return json(res, 200, { ok: true });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  if (req.url === "/api/chat/folder/tree" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const root = assertWorkFolderGrant({
+        projectId: `chat:${String(body.conversationId || "").trim()}`,
+        root: body.root,
+        grantId: body.grantId,
+      });
+      const directory = await listWorkDirectory({
+        root,
+        directoryPath: body.path || "",
+      });
+      if (body.recursive === true) {
+        const index = await buildProjectIndex(root);
+        const files = [...new Set(index.chunks.map((chunk) => chunk.path))].sort().slice(0, 300);
+        return json(res, 200, { ok: true, root, directory, files, filesIndexed: index.filesIndexed });
+      }
+      return json(res, 200, { ok: true, root, directory });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  if (req.url === "/api/chat/folder/search" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const root = assertWorkFolderGrant({
+        projectId: `chat:${String(body.conversationId || "").trim()}`,
+        root: body.root,
+        grantId: body.grantId,
+      });
+      if (body.refresh === true) await invalidateProjectIndex(root);
+      const found = await searchProjectFiles({
+        root,
+        query: String(body.query || ""),
+        limit: Math.max(1, Math.min(8, Number(body.limit) || 5)),
+      });
+      return json(res, 200, {
+        ok: true,
+        root,
+        filesIndexed: found.filesIndexed,
+        results: found.results,
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  if (req.url === "/api/chat/folder/file" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const root = assertWorkFolderGrant({
+        projectId: `chat:${String(body.conversationId || "").trim()}`,
+        root: body.root,
+        grantId: body.grantId,
+      });
+      const file = await readWorkFile({ root, filePath: body.path });
+      return json(res, 200, { ok: true, root, file });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+
   // POST /api/work/search (bounded, project-grant-confined lexical RAG)
   if (req.url === "/api/work/search" && req.method === "POST") {
     try {
@@ -21272,6 +21372,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/api/work/file/write" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
       assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
       const result = await writeWorkFile({ root: body.root, filePath: body.path, content: body.content, approvalGranted: body.approvalGranted, expectedModifiedAt: body.expectedModifiedAt });
       return json(res, 200, { ok: true, result });
@@ -21296,6 +21397,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/api/work/command" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
       assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
       const result = await runReadOnlyWorkCommand({ root: body.root, commandId: body.commandId });
       return json(res, 200, { ok: true, result });
@@ -21308,6 +21410,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/api/work/terminal/session" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
       assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
       const session = await getWorkTerminalSession({ root: body.root });
       return json(res, 200, { ok: true, session });
@@ -21320,6 +21423,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/api/work/terminal" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
       assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
       const result = await runTypedWorkCommand({ root: body.root, command: body.command });
       return json(res, 200, { ok: true, result });
