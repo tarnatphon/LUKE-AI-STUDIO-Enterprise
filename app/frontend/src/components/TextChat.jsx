@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import readXlsxFile from "read-excel-file/browser";
-import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, FolderPlus, Hand, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, FolderPlus, Hand, ListChecks, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
 import WorkToolsPanel from "./WorkToolsPanel";
+import WorkAgentPanel from "./WorkAgentPanel";
 import WorkTerminalDock from "./WorkTerminalDock";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
@@ -1748,6 +1749,107 @@ function TextChat({
     setActiveConversationId(null);
   };
 
+  // ── Work agent run ──────────────────────────────────────────────────────
+  // One run per task: a shadow backup of every file the agent touches, a plan
+  // it keeps in view, and one diff to review before anything is kept.
+  const workRunIdRef = useRef(null);
+  const checkPlanRef = useRef({ root: null, commands: [] });
+  const [workTasks, setWorkTasks] = useState([]);
+  const [workReview, setWorkReview] = useState(null);
+  const [showWorkAgent, setShowWorkAgent] = useState(false);
+  const [workAgentBusy, setWorkAgentBusy] = useState(false);
+
+  const ensureWorkRun = useCallback(async (label) => {
+    const root = (activeProject?.sourceFolders || [])[0];
+    if (!root || !activeProject?.id) return null;
+    if (workRunIdRef.current) return workRunIdRef.current;
+    try {
+      const response = await fetch("/api/work/run/begin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: activeProject.id,
+          root,
+          grantId: activeProject?.folderGrants?.[root],
+          label: String(label || "").slice(0, 160),
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data?.result?.runId) {
+        workRunIdRef.current = data.result.runId;
+        return workRunIdRef.current;
+      }
+    } catch (_) {}
+    return null;
+  }, [activeProject]);
+
+  /** Which verification commands this project has — the model needs the ids. */
+  const loadCheckPlan = useCallback(async () => {
+    const root = (activeProject?.sourceFolders || [])[0];
+    if (!root || !activeProject?.id) return [];
+    if (checkPlanRef.current.root === root && checkPlanRef.current.commands.length) {
+      return checkPlanRef.current.commands;
+    }
+    try {
+      const response = await fetch("/api/work/check/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: activeProject.id, root, grantId: activeProject?.folderGrants?.[root] }),
+      });
+      const data = await response.json();
+      const commands = Array.isArray(data?.commands) ? data.commands : [];
+      checkPlanRef.current = { root, commands };
+      return commands;
+    } catch (_) {
+      return [];
+    }
+  }, [activeProject]);
+
+  const refreshWorkReview = useCallback(async () => {
+    const root = (activeProject?.sourceFolders || [])[0];
+    const runId = workRunIdRef.current;
+    if (!root || !runId || !activeProject?.id) {
+      setWorkReview(null);
+      return null;
+    }
+    try {
+      const response = await fetch("/api/work/run/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: activeProject.id, root, grantId: activeProject?.folderGrants?.[root], runId }),
+      });
+      const data = await response.json();
+      const review = response.ok ? data?.result || null : null;
+      setWorkReview(review);
+      return review;
+    } catch (_) {
+      setWorkReview(null);
+      return null;
+    }
+  }, [activeProject]);
+
+  const revertWorkRun = useCallback(async () => {
+    const root = (activeProject?.sourceFolders || [])[0];
+    const runId = workRunIdRef.current;
+    if (!root || !runId || !activeProject?.id) return;
+    if (!window.confirm("Put every file this run touched back the way it was?")) return;
+    setWorkAgentBusy(true);
+    try {
+      const response = await fetch("/api/work/run/revert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: activeProject.id, root, grantId: activeProject?.folderGrants?.[root], runId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Could not revert this run.");
+      await refreshWorkReview();
+    } catch (error) {
+      if (typeof showAlert === "function") showAlert(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkAgentBusy(false);
+    }
+  }, [activeProject, refreshWorkReview, showAlert]);
+
   const executeWorkActions = async (actions) => {
     // A folder approved from the composer stays usable in Work Mode too: it is
     // simply another granted root, still confined by its own chat grant.
@@ -1765,15 +1867,35 @@ function TextChat({
         results.push({ index, tool, ok: false, error: "No granted Source Folder is attached to this Work project." });
         continue;
       }
-      if (chatFolder && (tool === "terminal")) {
-        results.push({ index, tool, ok: false, error: "The terminal is only available for project Source Folders. Approved chat folders are limited to reading and editing files." });
+      const projectOnlyTools = ["terminal", "run_check", "apply_patch", "create_file", "read_outline", "find_symbol", "search_code", "repo_map"];
+      if (chatFolder && projectOnlyTools.includes(tool)) {
+        results.push({ index, tool, ok: false, error: "That tool is only available for project Source Folders. Approved chat folders are limited to reading and editing files." });
         continue;
       }
-      const changesFiles = tool === "write_file";
-      const mustAsk = approvalMode === "ask" || approvalMode === "custom";
-      if (mustAsk && !window.confirm(`Allow Work Chat to ${changesFiles ? "write" : "run"} ${tool}${action.path ? `: ${action.path}` : ""}?`)) {
-        results.push({ index, tool, ok: false, error: "User denied this action." });
+      // The plan is kept in the UI, not round-tripped through the model's
+      // context: the agent posts it once and then only sends what changed.
+      if (tool === "update_tasks") {
+        const incoming = Array.isArray(action.tasks) ? action.tasks : [];
+        const normalised = incoming.slice(0, 24).map((task, taskIndex) => ({
+          id: String(task?.id || taskIndex + 1),
+          text: String(task?.text || "").slice(0, 200),
+          status: ["todo", "doing", "done"].includes(String(task?.status)) ? String(task.status) : "todo",
+        })).filter((task) => task.text);
+        setWorkTasks(normalised);
+        results.push({ index, tool, ok: true, tasks: normalised.length });
         continue;
+      }
+      const changesFiles = ["write_file", "apply_patch", "create_file"].includes(tool);
+      const runsCommand = tool === "run_check";
+      const mustAsk = approvalMode === "ask" || approvalMode === "custom";
+      if (mustAsk && (changesFiles || runsCommand)) {
+        const what = runsCommand
+          ? `run the project check "${String(action.commandId || "")}"`
+          : `${tool === "create_file" ? "create" : "change"} ${String(action.path || "a file")}`;
+        if (!window.confirm(`Allow Work Chat to ${what}?`)) {
+          results.push({ index, tool, ok: false, error: "User denied this action." });
+          continue;
+        }
       }
       const endpoint = chatFolder
         ? {
@@ -1786,6 +1908,13 @@ function TextChat({
             list_directory: "/api/work/directory",
             read_file: "/api/work/file/read",
             write_file: "/api/work/file/write",
+            apply_patch: "/api/work/file/patch",
+            create_file: "/api/work/file/patch",
+            read_outline: "/api/work/index/outline",
+            find_symbol: "/api/work/index/symbol",
+            search_code: "/api/work/index/search",
+            repo_map: "/api/work/index/map",
+            run_check: "/api/work/check/run",
             terminal: "/api/work/terminal",
             review_diff: "/api/work/review/diff",
           }[tool];
@@ -1793,14 +1922,33 @@ function TextChat({
         results.push({ index, tool, ok: false, error: "Unsupported Work tool." });
         continue;
       }
-      const payload = tool === "terminal"
-        ? { ...base, command: String(action.command || "") }
-        : { ...base, path: String(action.path || ""), ...(changesFiles ? { content: String(action.content ?? ""), approvalGranted: true } : {}) };
+      // Every write joins the run's shadow backup, so one click undoes the lot.
+      const runId = changesFiles && !chatFolder ? await ensureWorkRun(action.path) : null;
+      const path = String(action.path || "");
+      const payload = (() => {
+        if (tool === "terminal") return { ...base, command: String(action.command || "") };
+        if (tool === "run_check") return { ...base, commandId: String(action.commandId || ""), timeoutMs: Number(action.timeoutMs) || 0 };
+        if (tool === "find_symbol") return { ...base, name: String(action.name || action.symbol || ""), limit: Number(action.limit) || 20 };
+        if (tool === "search_code") return { ...base, pattern: String(action.pattern || action.query || ""), limit: Number(action.limit) || 25, extension: action.extension || null, flags: typeof action.flags === "string" ? action.flags : "" };
+        if (tool === "repo_map") return { ...base, limit: Number(action.limit) || 0 };
+        if (tool === "apply_patch") return { ...base, path, edits: Array.isArray(action.edits) ? action.edits : [], runId };
+        if (tool === "create_file") return { ...base, path, create: true, edits: [{ op: "set", content: String(action.content ?? "") }], runId };
+        if (tool === "write_file") return { ...base, path, content: String(action.content ?? ""), approvalGranted: true, runId };
+        return { ...base, path };
+      })();
       try {
         const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `${tool} failed.`);
-        results.push({ index, tool, ok: true, path: action.path, command: action.command, result: data.directory || data.file || data.result });
+        results.push({
+          index,
+          tool,
+          ok: true,
+          path: action.path,
+          command: action.command,
+          result: data.directory || data.file || data.result,
+        });
+        if (changesFiles && !chatFolder) void refreshWorkReview();
       } catch (error) {
         results.push({ index, tool, ok: false, error: error instanceof Error ? error.message : String(error) });
       }
@@ -1876,6 +2024,13 @@ function TextChat({
 
   const sendMessage = async (queuedItem = null, fromQueue = false) => {
     const agentRound = Number(queuedItem?.agentRound || 0);
+    // A fresh request starts a fresh run: new shadow backups, new plan. The
+    // agent's own follow-up rounds (preserveComposer) stay in the same run.
+    if (assistantMode === "work" && agentRound === 0 && !queuedItem?.preserveComposer) {
+      workRunIdRef.current = null;
+      setWorkTasks([]);
+      setWorkReview(null);
+    }
     const sourceAttachments = queuedItem?.attachments || attachments;
     const text = String(queuedItem?.text ?? textareaRef.current?.value ?? "").trim();
     const hasAttachments = sourceAttachments.length > 0;
@@ -2104,6 +2259,10 @@ function TextChat({
 
     try {
       const systemPrompt = textSettings?.systemPrompt || "You are a helpful local AI assistant.";
+      const checkCommands = assistantMode === "work" ? await loadCheckPlan() : [];
+      const checkCommandList = checkCommands.length
+        ? checkCommands.map((entry) => `${entry.id} (${entry.label})`).join(", ")
+        : "none detected for this project — say so instead of inventing one";
       const workInstruction = assistantMode === "work"
         ? [
             "You are in Work mode. Help complete multi-step project work with clear plans, checkpoints, and concrete deliverables.",
@@ -2119,9 +2278,36 @@ function TextChat({
                 ? "Treat these paths as the project scope; do not claim to have read files unless their contents were provided."
                 : "",
             ].filter(Boolean).join(" "),
-            "You can operate the selected project directly. When a tool is needed, emit one fenced ```luke-actions JSON block with {\"actions\":[...]}. Supported actions: {\"tool\":\"list_directory\",\"path\":\"relative/path\"}, {\"tool\":\"read_file\",\"path\":\"relative/file\"}, {\"tool\":\"write_file\",\"path\":\"relative/file\",\"content\":\"complete new content\"}, {\"tool\":\"terminal\",\"command\":\"allowlisted read-only command\"}, and {\"tool\":\"review_diff\",\"path\":\"relative/file\"}. Paths must be relative to a granted Source Folder. Do not ask the user to copy commands. Use tools, inspect their returned results, continue autonomously, and finish with a concise summary when the task is complete.",
+            [
+              "How to work, in this order:",
+              "1. UNDERSTAND first — use repo_map to see the shape of the project, find_symbol to locate a definition and its usages, search_code to grep, read_outline to see one file's skeleton. Do not read a whole file to find one thing, and do not list directories one level at a time.",
+              "2. PLAN — send update_tasks with the steps you intend to take, then keep it current as you go.",
+              "3. EDIT with apply_patch. Send the smallest edit that does the job. Never re-emit an entire file just to change a few lines.",
+              "4. VERIFY with run_check after any change to code. If it fails, read the failure, fix the cause, and run it again. A task is only finished when the check passes or you have explained why it cannot.",
+              "5. SUMMARISE briefly: what changed, which check you ran, and what it reported.",
+            ].join("\n"),
+            [
+              "Tools — emit ONE fenced ```luke-actions block containing {\"actions\":[ ... ]}. Paths are relative to a granted Source Folder and nothing outside it is ever reachable.",
+              '{\"tool\":\"repo_map\"} — folder shape, languages and entry points.',
+              '{\"tool\":\"find_symbol\",\"name\":\"functionName\"} — where it is defined and where it is used.',
+              '{\"tool\":\"search_code\",\"pattern\":\"regex\"} — grep with file and line numbers.',
+              '{\"tool\":\"read_outline\",\"path\":\"src/file.js\"} — that file\'s functions and classes with line numbers.',
+              '{\"tool\":\"read_file\",\"path\":\"src/file.js\"} — the full file, only when you truly need all of it.',
+              '{\"tool\":\"apply_patch\",\"path\":\"src/file.js\",\"edits\":[{\"op\":\"replace\",\"old\":\"exact text to find\",\"new\":\"replacement\"}]} — ops: replace, delete, insert_after, insert_before, append, prepend. "old" and "anchor" must match the file EXACTLY, including indentation; if the edit is refused, read the file again and copy the text from it.',
+              '{\"tool\":\"create_file\",\"path\":\"src/new.js\",\"content\":\"complete new file\"} — only for files that do not exist yet.',
+              '{\"tool\":\"run_check\",\"commandId\":\"npm-test\"} — run the project\'s own test/lint/build command. Available here: ' + checkCommandList + ".",
+              '{\"tool\":\"update_tasks\",\"tasks\":[{\"id\":\"1\",\"text\":\"...\",\"status\":\"doing\"}]} — status is todo, doing or done.',
+              '{\"tool\":\"list_directory\",\"path\":\"src\"} and {\"tool\":\"review_diff\",\"path\":\"src/file.js\"} also remain available.',
+            ].join("\n"),
+            [
+              "Rules you must keep: never claim a file says something you did not read; never invent a commandId that is not listed; never say the work is done because it looks right — say it is done because the check passed.",
+              "Do not ask the user to copy commands. Do not ask them to paste or run anything either: use the tools, read their results, and carry on by yourself.",
+            ].join(" "),
             "Relevant Project Search excerpts may be included with the user request. When relying on them, cite the relative file path shown in the excerpt and do not imply that unrelated files were read.",
             `This autonomous Work run is on tool round ${agentRound} of ${MAX_WORK_AGENT_ROUNDS}. Do not request more tools after the final round.`,
+            workTasks.length
+              ? `Your current plan (keep it up to date with update_tasks):\n${workTasks.map((task) => `- [${task.status}] ${task.text}`).join("\n")}`
+              : (agentRound === 0 ? "Post your plan with update_tasks before you start editing." : ""),
           ].join("\n")
         : "You are in Chat mode. Prioritize natural conversation, direct answers, learning, and exploration.";
       const approvalInstruction = assistantMode === "work"
@@ -2595,6 +2781,7 @@ function TextChat({
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowProjectMemory((open) => !open)} aria-pressed={showProjectMemory} title="Project Memory and checkpoints" style={{ height: "32px", padding: "0 9px" }}><Brain size={16} /></button>
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowBottomTerminal((open) => !open)} aria-pressed={showBottomTerminal} title="Toggle bottom Terminal" style={{ height: "32px", padding: "0 9px" }}><PanelBottom size={16} /></button>
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowWorkTools((open) => !open)} aria-pressed={showWorkTools} title="Toggle Work tools" style={{ height: "32px", padding: "0 9px" }}><PanelRight size={16} /></button>
+                <button type="button" className="m3-btn m3-btn-outlined" onClick={() => { setShowWorkAgent((open) => { if (!open) void refreshWorkReview(); return !open; }); }} aria-pressed={showWorkAgent} title="Agent run: plan, changes and undo" style={{ height: "32px", padding: "0 9px" }}><ListChecks size={16} /></button>
               </>
             )}
             <button
@@ -3079,6 +3266,7 @@ function TextChat({
         {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onClose={() => setShowBottomTerminal(false)} />}
       </section>
       {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
+      {assistantMode === "work" && showWorkAgent && <WorkAgentPanel tasks={workTasks} review={workReview} onRevert={revertWorkRun} onClose={() => setShowWorkAgent(false)} busy={workAgentBusy} />}
       {assistantMode === "work" && showProjectMemory && <ProjectMemoryPanel project={activeProject} messages={messages} onRestore={(checkpoint) => { setMessages(checkpoint.messages); if (activeConversationId) saveConversationState(activeConversationId, checkpoint.messages, selectedModel); }} onClose={() => setShowProjectMemory(false)} />}
       {folderApproval && (
         <div className="chat-folder-approval-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !folderPickerBusy) setFolderApproval(null); }}>

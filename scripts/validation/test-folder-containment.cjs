@@ -288,6 +288,11 @@ async function main() {
       "/api/work/terminal/session", "/api/work/review/diff", "/api/work/search",
       "/api/chat/folder/tree", "/api/chat/folder/file", "/api/chat/folder/write",
       "/api/chat/folder/search", "/api/chat/folder/grant", "/api/chat/folder/revoke",
+      // Work agent loop (each one asserts the folder grant before it acts)
+      "/api/work/check/plan", "/api/work/check/run", "/api/work/file/patch",
+      "/api/work/index/map", "/api/work/index/outline", "/api/work/index/symbol",
+      "/api/work/index/search", "/api/work/run/begin", "/api/work/run/review",
+      "/api/work/run/revert", "/api/work/run/list", "/api/work/git/status",
     ];
     const usedEndpoints = [...composer.matchAll(/fetch\("(\/api\/[^"]+)"/g)].map((match) => match[1]);
     const toolEndpoints = [...new Set(usedEndpoints.filter((endpoint) => endpoint.startsWith("/api/work/") || endpoint.startsWith("/api/chat/")))];

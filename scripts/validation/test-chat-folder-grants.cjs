@@ -199,7 +199,19 @@ for (const writeEndpoint of ["/api/work/file/write", "/api/work/command", "/api/
   const grantIndex = window.indexOf("assertWorkFolderGrant(");
   check(`${writeEndpoint} refuses a chat-scoped grant`, blockIndex !== -1 && blockIndex < grantIndex);
 }
-check("chat grants cannot be replayed on Work write endpoints", (serveSource.match(/assertNotChatScope\(body\.projectId\)/g) || []).length === 4);
+// Endpoints that only read inside a granted folder may accept a chat grant;
+// everything else — anything that writes, runs, patches or indexes — must not.
+const chatSafeWorkEndpoints = new Set(["/api/work/directory", "/api/work/file/read", "/api/work/review/diff", "/api/work/search"]);
+const workEndpointIds = [...new Set([...serveSource.matchAll(/req\.url === "(\/api\/work\/[^"]+)" && req\.method === "POST"/g)].map((match) => match[1]))];
+for (const endpoint of workEndpointIds) {
+  if (chatSafeWorkEndpoints.has(endpoint)) continue;
+  if (/\/(grant|revoke|restore)$/.test(endpoint)) continue;
+  const start = serveSource.indexOf(`req.url === "${endpoint}" && req.method === "POST"`);
+  const window = serveSource.slice(start, start + 900);
+  if (!/body\.root/.test(window)) continue;
+  check(`${endpoint} refuses a chat-scoped grant`, /assertNotChatScope\(body\.projectId\)/.test(window));
+}
+check("chat grants cannot be replayed on Work write endpoints", workEndpointIds.length > 8);
 
 section("7. Composer wiring");
 const composerSource = fs.readFileSync(composerPath, "utf8");
