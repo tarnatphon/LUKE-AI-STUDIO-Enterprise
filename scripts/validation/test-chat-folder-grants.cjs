@@ -19,6 +19,7 @@ const composerPath = path.join(root, "app", "frontend", "src", "components", "Te
 
 const {
   assertWorkFolderGrant,
+  assertChatFolderWrite,
   assertNotChatScope,
   grantChatFolder,
   grantWorkFolder,
@@ -117,7 +118,7 @@ if (symlinkCreated) {
   check("a symlink that points outside the folder is refused (skipped: no symlink support)", true);
 }
 
-section("3. Chat folders are read-only — the server refuses writes");
+section("3. A chat folder is read-only until the user allows editing");
 expectPermission("assertNotChatScope blocks a chat scope", () => assertNotChatScope(`chat:${conversationId}`), "CHAT_FOLDER_READ_ONLY");
 let workScopeThrew = false;
 try {
@@ -135,6 +136,23 @@ check("the refusal message names Work Mode", (() => {
   }
 })());
 check("isChatScope recognises chat scopes only", isChatScope("chat:abc") === true && isChatScope("project-abc") === false && isChatScope("") === false);
+
+const readOnlyFolder = grantChatFolder({ conversationId: "chat-readonly", root: approved });
+const editableFolder = grantChatFolder({ conversationId: "chat-editable", root: approved, canWrite: true });
+check("a folder defaults to read-only", readOnlyFolder.canWrite === false);
+check("editing is only on when it was asked for", editableFolder.canWrite === true);
+expectPermission("writing to a read-only folder is refused", () =>
+  assertChatFolderWrite({ projectId: "chat:chat-readonly", root: approved, grantId: readOnlyFolder.grantId }), "CHAT_FOLDER_READ_ONLY");
+check(
+  "writing to an editable folder is allowed",
+  assertChatFolderWrite({ projectId: "chat:chat-editable", root: approved, grantId: editableFolder.grantId }) === fs.realpathSync(approved)
+);
+expectPermission("an editable grant still refuses another folder", () =>
+  assertChatFolderWrite({ projectId: "chat:chat-editable", root: secret, grantId: editableFolder.grantId }), "WORK_FOLDER_PERMISSION_REQUIRED");
+check(
+  "a Work project keeps its own policy (no chat read-only rule)",
+  assertChatFolderWrite({ projectId: "project-1", root: approved, grantId: grantWorkFolder({ projectId: "project-1", root: approved }).grantId }) === fs.realpathSync(approved)
+);
 check("chatScopeId prefixes and refuses empty ids", chatScopeId("c1") === "chat:c1" && (() => {
   try {
     chatScopeId("");
@@ -156,7 +174,7 @@ check("the grant store never writes to disk", !/writeFile|appendFile|createWrite
 
 section("6. Server wiring");
 const serveSource = fs.readFileSync(servePath, "utf8");
-for (const endpoint of ["/api/chat/folder/grant", "/api/chat/folder/revoke", "/api/chat/folder/tree", "/api/chat/folder/search", "/api/chat/folder/file"]) {
+for (const endpoint of ["/api/chat/folder/grant", "/api/chat/folder/revoke", "/api/chat/folder/tree", "/api/chat/folder/search", "/api/chat/folder/file", "/api/chat/folder/write"]) {
   check(`${endpoint} exists`, serveSource.includes(`req.url === "${endpoint}" && req.method === "POST"`));
 }
 const chatEndpointBlock = serveSource.slice(
@@ -165,6 +183,13 @@ const chatEndpointBlock = serveSource.slice(
 );
 check("every chat folder endpoint checks the grant first", (chatEndpointBlock.match(/assertWorkFolderGrant/g) || []).length >= 3);
 check("chat folder endpoints derive the scope on the server", /conversationId: body\.conversationId/.test(serveSource) && /`chat:\$\{/.test(serveSource));
+check("the grant endpoint reports the edit permission", /canWrite: granted\.canWrite === true/.test(serveSource));
+check("chat edits go through their own guarded endpoint", serveSource.includes("assertChatFolderWrite({") && serveSource.includes("req.url === \"/api/chat/folder/write\""));
+check("chat edits still need the approved root", (() => {
+  const start = serveSource.indexOf('req.url === "/api/chat/folder/write"');
+  const window = serveSource.slice(start, start + 900);
+  return window.includes("assertChatFolderWrite(") && window.includes("writeWorkFile(");
+})());
 
 for (const writeEndpoint of ["/api/work/file/write", "/api/work/command", "/api/work/terminal/session", "/api/work/terminal"]) {
   const start = serveSource.indexOf(`req.url === "${writeEndpoint}" && req.method === "POST"`);
@@ -173,7 +198,7 @@ for (const writeEndpoint of ["/api/work/file/write", "/api/work/command", "/api/
   const grantIndex = window.indexOf("assertWorkFolderGrant(");
   check(`${writeEndpoint} refuses a chat-scoped grant`, blockIndex !== -1 && blockIndex < grantIndex);
 }
-check("the read-only endpoints keep working for chat (no blanket block)", (serveSource.match(/assertNotChatScope\(body\.projectId\)/g) || []).length === 4);
+check("chat grants cannot be replayed on Work write endpoints", (serveSource.match(/assertNotChatScope\(body\.projectId\)/g) || []).length === 4);
 
 section("7. Composer wiring");
 const composerSource = fs.readFileSync(composerPath, "utf8");
@@ -182,11 +207,17 @@ check("the folder button uses the native picker", composerSource.includes('"/api
 check("the picker does not grant by itself — an approval dialog follows", /setFolderApproval\(\{/.test(composerSource) && /chat-folder-approval-backdrop/.test(composerSource));
 check("the dialog asks for approval by name", composerSource.includes("Approve for me"));
 check("the dialog shows the absolute path", /chat-folder-approval-path/.test(composerSource) && /folderApproval\.root/.test(composerSource));
-check("the dialog states the three guarantees", /only this folder/.test(composerSource) && /any other folder/.test(composerSource) && /read-only/.test(composerSource));
+check("the dialog states the confinement guarantees", /only this folder/.test(composerSource) && /any other folder/.test(composerSource));
+check("the dialog offers an editing switch", /Allow LUKE AI to edit files in this folder/.test(composerSource) && /setFolderApproval\(\(current\) => \(current \? \{ \.\.\.current, canWrite/.test(composerSource));
+check("the approval button names the mode it grants", /Approve for me \(read \+ edit\)/.test(composerSource));
 check("removing the chip revokes the grant", composerSource.includes('"/api/chat/folder/revoke"'));
 check("the conversation id is the grant scope", /conversationId: chatScope/.test(composerSource));
 check("a new chat starts a fresh scope and drops the approval", /chatScopeRef\.current = `chat_\$\{Date\.now\(\)\}`/.test(composerSource));
-check("the model is told the folder is read-only", /approved for reading only/i.test(composerSource));
+check("the model is told when editing is allowed", /Editing is allowed in:/.test(composerSource) && /approved for reading only/i.test(composerSource));
+check("chat has its own action executor pinned to the folder", /executeChatFolderActions/.test(composerSource) && /\/api\/chat\/folder\/write/.test(composerSource));
+check("the chat executor refuses commands and the terminal", /Commands and the terminal are Work Mode only/.test(composerSource));
+check("every edit is confirmed with the user first", /Allow LUKE AI to \$\{existing \? "edit" : "create"\} this file\?/.test(composerSource));
+check("the chat executor only offers folder tools", /\["list_directory", "read_file", "write_file"\]/.test(composerSource));
 
 // ── Syntax check ──────────────────────────────────────────────────────────
 section("8. Syntax");
@@ -205,7 +236,7 @@ try {
 
 // The read endpoints take the approved root plus a relative path, so the path
 // itself has to be locked down too — not only the root.
-const { listWorkDirectory, readWorkFile } = require(path.join(root, "scripts", "server", "work-file-manager.cjs"));
+const { listWorkDirectory, readWorkFile, writeWorkFile } = require(path.join(root, "scripts", "server", "work-file-manager.cjs"));
 
 async function expectBlocked(label, promise) {
   try {
@@ -225,6 +256,33 @@ async function expectBlocked(label, promise) {
   const listed = await listWorkDirectory({ root: approved, directoryPath: "" });
   check("the folder lists its own entries", listed.entries.some((entry) => entry.name === "notes.txt"));
   await expectBlocked("listing a directory outside the folder is refused", listWorkDirectory({ root: approved, directoryPath: path.join("..", "secret") }));
+
+  section("10. Edits land inside the folder and nowhere else");
+  const written = await writeWorkFile({ root: approved, filePath: "edited.txt", content: "rewritten by LUKE AI", approvalGranted: true });
+  check("a file inside the folder is written", written.saved === true && fs.readFileSync(path.join(approved, "edited.txt"), "utf8") === "rewritten by LUKE AI");
+  await writeWorkFile({ root: approved, filePath: path.join("nested", "created.txt"), content: "new file", approvalGranted: true });
+  check("a new file in a sub-folder is created", fs.readFileSync(path.join(approved, "nested", "created.txt"), "utf8") === "new file");
+  await expectBlocked("editing a file that escapes with ../ is refused", writeWorkFile({ root: approved, filePath: path.join("..", "secret", "passwords.txt"), content: "pwned", approvalGranted: true }));
+  await expectBlocked("editing through an absolute path is refused", writeWorkFile({ root: approved, filePath: path.join(secret, "passwords.txt"), content: "pwned", approvalGranted: true }));
+  const escapeDir = path.join(approved, "escape-link");
+  let linkMade = true;
+  try {
+    fs.symlinkSync(secret, escapeDir, "dir");
+  } catch {
+    linkMade = false;
+  }
+  if (linkMade) {
+    await expectBlocked("editing through a symlinked folder is refused", writeWorkFile({ root: approved, filePath: path.join("escape-link", "pwned.txt"), content: "pwned", approvalGranted: true }));
+  } else {
+    check("editing through a symlinked folder is refused (skipped: no symlink support)", true);
+  }
+  check("nothing outside the folder was touched", fs.readdirSync(secret).length === 1 && fs.readFileSync(path.join(secret, "passwords.txt"), "utf8") === "top secret");
+  try {
+    await writeWorkFile({ root: approved, filePath: "nope.txt", content: "x" });
+    check("a write without approval is refused", false, "it succeeded");
+  } catch (error) {
+    check("a write without approval is refused", /approval/i.test(error.message));
+  }
 
   fs.rmSync(sandbox, { recursive: true, force: true });
   console.log(`\n${passed} passed, ${failed} failed`);

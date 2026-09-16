@@ -988,6 +988,7 @@ const {
 } = require("./work-action-runner.cjs");
 const {
   assertWorkFolderGrant,
+  assertChatFolderWrite,
   assertNotChatScope,
   grantWorkFolder,
   grantChatFolder,
@@ -21263,7 +21264,7 @@ const server = http.createServer(async (req, res) => {
         grantId: granted.grantId,
         root: granted.root,
         scope: granted.projectId,
-        readOnly: true,
+        canWrite: granted.canWrite === true,
       });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
@@ -21341,6 +21342,29 @@ const server = http.createServer(async (req, res) => {
       });
       const file = await readWorkFile({ root, filePath: body.path });
       return json(res, 200, { ok: true, root, file });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // Editing is allowed only when the user ticked "allow editing" for this exact
+  // folder, and the write still cannot leave that folder.
+  if (req.url === "/api/chat/folder/write" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const root = assertChatFolderWrite({
+        projectId: `chat:${String(body.conversationId || "").trim()}`,
+        root: body.root,
+        grantId: body.grantId,
+      });
+      const result = await writeWorkFile({
+        root,
+        filePath: body.path,
+        content: body.content,
+        approvalGranted: true,
+        expectedModifiedAt: body.expectedModifiedAt,
+      });
+      return json(res, 200, { ok: true, root, result });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
     }

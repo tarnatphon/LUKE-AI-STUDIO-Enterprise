@@ -50,8 +50,31 @@ function grantWorkFolder({ projectId, root, scope }) {
   return { grantId, root: canonicalRoot, projectId: owner };
 }
 
-function grantChatFolder({ conversationId, root }) {
-  return grantWorkFolder({ scope: chatScopeId(conversationId), root });
+function grantChatFolder({ conversationId, root, canWrite = false }) {
+  const granted = grantWorkFolder({ scope: chatScopeId(conversationId), root });
+  const grant = grants.get(granted.grantId);
+  // Editing is opt-in per folder: the user ticks it while approving the path.
+  if (grant) grant.canWrite = canWrite === true;
+  return { ...granted, canWrite: grant ? grant.canWrite === true : false };
+}
+
+/**
+ * A chat folder may only be written to when the user ticked "allow editing"
+ * while approving it. Work projects keep their own approval policy.
+ */
+function assertChatFolderWrite({ projectId, root, grantId }) {
+  const canonicalRoot = assertWorkFolderGrant({ projectId, root, grantId });
+  if (!isChatScope(projectId)) return canonicalRoot;
+  const grant = grants.get(String(grantId || ""));
+  if (!grant || grant.canWrite !== true) {
+    const error = new Error(
+      "This folder was approved for reading only. Attach it again and allow editing to change files."
+    );
+    error.statusCode = 403;
+    error.code = "CHAT_FOLDER_READ_ONLY";
+    throw error;
+  }
+  return canonicalRoot;
 }
 
 /**
@@ -85,6 +108,7 @@ function revokeWorkFolderGrant({ projectId, grantId }) {
 
 module.exports = {
   assertWorkFolderGrant,
+  assertChatFolderWrite,
   assertNotChatScope,
   grantWorkFolder,
   grantChatFolder,

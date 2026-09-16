@@ -1695,6 +1695,7 @@ function TextChat({
       setFolderApproval({
         root: selectedPath,
         name: selectedPath.split(/[\\/]/).filter(Boolean).pop() || selectedPath,
+        canWrite: true,
       });
     } catch (error) {
       showAlert({ title: "Folder Picker Failed", message: error instanceof Error ? error.message : String(error), danger: true });
@@ -1711,7 +1712,7 @@ function TextChat({
       const response = await fetch("/api/chat/folder/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: chatScope, root: pending.root }),
+        body: JSON.stringify({ conversationId: chatScope, root: pending.root, canWrite: pending.canWrite === true }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not grant folder access.");
@@ -1730,7 +1731,7 @@ function TextChat({
       }
       setChatFoldersByConversation((current) => ({
         ...current,
-        [chatScope]: [...(current[chatScope] || []), { root, grantId: data.grantId, name: pending.name, files }],
+        [chatScope]: [...(current[chatScope] || []), { root, grantId: data.grantId, name: pending.name, files, canWrite: data.canWrite === true }],
       }));
       setFolderApproval(null);
     } catch (error) {
@@ -1747,15 +1748,24 @@ function TextChat({
   };
 
   const executeWorkActions = async (actions) => {
-    const roots = activeProject?.sourceFolders || [];
+    // A folder approved from the composer stays usable in Work Mode too: it is
+    // simply another granted root, still confined by its own chat grant.
+    const roots = [...(activeProject?.sourceFolders || []), ...chatFolders.map((folder) => folder.root)];
     const results = [];
     for (const [index, rawAction] of actions.entries()) {
       const action = rawAction && typeof rawAction === "object" ? rawAction : {};
       const tool = String(action.tool || "");
       const root = roots.includes(action.root) ? action.root : roots[0];
-      const base = { root, projectId: activeProject?.id, grantId: activeProject?.folderGrants?.[root] };
+      const chatFolder = chatFolders.find((folder) => folder.root === root);
+      const base = chatFolder
+        ? { root, projectId: `chat:${chatScope}`, grantId: chatFolder.grantId }
+        : { root, projectId: activeProject?.id, grantId: activeProject?.folderGrants?.[root] };
       if (!root) {
         results.push({ index, tool, ok: false, error: "No granted Source Folder is attached to this Work project." });
+        continue;
+      }
+      if (chatFolder && (tool === "terminal")) {
+        results.push({ index, tool, ok: false, error: "The terminal is only available for project Source Folders. Approved chat folders are limited to reading and editing files." });
         continue;
       }
       const changesFiles = tool === "write_file";
@@ -1764,13 +1774,20 @@ function TextChat({
         results.push({ index, tool, ok: false, error: "User denied this action." });
         continue;
       }
-      const endpoint = {
-        list_directory: "/api/work/directory",
-        read_file: "/api/work/file/read",
-        write_file: "/api/work/file/write",
-        terminal: "/api/work/terminal",
-        review_diff: "/api/work/review/diff",
-      }[tool];
+      const endpoint = chatFolder
+        ? {
+            list_directory: "/api/chat/folder/tree",
+            read_file: "/api/chat/folder/file",
+            write_file: "/api/chat/folder/write",
+            review_diff: "/api/chat/folder/file",
+          }[tool]
+        : {
+            list_directory: "/api/work/directory",
+            read_file: "/api/work/file/read",
+            write_file: "/api/work/file/write",
+            terminal: "/api/work/terminal",
+            review_diff: "/api/work/review/diff",
+          }[tool];
       if (!endpoint) {
         results.push({ index, tool, ok: false, error: "Unsupported Work tool." });
         continue;
@@ -1785,6 +1802,72 @@ function TextChat({
         results.push({ index, tool, ok: true, path: action.path, command: action.command, result: data.directory || data.file || data.result });
       } catch (error) {
         results.push({ index, tool, ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return JSON.stringify({ workToolResults: results }, null, 2).slice(0, MAX_WORK_TOOL_RESULT_CHARS);
+  };
+
+  // Same action protocol as Work Mode, but every call is pinned to the folder
+  // the user approved — and only the tools that cannot leave that folder.
+  const executeChatFolderActions = async (actions) => {
+    const folder = chatFolders.find((entry) => entry.canWrite) || chatFolders[0];
+    if (!folder) {
+      return JSON.stringify({ workToolResults: [{ tool: "write_file", ok: false, error: "No approved folder is attached to this chat." }] });
+    }
+    const results = [];
+    for (const [index, rawAction] of actions.entries()) {
+      const action = rawAction && typeof rawAction === "object" ? rawAction : {};
+      const tool = String(action.tool || "");
+      const filePath = String(action.path || "");
+      if (tool === "terminal" || tool === "command") {
+        results.push({ index, tool, ok: false, error: "Commands and the terminal are Work Mode only. In chat LUKE AI can read files and rewrite files inside the approved folder." });
+        continue;
+      }
+      if (!["list_directory", "read_file", "write_file"].includes(tool)) {
+        results.push({ index, tool, ok: false, error: `The "${tool}" tool is not available in chat.` });
+        continue;
+      }
+      if (!filePath) {
+        results.push({ index, tool, ok: false, error: "A path relative to the approved folder is required." });
+        continue;
+      }
+      if (tool === "write_file") {
+        if (!folder.canWrite) {
+          results.push({ index, tool, ok: false, error: "This folder was approved as read-only. Attach it again and allow editing to change files." });
+          continue;
+        }
+        const content = String(action.content ?? "");
+        const existing = (folder.files || []).includes(filePath);
+        const approved = window.confirm(
+          `Allow LUKE AI to ${existing ? "edit" : "create"} this file?\n\nFolder: ${folder.root}\nFile: ${filePath}\n\n${content.length.toLocaleString()} characters will be written. Nothing outside the approved folder can be touched.`
+        );
+        if (!approved) {
+          results.push({ index, tool, ok: false, path: filePath, error: "User denied this edit." });
+          continue;
+        }
+      }
+      const endpoint = tool === "list_directory"
+        ? "/api/chat/folder/tree"
+        : tool === "read_file"
+          ? "/api/chat/folder/file"
+          : "/api/chat/folder/write";
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: chatScope,
+            root: folder.root,
+            grantId: folder.grantId,
+            path: filePath,
+            ...(tool === "write_file" ? { content: String(action.content ?? ""), approvalGranted: true } : {}),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `${tool} failed.`);
+        results.push({ index, tool, ok: true, path: filePath, result: data.directory || data.file || data.result });
+      } catch (error) {
+        results.push({ index, tool, ok: false, path: filePath, error: error instanceof Error ? error.message : String(error) });
       }
     }
     return JSON.stringify({ workToolResults: results }, null, 2).slice(0, MAX_WORK_TOOL_RESULT_CHARS);
@@ -1913,8 +1996,13 @@ function TextChat({
         }
         folderSections.push([listing, searchSection].filter(Boolean).join("\n\n"));
       }
-      chatFolderContext = folderSections.join("\n\n").slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
-        + `\n\n[These folders were approved for reading only. You may read and quote them, but you cannot edit files, run commands, or use the terminal here: writing requires Work Mode. Paths outside the approved folders are refused by the server.]`;
+      const editableFolders = chatFolders.filter((folder) => folder.canWrite);
+      const permissionLine = assistantMode === "work"
+        ? `[These folders were approved from the composer. Use them like the project Source Folders — reading and, where editing was allowed, writing — with relative paths only. The terminal is not available on them.]`
+        : editableFolders.length > 0
+          ? `[You may read these folders and rewrite files inside them by emitting one fenced \`\`\`luke-actions block: {"actions":[{"tool":"write_file","path":"relative/file","content":"complete new content"}]}. Only relative paths inside the approved folders are accepted; anything else is refused by the server. Commands and the terminal are not available in chat — suggest Work Mode for those.]`
+          : `[These folders were approved for reading only. You may read and quote them; to change files the user must attach the folder again with editing allowed, or use Work Mode.]`;
+      chatFolderContext = [folderSections.join("\n\n").slice(0, MAX_DOCUMENT_CONTEXT_CHARS), permissionLine].filter(Boolean).join("\n\n");
     }
 
     const imageAttachments = sourceAttachments.filter(att => att.type === "image");
@@ -1928,7 +2016,7 @@ function TextChat({
       : text;
     const displayText = text || (imageAttachments.length > 0 ? "Describe what is visible in the image." : "");
     const folderSummary = chatFolders.length
-      ? `[Reading ${chatFolders.length} approved folder${chatFolders.length > 1 ? "s" : ""}: ${chatFolders.map((folder) => folder.root).join(", ")} — read-only]`
+      ? `[Using ${chatFolders.length} approved folder${chatFolders.length > 1 ? "s" : ""}: ${chatFolders.map((folder) => `${folder.root}${folder.canWrite ? " (editable)" : " (read-only)"}`).join(", ")}]`
       : "";
     const requestCombinedText = [
       requestText,
@@ -2019,9 +2107,17 @@ function TextChat({
         ? [
             "You are in Work mode. Help complete multi-step project work with clear plans, checkpoints, and concrete deliverables.",
             activeProject?.name ? `Active project: ${activeProject.name}.` : "No project is currently selected.",
-            activeProject?.sourceFolders?.length
-              ? `Project source folders: ${activeProject.sourceFolders.join(", ")}. Treat these paths as project scope; do not claim to have read files unless their contents were provided.`
-              : "No source folders are attached to this project.",
+            [
+              activeProject?.sourceFolders?.length
+                ? `Project source folders: ${activeProject.sourceFolders.join(", ")}.`
+                : "No source folders are attached to this project.",
+              chatFolders.length
+                ? `Folders approved from the composer: ${chatFolders.map((folder) => folder.root).join(", ")}. They are writable only where editing was allowed${chatFolders.some((folder) => folder.canWrite) ? "" : " (none of them, so treat them as read-only)"}, and the terminal cannot be used on them.`
+                : "",
+              (activeProject?.sourceFolders?.length || chatFolders.length)
+                ? "Treat these paths as the project scope; do not claim to have read files unless their contents were provided."
+                : "",
+            ].filter(Boolean).join(" "),
             "You can operate the selected project directly. When a tool is needed, emit one fenced ```luke-actions JSON block with {\"actions\":[...]}. Supported actions: {\"tool\":\"list_directory\",\"path\":\"relative/path\"}, {\"tool\":\"read_file\",\"path\":\"relative/file\"}, {\"tool\":\"write_file\",\"path\":\"relative/file\",\"content\":\"complete new content\"}, {\"tool\":\"terminal\",\"command\":\"allowlisted read-only command\"}, and {\"tool\":\"review_diff\",\"path\":\"relative/file\"}. Paths must be relative to a granted Source Folder. Do not ask the user to copy commands. Use tools, inspect their returned results, continue autonomously, and finish with a concise summary when the task is complete.",
             "Relevant Project Search excerpts may be included with the user request. When relying on them, cite the relative file path shown in the excerpt and do not imply that unrelated files were read.",
             `This autonomous Work run is on tool round ${agentRound} of ${MAX_WORK_AGENT_ROUNDS}. Do not request more tools after the final round.`,
@@ -2035,9 +2131,25 @@ function TextChat({
             custom: "Approval policy: use the custom project permission rules; if a rule is unavailable or ambiguous, ask first.",
           }[approvalMode]
         : "";
+      const editableChatFolders = assistantMode !== "work" ? chatFolders.filter((folder) => folder.canWrite) : [];
+      const chatFolderInstruction = assistantMode !== "work" && chatFolders.length > 0
+        ? [
+            `The user approved ${chatFolders.length === 1 ? "one folder" : `${chatFolders.length} folders`} for this conversation: ${chatFolders.map((folder) => folder.root).join(", ")}.`,
+            "You can work on those files directly instead of asking the user to copy and paste. When a tool is needed, emit one fenced ```luke-actions JSON block with {\"actions\":[...]}.",
+            "Supported here: {\"tool\":\"list_directory\",\"path\":\"relative/path\"}, {\"tool\":\"read_file\",\"path\":\"relative/file\"}"
+              + (editableChatFolders.length > 0 ? " and {\"tool\":\"write_file\",\"path\":\"relative/file\",\"content\":\"complete new content\"}" : "")
+              + ".",
+            "Paths must be relative to an approved folder. The server refuses anything outside it, so never invent a path that leaves the folder.",
+            editableChatFolders.length > 0
+              ? `Editing is allowed in: ${editableChatFolders.map((folder) => folder.root).join(", ")}. Send the COMPLETE new file content, not a fragment, and confirm what you changed afterwards.`
+              : "The approved folders are read-only, so do not offer to change files: suggest attaching the folder again with editing allowed, or switching to Work Mode.",
+            "Commands and the terminal are not available in chat. Use tools, read their results, and finish with a short summary of what you did.",
+          ].join("\n")
+        : "";
       const combinedSystemPrompt = [
         systemPrompt.trim(),
         workInstruction,
+        chatFolderInstruction,
         approvalInstruction,
         visionInstruction,
         assistantMode === "work" && activeProject?.id && getProjectMemory(activeProject.id).length
@@ -2231,12 +2343,17 @@ function TextChat({
         freshContextRef.current = true;
       }
       archiveFinishedChat(convId, finalMessages, selectedModel);
-      const workActions = assistantMode === "work" ? parseWorkActions(processed.content) : [];
+      const chatFolderTools = assistantMode !== "work" && chatFolders.length > 0;
+      const workActions = assistantMode === "work" || chatFolderTools ? parseWorkActions(processed.content) : [];
       if (workActions.length > 0 && agentRound < MAX_WORK_AGENT_ROUNDS) {
-        const toolResults = await executeWorkActions(workActions);
+        const toolResults = assistantMode === "work"
+          ? await executeWorkActions(workActions)
+          : await executeChatFolderActions(workActions);
         setMessageQueue((current) => [...current, {
           id: `work_agent_${Date.now()}_${agentRound + 1}`,
-          text: `[Automatic Work tool results — continue the task without asking me to copy or paste anything.]\n${toolResults}`,
+          text: assistantMode === "work"
+            ? `[Automatic Work tool results — continue the task without asking me to copy or paste anything.]\n${toolResults}`
+            : `[Approved folder tool results — carry on and finish the task. Only files inside the approved folder can be touched.]\n${toolResults}`,
           attachments: [],
           baseMessages: finalMessages,
           preserveComposer: true,
@@ -2799,11 +2916,11 @@ function TextChat({
           {chatFolders.length > 0 && (
             <div className="chat-folder-strip" role="group" aria-label="Approved folders">
               {chatFolders.map((folder) => (
-                <div className="chat-folder-chip" key={folder.root} title={`${folder.root}\nApproved for this session · read-only in chat`}>
+                <div className={`chat-folder-chip ${folder.canWrite ? "editable" : ""}`} key={folder.root} title={`${folder.root}\nApproved for this session · ${folder.canWrite ? "read and edit" : "read-only"}`}>
                   <ShieldCheck size={14} className="chat-folder-chip-badge" />
                   <span className="chat-folder-chip-name">{folder.name}</span>
                   <span className="chat-folder-chip-meta">
-                    {folder.files?.length ? `${folder.files.length} files` : "approved"} · read-only
+                    {folder.files?.length ? `${folder.files.length} files` : "approved"} · {folder.canWrite ? "editable" : "read-only"}
                   </span>
                   <button
                     type="button"
@@ -2966,17 +3083,32 @@ function TextChat({
         <div className="chat-folder-approval-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !folderPickerBusy) setFolderApproval(null); }}>
           <div className="chat-folder-approval" role="dialog" aria-modal="true" aria-labelledby="chat-folder-approval-title">
             <h2 id="chat-folder-approval-title"><ShieldCheck size={18} /> Approve folder access</h2>
-            <p className="chat-folder-approval-question">Allow LUKE AI to read this folder?</p>
+            <p className="chat-folder-approval-question">Allow LUKE AI to work inside this folder?</p>
             <p className="chat-folder-approval-path" title={folderApproval.root}>{folderApproval.root}</p>
             <ul className="chat-folder-approval-guarantees">
               <li><Check size={14} /> It can read <strong>only this folder</strong> and the files inside it.</li>
-              <li><Check size={14} /> It <strong>cannot</strong> open, list, or read any other folder on this computer.</li>
-              <li><Check size={14} /> In chat this is <strong>read-only</strong>: no editing, no commands, no terminal. Editing needs Work Mode.</li>
+              <li><Check size={14} /> It <strong>cannot</strong> open, list, read, or change any other folder on this computer.</li>
+              <li><Check size={14} /> Files are written with a temporary file and renamed, so a failed edit cannot leave a half-written file behind.</li>
             </ul>
-            <p className="chat-folder-approval-note">The approval stays in memory for this session only. Close LUKE AI STUDIO and it is gone — you approve again next time. Remove the folder chip to revoke it instantly.</p>
+            <label className="chat-folder-approval-toggle">
+              <input
+                type="checkbox"
+                checked={folderApproval.canWrite === true}
+                onChange={(event) => setFolderApproval((current) => (current ? { ...current, canWrite: event.currentTarget.checked } : current))}
+              />
+              <span>
+                <strong>Allow LUKE AI to edit files in this folder</strong>
+                <small>{folderApproval.canWrite === true ? "Read and write — changes are saved inside this folder only." : "Read only — it will never change a file."}</small>
+              </span>
+            </label>
+            <p className="chat-folder-approval-note">
+              Commands and the terminal stay Work Mode only, even with editing on. You still confirm every edit before it is written.
+              The approval stays in memory for this session only: close LUKE AI STUDIO and it is gone, so you approve again next time.
+              Remove the folder chip to revoke it instantly.
+            </p>
             <div className="chat-folder-approval-actions">
               <button type="button" onClick={() => setFolderApproval(null)} disabled={folderPickerBusy}>Cancel</button>
-              <button type="button" className="primary" onClick={approveChatFolder} disabled={folderPickerBusy}>{folderPickerBusy ? "Approving…" : "Approve for me"}</button>
+              <button type="button" className="primary" onClick={approveChatFolder} disabled={folderPickerBusy}>{folderPickerBusy ? "Approving…" : folderApproval.canWrite === true ? "Approve for me (read + edit)" : "Approve for me (read only)"}</button>
             </div>
           </div>
         </div>

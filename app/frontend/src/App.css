@@ -1295,6 +1295,42 @@ body {
   margin-top: 3px;
 }
 
+.chat-folder-approval-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 40%, transparent);
+  cursor: pointer;
+}
+
+.chat-folder-approval-toggle input {
+  margin: 2px 0 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--md-sys-color-primary);
+  flex-shrink: 0;
+}
+
+.chat-folder-approval-toggle span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.chat-folder-approval-toggle small {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.chat-folder-chip.editable {
+  border-color: color-mix(in srgb, var(--md-sys-color-tertiary, var(--md-sys-color-primary)) 45%, var(--border-color));
+}
+
 .chat-folder-approval-note {
   margin: 0;
   font-size: 0.78rem;

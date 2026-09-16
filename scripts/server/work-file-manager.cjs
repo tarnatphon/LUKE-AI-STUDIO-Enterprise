@@ -90,11 +90,36 @@ async function readWorkFile(options = {}) {
   return { content: buffer.toString("utf8"), filePath, size: buffer.length, modifiedAt };
 }
 
+/**
+ * A brand new file has no realpath yet, so walk up to the closest ancestor that
+ * exists and prove IT is inside the root. Without this, a symlinked directory
+ * inside the project (root/link -> /somewhere-else) would let a write escape.
+ */
+async function assertWritableInsideRoot(realRoot, targetPath) {
+  let probe = targetPath;
+  for (;;) {
+    try {
+      const realProbe = await fsp.realpath(probe);
+      if (!isInsideRoot(realRoot, realProbe)) {
+        throw createStatusError("Work file symlink escaped project root - forbidden", 403);
+      }
+      return;
+    } catch (error) {
+      if (error && error.statusCode) throw error;
+      if (!error || error.code !== "ENOENT") throw error;
+      const parent = path.dirname(probe);
+      if (parent === probe) throw createStatusError("Path traversal not permitted outside project root", 400);
+      probe = parent;
+    }
+  }
+}
+
 async function writeWorkFile(options = {}) {
   if (options.approvalGranted !== true) {
     throw createStatusError("Write approval is required", 403);
   }
   const { realRoot, filePath, targetPath } = await resolveTarget(options);
+  await assertWritableInsideRoot(realRoot, targetPath);
   const body = options.content;
   if (typeof body !== "string") throw createStatusError("Text content is required", 400);
   const dir = path.dirname(targetPath);
