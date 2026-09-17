@@ -97,10 +97,15 @@ const processMessageContent = (rawText, apiReasoning = "", enableThinking = true
 };
 
 const MAX_WORK_AGENT_ROUNDS = 6;
-// Once a turn is archived, the model keeps this many messages (a few
+// Once a turn is archived, the model keeps this many messages (about three
 // exchanges) so it can still follow "do that again" without the whole
 // transcript. Everything older is read back from the archive on demand.
-const ARCHIVE_LIVE_MESSAGES = 8;
+//
+// This is the one real cost of the design: an empty history prefills faster
+// and it forgets. Six messages are enough to hold a thread, and anything
+// longer belongs in the archive, not in every request. It is deliberately the
+// same number the compaction config keeps (keepLastMessages).
+const ARCHIVE_LIVE_MESSAGES = 6;
 const MAX_WORK_TOOL_RESULT_CHARS = 24000;
 const MAX_ATTACHED_TEXT_CHARS = 2_000_000;
 const MAX_ATTACHED_AUDIO_BYTES = 100 * 1024 * 1024;
