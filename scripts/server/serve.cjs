@@ -1011,6 +1011,7 @@ const { canonicaliseRoot } = require("./work-path-guard.cjs");
 const { buildProjectIndex, invalidateProjectIndex, searchProjectFiles } = require("./work-project-search.cjs");
 // Work agent loop: verify (A), patch (B), understand (C) and undo (D).
 const { detectProjectCommands, runProjectCheck } = require("./work-command-runner.cjs");
+const { runWorkScript } = require("./work-script-runner.cjs");
 const { applyFilePatch } = require("./work-patch-editor.cjs");
 const { repoMap, outlineFile, findSymbol, searchCode, invalidateRepoIndex } = require("./work-repo-index.cjs");
 const { beginRun, snapshotFile, reviewRun, revertRun, listRuns, gitSummary } = require("./work-run-guard.cjs");
@@ -22020,6 +22021,31 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       // A command that can change something answers with what it wants to run,
       // so the terminal can ask before it happens.
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/script/run (a pasted script, written into the granted
+  // folder, run by one interpreter with no shell, and removed afterwards)
+  if (req.url === "/api/work/script/run" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await runWorkScript({
+        root: body.root,
+        code: body.code,
+        interpreter: body.interpreter,
+        // The terminal asks before it sends this: a script runs with the
+        // user's access, which reaches further than the granted folder.
+        approvalGranted: body.approvalGranted === true,
+        timeoutMs: body.timeoutMs,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
       if (error && error.requiresApproval) {
         return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
       }

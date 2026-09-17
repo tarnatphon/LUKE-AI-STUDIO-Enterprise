@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
+import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
 import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, parseToolCall, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
@@ -24,21 +25,21 @@ const approvalAllowStyle = { padding: "5px 11px", border: "1px solid rgba(250,20
 const approvalCancelStyle = { padding: "5px 11px", border: "1px solid rgba(255,255,255,.14)", borderRadius: 7, background: "transparent", color: "#c3ccc7", cursor: "pointer", fontSize: ".66rem" };
 const commandInputStyle = { flex: 1, minWidth: 0, maxHeight: 96, padding: "6px 8px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 7, background: "rgba(0,0,0,.25)", color: "#e7efea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".7rem", lineHeight: 1.5, resize: "vertical" };
 const queueStatusStyle = { flex: "0 0 auto", color: "#67d391", fontSize: ".62rem", whiteSpace: "nowrap" };
+const scriptApprovalStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "7px 10px", borderTop: "1px solid rgba(147,197,253,.3)", background: "rgba(147,197,253,.08)" };
+const scriptPreviewStyle = { maxHeight: 92, overflow: "auto", margin: 0, padding: "5px 7px", borderRadius: 6, background: "rgba(0,0,0,.28)", color: "#dbe7f5", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".64rem", lineHeight: 1.45, whiteSpace: "pre-wrap" };
+const scriptHintStyle = { opacity: 0.72, fontSize: ".63rem" };
+const scriptSelectStyle = { padding: "2px 5px", border: "1px solid rgba(255,255,255,.16)", borderRadius: 6, background: "rgba(0,0,0,.25)", color: "#dbe7f5", fontSize: ".64rem" };
 const stagedStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "5px 10px", borderTop: "1px solid rgba(103,211,145,.22)", background: "rgba(103,211,145,.07)", color: "#b7e7c8", fontSize: ".66rem" };
 const stagedClearStyle = { flexShrink: 0, padding: "3px 8px", border: "1px solid rgba(103,211,145,.3)", borderRadius: 6, background: "transparent", color: "#b7e7c8", cursor: "pointer", fontSize: ".62rem" };
 /**
- * There is no shell behind this terminal, so a pasted script can never run.
- * Sending it anyway used to produce a bare "not permitted" — or nothing at all,
- * when the single-line input quietly dropped everything after the first
- * newline. Say what it is and where the code should go instead.
+ * Interpreters offered for a pasted script. A subset of what the terminal
+ * already runs, and never a shell: the file is the only argument, so nothing
+ * in the script is re-read as command syntax.
  */
-const SCRIPT_NOT_A_COMMAND = [
-  "That looks like code, not a command. This terminal runs one read-only command",
-  "at a time and has no shell behind it, so a pasted script cannot be run here.",
-  "To get this code into the project: open the Files tab, open the file and paste",
-  "it there — or ask Work Chat to write the file for you. Then run the project's",
-  "own check from the Checks tab.",
-].join("\n");
+const SCRIPT_INTERPRETERS = ["node", "python3", "python", "deno", "bun"];
+
+/** Code that belongs in the project still belongs with Work Chat. */
+const SCRIPT_HINT = "If this code belongs in the project, ask Work Chat to write the file — it keeps a backup you can undo.";
 
 const MAX_SAVED_DRAFT_CHARS = 8000;
 const MAX_SAVED_HISTORY = 50;
@@ -91,6 +92,10 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   // moment the terminal is idle — the user is meant to press Run first, and
   // only then does the rest of the block follow on its own.
   const [staged, setStaged] = useState([]);
+  // A pasted script is not a command and cannot be typed as one. It is held
+  // here until the user says to run it: a script runs with their access, which
+  // reaches further than the folder they granted.
+  const [pendingScript, setPendingScript] = useState(null);
   // A command that fills the panel used to look like it did nothing at all,
   // because the answer landed below the fold and nothing scrolled to it. The
   // output now follows the answer — unless the user has scrolled up to read,
@@ -160,15 +165,28 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   useEffect(() => {
     const receiveCommand = (event) => {
       const lines = Array.isArray(event.detail?.lines) ? event.detail.lines.filter(Boolean) : [];
-      if (lines.length > 1) {
-        // A whole block arrived from the answer. The first command waits in
-        // the input for the user's Enter; the rest are held until it finishes.
+      const raw = String(event.detail?.command || "").trim();
+      if (lines.length > 1 && lines.every((line) => looksLikeCommand(line))) {
+        // A whole block arrived from the answer, every line a command. The
+        // first waits in the input for the user's Enter; the rest are held
+        // until it finishes.
+        setPendingScript(null);
         setStaged(lines.slice(1));
         setCommandText(lines[0]);
         return;
       }
+      if (lines.length > 1 || raw.includes("\n")) {
+        // One piece of code rather than a list of commands. Running its lines
+        // one at a time would fail on every line that is not a command, so the
+        // whole thing is offered as a script instead.
+        setStaged([]);
+        setCommandText("");
+        setPendingScript({ code: raw, interpreter: "auto" });
+        return;
+      }
       setStaged([]);
-      setCommandText(String(event.detail?.command || lines[0] || ""));
+      setPendingScript(null);
+      setCommandText(raw || lines[0] || "");
     };
     window.addEventListener("luke:work-terminal-command", receiveCommand);
     return () => window.removeEventListener("luke:work-terminal-command", receiveCommand);
@@ -295,6 +313,43 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     }
   }, [root, project, prompt]);
 
+  /**
+   * Run a pasted script. It is written into the granted folder, given to one
+   * interpreter as a single argument — no shell ever reads it — and deleted
+   * afterwards, so running code never quietly adds files to the project.
+   */
+  const runScript = useCallback(async ({ code, interpreter }) => {
+    const lines = code.split(/\r?\n/).length;
+    setPendingScript(null);
+    setBusy(true);
+    setActiveCommand(`script — ${lines} lines`);
+    setPendingApproval(null);
+    setOutput((current) => `${current ? `${current}\n` : ""}${prompt} script — ${lines} lines\nRunning…`);
+    try {
+      const response = await fetch("/api/work/script/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root,
+          projectId: project?.id,
+          grantId: project?.folderGrants?.[root],
+          code,
+          interpreter: interpreter === "auto" ? null : interpreter,
+          approvalGranted: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The script could not run.");
+      const result = data.result || {};
+      const footer = `— ${result.interpreter} exited ${result.exitCode} in ${(Number(result.durationMs || 0) / 1000).toFixed(1)}s${result.timedOut ? " (timed out)" : ""}`;
+      setOutput((current) => finishRunningLine(current, `${result.command}\n${result.output || "(no output)"}\n${footer}`));
+    } catch (error) {
+      setOutput((current) => finishRunningLine(current, error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
+    }
+  }, [root, project, prompt]);
+
   const cancelApproval = () => {
     setPendingApproval(null);
     setOutput((current) => `${current}\nCancelled — nothing was run.`);
@@ -322,7 +377,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       return;
     }
     if (command.includes("\n")) {
-      setOutput((current) => `${current ? `${current}\n` : ""}${SCRIPT_NOT_A_COMMAND}`);
+      setPendingScript({ code: command, interpreter: "auto" });
       return;
     }
     setCommandQueue((current) => [...current, command, ...staged].slice(-50));
@@ -354,6 +409,28 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
             <div style={approvalActionsStyle}>
               <button type="button" style={approvalAllowStyle} onClick={() => void executeCommand(pendingApproval.command, { approved: true })}>Allow once</button>
               <button type="button" style={approvalCancelStyle} onClick={cancelApproval}>Cancel</button>
+            </div>
+          </div>}{pendingScript && <div style={scriptApprovalStyle} role="alertdialog" aria-label="Run this script">
+            <div style={approvalTextStyle}>
+              <strong>Run this script?</strong>
+              <span>{pendingScript.code.split(/\r?\n/).length} lines — written into {root}, run with {pendingScript.interpreter === "auto" ? "the language it is written in" : pendingScript.interpreter}, then deleted.</span>
+              <span style={scriptHintStyle}>A script runs with your access, so it can change files outside this folder too. {SCRIPT_HINT}</span>
+              <pre style={scriptPreviewStyle}>{pendingScript.code.split(/\r?\n/).slice(0, 6).join("\n")}</pre>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>Run with
+                <select
+                  value={pendingScript.interpreter}
+                  onChange={(event) => setPendingScript((current) => (current ? { ...current, interpreter: event.target.value } : current))}
+                  style={scriptSelectStyle}
+                  aria-label="Interpreter for this script"
+                >
+                  <option value="auto">auto</option>
+                  {SCRIPT_INTERPRETERS.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+            </div>
+            <div style={approvalActionsStyle}>
+              <button type="button" style={approvalAllowStyle} onClick={() => void runScript(pendingScript)}>Run it</button>
+              <button type="button" style={approvalCancelStyle} onClick={() => { setPendingScript(null); setOutput((current) => `${current}\nCancelled — the script was not run.`); }}>Cancel</button>
             </div>
           </div>}{staged.length > 0 && <div style={stagedStyle} aria-label="Commands that run after this one"><span>{staged.length} more {staged.length === 1 ? "command" : "commands"} run after this one</span><button type="button" style={stagedClearStyle} onClick={() => setStaged([])} title="Do not run the rest of the block">Clear</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {

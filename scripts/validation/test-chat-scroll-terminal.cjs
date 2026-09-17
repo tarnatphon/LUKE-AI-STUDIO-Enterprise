@@ -81,11 +81,11 @@ async function main() {
     JSON.stringify(helper.terminalCommandLines("node app.js > out.log 2>&1")) === JSON.stringify(["node app.js > out.log 2>&1"]));
 
   section("2. The Terminal takes the block, one press, then the rest");
-  check("several lines do not all land in the input at once", /if \(lines\.length > 1\) \{/.test(dock));
+  check("several commands do not all land in the input at once", /if \(lines\.length > 1 && lines\.every\(\(line\) => looksLikeCommand\(line\)\)\) \{/.test(dock));
   check("the first command waits in the input for the user", /setCommandText\(lines\[0\]\);/.test(dock));
   check("the rest are held back until it finishes", /setStaged\(lines\.slice\(1\)\);/.test(dock));
   check("a single command still just fills the input",
-    /setStaged\(\[\]\);\s*\n\s*setCommandText\(String\(event\.detail\?\.command \|\| lines\[0\] \|\| ""\)\);/.test(dock));
+    /setStaged\(\[\]\);\s*\n\s*setPendingScript\(null\);\s*\n\s*setCommandText\(raw \|\| lines\[0\] \|\| ""\);/.test(dock));
   check("pressing Run queues the held-back lines too", /\[\.\.\.current, command, \.\.\.staged\]/.test(dock));
   check("the held batch is spent once it is queued", /setCommandQueue\(\(current\) => \[\.\.\.current, command, \.\.\.staged\]\.slice\(-50\)\);\s*\n\s*setStaged\(\[\]\);/.test(dock));
   check("clearing the terminal drops the batch as well", /if \(command === "clear"\) \{[\s\S]{0,160}setStaged\(\[\]\);/.test(dock));

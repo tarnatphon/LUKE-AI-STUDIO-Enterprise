@@ -219,8 +219,11 @@ async function main() {
   const dock = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "WorkTerminalDock.jsx"), "utf8");
   check("the command box takes more than one line", /<textarea/.test(dock) && !/<input[^>]*aria-label="Work Terminal command"/.test(dock));
   check("a multi-line paste is recognised as a script", /command\.includes\("\\n"\)/.test(dock));
-  check("it is answered with an explanation, not a request", /SCRIPT_NOT_A_COMMAND/.test(dock) && /setOutput\(\(current\) => [`'"]\$\{current/.test(dock));
-  check("the explanation says where the code should go", /Files tab/i.test(dock) && /Work Chat/i.test(dock));
+  // A script is no longer turned away with advice: it is offered to run, and
+  // the offer waits for the user, because a script runs with their access.
+  check("it is offered to run, not swallowed", /setPendingScript\(\{ code: command, interpreter: "auto" \}\);/.test(dock));
+  check("and running it waits for the user", /role="alertdialog" aria-label="Run this script"/.test(dock));
+  check("code that belongs in the project is pointed at Work Chat", /Work Chat to write the file/.test(dock));
   check("the answer replaces the placeholder by position, not by regex", /function finishRunningLine/.test(dock));
   check("an answer is appended when the placeholder has moved",
     /at === -1/.test(dock) && /const marker = "Running…"/.test(dock) && /text\.lastIndexOf\(marker\)/.test(dock));
