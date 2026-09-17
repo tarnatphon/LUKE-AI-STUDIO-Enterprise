@@ -65,3 +65,43 @@ export function splitAnswerBlocks(content) {
     content: block.lines.join("\n").replace(/^\n+|\n+$/g, ""),
   }));
 }
+
+/**
+ * A model that prefers JSON can answer with it instead of fences:
+ *
+ *   ```json
+ *   {"blocks":[{"type":"text","text":"..."},{"type":"code","code":"npm install"}]}
+ *   ```
+ *
+ * Both are understood, so whichever the model reaches for, the answer still
+ * arrives as explanation and as something the Terminal can run.
+ */
+export function expandJsonAnswer(content) {
+  const source = String(content == null ? "" : content);
+  const fences = source.match(/```(?:json|luke-answer)\n([\s\S]*?)```/g);
+  if (!fences) return source;
+
+  let result = source;
+  for (const fence of fences) {
+    const inner = fence.replace(/^```(?:json|luke-answer)\n/, "").replace(/```$/, "");
+    let parsed = null;
+    try {
+      parsed = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : Array.isArray(parsed) ? parsed : null;
+    if (!blocks || !blocks.length) continue;
+    const mapped = blocks
+      .map((block) => {
+        const type = String(block?.type || "").toLowerCase() === "code" ? "code" : "text";
+        const value = type === "code" ? (block?.code ?? block?.text ?? "") : (block?.text ?? block?.content ?? "");
+        return { type, content: String(value == null ? "" : value) };
+      })
+      .filter((block) => block.content.trim());
+    if (!mapped.length) continue;
+    const rebuilt = mapped.map((block) => ["```" + block.type, block.content, "```"].join("\n")).join("\n");
+    result = result.replace(fence, rebuilt);
+  }
+  return result;
+}

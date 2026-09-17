@@ -87,7 +87,7 @@ check("no per-action confirmation is left behind", !/if \(mustAsk && \(changesFi
 
 section("5. The split also happens in code, when the model forgets");
 const blocksFile = path.join(root, "app", "frontend", "src", "lib", "work-answer-blocks.mjs");
-const { splitAnswerBlocks, looksLikeCommand } = await import(`file://${blocksFile}`);
+const { splitAnswerBlocks, looksLikeCommand, expandJsonAnswer } = await import(`file://${blocksFile}`);
 
 check("a bare command is recognised", looksLikeCommand("npm install"), String(looksLikeCommand("npm install")));
 check("a shell prompt is stripped, not mistaken for part of it", looksLikeCommand("$ npm install"));
@@ -112,8 +112,28 @@ check("the sentence after them stays text", split[2].type === "text" && /GitHub 
 check("nothing is lost in the split", split.map((b) => b.content).join("\n").includes("npm run build"));
 check("a plain answer with no commands stays one block of prose",
   splitAnswerBlocks("Everything already passes.\nNothing to change.").every((b) => b.type === "text"));
+section("6. A model that answers in JSON is understood the same way");
+const jsonAnswer = [
+  "```json",
+  '{"blocks":[{"type":"text","text":"I added the missing import."},{"type":"code","code":"npm install"}]}',
+  "```",
+].join("\n");
+const expanded = expandJsonAnswer(jsonAnswer);
+check("the JSON block becomes the same two blocks", /```text\nI added the missing import\.\n```/.test(expanded) && /```code\nnpm install\n```/.test(expanded), expanded);
+check("an unknown block type is read as prose, not as a command",
+  /```text/.test(expandJsonAnswer('```json\n{"blocks":[{"type":"note","text":"heads up"}]}\n```')));
+check("a broken JSON block is left alone for the reader",
+  expandJsonAnswer("```json\n{not json at all}\n```") === "```json\n{not json at all}\n```");
+check("an answer with no JSON is untouched", expandJsonAnswer("plain words\n") === "plain words\n");
+check("the renderer expands JSON before it decides anything else",
+  /const fromJson = workMode \? expandJsonAnswer\(content\) : content;/.test(chat));
+
+section("7. The model is told both forms are understood");
+check("fences are still the first thing it is told", /How to answer — two kinds of fenced block/.test(instruction));
+check("JSON is offered as an alternative, not a requirement", /```json/.test(instruction) && /both are understood/i.test(instruction));
+
 check("the renderer imposes the split only when the model used no fences",
-  /workMode && !content\.includes\("\`\`\`"\)\s*\n\s*\? splitAnswerBlocks\(content\)/.test(chat),
+  /workMode && !fromJson\.includes\("```"\)/.test(chat) && /splitAnswerBlocks\(fromJson\)/.test(chat),
   "renderer hook");
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -7,7 +7,7 @@ import WorkTerminalDock from "./WorkTerminalDock";
 import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
-import { splitAnswerBlocks } from "../lib/work-answer-blocks.mjs";
+import { expandJsonAnswer, splitAnswerBlocks } from "../lib/work-answer-blocks.mjs";
 import {
   ZIP_MAX_BYTES,
   describeZipLimit,
@@ -2434,6 +2434,7 @@ function TextChat({
               '```text — every explanation, summary, question and next step. No commands in here.',
               '```code — only what the user should run in the Terminal. One command per line, no prose, no bullet numbers, no commentary inside the block.',
               "When code belongs in a file rather than the Terminal, use apply_patch or create_file instead of handing the user a block to paste.",
+              'If you would rather answer in JSON, wrap it in a ```json fence as {\"blocks\":[{\"type\":\"text\",\"text\":\"...\"},{\"type\":\"code\",\"code\":\"...\"}]} — both are understood, so use whichever you can produce reliably.',
             ].join("\n"),
             "Relevant Project Search excerpts may be included with the user request. When relying on them, cite the relative file path shown in the excerpt and do not imply that unrelated files were read.",
             activeProject?.sourceFolders?.length
@@ -3477,9 +3478,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, workMo
   // forgets entirely, the split is made here instead, so a command never ends
   // up stranded in the middle of a paragraph, where it can neither be copied
   // nor run.
-  const structured = workMode && !content.includes("```")
-    ? splitAnswerBlocks(content).map((block) => ["```" + block.type, block.content, "```"].join("\n")).join("\n")
-    : content;
+  const fromJson = workMode ? expandJsonAnswer(content) : content;
+  const structured = workMode && !fromJson.includes("```")
+    ? splitAnswerBlocks(fromJson).map((block) => ["```" + block.type, block.content, "```"].join("\n")).join("\n")
+    : fromJson;
   // A ```text fence is an explanation the model labelled as prose, so the
   // fence is taken away and the words are rendered as words — not as a slab of
   // monospace. Everything else keeps its fence.
