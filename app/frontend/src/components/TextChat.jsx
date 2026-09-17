@@ -1896,11 +1896,47 @@ function TextChat({
     }
   }, [activeProject, refreshWorkReview, showAlert]);
 
+  /**
+   * What an action needs permission for, or null when it needs none. Used to
+   * ask once for a batch instead of once per file.
+   */
+  const approvalKindFor = (tool) => {
+    if (["write_file", "apply_patch", "create_file"].includes(tool)) return "change";
+    if (tool === "run_check") return "run";
+    return null;
+  };
+
   const executeWorkActions = async (actions) => {
     // A folder approved from the composer stays usable in Work Mode too: it is
     // simply another granted root, still confined by its own chat grant.
     const roots = [...(activeProject?.sourceFolders || []), ...chatFolders.map((folder) => folder.root)];
     const results = [];
+    // Asking is expensive: twelve confirmations for twelve edits is how
+    // "ask for approval" becomes the app asking too much. So one question
+    // covers the batch, and a no skips the edits while the rest carries on.
+    const mustAskFirst = approvalMode === "ask" || approvalMode === "custom";
+    let denied = new Set();
+    if (mustAskFirst) {
+      const summary = [];
+      for (const [index, rawAction] of actions.entries()) {
+        const action = rawAction && typeof rawAction === "object" ? rawAction : {};
+        const kind = approvalKindFor(String(action.tool || ""));
+        if (!kind) continue;
+        summary.push(kind === "run"
+          ? `run the project check "${String(action.commandId || "")}"`
+          : `${action.tool === "create_file" ? "create" : "change"} ${String(action.path || "a file")}`);
+      }
+      if (summary.length > 0) {
+        const question = summary.length === 1
+          ? `Allow Work Chat to ${summary[0]}?`
+          : `Allow Work Chat to do ${summary.length} things?\n\n${summary.map((entry, at) => `${at + 1}. ${entry}`).join("\n")}`;
+        if (!window.confirm(question)) {
+          denied = new Set(actions
+            .map((rawAction, index) => (rawAction && approvalKindFor(String(rawAction.tool || "")) ? index : -1))
+            .filter((index) => index >= 0));
+        }
+      }
+    }
     for (const [index, rawAction] of actions.entries()) {
       const action = rawAction && typeof rawAction === "object" ? rawAction : {};
       const tool = String(action.tool || "");
@@ -1933,15 +1969,9 @@ function TextChat({
       }
       const changesFiles = ["write_file", "apply_patch", "create_file"].includes(tool);
       const runsCommand = tool === "run_check";
-      const mustAsk = approvalMode === "ask" || approvalMode === "custom";
-      if (mustAsk && (changesFiles || runsCommand)) {
-        const what = runsCommand
-          ? `run the project check "${String(action.commandId || "")}"`
-          : `${tool === "create_file" ? "create" : "change"} ${String(action.path || "a file")}`;
-        if (!window.confirm(`Allow Work Chat to ${what}?`)) {
-          results.push({ index, tool, ok: false, error: "User denied this action." });
-          continue;
-        }
+      if (denied.has(index)) {
+        results.push({ index, tool, ok: false, error: "User denied this action." });
+        continue;
       }
       const endpoint = chatFolder
         ? {
@@ -2393,6 +2423,17 @@ function TextChat({
               "Rules you must keep: never claim a file says something you did not read; never invent a commandId that is not listed; never say the work is done because it looks right — say it is done because the check passed.",
               "Do not ask the user to copy commands. Do not ask them to paste or run anything either: use the tools, read their results, and carry on by yourself.",
             ].join(" "),
+            [
+              "How much to ask: almost never. Pick the sensible default, say in one line what you chose, and keep working. Ordinary project work does not need permission.",
+              "Ask only when you are truly blocked: a secret or credential only the user has, two designs where guessing wrong would cost real rework, or something destructive or irreversible. Even then ask ONE question, offer concrete options, and get on with the parts that do not depend on the answer.",
+              "Work in long stretches: investigate, plan, edit every file that needs editing, run the check, fix what it reports, then report. Do not pause between steps to ask whether you may continue.",
+            ].join("\n"),
+            [
+              "How to answer — two kinds of fenced block, never mixed:",
+              '```text — every explanation, summary, question and next step. No commands in here.',
+              '```code — only what the user should run in the Terminal. One command per line, no prose, no bullet numbers, no commentary inside the block.',
+              "When code belongs in a file rather than the Terminal, use apply_patch or create_file instead of handing the user a block to paste.",
+            ].join("\n"),
             "Relevant Project Search excerpts may be included with the user request. When relying on them, cite the relative file path shown in the excerpt and do not imply that unrelated files were read.",
             activeProject?.sourceFolders?.length
               ? "The tools below work on the project's Source Folders. Anything outside them is refused by the server."
@@ -3431,20 +3472,27 @@ function parseInlineMarkdown(text) {
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content, workMode = false, onSendToTerminal }) {
   if (typeof content !== 'string') return null;
 
-  const parts = content.split(/(```[\s\S]*?```)/g);
+  // A ```text fence is an explanation the model labelled as prose, so the
+  // fence is taken away and the words are rendered as words — not as a slab of
+  // monospace. Everything else keeps its fence.
+  const unfenced = content.replace(/```text\n([\s\S]*?)```/g, "$1");
+  const parts = unfenced.split(/(```[\s\S]*?```)/g);
 
   return (
     <div className="markdown-body" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {parts.map((part, index) => {
         if (part.startsWith("```") && part.endsWith("```")) {
           const match = part.match(/```(\w*)\n([\s\S]*?)```/);
-          const lang = match ? match[1] : "";
+          const lang = String(match ? match[1] : "").toLowerCase();
           const code = match ? match[2] : part.slice(3, -3);
+          // Only a block that could actually be run is offered to the Terminal;
+          // a JSON payload or a diff has no business there.
+          const runnable = workMode && Boolean(onSendToTerminal) && !["json", "diff", "markdown", "md", "text", ""].includes(lang);
           return (
             <div className="chat-code-block" key={index}>
               <div className="chat-code-header">
-                <span>{lang || "Code"}</span>
-                <span style={{ display: "inline-flex", gap: 6 }}><CopyContentButton value={code.trim()} label="Copy code" />{workMode && onSendToTerminal && <button type="button" className="chat-copy-button" onClick={() => onSendToTerminal(code.trim())} aria-label="Send code to Work Terminal"><PanelBottom size={14} /><span>Terminal</span></button>}</span>
+                <span>{lang === "code" ? "Run in Terminal" : (lang || "Code")}</span>
+                <span style={{ display: "inline-flex", gap: 6 }}><CopyContentButton value={code.trim()} label="Copy code" />{runnable && <button type="button" className="chat-copy-button" onClick={() => onSendToTerminal(code.trim())} aria-label="Send code to Work Terminal"><PanelBottom size={14} /><span>Terminal</span></button>}</span>
               </div>
               <pre style={{
               background: "var(--md-sys-color-surface-variant)", 
