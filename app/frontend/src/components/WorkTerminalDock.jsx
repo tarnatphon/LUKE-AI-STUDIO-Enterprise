@@ -14,9 +14,37 @@ const queueHeadingStyle = { display: "block", margin: "0 4px 3px", color: "#8e96
 const queueItemStyle = { display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 7, minHeight: 25, paddingLeft: 4 };
 const queueCodeStyle = { overflow: "hidden", color: "#cbd6d0", fontSize: ".66rem", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const queueRemoveStyle = { display: "grid", placeItems: "center", width: 25, height: 25, border: 0, borderRadius: 6, background: "transparent", color: "#8e9692", cursor: "pointer" };
+const commandInputStyle = { flex: 1, minWidth: 0, maxHeight: 96, padding: "6px 8px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 7, background: "rgba(0,0,0,.25)", color: "#e7efea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".7rem", lineHeight: 1.5, resize: "vertical" };
 const queueStatusStyle = { flex: "0 0 auto", color: "#67d391", fontSize: ".62rem", whiteSpace: "nowrap" };
+/**
+ * There is no shell behind this terminal, so a pasted script can never run.
+ * Sending it anyway used to produce a bare "not permitted" — or nothing at all,
+ * when the single-line input quietly dropped everything after the first
+ * newline. Say what it is and where the code should go instead.
+ */
+const SCRIPT_NOT_A_COMMAND = [
+  "That looks like code, not a command. This terminal runs one read-only command",
+  "at a time and has no shell behind it, so a pasted script cannot be run here.",
+  "To get this code into the project: open the Files tab, open the file and paste",
+  "it there — or ask Work Chat to write the file for you. Then run the project's",
+  "own check from the Checks tab.",
+].join("\n");
+
 const MAX_SAVED_DRAFT_CHARS = 8000;
 const MAX_SAVED_HISTORY = 50;
+
+/**
+ * Replace the "Running…" line with the answer. Reading the marker by position
+ * instead of by regex means an answer can never be dropped on the floor — if
+ * the marker has moved, the answer is appended rather than lost, which is what
+ * left the terminal showing "Running…" forever.
+ */
+function finishRunningLine(text, answer) {
+  const marker = "Running…";
+  const at = text.lastIndexOf(marker);
+  if (at === -1) return `${text ? `${text}\n` : ""}${answer}`;
+  return `${text.slice(0, at)}${answer}`;
+}
 
 function terminalSessionKey(projectId, root) {
   return `luke_work_terminal:${projectId || "none"}:${root || "none"}`;
@@ -148,11 +176,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Work command failed.");
       setNeedsGrant(false);
-      setOutput((current) => current.replace(/Running…$/, data.result?.output || "No output."));
+      setOutput((current) => finishRunningLine(current, data.result?.output || "No output."));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setNeedsGrant(/permission/i.test(message));
-      setOutput((current) => current.replace(/Running…$/, message));
+      setOutput((current) => finishRunningLine(current, message));
     } finally {
       setBusy(false);
     }
@@ -173,6 +201,10 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       setCommandText("");
       return;
     }
+    if (command.includes("\n")) {
+      setOutput((current) => `${current ? `${current}\n` : ""}${SCRIPT_NOT_A_COMMAND}`);
+      return;
+    }
     setCommandQueue((current) => [...current, command].slice(-50));
     setCommandText("");
     setHistoryIndex(-1);
@@ -191,7 +223,12 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
           <div className="work-terminal-dock-commands">
             {COMMANDS.map((command) => <button type="button" key={command.id} disabled={!root} onClick={() => setCommandText(command.label)}>{command.label}</button>)}
           </div>
-          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><input autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
+          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                queueCommand();
+                return;
+              }
             if (event.key === "ArrowUp") {
               event.preventDefault();
               const nextIndex = Math.min(history.length - 1, historyIndex + 1);
@@ -203,7 +240,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
               setHistoryIndex(nextIndex);
               setCommandText(nextIndex >= 0 ? history[history.length - 1 - nextIndex] : "");
             }
-          }} placeholder={busy ? "Type the next command while this one runs…" : "git status, cat file, head/tail file, clear…"} aria-label="Work Terminal command" /><button type="submit" disabled={!commandText.trim()}>{busy ? "Queue" : "Run"}</button></form></div>}
+          }} placeholder={busy ? "Type the next command while this one runs…" : "git status · cat file · head/tail file · ls · pwd · clear"} aria-label="Work Terminal command" style={commandInputStyle} /><button type="submit" disabled={!commandText.trim()} title={commandText.trim() ? "" : "Type a command first"}>{busy ? "Queue" : "Run"}</button></form></div>}
         </div>
       )}
     </section>

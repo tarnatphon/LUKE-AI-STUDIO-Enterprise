@@ -210,6 +210,22 @@ async function main() {
     fs.rmSync(sandbox, { recursive: true, force: true });
   }
 
+  // ── 6. A pasted script, and an answer that cannot go missing ─────────────
+  // Pasting finished code into the terminal is the obvious thing to do with it.
+  // It cannot work — there is no shell behind this terminal — but it must never
+  // be silent, and the single-line input used to eat everything after the first
+  // newline, which is exactly how "nothing happened" came to be.
+  section("6. A pasted script is answered, never swallowed");
+  const dock = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "WorkTerminalDock.jsx"), "utf8");
+  check("the command box takes more than one line", /<textarea/.test(dock) && !/<input[^>]*aria-label="Work Terminal command"/.test(dock));
+  check("a multi-line paste is recognised as a script", /command\.includes\("\\n"\)/.test(dock));
+  check("it is answered with an explanation, not a request", /SCRIPT_NOT_A_COMMAND/.test(dock) && /setOutput\(\(current\) => [`'"]\$\{current/.test(dock));
+  check("the explanation says where the code should go", /Files tab/i.test(dock) && /Work Chat/i.test(dock));
+  check("the answer replaces the placeholder by position, not by regex", /function finishRunningLine/.test(dock));
+  check("an answer is appended when the placeholder has moved",
+    /at === -1/.test(dock) && /const marker = "Running…"/.test(dock) && /text\.lastIndexOf\(marker\)/.test(dock));
+  check("no path can leave the terminal showing Running… forever", !/replace\(\/Running/.test(dock));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed === 0 ? 0 : 1;
 }
