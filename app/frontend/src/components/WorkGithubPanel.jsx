@@ -299,9 +299,10 @@ export default function WorkGithubPanel({ project, onClose }) {
           {status?.mode === "none" ? (
             <>
               <p style={styles.note}>
-                The GitHub CLI keeps the token out of the app entirely. If it is installed, run <code>gh auth login</code> on this
-                machine. Otherwise paste a personal access token below — it is stored inside the app folder, on the same external
-                disk, with owner-only permissions.
+                Paste a personal access token below. It is stored inside the app folder — on the same external disk — with
+                owner-only permissions, and it is never sent back to this page. It covers everything: reading repositories,
+                cloning and pushing private ones, and opening pull requests. The GitHub CLI is optional: if it is ever installed
+                and signed in, Work uses it instead.
               </p>
               <div style={styles.row}>
                 <input

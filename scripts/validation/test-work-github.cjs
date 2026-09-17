@@ -22,6 +22,9 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
+const { promisify } = require("node:util");
+const { execFile } = require("node:child_process");
+const execFileAsync = promisify(execFile);
 
 const root = path.resolve(__dirname, "..", "..");
 const serverFile = path.join(root, "scripts", "server", "serve.cjs");
@@ -233,8 +236,93 @@ async function main() {
     await fs.promises.writeFile(workGithub.AUTH_FILE, previousToken, { mode: 0o600 });
   }
 
-  // ── 6. The endpoints answer ──────────────────────────────────────────────
-  section("6. The endpoints answer, and the guards hold");
+  // ── 6. Without the GitHub CLI, the token does the whole job ──────────────
+  section("6. A machine with no GitHub CLI still gets the whole loop");
+  // This machine may export a token of its own; the test has to prove the one
+  // the user saved is the one that is used, so the environment is stood aside.
+  const envTokens = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GH_TOKEN;
+  check("git is given the credential as environment, never as an argument", (() => {
+    const env = workGithub.gitAuthEnv(fakeToken);
+    return env.GIT_CONFIG_VALUE_0.includes("AUTHORIZATION: bearer") && env.GIT_TERMINAL_PROMPT === "0";
+  })());
+  check("git is never left waiting for a password", workGithub.gitAuthEnv(null).GIT_TERMINAL_PROMPT === "0");
+  check("an https remote is read as owner/name", workGithub.remoteSlug("https://github.com/luke-ai/studio.git") === "luke-ai/studio");
+  check("an ssh remote is read as owner/name", workGithub.remoteSlug("git@github.com:luke-ai/studio.git") === "luke-ai/studio");
+  check("a remote that is not GitHub is refused", workGithub.remoteSlug("file:///tmp/elsewhere") === null);
+
+  if (gitWorks) {
+    const calls = [];
+    workGithub.setFetchImplementation(async (url, options) => {
+      calls.push({ url: String(url), method: (options && options.method) || "GET", headers: options && options.headers, body: options && options.body });
+      const json = (data) => ({ ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) });
+      if (String(url).endsWith("/repos/luke-ai/studio")) return json({ default_branch: "main" });
+      if (String(url).endsWith("/repos/luke-ai/studio/pulls")) return json({ html_url: "https://github.com/luke-ai/studio/pull/7", number: 7 });
+      return json({ login: "tester" });
+    });
+    workGithub.setToolRunner((tool, args, options) =>
+      tool === "gh"
+        ? Promise.reject(Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }))
+        : execFileAsync(tool, args, options));
+
+    // A repository whose origin points at GitHub, with a branch that is ahead.
+    const remoteRepo = path.join(granted, "remote-project");
+    fs.mkdirSync(remoteRepo, { recursive: true });
+    const rgit = (args) => execFileSync("git", args, { cwd: remoteRepo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    rgit(["init", "-b", "main"]);
+    rgit(["config", "user.email", "work@example.test"]);
+    rgit(["config", "user.name", "Work Test"]);
+    rgit(["remote", "add", "origin", "https://github.com/luke-ai/studio.git"]);
+    fs.writeFileSync(path.join(remoteRepo, "README.md"), "# readme\n");
+    rgit(["add", "README.md"]);
+    rgit(["commit", "-m", "first"]);
+    rgit(["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    const firstCommit = rgit(["rev-parse", "main"]).trim();
+    rgit(["checkout", "-b", "feature/token-only"]);
+    fs.writeFileSync(path.join(remoteRepo, "work.txt"), "work\n");
+    rgit(["add", "work.txt"]);
+    rgit(["commit", "-m", "token only"]);
+    // Make the branch look pushed: an upstream that is one commit behind.
+    rgit(["update-ref", "refs/remotes/origin/feature/token-only", firstCommit]);
+    rgit(["config", "branch.feature/token-only.remote", "origin"]);
+    rgit(["config", "branch.feature/token-only.merge", "refs/heads/feature/token-only"]);
+
+    const ahead = await workGithub.repositoryState(remoteRepo);
+    check("the branch is seen as ahead of its upstream", ahead.ahead >= 1, JSON.stringify(ahead));
+
+    await workGithub.storeToken(fakeToken);
+    await refuses(
+      "a pull request still asks before it is opened",
+      () => workGithub.openPullRequest({ root: remoteRepo, title: "Token only" }),
+      /approval/i,
+    );
+
+    const opened = await workGithub.openPullRequest({ root: remoteRepo, title: "Token only", body: "from the token path", approvalGranted: true });
+    check("the pull request is opened without the GitHub CLI", opened.opened === true && opened.via === "api", JSON.stringify(opened));
+    check("it comes back with its link", opened.url === "https://github.com/luke-ai/studio/pull/7");
+    const posted = calls.find((entry) => entry.method === "POST" && entry.url.endsWith("/repos/luke-ai/studio/pulls"));
+    check("it posted to the right repository", Boolean(posted), JSON.stringify(calls.map((c) => `${c.method} ${c.url}`)));
+    const sent = posted ? JSON.parse(posted.body) : {};
+    check("from the branch into the default branch", sent.head === "feature/token-only" && sent.base === "main", JSON.stringify(sent));
+    check("with the title the user wrote", sent.title === "Token only");
+    check("the token went in the header, not the URL", posted && String(posted.headers.authorization).includes(fakeToken) && !posted.url.includes(fakeToken));
+
+    await workGithub.clearToken();
+    await refuses(
+      "with no token and no GitHub CLI, it says what is missing",
+      () => workGithub.openPullRequest({ root: remoteRepo, title: "x", approvalGranted: true }),
+      /token/i,
+    );
+
+    workGithub.setToolRunner(null);
+    workGithub.setFetchImplementation(null);
+  }
+  if (envTokens.GITHUB_TOKEN) process.env.GITHUB_TOKEN = envTokens.GITHUB_TOKEN;
+  if (envTokens.GH_TOKEN) process.env.GH_TOKEN = envTokens.GH_TOKEN;
+
+  // ── 7. The endpoints answer ──────────────────────────────────────────────
+  section("7. The endpoints answer, and the guards hold");
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [serverFile], {

@@ -70,9 +70,51 @@ function clean(value, maxLength = 400) {
   return String(value == null ? "" : value).replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
+// The tests replace this to prove the REST calls without touching GitHub.
+let fetchImpl = (...args) => globalThis.fetch(...args);
+
+function setFetchImplementation(fn) {
+  fetchImpl = typeof fn === "function" ? fn : (...args) => globalThis.fetch(...args);
+}
+
+/**
+ * Credentials for git, without `gh` and without a secret in the command line.
+ *
+ * The token travels in the child process's environment as a temporary git
+ * config value, never as an argument (which anyone could read with `ps`) and
+ * never in the clone URL (which git saves in .git/config for good). The prompt
+ * is switched off so a failed login can never hang the app waiting for typing.
+ */
+function gitAuthEnv(token) {
+  if (!token) return { GIT_TERMINAL_PROMPT: "0" };
+  return {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: bearer ${token}`,
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
+
+/** owner/name, read from the origin remote (https or ssh). */
+function remoteSlug(remoteUrl) {
+  const raw = String(remoteUrl || "").trim();
+  if (!raw) return null;
+  const ssh = raw.match(/^[\w.-]+@[\w.-]+[:/]+(.+?)(?:\.git)?$/);
+  const candidate = ssh ? ssh[1] : raw.replace(/^https?:\/\/[^/]+\//, "").replace(/\.git$/, "");
+  return REPO_SLUG.test(candidate) ? candidate : null;
+}
+
+const defaultToolRunner = (tool, args, options) => execFileAsync(tool, args, options);
+let toolRunner = defaultToolRunner;
+
+/** The tests replace this to simulate a machine without the GitHub CLI. */
+function setToolRunner(fn) {
+  toolRunner = typeof fn === "function" ? fn : defaultToolRunner;
+}
+
 async function runTool(tool, args, { cwd, env = {}, token = null } = {}) {
   try {
-    const { stdout, stderr } = await execFileAsync(tool, args, {
+    const { stdout, stderr } = await toolRunner(tool, args, {
       cwd: cwd || undefined,
       timeout: TOOL_TIMEOUT_MS,
       maxBuffer: MAX_BUFFER,
@@ -232,6 +274,7 @@ async function authStatus() {
           source,
           tokenStored: source === "stored",
           host: "github.com",
+          hint: "The GitHub CLI is not installed, so Work uses the token for everything: cloning and pushing private repositories, and opening pull requests.",
         };
       }
       return {
@@ -266,7 +309,7 @@ async function authStatus() {
     source: null,
     tokenStored: false,
     host: "github.com",
-    hint: "Install the GitHub CLI ('gh') and sign in, or paste a personal access token in Settings.",
+    hint: "Save a personal access token in Settings. (The GitHub CLI is optional.)",
   };
 }
 
@@ -290,15 +333,25 @@ async function ghJson(args, { token }) {
   }
 }
 
-async function apiJson(urlPath, { token }) {
-  const response = await fetch(`${GITHUB_API}${urlPath}`, {
+async function apiJson(urlPath, { token, method = "GET", body = null } = {}) {
+  const response = await fetchImpl(`${GITHUB_API}${urlPath}`, {
+    method,
     headers: {
       authorization: `Bearer ${token}`,
       accept: "application/vnd.github+json",
       "user-agent": "LUKE-AI-STUDIO",
+      ...(body ? { "content-type": "application/json" } : {}),
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw reject(`GitHub answered ${response.status}.`, 502);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw reject(
+      `GitHub answered ${response.status}.${detail ? ` ${scrub(detail, token).slice(0, 200)}` : ""}`,
+      502,
+    );
+  }
+  if (response.status === 204) return null;
   return response.json();
 }
 
@@ -433,9 +486,9 @@ async function cloneRepo({ root, repo, directory, approvalGranted = false }) {
   if (fs.existsSync(targetPath) && fs.readdirSync(targetPath).length > 0) {
     throw reject(`There is already something in ${folder}. Choose another folder name.`, 409);
   }
-  // Private repositories need the GitHub CLI; a plain token is never written
-  // into the clone URL, because that URL is saved in .git/config for good.
-  const result = await runTool("git", args, { token });
+  // With a token, git carries the credential itself, so private repositories
+  // clone without the GitHub CLI. The token still never reaches the URL.
+  const result = await runTool("git", args, { token, env: gitAuthEnv(token) });
   if (!result.ok) {
     throw reject(scrub(result.stderr || result.message, token).slice(0, 400) || "The clone failed.", 502);
   }
@@ -486,7 +539,7 @@ async function push({ root, branch, approvalGranted = false }) {
   const target = branch ? branchName(branch) : state.branch;
   if (!target) throw reject("There is no branch to push.");
   const { token } = await resolveToken();
-  const result = await runTool("git", [...args.slice(0, -1), target], { cwd: root, token });
+  const result = await runTool("git", [...args.slice(0, -1), target], { cwd: root, token, env: gitAuthEnv(token) });
   if (!result.ok) throw reject(scrub(result.stderr || result.message, token).slice(0, 400) || "The push failed.", 502);
   return { pushed: true, branch: target, remote: state.remote };
 }
@@ -516,20 +569,47 @@ async function openPullRequest({ root, title, body: bodyText, base, approvalGran
   }
 
   const { token } = await resolveToken();
-  const result = await runTool("gh", finalArgs, { cwd: root, token, env: token ? { GH_TOKEN: token, GITHUB_TOKEN: token } : {} });
-  if (!result.ok) {
-    throw reject(
-      scrub(result.stderr || result.message, token).slice(0, 400) ||
-        "The pull request could not be opened. Without the GitHub CLI, push the branch and open it on github.com.",
-      502,
-    );
+  if (await hasGh()) {
+    const result = await runTool("gh", finalArgs, { cwd: root, token, env: token ? { GH_TOKEN: token, GITHUB_TOKEN: token } : {} });
+    if (!result.ok) {
+      throw reject(scrub(result.stderr || result.message, token).slice(0, 400) || "The pull request could not be opened.", 502);
+    }
+    const url = (result.stdout.match(/https:\/\/\S+/g) || [])[0] || null;
+    return { opened: true, url, branch: head, via: "gh-cli" };
   }
-  const url = (result.stdout.match(/https:\/\/\S+/g) || [])[0] || null;
-  return { opened: true, url, branch: head };
+
+  // No GitHub CLI: open it through the API instead, so the loop still closes.
+  if (!token) throw reject("Save a GitHub token first, or install the GitHub CLI.", 401);
+  const slug = remoteSlug(state.remote);
+  if (!slug) throw reject("The origin remote does not point at GitHub, so a pull request cannot be opened from here.", 409);
+  const info = await apiJson(`/repos/${slug}`, { token });
+  const target = base || (info && info.default_branch) || "main";
+  const created = await apiJson(`/repos/${slug}/pulls`, {
+    token,
+    method: "POST",
+    body: {
+      title: (subject === "<the last commit message>" ? clean(state.lastCommit, 120) || head : subject).slice(0, 200),
+      body: String(bodyText == null ? "" : bodyText).slice(0, 4000),
+      head,
+      base: target,
+    },
+  });
+  return {
+    opened: true,
+    url: created && created.html_url ? created.html_url : null,
+    number: created && created.number ? created.number : null,
+    branch: head,
+    base: target,
+    via: "api",
+  };
 }
 
 module.exports = {
   AUTH_FILE,
+  gitAuthEnv,
+  remoteSlug,
+  setFetchImplementation,
+  setToolRunner,
   authStatus,
   clearToken,
   cloneRepo,
