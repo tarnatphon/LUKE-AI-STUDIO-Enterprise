@@ -147,6 +147,15 @@ async function main() {
     }
     check("no shell file was written by a redirection", !fs.existsSync(path.join(sandbox, "out.txt")));
 
+    section("5b. A placeholder the model left in is named, not blamed on pipes");
+    const placeholder = await terminal("npm install <missing-dependency>", { approvalGranted: true });
+    check("it is refused", placeholder.status === 400, `${placeholder.status}`);
+    check("and the refusal says it is a placeholder", /placeholder/i.test(String(placeholder.data?.error)), String(placeholder.data?.error).slice(0, 90));
+    check("the placeholder itself is quoted back", /<missing-dependency>/.test(String(placeholder.data?.error)), String(placeholder.data?.error).slice(0, 90));
+    check("it is not called a pipe", !/[Pp]ipes/.test(String(placeholder.data?.error)), String(placeholder.data?.error).slice(0, 90));
+    const real = await terminal("npm install lodash --dry-run", { approvalGranted: true });
+    check("a real package name still runs", real.status === 200, `${real.status} ${String(real.data?.error).slice(0, 60)}`);
+
     section("6. The granted folder still bounds every path it is given");
     const neighbourName = path.basename(neighbour);
     for (const [label, command] of [

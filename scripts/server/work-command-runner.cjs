@@ -362,6 +362,16 @@ function parseCommandLine(line) {
   // would expand it, but a string that only makes sense to a shell has no
   // business reaching a program the user is about to approve.
   if (text.includes("$(")) throw reject("Command substitution is not permitted.", 400);
+  // A model leaves placeholders behind ("npm install <missing-dependency>"),
+  // and < > are also redirection — so this used to be refused as if the user
+  // had tried to pipe something. Name what is actually wrong.
+  const placeholder = text.match(/<[^<>]{1,80}>/);
+  if (placeholder) {
+    throw reject(
+      `"${placeholder[0]}" is a placeholder, not a name. Replace it with the real one before running — for example: npm install lodash.`,
+      400,
+    );
+  }
   const tokens = [];
   let current = "";
   let started = false;
