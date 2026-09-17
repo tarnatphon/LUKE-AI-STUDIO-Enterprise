@@ -47,6 +47,7 @@ function section(title) {
   console.log(`\n${title}`);
 }
 
+async function main() {
 const chat = fs.readFileSync(chatFile, "utf8");
 const instruction = chat.slice(chat.indexOf("const workInstruction"), chat.indexOf("const approvalInstruction"));
 
@@ -68,7 +69,7 @@ check("a code block stays free of prose", /no prose, no bullet numbers, no comme
 check("code meant for a file is written by the tools, not handed over", /use apply_patch or create_file instead of handing the user a block/.test(instruction));
 
 section("3. The renderer keeps its side of the contract");
-check("a text fence is unfenced so it reads as prose", /content\.replace\(\/```text\\n\(\[\\s\\S\]\*\?\)```\/g, "\$1"\)/.test(chat));
+check("a text fence is unfenced so it reads as prose", /\.replace\(\/```text\\n\(\[\\s\\S\]\*\?\)```\/g, "\$1"\)/.test(chat));
 check("only runnable blocks are offered to the Terminal",
   /const runnable = workMode && Boolean\(onSendToTerminal\) && !\["json", "diff", "markdown", "md", "text", ""\]/.test(chat));
 check("a code block is labelled as something to run", /lang === "code" \? "Run in Terminal"/.test(chat));
@@ -84,5 +85,39 @@ check("a single action still reads as a single question", /Allow Work Chat to \$
 check("declining skips the edits instead of stopping the run", /denied\.has\(index\)/.test(chat) && /User denied this action/.test(chat));
 check("no per-action confirmation is left behind", !/if \(mustAsk && \(changesFiles \|\| runsCommand\)\)/.test(chat));
 
+section("5. The split also happens in code, when the model forgets");
+const blocksFile = path.join(root, "app", "frontend", "src", "lib", "work-answer-blocks.mjs");
+const { splitAnswerBlocks, looksLikeCommand } = await import(`file://${blocksFile}`);
+
+check("a bare command is recognised", looksLikeCommand("npm install"), String(looksLikeCommand("npm install")));
+check("a shell prompt is stripped, not mistaken for part of it", looksLikeCommand("$ npm install"));
+check("a sentence about a command is not a command", !looksLikeCommand("Run npm install to fetch the packages."));
+check("prose that starts with a capital is left alone", !looksLikeCommand("Make sure the build passes."));
+check("an over-long line is left alone", !looksLikeCommand(`node ${"x".repeat(200)}`));
+
+const mixed = [
+  "I added the missing import and fixed the test.",
+  "",
+  "npm install",
+  "npm run build",
+  "",
+  "If the build passes, commit with the GitHub tab.",
+].join("\n");
+const split = splitAnswerBlocks(mixed);
+check("the answer comes apart into text and code", split.length === 3, JSON.stringify(split.map((b) => b.type)));
+check("the explanation stays text", split[0].type === "text" && /missing import/.test(split[0].content), JSON.stringify(split[0]));
+check("consecutive commands become one runnable block",
+  split[1].type === "code" && split[1].content === "npm install\nnpm run build", JSON.stringify(split[1]));
+check("the sentence after them stays text", split[2].type === "text" && /GitHub tab/.test(split[2].content), JSON.stringify(split[2]));
+check("nothing is lost in the split", split.map((b) => b.content).join("\n").includes("npm run build"));
+check("a plain answer with no commands stays one block of prose",
+  splitAnswerBlocks("Everything already passes.\nNothing to change.").every((b) => b.type === "text"));
+check("the renderer imposes the split only when the model used no fences",
+  /workMode && !content\.includes\("\`\`\`"\)\s*\n\s*\? splitAnswerBlocks\(content\)/.test(chat),
+  "renderer hook");
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1; });

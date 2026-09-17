@@ -7,6 +7,7 @@ import WorkTerminalDock from "./WorkTerminalDock";
 import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
+import { splitAnswerBlocks } from "../lib/work-answer-blocks.mjs";
 import {
   ZIP_MAX_BYTES,
   describeZipLimit,
@@ -3472,10 +3473,17 @@ function parseInlineMarkdown(text) {
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content, workMode = false, onSendToTerminal }) {
   if (typeof content !== 'string') return null;
 
+  // When the model labels its own blocks, they are honoured as written. When it
+  // forgets entirely, the split is made here instead, so a command never ends
+  // up stranded in the middle of a paragraph, where it can neither be copied
+  // nor run.
+  const structured = workMode && !content.includes("```")
+    ? splitAnswerBlocks(content).map((block) => ["```" + block.type, block.content, "```"].join("\n")).join("\n")
+    : content;
   // A ```text fence is an explanation the model labelled as prose, so the
   // fence is taken away and the words are rendered as words — not as a slab of
   // monospace. Everything else keeps its fence.
-  const unfenced = content.replace(/```text\n([\s\S]*?)```/g, "$1");
+  const unfenced = structured.replace(/```text\n([\s\S]*?)```/g, "$1");
   const parts = unfenced.split(/(```[\s\S]*?```)/g);
 
   return (
