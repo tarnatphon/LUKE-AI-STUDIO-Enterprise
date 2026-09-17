@@ -139,10 +139,35 @@ export function looksLikeCode(text) {
     || /^\s*(?:const|let|var|function|return|if|for|while|class|def|print|import|from|export|module|require|console|async|await)\b/m.test(body);
 }
 
-/** What to say when a block holds no program at all. */
-export const NOT_A_PROGRAM = [
-  "There is no program in that block — it reads like notes.",
-  "Nothing was run. A task list or a plan belongs in the Work chat, where it",
-  "is kept as your plan; code that should exist as a file is written by Work Chat,",
-  "which keeps a backup you can undo.",
-].join("\n");
+/** What to say when a block holds no program at all. Short: it is a terminal. */
+export const NOT_A_PROGRAM = "No program in that block — it reads like notes. Nothing was run.";
+
+/**
+ * A task list, read as a plan.
+ *
+ * The model is asked to post its plan with update_tasks, and sometimes writes
+ * it as markdown instead — "- [ ] move the parser", "- [x] read the file".
+ * That is not a program, but it is not nothing either: it is the plan, and
+ * there is somewhere it belongs.
+ */
+export function planTasksFromMarkdown(text) {
+  const tasks = [];
+  const add = (line, status) => {
+    const value = String(line || "").trim().slice(0, 200);
+    if (value) tasks.push({ id: String(tasks.length + 1), text: value, status });
+  };
+  for (const rawLine of String(text == null ? "" : text).split(/\r?\n/)) {
+    const line = rawLine.trim().replace(/^#{1,6}\s+/, "");
+    if (!line) continue;
+    const checkbox = line.match(/^(?:[-*+]|\d+[.)])?\s*\[([ xX~-])\]\s*(.*)$/);
+    if (checkbox) {
+      const mark = checkbox[1];
+      add(checkbox[2], mark === " " ? "todo" : (mark === "-" || mark === "~" ? "doing" : "done"));
+      continue;
+    }
+    const bullet = line.match(/^(?:[-*+]|\d+[.)])\s+(.+)$/);
+    if (bullet) add(bullet[1], "todo");
+  }
+  // The Work plan holds 24 steps, the same cap the agent works to.
+  return tasks.slice(0, 24);
+}

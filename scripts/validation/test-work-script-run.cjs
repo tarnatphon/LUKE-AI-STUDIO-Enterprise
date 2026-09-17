@@ -219,7 +219,27 @@ async function main() {
     /const call = parseToolCall\(raw\) \|\| parseToolCall\(lines\.join\("\\n"\)\);[\s\S]*?setCommandText\(JSON\.stringify\(call\.args\)\);/.test(dock));
   check("notes are named rather than run", /if \(!looksLikeCode\(raw\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
   check("and the same judgement is made for a pasted block", /if \(!looksLikeCode\(command\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
-  check("the message says what to do instead", /belongs in the Work chat/.test(lib.NOT_A_PROGRAM));
+  check("the message is one line, because it prints in a terminal", lib.NOT_A_PROGRAM.split("\n").length === 1, String(lib.NOT_A_PROGRAM.split("\n").length));
+
+  section("12. A plan written as markdown has somewhere to go");
+  const plan = lib.planTasksFromMarkdown("# Update tasks\n- [ ] move the parser\n- [x] read the file\n- [-] run the tests");
+  check("the heading is not a step", plan.length === 3, JSON.stringify(plan));
+  check("an open box is a todo", plan[0]?.status === "todo" && plan[0]?.text === "move the parser", JSON.stringify(plan[0]));
+  check("a ticked box is done", plan[1]?.status === "done", JSON.stringify(plan[1]));
+  check("a dash is in progress", plan[2]?.status === "doing", JSON.stringify(plan[2]));
+  check("plain bullets are steps too",
+    lib.planTasksFromMarkdown("- first\n- second").length === 2);
+  check("a numbered list is a plan",
+    lib.planTasksFromMarkdown("1. read\n2. run").length === 2);
+  check("prose is still not a plan", lib.planTasksFromMarkdown("First we move it, then we test.").length === 0);
+  check("the plan is capped at the 24 steps the agent works to",
+    lib.planTasksFromMarkdown(Array.from({ length: 40 }, (_, index) => `- step ${index}`).join("\n")).length === 24);
+  check("the terminal offers the plan instead of refusing it", /setPendingPlan\(\{ tasks \}\);/.test(dock));
+  check("and says nothing was run", /NOT_A_PROGRAM\} It reads like a plan/.test(dock));
+  check("accepting it replaces the plan", /onClick=\{acceptPlan\}.*Set as my plan/.test(dock) || /Set as my plan/.test(dock));
+  check("dismissing keeps the plan as it was", /Kept the plan as it was\./.test(dock));
+  check("without a plan in the block, the plain refusal stands",
+    /if \(!offerPlan\(raw\)\) setOutput/.test(dock) && /if \(!offerPlan\(command\)\) setOutput/.test(dock));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, NOT_A_PROGRAM, TERMINAL_TOOL_ENDPOINTS, looksLikeCode, parseToolCall, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, NOT_A_PROGRAM, TERMINAL_TOOL_ENDPOINTS, looksLikeCode, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -25,6 +25,7 @@ const approvalAllowStyle = { padding: "5px 11px", border: "1px solid rgba(250,20
 const approvalCancelStyle = { padding: "5px 11px", border: "1px solid rgba(255,255,255,.14)", borderRadius: 7, background: "transparent", color: "#c3ccc7", cursor: "pointer", fontSize: ".66rem" };
 const commandInputStyle = { flex: 1, minWidth: 0, maxHeight: 96, padding: "6px 8px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 7, background: "rgba(0,0,0,.25)", color: "#e7efea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".7rem", lineHeight: 1.5, resize: "vertical" };
 const queueStatusStyle = { flex: "0 0 auto", color: "#67d391", fontSize: ".62rem", whiteSpace: "nowrap" };
+const planStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "7px 10px", borderTop: "1px solid rgba(196,181,253,.3)", background: "rgba(196,181,253,.08)" };
 const scriptApprovalStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "7px 10px", borderTop: "1px solid rgba(147,197,253,.3)", background: "rgba(147,197,253,.08)" };
 const scriptPreviewStyle = { maxHeight: 92, overflow: "auto", margin: 0, padding: "5px 7px", borderRadius: 6, background: "rgba(0,0,0,.28)", color: "#dbe7f5", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".64rem", lineHeight: 1.45, whiteSpace: "pre-wrap" };
 const scriptHintStyle = { opacity: 0.72, fontSize: ".63rem" };
@@ -73,7 +74,7 @@ function readTerminalSession(key) {
   }
 }
 
-export default function WorkTerminalDock({ project, setProjects = null, onClose }) {
+export default function WorkTerminalDock({ project, setProjects = null, onClose, onUpdatePlan = null }) {
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeCommand, setActiveCommand] = useState("");
@@ -96,6 +97,9 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   // here until the user says to run it: a script runs with their access, which
   // reaches further than the folder they granted.
   const [pendingScript, setPendingScript] = useState(null);
+  // A block of notes is not always worthless: a task list is the plan, and
+  // there is somewhere it belongs.
+  const [pendingPlan, setPendingPlan] = useState(null);
   // A command that fills the panel used to look like it did nothing at all,
   // because the answer landed below the fold and nothing scrolled to it. The
   // output now follows the answer — unless the user has scrolled up to read,
@@ -196,7 +200,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
         // it, in which case saying so beats a syntax error from node.
         if (!looksLikeCode(raw)) {
           setCommandText("");
-          setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+          if (!offerPlan(raw)) setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
           return;
         }
         setCommandText("");
@@ -369,6 +373,25 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     }
   }, [root, project, prompt]);
 
+  /**
+   * Notes that turn out to be a plan. Nothing is run; the steps are offered to
+   * the Work plan instead, which is where the model meant them to go.
+   */
+  const offerPlan = useCallback((block) => {
+    const tasks = planTasksFromMarkdown(block);
+    if (tasks.length === 0 || typeof onUpdatePlan !== "function") return false;
+    setPendingPlan({ tasks });
+    setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM} It reads like a plan — ${tasks.length} ${tasks.length === 1 ? "step" : "steps"}.`);
+    return true;
+  }, [onUpdatePlan]);
+
+  const acceptPlan = () => {
+    if (!pendingPlan) return;
+    const count = onUpdatePlan?.(pendingPlan.tasks) ?? pendingPlan.tasks.length;
+    setOutput((current) => `${current}\nPlan updated — ${count} ${count === 1 ? "step" : "steps"}.`);
+    setPendingPlan(null);
+  };
+
   const cancelApproval = () => {
     setPendingApproval(null);
     setOutput((current) => `${current}\nCancelled — nothing was run.`);
@@ -402,7 +425,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
         return;
       }
       if (!looksLikeCode(command)) {
-        setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+        if (!offerPlan(command)) setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
         return;
       }
       setPendingScript({ code: command, interpreter: "auto" });
@@ -437,6 +460,16 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
             <div style={approvalActionsStyle}>
               <button type="button" style={approvalAllowStyle} onClick={() => void executeCommand(pendingApproval.command, { approved: true })}>Allow once</button>
               <button type="button" style={approvalCancelStyle} onClick={cancelApproval}>Cancel</button>
+            </div>
+          </div>}{pendingPlan && <div style={planStyle} role="alertdialog" aria-label="Use this plan">
+            <div style={approvalTextStyle}>
+              <strong>Use these {pendingPlan.tasks.length} steps as your plan?</strong>
+              <span style={scriptHintStyle}>Nothing was run — a plan is not a program. This replaces the plan Work is following.</span>
+              <pre style={scriptPreviewStyle}>{pendingPlan.tasks.slice(0, 5).map((task) => `[${task.status === "done" ? "x" : task.status === "doing" ? "-" : " "}] ${task.text}`).join("\n")}{pendingPlan.tasks.length > 5 ? `\n… and ${pendingPlan.tasks.length - 5} more` : ""}</pre>
+            </div>
+            <div style={approvalActionsStyle}>
+              <button type="button" style={approvalAllowStyle} onClick={acceptPlan}>Set as my plan</button>
+              <button type="button" style={approvalCancelStyle} onClick={() => { setPendingPlan(null); setOutput((current) => `${current}\nKept the plan as it was.`); }}>Dismiss</button>
             </div>
           </div>}{pendingScript && <div style={scriptApprovalStyle} role="alertdialog" aria-label="Run this script">
             <div style={approvalTextStyle}>

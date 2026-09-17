@@ -1830,6 +1830,15 @@ function TextChat({
   const workRunIdRef = useRef(null);
   const checkPlanRef = useRef({ root: null, commands: [] });
   const [workTasks, setWorkTasks] = useState([]);
+
+  // A plan the model wrote as markdown rather than as update_tasks: the
+  // terminal recognises it and hands the steps here, which is where the model
+  // meant them to go.
+  const handleTerminalPlan = useCallback((tasks) => {
+    const normalised = (Array.isArray(tasks) ? tasks : []).slice(0, 24).filter((task) => String(task?.text || "").trim());
+    setWorkTasks(normalised);
+    return normalised.length;
+  }, []);
   const [workReview, setWorkReview] = useState(null);
   const [showWorkAgent, setShowWorkAgent] = useState(false);
   const [workAgentBusy, setWorkAgentBusy] = useState(false);
@@ -3501,7 +3510,7 @@ function TextChat({
           </div>
           <div className="chat-composer-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
         </div>
-        {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onClose={() => setShowBottomTerminal(false)} />}
+        {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onUpdatePlan={handleTerminalPlan} onClose={() => setShowBottomTerminal(false)} />}
       </section>
       {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} setProjects={setProjects} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
       {assistantMode === "work" && showWorkGithub && <WorkGithubPanel project={activeProject} onClose={() => setShowWorkGithub(false)} />}
