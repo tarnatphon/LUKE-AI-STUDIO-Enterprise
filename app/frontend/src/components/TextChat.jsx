@@ -108,6 +108,14 @@ const MAX_WORK_AGENT_ROUNDS = 6;
 // same number the compaction config keeps (keepLastMessages).
 const ARCHIVE_LIVE_MESSAGES = 6;
 const MAX_WORK_TOOL_RESULT_CHARS = 24000;
+/**
+ * How many times a cut-off answer is carried on automatically. Two means an
+ * answer can grow to three times the token cap before it stops and asks —
+ * long enough to finish a file, short enough that a model stuck in a loop
+ * cannot run away with the machine.
+ */
+const MAX_AUTO_CONTINUES = 2;
+
 const MAX_ATTACHED_TEXT_CHARS = 2_000_000;
 const MAX_ATTACHED_AUDIO_BYTES = 100 * 1024 * 1024;
 const DOCUMENT_CHUNK_CHARS = 1400;
@@ -435,6 +443,7 @@ function TextChat({
   const [showWorkGithub, setShowWorkGithub] = useState(false);
   const [requestedWorkFile, setRequestedWorkFile] = useState(null);
   const [showBottomTerminal, setShowBottomTerminal] = useState(false);
+
   const sendCodeToTerminal = useCallback((code) => {
     setShowBottomTerminal(true);
     setTimeout(() => window.dispatchEvent(new CustomEvent("luke:work-terminal-command", { detail: { command: code } })), 0);
@@ -2621,6 +2630,34 @@ function TextChat({
         response = await streamChatWithLlm(emergencyMessages, { ...streamOptions, maxTokens: Math.min(effectiveMaxTokens, 1024) }, handleStreamToken);
       }
 
+      // An answer cut off at the token limit used to be handed back with a note
+      // saying "ask continue". Work that stops halfway is not finished work, so
+      // the model is simply asked to carry on — with its own words so far as
+      // the prefill, which is why nothing it already wrote comes back twice.
+      let continuations = 0;
+      let finalFinishReason = response.finishReason || null;
+      let answerText = String(response.content || rawAssistantText || "");
+      while (finalFinishReason === "length" && continuations < MAX_AUTO_CONTINUES && !controller.signal.aborted) {
+        continuations += 1;
+        const prefix = answerText;
+        try {
+          const carried = await streamChatWithLlm(
+            [...requestMessages, { role: "assistant", content: prefix }],
+            streamOptions,
+            (text) => handleStreamToken(prefix + String(text || "")),
+          );
+          const extra = String(carried.content || "");
+          answerText = extra.startsWith(prefix) ? extra : prefix + extra;
+          finalFinishReason = carried.finishReason || null;
+          response = { ...response, content: answerText, finishReason: finalFinishReason };
+        } catch (continuationError) {
+          // Losing the answer so far would be worse than stopping here.
+          if (controller.signal.aborted) break;
+          finalFinishReason = null;
+          break;
+        }
+      }
+
       const completedAt = performance.now();
       let finalThinkingDuration = thinkingDuration;
       if (thinkingStartedAt && !thinkingEndedAt) {
@@ -2628,7 +2665,11 @@ function TextChat({
         finalThinkingDuration = (thinkingEndedAt - thinkingStartedAt) / 1000;
       }
 
-      const exactTokens = Number(response.timings?.predicted_n) || streamedTokens;
+      // After a continuation the backend's own count covers only the first
+      // leg, so the tokens the user watched arrive are the honest number.
+      const exactTokens = continuations > 0
+        ? streamedTokens
+        : (Number(response.timings?.predicted_n) || streamedTokens);
       const backendTotalMs = Number(response.timings?.prompt_ms || 0) + Number(response.timings?.predicted_ms || 0);
       const exactSeconds = backendTotalMs > 0
         ? backendTotalMs / 1000
@@ -2640,8 +2681,9 @@ function TextChat({
         tokens: exactTokens,
         tokensPerSecond: exactTokensPerSecond,
         seconds: exactSeconds,
-        finishReason: response.finishReason || null,
-        truncated: response.finishReason === "length",
+        finishReason: finalFinishReason,
+        truncated: finalFinishReason === "length",
+        continuations,
       };
       
       const processed = processMessageContent(response.content || rawAssistantText || assistantText, response.reasoningContent || assistantReasoning, deepThinkEnabled);
@@ -2730,6 +2772,22 @@ function TextChat({
       }, 250);
     }
   };
+
+  /**
+   * Carry on from where an answer stopped. The automatic continuation inside a
+   * request covers the ordinary case; this is for the answer that was still cut
+   * off after that, so the user never has to type "continue" by hand.
+   */
+  const continueFrom = useCallback((messageIndex) => {
+    const tail = String(messages[messageIndex]?.content || "").slice(-240).trim();
+    void sendMessage({
+      text: tail
+        ? `Continue exactly from where you stopped. Do not repeat anything you already wrote, and do not start again — pick up mid-flow. The answer ended with:\n\n...${tail}`
+        : "Continue exactly from where you stopped. Do not repeat anything you already wrote.",
+      attachments: [],
+      preserveComposer: true,
+    });
+  }, [messages, sendMessage]);
 
   useEffect(() => {
     if (isBusy || !status.ready || messageQueuePaused || messageQueue.length === 0) return;
@@ -3115,8 +3173,21 @@ function TextChat({
                       {message.role === "assistant" && message.generationStats && !message.error && (
                         <>
                           {message.generationStats.truncated && (
-                            <div className="chat-generation-warning">
-                              Response reached the token limit. Ask "continue" or switch Max Response Tokens to Manual for a larger cap.
+                            <div className="chat-generation-warning" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <span>
+                                {message.generationStats.continuations > 0
+                                  ? `The answer was carried on ${message.generationStats.continuations === 1 ? "once" : `${message.generationStats.continuations} times`} and still reached the token limit.`
+                                  : "The answer reached the token limit."}
+                              </span>
+                              <button
+                                type="button"
+                                className="chat-generation-continue"
+                                disabled={isBusy || Boolean(loadingModel)}
+                                onClick={() => continueFrom(index)}
+                                title="Carry on from where the answer stopped"
+                              >
+                                Continue
+                              </button>
                             </div>
                           )}
                           <div className={`chat-generation-stats ${message.generationStats.status}`}>
