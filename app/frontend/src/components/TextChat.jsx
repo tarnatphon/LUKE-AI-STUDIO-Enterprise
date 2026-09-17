@@ -1,9 +1,10 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import readXlsxFile from "read-excel-file/browser";
-import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, FolderPlus, Hand, ListChecks, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Brain, Check, ChevronLeft, ChevronRight, Copy, FolderPlus, GitBranch, Hand, ListChecks, LoaderCircle, PanelBottom, PanelRight, Pencil, RefreshCw, Search, Send, Settings2, ShieldAlert, ShieldCheck, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
 import WorkToolsPanel from "./WorkToolsPanel";
 import WorkAgentPanel from "./WorkAgentPanel";
 import WorkTerminalDock from "./WorkTerminalDock";
+import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
 import {
@@ -418,6 +419,7 @@ function TextChat({
   });
   const [showApprovalMenu, setShowApprovalMenu] = useState(false);
   const [showWorkTools, setShowWorkTools] = useState(false);
+  const [showWorkGithub, setShowWorkGithub] = useState(false);
   const [requestedWorkFile, setRequestedWorkFile] = useState(null);
   const [showBottomTerminal, setShowBottomTerminal] = useState(false);
   const sendCodeToTerminal = useCallback((code) => {
@@ -2798,6 +2800,7 @@ function TextChat({
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowProjectMemory((open) => !open)} aria-pressed={showProjectMemory} title="Project Memory and checkpoints" style={{ height: "32px", padding: "0 9px" }}><Brain size={16} /></button>
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowBottomTerminal((open) => !open)} aria-pressed={showBottomTerminal} title="Toggle bottom Terminal" style={{ height: "32px", padding: "0 9px" }}><PanelBottom size={16} /></button>
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowWorkTools((open) => !open)} aria-pressed={showWorkTools} title="Toggle Work tools" style={{ height: "32px", padding: "0 9px" }}><PanelRight size={16} /></button>
+                <button type="button" className="m3-btn m3-btn-outlined" onClick={() => setShowWorkGithub((open) => !open)} aria-pressed={showWorkGithub} title="GitHub: repository, branch, commit, pull request" style={{ height: "32px", padding: "0 9px" }}><GitBranch size={16} /></button>
                 <button type="button" className="m3-btn m3-btn-outlined" onClick={() => { setShowWorkAgent((open) => { if (!open) void refreshWorkReview(); return !open; }); }} aria-pressed={showWorkAgent} title="Agent run: plan, changes and undo" style={{ height: "32px", padding: "0 9px" }}><ListChecks size={16} /></button>
               </>
             )}
@@ -3283,6 +3286,7 @@ function TextChat({
         {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onClose={() => setShowBottomTerminal(false)} />}
       </section>
       {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
+      {assistantMode === "work" && showWorkGithub && <WorkGithubPanel project={activeProject} onClose={() => setShowWorkGithub(false)} />}
       {assistantMode === "work" && showWorkAgent && <WorkAgentPanel tasks={workTasks} review={workReview} onRevert={revertWorkRun} onClose={() => setShowWorkAgent(false)} busy={workAgentBusy} />}
       {assistantMode === "work" && showProjectMemory && <ProjectMemoryPanel project={activeProject} messages={messages} onRestore={(checkpoint) => { setMessages(checkpoint.messages); if (activeConversationId) saveConversationState(activeConversationId, checkpoint.messages, selectedModel); }} onClose={() => setShowProjectMemory(false)} />}
       {folderApproval && (

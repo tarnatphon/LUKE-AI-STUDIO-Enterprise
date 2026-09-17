@@ -1013,6 +1013,7 @@ const { detectProjectCommands, runProjectCheck } = require("./work-command-runne
 const { applyFilePatch } = require("./work-patch-editor.cjs");
 const { repoMap, outlineFile, findSymbol, searchCode, invalidateRepoIndex } = require("./work-repo-index.cjs");
 const { beginRun, snapshotFile, reviewRun, revertRun, listRuns, gitSummary } = require("./work-run-guard.cjs");
+const workGithub = require("./work-github.cjs");
 // Speed: settings chosen from this machine, speculative decoding, and a model
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
@@ -21672,6 +21673,188 @@ const server = http.createServer(async (req, res) => {
       const result = await gitSummary(body.root);
       return json(res, 200, { ok: true, result });
     } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/status — how Work can reach GitHub (never returns a secret)
+  if (req.url === "/api/work/github/status" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      const result = await workGithub.authStatus();
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/token — store or forget a personal access token
+  if (req.url === "/api/work/github/token" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = body.clear
+        ? await workGithub.clearToken()
+        : await workGithub.storeToken(body.token);
+      return json(res, 200, { ok: true, result: { ...result, status: await workGithub.authStatus() } });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/repos — repositories the signed-in account can see
+  if (req.url === "/api/work/github/repos" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.listRepos({ limit: body.limit });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/issues — read-only context for a repository
+  if (req.url === "/api/work/github/issues" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.listIssues({ repo: body.repo, limit: body.limit, state: body.state });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/pull-requests — open pull requests for a repository
+  if (req.url === "/api/work/github/pull-requests" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.listPullRequests({ repo: body.repo, limit: body.limit, state: body.state });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/repository — the local clone inside the Work folder
+  if (req.url === "/api/work/github/repository" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.repositoryState(body.root);
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/clone — always lands inside the granted folder
+  if (req.url === "/api/work/github/clone" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.cloneRepo({
+        root: body.root,
+        repo: body.repo,
+        directory: body.directory,
+        approvalGranted: body.approvalGranted === true,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/branch — create and check out a branch
+  if (req.url === "/api/work/github/branch" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.createBranch({
+        root: body.root,
+        name: body.name,
+        approvalGranted: body.approvalGranted === true,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/commit — stage everything and commit with a message
+  if (req.url === "/api/work/github/commit" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.commitAll({
+        root: body.root,
+        message: body.message,
+        approvalGranted: body.approvalGranted === true,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/push — the first thing that leaves the machine
+  if (req.url === "/api/work/github/push" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.push({
+        root: body.root,
+        branch: body.branch,
+        approvalGranted: body.approvalGranted === true,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/github/pull-request — open one against the base branch
+  if (req.url === "/api/work/github/pull-request" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      assertNotChatScope(body.projectId);
+      assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
+      const result = await workGithub.openPullRequest({
+        root: body.root,
+        title: body.title,
+        body: body.body,
+        base: body.base,
+        approvalGranted: body.approvalGranted === true,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
       return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }

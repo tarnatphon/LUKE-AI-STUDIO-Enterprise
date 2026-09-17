@@ -72,3 +72,6 @@ app/runtime-state/work-runs/
 app/runtime-state/**/*.bak-*
 app/runtime-state/**/*.overrides.json
 app/runtime-state/**/*.local.json
+# A GitHub token saved from Work: it belongs to this machine only, and must
+# never travel to the repository — not even by accident.
+app/runtime-state/github-auth.json
