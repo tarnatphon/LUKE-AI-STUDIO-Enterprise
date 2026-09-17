@@ -14,6 +14,13 @@ const queueHeadingStyle = { display: "block", margin: "0 4px 3px", color: "#8e96
 const queueItemStyle = { display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 7, minHeight: 25, paddingLeft: 4 };
 const queueCodeStyle = { overflow: "hidden", color: "#cbd6d0", fontSize: ".66rem", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const queueRemoveStyle = { display: "grid", placeItems: "center", width: 25, height: 25, border: 0, borderRadius: 6, background: "transparent", color: "#8e9692", cursor: "pointer" };
+const approvalStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "7px 10px", borderTop: "1px solid rgba(250,204,21,.28)", background: "rgba(250,204,21,.08)" };
+const approvalTextStyle = { display: "flex", flexDirection: "column", gap: 2, minWidth: 0, color: "#f5e6b8", fontSize: ".66rem", lineHeight: 1.4 };
+const approvalCodeStyle = { overflow: "hidden", color: "#fff3cd", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".68rem", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const approvalCwdStyle = { overflow: "hidden", opacity: 0.75, textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const approvalActionsStyle = { display: "flex", flexShrink: 0, gap: 6 };
+const approvalAllowStyle = { padding: "5px 11px", border: "1px solid rgba(250,204,21,.45)", borderRadius: 7, background: "rgba(250,204,21,.18)", color: "#ffe9a8", cursor: "pointer", fontSize: ".66rem", fontWeight: 600 };
+const approvalCancelStyle = { padding: "5px 11px", border: "1px solid rgba(255,255,255,.14)", borderRadius: 7, background: "transparent", color: "#c3ccc7", cursor: "pointer", fontSize: ".66rem" };
 const commandInputStyle = { flex: 1, minWidth: 0, maxHeight: 96, padding: "6px 8px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 7, background: "rgba(0,0,0,.25)", color: "#e7efea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".7rem", lineHeight: 1.5, resize: "vertical" };
 const queueStatusStyle = { flex: "0 0 auto", color: "#67d391", fontSize: ".62rem", whiteSpace: "nowrap" };
 /**
@@ -75,6 +82,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   const [terminalSession, setTerminalSession] = useState(null);
   const [needsGrant, setNeedsGrant] = useState(false);
   const [granting, setGranting] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(null);
   const roots = project?.sourceFolders || [];
   const [root, setRoot] = useState(() => roots[0] || "");
   const sessionKey = terminalSessionKey(project?.id, root);
@@ -160,10 +168,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     }
   }, [project, root, setProjects]);
 
-  const executeCommand = useCallback(async (command) => {
+  const executeCommand = useCallback(async (command, { approved = false } = {}) => {
     if (!root || !command) return;
     setBusy(true);
     setActiveCommand(command);
+    setPendingApproval(null);
     setHistory((current) => [...current.filter((item) => item !== command), command].slice(-50));
     setHistoryIndex(-1);
     setOutput((current) => `${current ? `${current}\n` : ""}${prompt} ${command}\nRunning…`);
@@ -171,9 +180,16 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       const response = await fetch("/api/work/terminal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root, command, projectId: project?.id, grantId: project?.folderGrants?.[root] }),
+        body: JSON.stringify({ root, command, projectId: project?.id, grantId: project?.folderGrants?.[root], approvalGranted: approved }),
       });
       const data = await response.json();
+      if (response.status === 403 && data?.requiresApproval) {
+        // Running a script needs the user's say-so, so the terminal asks here
+        // rather than failing: nothing has run yet.
+        setPendingApproval({ command, preview: data.preview, message: data.error });
+        setOutput((current) => finishRunningLine(current, `${data.error}\nNothing has run yet — allow it or cancel below.`));
+        return;
+      }
       if (!response.ok) throw new Error(data.error || "Work command failed.");
       setNeedsGrant(false);
       setOutput((current) => finishRunningLine(current, data.result?.output || "No output."));
@@ -185,6 +201,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       setBusy(false);
     }
   }, [root, project, prompt]);
+
+  const cancelApproval = () => {
+    setPendingApproval(null);
+    setOutput((current) => `${current}\nCancelled — nothing was run.`);
+  };
 
   useEffect(() => {
     if (busy || !root || commandQueue.length === 0) return;
@@ -223,7 +244,18 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
           <div className="work-terminal-dock-commands">
             {COMMANDS.map((command) => <button type="button" key={command.id} disabled={!root} onClick={() => setCommandText(command.label)}>{command.label}</button>)}
           </div>
-          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
+          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}{pendingApproval && <div style={approvalStyle} role="alertdialog" aria-label="Allow this command">
+            <div style={approvalTextStyle}>
+              <strong>Allow this command?</strong>
+              <code style={approvalCodeStyle}>{pendingApproval.preview?.command || pendingApproval.command}</code>
+              <span>{pendingApproval.preview?.note || "It runs inside this project folder."}</span>
+              <span style={approvalCwdStyle}>in {pendingApproval.preview?.cwd || root}</span>
+            </div>
+            <div style={approvalActionsStyle}>
+              <button type="button" style={approvalAllowStyle} onClick={() => void executeCommand(pendingApproval.command, { approved: true })}>Allow once</button>
+              <button type="button" style={approvalCancelStyle} onClick={cancelApproval}>Cancel</button>
+            </div>
+          </div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 queueCommand();
@@ -240,7 +272,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
               setHistoryIndex(nextIndex);
               setCommandText(nextIndex >= 0 ? history[history.length - 1 - nextIndex] : "");
             }
-          }} placeholder={busy ? "Type the next command while this one runs…" : "git status · cat file · head/tail file · ls · pwd · clear"} aria-label="Work Terminal command" style={commandInputStyle} /><button type="submit" disabled={!commandText.trim()} title={commandText.trim() ? "" : "Type a command first"}>{busy ? "Queue" : "Run"}</button></form></div>}
+          }} placeholder={busy ? "Type the next command while this one runs…" : "git status · cat file · ls · pwd · npm install · node app.js · clear"} aria-label="Work Terminal command" style={commandInputStyle} /><button type="submit" disabled={!commandText.trim()} title={commandText.trim() ? "" : "Type a command first"}>{busy ? "Queue" : "Run"}</button></form></div>}
         </div>
       )}
     </section>

@@ -5,6 +5,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
 const { resolveInsideRoot, createHttpError } = require("./work-path-guard.cjs");
+const { runApprovedWorkCommand } = require("./work-command-runner.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -132,16 +133,12 @@ async function getWorkTerminalSession({ root }) {
   };
 }
 
-async function runTypedWorkCommand({ root, command }) {
+async function runTypedWorkCommand({ root, command, approvalGranted = false, timeoutMs }) {
   if (!root || !command || typeof command !== "string") {
     throw reject("Root directory and command string are required.", 400);
   }
 
   const trimmed = command.trim();
-  if (/[|;&`<>$]/.test(trimmed)) {
-    throw reject("Pipes, redirection, substitutions, and chaining are not permitted.", 400);
-  }
-
   const tokens = trimmed.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) {
     throw reject("Empty command.", 400);
@@ -155,8 +152,20 @@ async function runTypedWorkCommand({ root, command }) {
     return listDirectory(root, { recursive: false });
   }
 
+  // Anything that is not read-only is not refused out of hand: it goes to the
+  // bounded runner, which keeps a short list of what may run, asks before it
+  // runs, and pins the working directory to the granted folder. A terminal
+  // that could never run `npm install` could never finish the job.
   if (!READ_ONLY_COMMANDS.includes(file)) {
-    throw reject(`Unsupported command: ${file}. Only parsed read-only commands (${READ_ONLY_COMMANDS.join(", ")}) are allowed.`, 400);
+    return runApprovedWorkCommand({ root, command: trimmed, approvalGranted, timeoutMs });
+  }
+
+  // Read-only commands are checked whole, quotes and all: there is nothing
+  // legitimate for a shell operator to be doing in `cat` or `git log`. The
+  // bounded runner below parses quotes properly, because a script is allowed to
+  // contain `;` and `=>` inside an argument.
+  if (/[|;&`<>$]/.test(trimmed)) {
+    throw reject("Pipes, redirection, substitutions, and chaining are not permitted.", 400);
   }
 
   if (file === "pwd") {

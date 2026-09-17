@@ -11,6 +11,12 @@
  * this module detected from the project's own files, and every one of them is
  * executed as a parsed argv array — no shell, so no pipes, no redirection, no
  * chaining — with the working directory pinned to the granted folder.
+ *
+ * The Work Terminal sends the commands the user types to the same place. A
+ * terminal that cannot run `npm install` or `node app.js` cannot finish the
+ * loop — write code, run it, read what broke — so instead of a shell there is
+ * a bounded runner: a fixed list of programs, a parsed argv, an approval
+ * before anything can change a file, and the same pinned working directory.
  */
 
 const fs = require("node:fs");
@@ -312,11 +318,184 @@ async function runProjectCheck({ root: rootValue, commandId, timeoutMs }) {
   };
 }
 
+
+/**
+ * The programs Work will run from the terminal, and what running one means.
+ *
+ * Deliberately short. There is no shell behind this terminal, so anything not
+ * listed here is refused rather than passed through; and every entry can write
+ * files or reach the network, which is why all of them ask first. Read-only
+ * commands (cat, head, tail, git status/diff/log, ls, pwd) are handled
+ * elsewhere and never need approval.
+ */
+const RUNNABLE_PROGRAMS = {
+  node: { file: "node", note: "runs JavaScript with the same access you have" },
+  npm: { file: "npm", note: "installs packages and runs project scripts; writes files and uses the network" },
+  npx: { file: "npx", note: "downloads and runs a package; writes files and uses the network" },
+  yarn: { file: "yarn", note: "installs packages and runs project scripts; writes files and uses the network" },
+  pnpm: { file: "pnpm", note: "installs packages and runs project scripts; writes files and uses the network" },
+  bun: { file: "bun", note: "runs JavaScript and installs packages; writes files and uses the network" },
+  deno: { file: "deno", note: "runs JavaScript and TypeScript; writes files and uses the network" },
+  python3: { file: "python3", note: "runs Python with the same access you have" },
+  python: { file: "python", note: "runs Python with the same access you have" },
+  make: { file: "make", note: "runs a target the project's own Makefile declares" },
+};
+
+/**
+ * What cannot appear outside quotes. Shell operators only: with execFile there
+ * is no shell to act on them, so most of what a shell would interpret is
+ * already inert — but refusing them keeps a stray `;` from ever being read as
+ * intent. Parentheses, braces and globs stay available, because
+ * `node -e "console.log(1)"` is an ordinary thing to run.
+ */
+const SHELL_OPERATORS = /[\n\r|;&`<>]/;
+
+/**
+ * Split a typed command into an argv array. Quotes are honoured so
+ * `node -e "console.log('hi')"` survives; anything the shell would have acted
+ * on is refused, because there is no shell here to act on it.
+ */
+function parseCommandLine(line) {
+  const text = String(line == null ? "" : line).trim();
+  if (!text) throw reject("Empty command.", 400);
+  // Substitution is refused anywhere it appears, quoted or not. Nothing here
+  // would expand it, but a string that only makes sense to a shell has no
+  // business reaching a program the user is about to approve.
+  if (text.includes("$(")) throw reject("Command substitution is not permitted.", 400);
+  const tokens = [];
+  let current = "";
+  let started = false;
+  let quote = null;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === quote) quote = null;
+      else current += character;
+      continue;
+    }
+    // Only outside quotes does a shell operator mean anything; inside them it
+    // is just part of an argument.
+    if (SHELL_OPERATORS.test(character)) {
+      throw reject("Pipes, redirection, substitutions and chaining are not permitted.", 400);
+    }
+    if (character === "$" && text[index + 1] === "(") {
+      throw reject("Command substitution is not permitted.", 400);
+    }
+    if (character === "\"" || character === "'") {
+      quote = character;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (started) {
+        tokens.push(current);
+        current = "";
+        started = false;
+      }
+      continue;
+    }
+    current += character;
+    started = true;
+  }
+  if (quote) throw reject("That command has an unfinished quote.", 400);
+  if (started) tokens.push(current);
+  if (!tokens.length) throw reject("Empty command.", 400);
+  return tokens;
+}
+
+/**
+ * A path in a command has to stay where every other Work path stays. Checked
+ * before approval, so a command that reaches outside is refused outright
+ * rather than politely offered to the user.
+ */
+async function assertArgInsideRoot(root, arg) {
+  const looksLikePath = arg.includes("/") || arg.includes("\\") || arg.startsWith(".");
+  if (!looksLikePath) return;
+  try {
+    await resolveInsideRoot({ root, targetPath: arg, allowMissing: true });
+  } catch {
+    throw reject(`"${arg}" points outside the granted folder, so the command was not run.`, 400);
+  }
+}
+
+/**
+ * Run a command the user typed, inside the granted folder, with their say-so.
+ *
+ * Called twice: once to be told what would happen (403 with a preview), and
+ * once more with approvalGranted to actually do it.
+ */
+async function runApprovedWorkCommand({ root: rootValue, command, approvalGranted, timeoutMs }) {
+  const root = await canonicaliseRoot(rootValue);
+  const tokens = parseCommandLine(command);
+  const [program, ...args] = tokens;
+  const entry = RUNNABLE_PROGRAMS[String(program || "").toLowerCase()];
+  if (!entry) {
+    throw reject(
+      `"${program}" is not one of the programs Work can run. Allowed: ${Object.keys(RUNNABLE_PROGRAMS).join(", ")}. Read-only commands (cat, head, tail, git status/diff/log, ls, pwd) are always allowed.`,
+      400,
+    );
+  }
+  for (const arg of args) await assertArgInsideRoot(root, arg);
+
+  if (approvalGranted !== true) {
+    const error = reject(`Running "${tokens.join(" ")}" in ${root} needs your approval first. Nothing was run.`, 403);
+    error.requiresApproval = true;
+    error.preview = { tool: entry.file, args, cwd: root, note: entry.note, command: tokens.join(" ") };
+    throw error;
+  }
+
+  const timeout = Math.min(Math.max(Number(timeoutMs) || DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS);
+  const startedAt = Date.now();
+  let stdout = "";
+  let stderr = "";
+  let exitCode = 0;
+  let timedOut = false;
+
+  try {
+    const result = await execFileAsync(entry.file, args, {
+      cwd: root,
+      timeout,
+      maxBuffer: 8 * 1024 * 1024,
+      shell: false,
+      env: sanitisedEnv(),
+      killSignal: "SIGKILL",
+      windowsHide: true,
+    });
+    stdout = String(result.stdout || "");
+    stderr = String(result.stderr || "");
+    exitCode = 0;
+  } catch (error) {
+    stdout = String(error?.stdout || "");
+    stderr = String(error?.stderr || "");
+    exitCode = typeof error?.code === "number" ? error.code : 1;
+    timedOut = error?.killed === true || /ETIMEDOUT/.test(String(error?.code || ""));
+    if (error?.code === "ENOENT") {
+      throw reject(`"${entry.file}" is not installed on this machine, so that command cannot run.`, 400);
+    }
+  }
+
+  const combined = [stdout, stderr].filter(Boolean).join(stderr && stdout ? "\n" : "");
+  const trimmed = trimOutput(combined);
+  return {
+    command: tokens.join(" "),
+    cwd: root,
+    output: trimmed.output,
+    truncated: trimmed.truncated,
+    exitCode,
+    timedOut,
+    durationMs: Date.now() - startedAt,
+    failureSignals: exitCode === 0 ? [] : extractFailureSignals(combined),
+  };
+}
+
 module.exports = {
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
+  RUNNABLE_PROGRAMS,
   detectProjectCommands,
   runProjectCheck,
+  runApprovedWorkCommand,
+  parseCommandLine,
   sanitisedEnv,
   trimOutput,
 };

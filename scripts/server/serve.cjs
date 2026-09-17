@@ -22004,15 +22004,25 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // POST /api/work/terminal (typed, parsed, read-only; never invokes a shell)
+  // POST /api/work/terminal (parsed, never a shell; approved before it changes anything)
   if (req.url === "/api/work/terminal" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
       assertNotChatScope(body.projectId);
       assertWorkFolderGrant({ projectId: body.projectId, root: body.root, grantId: body.grantId });
-      const result = await runTypedWorkCommand({ root: body.root, command: body.command });
+      const result = await runTypedWorkCommand({
+        root: body.root,
+        command: body.command,
+        approvalGranted: body.approvalGranted === true,
+        timeoutMs: body.timeoutMs,
+      });
       return json(res, 200, { ok: true, result });
     } catch (error) {
+      // A command that can change something answers with what it wants to run,
+      // so the terminal can ask before it happens.
+      if (error && error.requiresApproval) {
+        return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
+      }
       return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
