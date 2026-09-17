@@ -104,3 +104,45 @@ export function toolRefusal(tool) {
     "{\"tool\":\"read_outline\",\"path\":\"src/app.js\"}, {\"tool\":\"find_symbol\",\"name\":\"…\"}.",
   ].join("\n");
 }
+
+
+/**
+ * Does this block hold a program, or notes about one?
+ *
+ * The model writes "# Update tasks" above a tool call, and a task list that is
+ * a handful of markdown lines. Both arrive in a ```code block. Handing either
+ * to node produces a syntax error, which is the terminal telling the user
+ * something they already suspect and cannot act on.
+ *
+ * So the block is read before it is run: a tool call is a tool call, a list of
+ * notes is notes, and only something with statements in it is offered to run.
+ */
+export function looksLikeCode(text) {
+  const lines = String(text == null ? "" : text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("//"));
+  if (lines.length === 0) return false;
+  const body = lines.join("\n");
+
+  // A tool call is data. It may look like a JavaScript object, and node will
+  // still refuse it as a program — so it is recognised here instead.
+  try {
+    JSON.parse(body);
+    return false;
+  } catch {}
+
+  // Headings, bullets and checkbox lists: a plan, not a program.
+  if (lines.every((line) => /^(?:#{1,6}\s|[-*+]\s|\[[ xX]\]|\d+[.)]\s|>\s)/.test(line))) return false;
+
+  return /[=;(){}[\]]/.test(body)
+    || /^\s*(?:const|let|var|function|return|if|for|while|class|def|print|import|from|export|module|require|console|async|await)\b/m.test(body);
+}
+
+/** What to say when a block holds no program at all. */
+export const NOT_A_PROGRAM = [
+  "There is no program in that block — it reads like notes.",
+  "Nothing was run. A task list or a plan belongs in the Work chat, where it",
+  "is kept as your plan; code that should exist as a file is written by Work Chat,",
+  "which keeps a backup you can undo.",
+].join("\n");

@@ -84,11 +84,46 @@ function chooseInterpreter(requested, code) {
   return "node";
 }
 
+/**
+ * A program, or notes about one?
+ *
+ * The server is what would run this, so it makes the final call. The model
+ * writes "# Update tasks" above a tool call and lists plans as markdown; both
+ * arrive in a ```code block, and handing either to node is a syntax error —
+ * an answer that tells the user nothing they can act on.
+ */
+function looksLikeCode(script) {
+  const lines = String(script == null ? "" : script)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("//"));
+  if (lines.length === 0) return false;
+  const body = lines.join("\n");
+
+  // A tool call is data: it may look like an object, and node would still
+  // refuse it as a program.
+  try {
+    JSON.parse(body);
+    return false;
+  } catch {}
+
+  // Headings, bullets and checkbox lists: a plan, not a program.
+  if (lines.every((line) => /^(?:#{1,6}\s|[-*+]\s|\[[ xX]\]|\d+[.)]\s|>\s)/.test(line))) return false;
+
+  return /[=;(){}[\]]/.test(body)
+    || /^\s*(?:const|let|var|function|return|if|for|while|class|def|print|import|from|export|module|require|console|async|await)\b/m.test(body);
+}
+
 async function runWorkScript({ root: rootValue, code, interpreter, approvalGranted, timeoutMs }) {
   const script = String(code == null ? "" : code).replace(/\s+$/, "");
   if (!script.trim()) throw reject("There is nothing to run.", 400);
   if (script.length > MAX_SCRIPT_CHARS) {
     throw reject(`That script is ${script.length} characters; the most this will run is ${MAX_SCRIPT_CHARS}.`, 400);
+  }
+  // Checked before anything is offered or written: a block of notes is not a
+  // failed script, it is not a script at all.
+  if (!looksLikeCode(script)) {
+    throw reject("There is no program in that block — it reads like notes. Nothing was run.", 400);
   }
 
   const chosen = chooseInterpreter(interpreter, script);
@@ -176,5 +211,6 @@ module.exports = {
   SCRIPT_FOLDER,
   SCRIPT_INTERPRETERS,
   chooseInterpreter,
+  looksLikeCode,
   runWorkScript,
 };

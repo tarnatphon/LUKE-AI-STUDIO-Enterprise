@@ -168,6 +168,19 @@ async function main() {
     const empty = await script("   \n\n", { approvalGranted: true });
     check("an empty script is refused, not run", empty.status === 400, `${empty.status}`);
 
+    section("8b. Notes are not a failed script, they are not a script");
+    for (const [label, block] of [
+      ["a heading above a tool call", "# Update tasks\n{\"tool\":\"update_tasks\",\"tasks\":[]}"],
+      ["a task list", "- [ ] read the file\n- [ ] run the tests"],
+      ["a tool call on its own", "{\"tool\":\"repo_map\"}"],
+      ["a plan in prose", "First we move the parser, then we run the tests."],
+    ]) {
+      const response = await script(block, { approvalGranted: true });
+      check(label, response.status === 400, `${response.status} ${String(response.data?.error).slice(0, 60)}`);
+      check(`${label}: it says there is no program`, /no program|notes/i.test(String(response.data?.error)), String(response.data?.error).slice(0, 80));
+    }
+    check("no script file was left by any of them", !fs.existsSync(path.join(sandbox, runner.SCRIPT_FOLDER)));
+
     section("9. A folder that was not granted cannot run one");
     const stranger = await post("/api/work/script/run", { projectId, root: neighbour, grantId, code: "console.log(1)", approvalGranted: true });
     check("it is refused", stranger.status !== 200, `${stranger.status} ${String(stranger.data?.error).slice(0, 60)}`);
@@ -192,6 +205,21 @@ async function main() {
   check("a block that is one command per line still runs line by line",
     /lines\.every\(\(line\) => looksLikeCommand\(line\)\)/.test(dock));
   check("code that belongs in the project is pointed at Work Chat", /Work Chat to write the file/.test(dock));
+
+  section("11. A block is read before it is run");
+  const lib = await import(`file://${path.join(root, "app", "frontend", "src", "lib", "work-tool-call.mjs")}`);
+  check("a JavaScript program is code", lib.looksLikeCode("const x = 1;\nconsole.log(x);") === true);
+  check("a Python program is code", lib.looksLikeCode("def main():\n    print('hi')") === true);
+  check("a heading above a tool call is not", lib.looksLikeCode("# Update tasks\n{\"tool\":\"update_tasks\"}") === false);
+  check("a task list is not", lib.looksLikeCode("- [ ] one\n- [ ] two") === false);
+  check("a tool call on its own is not", lib.looksLikeCode('{"tool":"repo_map"}') === false);
+  check("prose is not", lib.looksLikeCode("First we move the parser, then we test.") === false);
+  check("comments alone are not", lib.looksLikeCode("# just a note") === false);
+  check("a tool call is folded back onto one line and left for the user",
+    /const call = parseToolCall\(raw\) \|\| parseToolCall\(lines\.join\("\\n"\)\);[\s\S]*?setCommandText\(JSON\.stringify\(call\.args\)\);/.test(dock));
+  check("notes are named rather than run", /if \(!looksLikeCode\(raw\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
+  check("and the same judgement is made for a pasted block", /if \(!looksLikeCode\(command\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
+  check("the message says what to do instead", /belongs in the Work chat/.test(lib.NOT_A_PROGRAM));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

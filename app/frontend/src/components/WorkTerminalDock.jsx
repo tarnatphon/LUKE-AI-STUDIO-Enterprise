@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, parseToolCall, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, NOT_A_PROGRAM, TERMINAL_TOOL_ENDPOINTS, looksLikeCode, parseToolCall, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -166,6 +166,19 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     const receiveCommand = (event) => {
       const lines = Array.isArray(event.detail?.lines) ? event.detail.lines.filter(Boolean) : [];
       const raw = String(event.detail?.command || "").trim();
+
+      // A tool call first, whatever shape it arrived in: one line, printed
+      // across several, or sitting under a "# Update tasks" heading. It is
+      // folded back onto one line and left in the input, so the user still
+      // presses Run and the queue routes it to the tool runner.
+      const call = parseToolCall(raw) || parseToolCall(lines.join("\n"));
+      if (call) {
+        setStaged([]);
+        setPendingScript(null);
+        setCommandText(JSON.stringify(call.args));
+        return;
+      }
+
       if (lines.length > 1 && lines.every((line) => looksLikeCommand(line))) {
         // A whole block arrived from the answer, every line a command. The
         // first waits in the input for the user's Enter; the rest are held
@@ -176,10 +189,16 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
         return;
       }
       if (lines.length > 1 || raw.includes("\n")) {
+        setStaged([]);
         // One piece of code rather than a list of commands. Running its lines
         // one at a time would fail on every line that is not a command, so the
-        // whole thing is offered as a script instead.
-        setStaged([]);
+        // whole thing is offered as a script — unless there is no program in
+        // it, in which case saying so beats a syntax error from node.
+        if (!looksLikeCode(raw)) {
+          setCommandText("");
+          setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+          return;
+        }
         setCommandText("");
         setPendingScript({ code: raw, interpreter: "auto" });
         return;
@@ -377,6 +396,15 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       return;
     }
     if (command.includes("\n")) {
+      const call = parseToolCall(command);
+      if (call) {
+        setCommandText(JSON.stringify(call.args));
+        return;
+      }
+      if (!looksLikeCode(command)) {
+        setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+        return;
+      }
       setPendingScript({ code: command, interpreter: "auto" });
       return;
     }
