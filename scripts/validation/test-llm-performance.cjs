@@ -103,32 +103,46 @@ async function main() {
   check("the draft model is offloaded too", draftOn.includes("--n-gpu-layers-draft"));
   check("a GPU-less machine does not ask for GPU layers", !draftArgs({ draftModelPath: "/models/draft.gguf", isGpuMode: false }).includes("--n-gpu-layers-draft"));
 
-  // ── 3. Model cache ──────────────────────────────────────────────────────
-  section("3. A model is loaded from the internal disk once it is cached");
+  // ── 3. Model cache: never leaves the disk the user chose ─────────────────
+  section("3. The model cache respects the disk the app lives on");
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "luke-model-cache-"));
   const source = path.join(sandbox, "model.gguf");
   fs.writeFileSync(source, "weights ".repeat(1024));
-  const beforePlan = await modelCache.cachePlan(source);
-  check("a model that is not cached loads from its own path", beforePlan.cached === false);
-  check("the plan knows the size", beforePlan.sizeBytes > 0);
 
-  const primed = await modelCache.primeCache(source);
+  const defaultPlan = await modelCache.cachePlan(source);
+  check("the default cache sits inside the app folder", modelCache.cacheRoot().includes(path.join("app", "runtime-state", "model-cache")));
+  check("the internal disk is a separate, opt-in place", modelCache.internalCacheRoot() !== modelCache.cacheRoot());
+  check("nothing is copied onto the same disk", defaultPlan.shouldCache === false, JSON.stringify(defaultPlan.reason));
+  let refused = null;
+  try {
+    await modelCache.primeCache(source);
+  } catch (error) {
+    refused = error instanceof Error ? error.message : String(error);
+  }
+  check("copying onto the same disk is refused outright", Boolean(refused) && /nothing to gain|same disk/.test(String(refused)), String(refused));
+
+  // A different disk, which is the only case worth copying for.
+  const otherDisk = path.join(sandbox, "cache-disk");
+  const planThere = await modelCache.cachePlan(source, { cacheDir: otherDisk, allowSameDisk: true });
+  check("a cache on another volume is worth using", planThere.shouldCache === true);
+  const primed = await modelCache.primeCache(source, { cacheDir: otherDisk, allowSameDisk: true });
   check("copying reports the new path", Boolean(primed.path) && fs.existsSync(primed.path));
   check("the copy is the same bytes", fs.readFileSync(primed.path, "utf8") === fs.readFileSync(source, "utf8"));
-  const afterPlan = await modelCache.cachePlan(source);
-  check("the plan now says it is cached", afterPlan.cached === true);
-  check("loading resolves to the cached copy", (await modelCache.resolveModelPath(source)) === primed.path);
-  check("caching the same model twice is a no-op", (await modelCache.primeCache(source)).alreadyCached === true);
+  check("the plan now says it is cached", (await modelCache.cachePlan(source, { cacheDir: otherDisk, allowSameDisk: true })).cached === true);
+  check("loading resolves to the cached copy", (await modelCache.resolveModelPath(source, { cacheDir: otherDisk, allowSameDisk: true })) === primed.path);
+  check("caching the same model twice is a no-op", (await modelCache.primeCache(source, { cacheDir: otherDisk, allowSameDisk: true })).alreadyCached === true);
+  check("the original model is still where the user put it", fs.existsSync(source));
 
   fs.writeFileSync(source, "replaced weights ".repeat(1024));
-  check("a model the user replaced is recognised as stale", (await modelCache.cachePlan(source)).cached === false);
-  check("so it loads from the original path again", (await modelCache.resolveModelPath(source)) === source);
-  check("caching can be switched off", (await modelCache.resolveModelPath(source, { useCache: false })) === source);
+  check("a model the user replaced is recognised as stale", (await modelCache.cachePlan(source, { cacheDir: otherDisk, allowSameDisk: true })).cached === false);
+  check("so it loads from the original path again", (await modelCache.resolveModelPath(source, { cacheDir: otherDisk, allowSameDisk: true })) === source);
+  check("caching can be switched off", (await modelCache.resolveModelPath(source, { useCache: false, cacheDir: otherDisk })) === source);
 
-  const status = await modelCache.cacheStatus([source]);
-  check("the status reports the cache folder", Boolean(status.cacheDir));
-  await modelCache.clearCache();
-  check("clearing the cache empties it", (await modelCache.cacheStatus([source])).cachedBytes === 0);
+  const status = await modelCache.cacheStatus([source], { cacheDir: otherDisk, allowSameDisk: true });
+  check("the status reports the cache folder", status.cacheDir === path.resolve(otherDisk));
+  await modelCache.clearCache({ cacheDir: otherDisk, allowSameDisk: true });
+  check("clearing the cache empties it", (await modelCache.cacheStatus([source], { cacheDir: otherDisk, allowSameDisk: true })).cachedBytes === 0);
+  check("clearing never touches the model itself", fs.existsSync(source));
   fs.rmSync(sandbox, { recursive: true, force: true });
 
   // ── 4. The system prompt must not change every turn ─────────────────────

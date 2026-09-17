@@ -27612,7 +27612,10 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       const modelPaths = fs.readdirSync(LLM_MODELS)
         .filter(isModelFile)
         .map((filename) => path.join(LLM_MODELS, filename));
-      const status = await modelCache.cacheStatus(modelPaths);
+      const useInternalDisk = false;
+      const status = await modelCache.cacheStatus(modelPaths, { useInternalDisk });
+      status.internalCacheAvailable = true;
+      status.note = "Everything stays on the disk the app runs from unless you switch the temporary cache on.";
       return json(res, 200, { ok: true, result: status });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
@@ -27628,7 +27631,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
         return json(res, 400, { ok: false, error: "That model is not in the text model folder." });
       }
-      const result = await modelCache.primeCache(modelPath);
+      const result = await modelCache.primeCache(modelPath, { useInternalDisk: body.useInternalDisk === true });
       return json(res, 200, { ok: true, result });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
@@ -27638,7 +27641,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   // POST /api/model-cache/clear — give the internal disk space back
   if (req.url === "/api/model-cache/clear" && req.method === "POST") {
     try {
-      const result = await modelCache.clearCache();
+      const result = await modelCache.clearCache({ useInternalDisk: body.useInternalDisk === true });
       return json(res, 200, { ok: true, result });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });

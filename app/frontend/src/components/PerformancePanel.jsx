@@ -44,10 +44,17 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const [busy, setBusy] = useState("");
   const [measured, setMeasured] = useState(null);
   const [copying, setCopying] = useState(null);
+  // Everything this app owns stays on the disk the user chose. The internal
+  // disk is only used for a disposable copy, and only when asked for.
+  const [useInternalDisk, setUseInternalDisk] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (internalDisk = useInternalDisk) => {
     try {
-      const response = await fetch("/api/model-cache/status");
+      const response = await fetch("/api/model-cache/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useInternalDisk: internalDisk }),
+      });
       const data = await response.json();
       if (response.ok) setCache(data.result || null);
     } catch {}
@@ -63,8 +70,8 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refresh(useInternalDisk);
+  }, [refresh, useInternalDisk]);
 
   const measure = async () => {
     setBusy("measure");
@@ -99,7 +106,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const response = await fetch("/api/model-cache/prime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelPath }),
+        body: JSON.stringify({ model: modelPath, useInternalDisk }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The model could not be copied.");
@@ -114,7 +121,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const clearCache = async () => {
     setBusy("clear");
     try {
-      const response = await fetch("/api/model-cache/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const response = await fetch("/api/model-cache/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useInternalDisk }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The cache could not be cleared.");
       await refresh();
@@ -190,17 +197,36 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         <HardDriveDownload size={15} />
         <strong>Model loading</strong>
       </div>
-      {externalModels.length === 0 ? (
+      <span style={descStyle}>
+        Everything this app keeps — models, chats, outputs — stays on the disk the app runs from. Nothing is moved to the machine's own
+        disk unless you ask for it below.
+      </span>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: ".7rem", cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={useInternalDisk}
+          onChange={(event) => setUseInternalDisk(event.target.checked)}
+        />
+        Use the internal disk for a temporary {externalModels[0]?.sizeGb ? `${externalModels[0].sizeGb} GB ` : ""}copy (faster loading, deletable any time)
+      </label>
+      {!useInternalDisk && (
+        <span style={descStyle}>
+          Off: the model is loaded from your external disk every time. Turning this on trades internal disk space for much faster loading;
+          your model itself never moves.
+        </span>
+      )}
+      {useInternalDisk && externalModels.length === 0 && (
         <span style={descStyle}>
           {cache?.cachedGb > 0
-            ? `${cache.cachedGb} GB cached on the internal disk. Models load from there instead of the external drive.`
-            : "Every model is already on the internal disk, so loading is as fast as this machine can do it."}
+            ? `${cache.cachedGb} GB cached. Models load from the internal disk; the originals stay on your external disk.`
+            : "Nothing to copy — every model is already on the same disk as the cache."}
         </span>
-      ) : (
+      )}
+      {useInternalDisk && externalModels.length > 0 && (
         <>
           <span style={descStyle}>
-            {externalModels.length === 1 ? "This model is on an external drive" : "These models are on an external drive"}. Copying
-            {externalModels.length === 1 ? " it" : " them"} to the internal disk once turns a very slow load into a few seconds.
+            Copying {externalModels.length === 1 ? "this model" : "these models"} to the internal disk turns a slow load into a few seconds.
+            The copy is disposable: delete it any time and the model on your external disk is untouched.
           </span>
           <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "grid", gap: 6 }}>
             {externalModels.map((entry) => (
@@ -209,7 +235,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
                 <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.sizeGb} GB</span>
                 <button type="button" style={buttonStyle} onClick={() => copyToInternalDisk(entry.source)} disabled={copying === entry.source}>
                   <HardDriveDownload size={13} />
-                  {copying === entry.source ? "Copying…" : "Copy to internal disk"}
+                  {copying === entry.source ? "Copying…" : "Copy"}
                 </button>
               </li>
             ))}
