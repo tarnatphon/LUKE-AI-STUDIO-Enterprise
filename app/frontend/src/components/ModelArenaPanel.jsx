@@ -1,5 +1,7 @@
-import React, { memo } from "react";
-import { Trophy, Users, Loader2, Square, ThumbsUp, ThumbsDown, Check, AlertTriangle, Layers, Settings2 } from "lucide-react";
+import React, { memo, useState } from "react";
+import { Trophy, Users, Loader2, Square, ThumbsUp, ThumbsDown, Check, AlertTriangle, Layers, Settings2, ChevronDown, ChevronUp } from "lucide-react";
+
+const COLLAPSED_KEY = "luke_arena_collapsed";
 
 /**
  * Text Model Arena panel.
@@ -45,6 +47,33 @@ function ModelArenaPanel({
 }) {
   const selectionFull = selectedIds.length >= maximumModels;
 
+  // The panel sits above the composer and grows with every model it runs, so
+  // it gets in the way of the conversation. Collapsing it is remembered,
+  // because having to fold it again on every launch is its own annoyance.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const setCollapsedRemembered = (value) => {
+    setCollapsed(value);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, value ? "1" : "0");
+    } catch {}
+  };
+
+  const answered = Object.values(results || {}).filter((entry) => entry?.status === "completed").length;
+  const entered = Object.keys(results || {}).length;
+  const roundDone = Boolean(evaluation?.responses?.length);
+  const collapsedNote = running
+    ? `กำลังเปรียบเทียบ · ${answered}/${entered || selectedIds.length}`
+    : roundDone || answered > 0
+      ? "มีคำตอบแล้ว"
+      : null;
+
   const cards = evaluation?.responses?.length
     ? evaluation.responses
     : Object.keys(results).map((modelId) => ({
@@ -68,18 +97,35 @@ function ModelArenaPanel({
           </span>
         </div>
 
-        <label className="chat-arena-toggle" title={running ? "กำลังเปรียบเทียบอยู่" : "เปิด/ปิดโหมดเปรียบเทียบ"}>
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={running}
-            onChange={(event) => onToggle?.(event.target.checked)}
-          />
-          เปิดใช้งาน
-        </label>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          {collapsed && collapsedNote && (
+            <span style={{ color: "var(--md-sys-color-outline)", fontSize: "0.74rem" }}>{collapsedNote}</span>
+          )}
+
+          <label className="chat-arena-toggle" title={running ? "กำลังเปรียบเทียบอยู่" : "เปิด/ปิดโหมดเปรียบเทียบ"}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={running}
+              onChange={(event) => onToggle?.(event.target.checked)}
+            />
+            เปิดใช้งาน
+          </label>
+
+          <button
+            type="button"
+            className="chat-arena-collapse"
+            onClick={() => setCollapsedRemembered(!collapsed)}
+            aria-expanded={!collapsed}
+            title={collapsed ? "ขยายหน้าต่าง Arena" : "ย่อหน้าต่าง Arena ให้เหลือแค่แถวหัวข้อ"}
+          >
+            {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            <span>{collapsed ? "ขยาย" : "ย่อ"}</span>
+          </button>
+        </div>
       </div>
 
-      {enabled && (
+      {enabled && !collapsed && (
         <>
           <div className="chat-arena-models" role="group" aria-label="เลือกโมเดลสำหรับเปรียบเทียบ">
             {models.length === 0 && (
