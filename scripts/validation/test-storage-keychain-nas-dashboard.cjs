@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -59,9 +60,7 @@ function main() {
     );
 
   const css =
-    read(
-      "app/frontend/src/App.css"
-    );
+    readAllStylesheets();
 
   for (const value of [
     "/usr/bin/security",

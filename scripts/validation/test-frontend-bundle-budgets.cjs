@@ -24,9 +24,11 @@ const jsBytes = fs.statSync(entryJs).size;
 const cssBytes = fs.statSync(entryCss).size;
 const cssGzipBytes = zlib.gzipSync(fs.readFileSync(entryCss)).length;
 
-// Beta 16: CSS budget revised 25KB -> 26KB. The entry bundle is fully minified
-// (0 comments, 0 dead rules found); the 1.2% overage is organic UI growth
-// across 8 releases since the Beta 8 budget, not bloat. Revisit per release.
+// The budget covers what the browser needs before it can paint the first
+// screen. Workspace styles are no longer part of that: each workspace ships
+// its own stylesheet, fetched when it opens, so growing a workspace no longer
+// taxes the app's start-up. If this budget is ever hit again, the first
+// question is whether the new rules belong to a workspace.
 const limits = {
   initialJsBytes: 300 * 1024,
   initialCssGzipBytes: 26 * 1024,
@@ -39,6 +41,28 @@ if (cssGzipBytes > limits.initialCssGzipBytes) {
   throw new Error(`INITIAL_CSS_GZIP_BUDGET_EXCEEDED:${cssGzipBytes}>${limits.initialCssGzipBytes}`);
 }
 
+// The split has to stay a split: a workspace-only style that creeps back into
+// the entry sheet would quietly put the cost back on every start-up.
+const entryCssText = fs.readFileSync(entryCss, "utf8");
+const workspaceStyles = [
+  { chunk: /href="\/(assets\/PersistentTextChat-[^"]+\.css)"/, selector: ".persistent-chat-recovery-panel", label: "PersistentTextChat" },
+  { chunk: null, selector: ".persistent-chat-sidebar-header", label: "PersistentTextChat" },
+  { chunk: null, selector: ".chat-empty-icon", label: "TextChat" },
+  { chunk: null, selector: ".asset-library-grid", label: "AssetLibrary" },
+];
+for (const entry of workspaceStyles) {
+  if (entryCssText.includes(entry.selector)) {
+    throw new Error(`WORKSPACE_STYLE_IN_ENTRY_CSS:${entry.label}:${entry.selector}`);
+  }
+}
+const chunkCss = fs
+  .readdirSync(path.join(distRoot, "assets"))
+  .filter((file) => file.endsWith(".css") && !file.startsWith("index-"));
+if (chunkCss.length === 0) {
+  throw new Error("WORKSPACE_STYLESHEETS_MISSING: no workspace stylesheet was emitted.");
+}
+
 console.log(`PASS: Initial JavaScript ${jsBytes} bytes <= ${limits.initialJsBytes}.`);
 console.log(`PASS: Initial CSS ${cssBytes} bytes, gzip ${cssGzipBytes} bytes <= ${limits.initialCssGzipBytes}.`);
+console.log(`PASS: ${chunkCss.length} workspace stylesheets travel with their own chunk, not with the first paint.`);
 console.log("PASS: Beta 8 Frontend Bundle Budget validation completed.");

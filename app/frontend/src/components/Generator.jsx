@@ -19,6 +19,7 @@ import {
   ENGLISH_IMAGE_PROMPT_SYSTEM,
   cleanEnhancedPrompt
 } from "../services/api";
+import "./Generator.css";
 
 const GalleryItem = memo(({ img, idx, isSelected, onClick }) => {
   const handleClick = (e) => {

@@ -34,6 +34,7 @@ import {
   submitModelArenaChoice,
   streamModelArena,
 } from "../services/api";
+import "./TextChat.css";
 
 const processMessageContent = (rawText, apiReasoning = "", enableThinking = true) => {
   if (typeof rawText !== "string") {

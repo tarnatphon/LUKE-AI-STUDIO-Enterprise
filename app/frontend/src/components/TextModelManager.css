@@ -1,0 +1,464 @@
+/* Styles for the TextModelManager workspace.
+   They travel with it: the browser fetches them when this workspace opens,
+   not on the first paint of the app. Moved here from App.css unchanged. */
+
+.text-model-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+}
+
+.text-model-manager-header,
+.text-model-queue-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.text-model-manager-header h2,
+.text-model-queue-heading h3 {
+  margin: 4px 0 7px;
+}
+
+.text-model-manager-header p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.6;
+}
+
+.text-model-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.text-model-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 94px;
+  padding: 17px;
+}
+
+.text-model-summary-card span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.82rem;
+}
+
+.text-model-summary-card strong {
+  font-size: 1.7rem;
+}
+
+.text-model-download-policy {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 17px;
+}
+
+.text-model-download-policy > svg {
+  flex: 0 0 auto;
+  color: var(--md-sys-color-primary);
+}
+
+.text-model-download-policy p {
+  margin: 5px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.82rem;
+}
+
+.text-model-category-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.text-model-category-tab {
+  padding: 9px 13px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 999px;
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+}
+
+.text-model-category-tab-active {
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+}
+
+.text-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.text-model-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.text-model-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.text-model-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+
+.text-model-icon-official {
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+}
+
+.text-model-icon-community {
+  color: var(--md-sys-color-tertiary);
+  background: var(--md-sys-color-tertiary-container);
+}
+
+.text-model-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.text-model-title-group h3 {
+  margin: 0;
+}
+
+.text-model-publisher {
+  margin-top: 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.76rem;
+}
+
+.text-model-description {
+  min-height: 46px;
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.55;
+}
+
+.text-model-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.text-model-meta-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 10px;
+}
+
+.text-model-meta-grid span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.7rem;
+}
+
+.text-model-meta-grid strong {
+  font-size: 0.78rem;
+}
+
+.text-model-safety-profile,
+.text-model-checksum,
+.text-model-installed {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+}
+
+.text-model-safety-profile {
+  color: var(--md-sys-color-tertiary);
+}
+
+.text-model-checksum,
+.text-model-installed {
+  color: var(--md-sys-color-success);
+}
+
+.text-model-current-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.text-model-queue-position {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.76rem;
+}
+
+.text-model-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text-model-progress-header,
+.text-model-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.text-model-progress-header {
+  font-size: 0.8rem;
+}
+
+.text-model-progress-meta {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.72rem;
+}
+
+.text-model-progress-track {
+  height: 9px;
+  overflow: hidden;
+}
+
+.text-model-progress-fill {
+  min-width: 0;
+  transition: width 220ms ease;
+}
+
+.text-model-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.text-model-category-official {
+  color: var(--md-sys-color-primary);
+}
+
+.text-model-category-community {
+  color: var(--md-sys-color-tertiary);
+}
+
+.text-model-status-ready {
+  color: var(--md-sys-color-success);
+}
+
+.text-model-status-active {
+  color: var(--md-sys-color-primary);
+}
+
+.text-model-status-error {
+  color: var(--md-sys-color-error);
+}
+
+.text-model-status-muted {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.text-model-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  min-height: 140px;
+}
+
+.text-model-queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.text-model-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text-model-queue-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+}
+
+.text-model-queue-detail {
+  margin-top: 3px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.74rem;
+}
+
+/* LUKE_AI_TEXT_MODEL_UPDATE_STYLES_V1 */
+.text-model-card-statuses {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.text-model-update-available {
+  color: var(--md-sys-color-on-tertiary-container);
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-tertiary) 42%,
+    transparent
+  );
+  background: var(--md-sys-color-tertiary-container);
+}
+
+.text-model-version-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 12px;
+}
+
+.text-model-version-status > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.text-model-version-status span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.7rem;
+}
+
+.text-model-version-status strong {
+  font-size: 0.82rem;
+}
+
+.text-model-rollback-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  grid-column: 1 / -1;
+  color: var(--md-sys-color-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.text-model-update-button {
+  box-shadow:
+    0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--md-sys-color-tertiary) 28%,
+      transparent
+    );
+}
+
+/* LUKE_AI_TEXT_MODEL_HARDWARE_STYLES_V3 */
+.text-model-hardware-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.text-model-hardware-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 15px;
+}
+
+.text-model-hardware-card span {
+  color:
+    var(--md-sys-color-on-surface-variant);
+  font-size: 0.76rem;
+}
+
+.text-model-hardware-card strong {
+  font-size: 0.98rem;
+}
+
+.text-model-variant-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.text-model-variant-selector label {
+  color:
+    var(--md-sys-color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.text-model-variant-selector select {
+  width: 100%;
+  padding: 10px 11px;
+  border:
+    1px solid var(--border-color-muted);
+  border-radius: 10px;
+  color:
+    var(--md-sys-color-on-surface);
+  background:
+    var(--md-sys-color-surface);
+}
+
+.text-model-variant-selector select:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.text-model-hardware-status {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.text-model-hardware-recommended {
+  color:
+    var(--md-sys-color-success);
+  background:
+    color-mix(
+      in srgb,
+      var(--md-sys-color-success) 11%,
+      transparent
+    );
+}
+
+.text-model-hardware-compatible {
+  color:
+    var(--md-sys-color-primary);
+  background:
+    color-mix(
+      in srgb,
+      var(--md-sys-color-primary) 10%,
+      transparent
+    );
+}
+
+.text-model-hardware-incompatible {
+  color:
+    var(--md-sys-color-error);
+  background:
+    color-mix(
+      in srgb,
+      var(--md-sys-color-error) 10%,
+      transparent
+    );
+}

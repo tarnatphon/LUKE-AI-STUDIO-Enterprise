@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -38,7 +39,7 @@ if (!appFile) {
 }
 
 const app = fs.readFileSync(appFile, "utf8");
-const css = fs.readFileSync(cssFile, "utf8");
+const css = readAllStylesheets();
 
 const dashboardRequirements = [
   "/api/runtime/dependencies",

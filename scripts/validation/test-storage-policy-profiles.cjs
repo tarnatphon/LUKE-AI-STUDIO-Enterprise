@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs =
@@ -70,9 +71,7 @@ function main() {
     );
 
   const css =
-    read(
-      "app/frontend/src/App.css"
-    );
+    readAllStylesheets();
 
   for (const profile of [
     "models",

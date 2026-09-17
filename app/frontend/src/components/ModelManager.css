@@ -1,0 +1,324 @@
+/* Styles for the ModelManager workspace.
+   They travel with it: the browser fetches them when this workspace opens,
+   not on the first paint of the app. Moved here from App.css unchanged. */
+
+.loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  opacity: 0.9;
+  animation: pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--md-sys-color-primary);
+}
+
+.model-progress-section {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.model-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.model-discovery-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: var(--md-shape-corner-large);
+  background: var(--md-sys-color-surface);
+}
+
+.model-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-outline);
+}
+
+.model-search-box:focus-within {
+  border-color: var(--md-sys-color-primary);
+}
+
+.model-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+}
+
+.model-search-box button {
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.model-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--md-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.model-filter-clear {
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.model-discovery-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--md-sys-color-outline);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.model-search-warning {
+  padding: 10px 12px;
+  border-radius: var(--md-shape-corner-small);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font-size: 0.8rem;
+}
+
+.model-search-empty {
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+.model-load-more {
+  align-self: center;
+  min-width: 180px;
+  margin: 4px 0 8px;
+}
+
+.ai-library-section-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-variant) 72%, transparent);
+}
+
+/* LUKE AI STUDIO — Video AI Manager */
+.video-ai-manager{display:flex;flex-direction:column;gap:18px;margin:18px 0 28px}
+
+.video-ai-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,.7fr);gap:20px;padding:24px;border:1px solid color-mix(in srgb,var(--md-sys-color-outline-variant) 72%,transparent);border-radius:24px;background:linear-gradient(145deg,color-mix(in srgb,var(--md-sys-color-primary-container) 28%,transparent),color-mix(in srgb,var(--md-sys-color-surface-container) 92%,transparent));box-shadow:0 18px 44px rgba(15,23,42,.08)}
+
+.video-ai-eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--md-sys-color-primary)}
+
+.video-ai-hero h3{font-size:28px;margin:7px 0 8px}
+
+.video-ai-hero p{margin:0;max-width:720px;line-height:1.6;color:var(--md-sys-color-on-surface-variant)}
+
+.video-ai-status{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:18px;border-radius:18px;background:var(--md-sys-color-surface-container-high);border:1px solid var(--md-sys-color-outline-variant)}
+
+.video-ai-status strong{font-size:18px}
+
+.video-ai-status span{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
+
+.video-ai-status.status-ready{border-color:rgba(34,197,94,.45)}
+
+.video-ai-status.status-error{border-color:rgba(239,68,68,.5)}
+
+.video-ai-actions{display:flex;gap:10px;flex-wrap:wrap}
+
+.video-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+
+.video-model-card{padding:18px;border-radius:20px;background:var(--md-sys-color-surface-container);border:1px solid var(--md-sys-color-outline-variant)}
+
+.video-model-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+
+.video-model-card h4{margin:0 0 4px;font-size:16px}
+
+.video-model-card-head span{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
+
+.video-model-card p{font-size:13px;line-height:1.5;color:var(--md-sys-color-on-surface-variant)}
+
+.compatibility-pill{white-space:nowrap;padding:6px 9px;border-radius:999px;font-size:11px!important;font-weight:700}
+
+.video-model-specs{display:flex;gap:8px;flex-wrap:wrap}
+
+.video-model-specs span{font-size:11px;padding:5px 8px;border-radius:999px;background:var(--md-sys-color-surface-container-high)}
+
+.video-ai-note{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:18px;background:var(--md-sys-color-secondary-container)}
+
+.video-ai-note div{display:flex;flex-direction:column;gap:3px}
+
+.video-ai-note span{font-size:13px;color:var(--md-sys-color-on-secondary-container)}
+
+/* LUKE_AI_LIBRARY_LOADED_MODELS_UI_V1 */
+.library-loaded-models {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.library-loaded-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.library-loaded-heading span {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--md-sys-color-outline);
+}
+
+.library-loaded-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-loaded-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface);
+  font-size: 0.78rem;
+}
+
+.library-loaded-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-sys-color-outline-variant);
+}
+
+.library-loaded-type {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: 0.68rem;
+}
+
+.library-loaded-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+/* LUKE_AI_LIBRARY_MEMORY_BUDGET_UI_V1 */
+.library-memory-budget {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.library-memory-heading span {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--md-sys-color-outline);
+  margin-top: 2px;
+}
+
+.library-memory-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.library-memory-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.76rem;
+}
+
+.library-memory-label {
+  width: 44px;
+  color: var(--md-sys-color-outline);
+}
+
+.library-memory-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-variant);
+  overflow: hidden;
+}
+
+.library-memory-fill {
+  height: 100%;
+  background: var(--md-sys-color-primary);
+  transition: width 0.3s ease;
+}
+
+.library-memory-value {
+  min-width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.library-memory-note {
+  font-size: 0.72rem;
+  color: var(--md-sys-color-outline);
+  line-height: 1.4;
+}
+
+.library-memory-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(240, 180, 41, 0.12);
+  color: #f0b429;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}

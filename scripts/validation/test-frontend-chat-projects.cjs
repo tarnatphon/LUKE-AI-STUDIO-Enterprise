@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -6,7 +7,7 @@ const projects = fs.readFileSync("app/frontend/src/components/ChatProjects.jsx",
 const app = fs.readFileSync("app/frontend/src/App.jsx", "utf8");
 const sidebar = fs.readFileSync("app/frontend/src/components/Sidebar.jsx", "utf8");
 const chat = fs.readFileSync("app/frontend/src/components/TextChat.jsx", "utf8");
-const styles = fs.readFileSync("app/frontend/src/App.css", "utf8");
+const styles = readAllStylesheets();
 const workTools = fs.readFileSync("app/frontend/src/components/WorkToolsPanel.jsx", "utf8");
 const server = fs.readFileSync("scripts/server/serve.cjs", "utf8");
 const inspector = fs.readFileSync("scripts/server/work-environment-inspector.cjs", "utf8");

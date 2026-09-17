@@ -24,6 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
+import "./TextModelManager.css";
 
 const ACTIVE_STATES = new Set([
   "queued",

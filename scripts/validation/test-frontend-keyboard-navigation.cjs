@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
 
 const sidebar = fs.readFileSync("app/frontend/src/components/Sidebar.jsx", "utf8");
-const styles = fs.readFileSync("app/frontend/src/App.css", "utf8");
+const styles = readAllStylesheets();
 const tabs = ["home", "generator", "image-video", "assets", "chat", "speech", "tts", "models", "settings"];
 
 function requireText(text, label) {

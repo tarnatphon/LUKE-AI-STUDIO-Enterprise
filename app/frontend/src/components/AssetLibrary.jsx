@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { listAssets } from "../services/api";
+import "./AssetLibrary.css";
 
 const ASSET_TYPES = [
   "all",

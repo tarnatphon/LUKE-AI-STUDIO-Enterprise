@@ -44,6 +44,7 @@ import {
   unloadModelArenaModel,
   unloadAllModelArenaModels
 } from "../services/api";
+import "./ModelManager.css";
 
 
 const TEXT_LIBRARY_SECTIONS = [

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -41,14 +42,6 @@ const appFile =
       fs.existsSync(candidate),
   );
 
-const cssFile = path.join(
-  root,
-  "app",
-  "frontend",
-  "src",
-  "App.css",
-);
-
 if (!appFile) {
   throw new Error(
     "Frontend App entry is missing.",
@@ -67,11 +60,7 @@ const app =
     "utf8",
   );
 
-const css =
-  fs.readFileSync(
-    cssFile,
-    "utf8",
-  );
+const css = readAllStylesheets();
 
 const componentRequirements = [
   "/api/text-models/catalog",

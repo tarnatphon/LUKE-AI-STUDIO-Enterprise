@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -81,10 +82,7 @@ function main() {
     );
 
   const css =
-    fs.readFileSync(
-      cssFile,
-      "utf8"
-    );
+    readAllStylesheets();
 
   const policy =
     JSON.parse(

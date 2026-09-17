@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
 
 const chat = fs.readFileSync("app/frontend/src/components/TextChat.jsx", "utf8");
-const styles = fs.readFileSync("app/frontend/src/App.css", "utf8");
+const styles = readAllStylesheets();
 
 function requireText(text, label) {
   if (!chat.includes(text)) throw new Error(`${label}: ${text}`);

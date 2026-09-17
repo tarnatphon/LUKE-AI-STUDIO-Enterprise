@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -269,10 +270,7 @@ async function main() {
     );
 
   const css =
-    fs.readFileSync(
-      cssFile,
-      "utf8"
-    );
+    readAllStylesheets();
 
   for (const requirement of [
     "LUKE_AI_RUNTIME_INSTALL_PREFLIGHT_API_V2",

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
 
 const app = fs.readFileSync("app/frontend/src/App.jsx", "utf8");
-const css = fs.readFileSync("app/frontend/src/App.css", "utf8");
+const css = readAllStylesheets();
 
 function requireText(source, text, label) {
   if (!source.includes(text)) throw new Error(`${label}: ${text}`);

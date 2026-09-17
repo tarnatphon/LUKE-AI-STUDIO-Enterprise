@@ -63,6 +63,7 @@ import StorageRecoveryRunbookPanel from "./StorageRecoveryRunbookPanel.jsx";
 
 /* LUKE_AI_STORAGE_RECOVERY_SIMULATION_IMPORT_V1 */
 import StorageRecoverySimulationPanel from "./StorageRecoverySimulationPanel.jsx";
+import "./PersistentTextChat.css";
 
 function formatDate(value) {
   if (!value) {

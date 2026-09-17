@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -43,9 +44,7 @@ const sidebar =
   );
 
 const styles =
-  read(
-    "app/frontend/src/App.css"
-  );
+  readAllStylesheets();
 
 const api =
   read(

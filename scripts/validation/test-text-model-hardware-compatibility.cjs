@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 let testPortOffset = 0;
@@ -168,10 +169,7 @@ async function main() {
     );
 
   const css =
-    fs.readFileSync(
-      cssFile,
-      "utf8"
-    );
+    readAllStylesheets();
 
   for (
     const requirement

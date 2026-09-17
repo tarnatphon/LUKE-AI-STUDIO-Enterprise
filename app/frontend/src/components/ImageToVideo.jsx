@@ -26,6 +26,7 @@ import ImageToVideoRuntimeHealthCard from "./ImageToVideoRuntimeHealthCard.jsx";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Film, Upload, Play, CheckCircle2, AlertTriangle, Cpu, HardDrive, Plus, Trash2, Sparkles, ShieldCheck, Download, Wrench } from "lucide-react";
 import { getImageToVideoCompatibility, generateImageToVideo, getImageToVideoCapabilityStatus, installImageToVideoCapability } from "../services/api";
+import "./ImageToVideo.css";
 
 function readImage(file) {
   return new Promise((resolve, reject) => {

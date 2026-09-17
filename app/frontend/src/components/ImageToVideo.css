@@ -1,0 +1,66 @@
+/* Styles for the ImageToVideo workspace.
+   They travel with it: the browser fetches them when this workspace opens,
+   not on the first paint of the app. Moved here from App.css unchanged. */
+
+.i2v-runtime-health-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.i2v-runtime-health-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.i2v-runtime-health-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.i2v-runtime-health-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  background: var(--md-sys-color-surface);
+}
+
+.i2v-runtime-health-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.i2v-runtime-health-safety {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.i2v-asset-picker-counts span {
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.i2v-asset-picker-empty {
+  margin: 10px 0 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.76rem;
+}
+
+.i2v-asset-picker-notice {
+  margin: 10px 0 0;
+  color: var(--md-sys-color-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+}

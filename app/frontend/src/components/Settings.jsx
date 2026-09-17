@@ -21,6 +21,7 @@ import {
   getBackendOptions,
 } from "../services/api";
 import { THEMES } from "../themes";
+import "./Settings.css";
 
 const ASPECT_RATIOS = [
   { id: "1:1", label: "1:1 Square", width: 512, height: 512, sdxl_width: 1024, sdxl_height: 1024, desc: "Social posts & avatars" },

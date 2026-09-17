@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -45,13 +46,6 @@ const files = {
     "components",
     "PersistentTextChat.jsx"
   ),
-  css: path.join(
-    root,
-    "app",
-    "frontend",
-    "src",
-    "App.css"
-  ),
 };
 
 function read(filePath) {
@@ -79,7 +73,7 @@ function main() {
   const server = read(files.server);
   const panel = read(files.panel);
   const chat = read(files.chat);
-  const css = read(files.css);
+  const css = readAllStylesheets();
 
   for (const value of [
     "LUKE_AI_STORAGE_POLICY_MANAGEMENT_V1",

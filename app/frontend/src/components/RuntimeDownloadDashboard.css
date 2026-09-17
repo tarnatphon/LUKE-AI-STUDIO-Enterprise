@@ -1,0 +1,406 @@
+/* Styles for the RuntimeDownloadDashboard workspace.
+   They travel with it: the browser fetches them when this workspace opens,
+   not on the first paint of the app. Moved here from App.css unchanged. */
+
+.runtime-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+}
+
+.runtime-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.runtime-dashboard-header h2 {
+  margin: 3px 0 8px;
+  color: var(--md-sys-color-on-background);
+}
+
+.runtime-dashboard-header p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.65;
+}
+
+.runtime-dashboard-eyebrow {
+  color: var(--md-sys-color-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.runtime-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 104px;
+  padding: 18px;
+}
+
+.runtime-summary-card span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.84rem;
+}
+
+.runtime-summary-card strong {
+  color: var(--md-sys-color-on-surface);
+  font-size: 1.8rem;
+}
+
+.runtime-summary-ready {
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-success) 42%,
+    transparent
+  );
+}
+
+.runtime-summary-missing,
+.runtime-summary-required {
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-error) 32%,
+    transparent
+  );
+}
+
+.runtime-storage-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+}
+
+.runtime-storage-icon,
+.runtime-card-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+}
+
+.runtime-storage-path {
+  margin-top: 6px;
+  color: var(--md-sys-color-on-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.runtime-storage-fallback {
+  margin-top: 5px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.8rem;
+}
+
+.runtime-dashboard-error,
+.runtime-error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(
+    in srgb,
+    var(--md-sys-color-error) 38%,
+    transparent
+  );
+  border-radius: 12px;
+  color: var(--md-sys-color-error);
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-error) 8%,
+    transparent
+  );
+}
+
+.runtime-dashboard-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  min-height: 150px;
+}
+
+.runtime-dependency-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.runtime-dependency-card {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px;
+}
+
+.runtime-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.runtime-card-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.runtime-card-subtitle {
+  margin-top: 3px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+}
+
+.runtime-card-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+}
+
+.runtime-card-details span {
+  padding: 5px 8px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 999px;
+}
+
+.runtime-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.runtime-progress-header,
+.runtime-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-progress-header {
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.82rem;
+}
+
+.runtime-progress-meta {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.74rem;
+}
+
+.runtime-progress-track {
+  height: 9px;
+  overflow: hidden;
+}
+
+.runtime-progress-fill {
+  min-width: 0;
+  transition: width 220ms ease;
+}
+
+.runtime-checksum {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--md-sys-color-success);
+  font-size: 0.78rem;
+}
+
+.runtime-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.runtime-installed-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--md-sys-color-success);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.runtime-status-ready {
+  color: var(--md-sys-color-success);
+}
+
+.runtime-status-error {
+  color: var(--md-sys-color-error);
+}
+
+.runtime-status-active {
+  color: var(--md-sys-color-primary);
+}
+
+.runtime-status-muted,
+.runtime-status-missing {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* LUKE_AI_RUNTIME_STORAGE_STYLES_V1 */
+.runtime-storage-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.runtime-storage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-storage-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  color: var(--md-sys-color-error);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.runtime-storage-free-space {
+  margin-top: 7px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+}
+
+.runtime-storage-external-ready {
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-success) 38%,
+    transparent
+  );
+}
+
+.runtime-storage-fallback-active {
+  border-color: color-mix(
+    in srgb,
+    var(--md-sys-color-error) 34%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-error) 5%,
+    var(--md-sys-color-surface)
+  );
+}
+
+.runtime-storage-unavailable {
+  border-color: var(--md-sys-color-error);
+}
+
+/* LUKE_AI_RUNTIME_STORAGE_CLEANUP_STYLES_V1 */
+.runtime-cleanup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.runtime-cleanup-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.runtime-cleanup-heading h3 {
+  margin: 4px 0 5px;
+}
+
+.runtime-cleanup-heading p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.55;
+}
+
+.runtime-cleanup-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+  white-space: nowrap;
+}
+
+.runtime-cleanup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.runtime-cleanup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 16px;
+}
+
+.runtime-cleanup-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-cleanup-path {
+  margin-top: 5px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.runtime-cleanup-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.runtime-cleanup-stat strong {
+  font-size: 1.3rem;
+}
+
+.runtime-cleanup-stat span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.78rem;
+}
+
+.runtime-cleanup-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--md-sys-color-error);
+  font-size: 0.76rem;
+}
+
+.runtime-cleanup-protected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.8rem;
+  font-weight: 700;
+}

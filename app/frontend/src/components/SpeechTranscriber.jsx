@@ -16,6 +16,7 @@ import {
   stopSpeech,
   transcribeSpeech,
 } from "../services/api";
+import "./SpeechTranscriber.css";
 
 const LANGUAGE_OPTIONS = [
   { value: "auto", label: "Auto detect" },

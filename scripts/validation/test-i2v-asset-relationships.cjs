@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 "use strict";
 
 const fs = require("node:fs");
@@ -10,10 +11,7 @@ const ui =
   );
 
 const styles =
-  fs.readFileSync(
-    "app/frontend/src/App.css",
-    "utf8"
-  );
+  readAllStylesheets();
 
 const server =
   fs.readFileSync(
