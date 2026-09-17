@@ -7,7 +7,7 @@ import WorkTerminalDock from "./WorkTerminalDock";
 import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
-import { expandJsonAnswer, splitAnswerBlocks } from "../lib/work-answer-blocks.mjs";
+import { expandJsonAnswer, splitAnswerBlocks, terminalCommandLines } from "../lib/work-answer-blocks.mjs";
 import {
   ZIP_MAX_BYTES,
   describeZipLimit,
@@ -445,8 +445,15 @@ function TextChat({
   const [showBottomTerminal, setShowBottomTerminal] = useState(false);
 
   const sendCodeToTerminal = useCallback((code) => {
+    // A ```code block is one command per line. Handing the whole block to the
+    // Terminal at once used to strand it in the input, where Enter refused it
+    // for containing a newline — so the block is split here and the lines are
+    // run one after another instead.
+    const lines = terminalCommandLines(code);
     setShowBottomTerminal(true);
-    setTimeout(() => window.dispatchEvent(new CustomEvent("luke:work-terminal-command", { detail: { command: code } })), 0);
+    setTimeout(() => window.dispatchEvent(new CustomEvent("luke:work-terminal-command", {
+      detail: { command: String(code || "").trim(), lines },
+    })), 0);
   }, []);
   const [showProjectMemory, setShowProjectMemory] = useState(false);
   const [messageQueue, setMessageQueue] = useState([]);
@@ -770,10 +777,22 @@ function TextChat({
   };
   
   const bottomRef = useRef(null);
+  // Reading a long answer means scrolling up, and getting back down again used
+  // to mean a lot of wheeling. The button only exists while there is somewhere
+  // to go.
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const textareaRef = useRef(null);
   const completedDownloadRef = useRef("");
   const loadingModelRef = useRef(null);
   const chatMessagesRef = useRef(null);
+
+  const jumpToLatest = useCallback(() => {
+    const container = chatMessagesRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    followGenerationRef.current = true;
+    setShowJumpToLatest(false);
+  }, []);
   const prevMessagesLengthRef = useRef(0);
   const followGenerationRef = useRef(false);
   const abortControllerRef = useRef(null);
@@ -3001,14 +3020,18 @@ function TextChat({
         )}
 
         {/* ─── Messages area ──────────────────────────────────── */}
+        <div className="chat-scroll-area">
         <div
           ref={chatMessagesRef}
           className="chat-messages"
           onScroll={(event) => {
-            if (!isBusy) return;
             const container = event.currentTarget;
             const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-            followGenerationRef.current = distanceFromBottom <= 80;
+            if (isBusy) followGenerationRef.current = distanceFromBottom <= 80;
+            // This runs on every scroll frame while tokens are streaming, so
+            // the state is only touched when the answer actually changes.
+            const far = distanceFromBottom > 220;
+            setShowJumpToLatest((current) => (current === far ? current : far));
           }}
         >
           {loadingModel ? (
@@ -3208,6 +3231,19 @@ function TextChat({
             </>
           )}
           <div ref={bottomRef} />
+        </div>
+        {showJumpToLatest && (
+          <button
+            type="button"
+            className="chat-jump-latest"
+            onClick={jumpToLatest}
+            title="เลื่อนไปข้อความล่าสุด"
+            aria-label="เลื่อนไปข้อความล่าสุด"
+          >
+            <ArrowDown size={15} />
+            <span>ล่าสุด</span>
+          </button>
+        )}
         </div>
 
         {/* ─── Multi-Model Arena ──────────────────────────────── */}

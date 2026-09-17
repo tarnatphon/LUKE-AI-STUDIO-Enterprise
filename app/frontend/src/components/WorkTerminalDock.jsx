@@ -23,6 +23,8 @@ const approvalAllowStyle = { padding: "5px 11px", border: "1px solid rgba(250,20
 const approvalCancelStyle = { padding: "5px 11px", border: "1px solid rgba(255,255,255,.14)", borderRadius: 7, background: "transparent", color: "#c3ccc7", cursor: "pointer", fontSize: ".66rem" };
 const commandInputStyle = { flex: 1, minWidth: 0, maxHeight: 96, padding: "6px 8px", border: "1px solid rgba(255,255,255,.12)", borderRadius: 7, background: "rgba(0,0,0,.25)", color: "#e7efea", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".7rem", lineHeight: 1.5, resize: "vertical" };
 const queueStatusStyle = { flex: "0 0 auto", color: "#67d391", fontSize: ".62rem", whiteSpace: "nowrap" };
+const stagedStyle = { flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "5px 10px", borderTop: "1px solid rgba(103,211,145,.22)", background: "rgba(103,211,145,.07)", color: "#b7e7c8", fontSize: ".66rem" };
+const stagedClearStyle = { flexShrink: 0, padding: "3px 8px", border: "1px solid rgba(103,211,145,.3)", borderRadius: 6, background: "transparent", color: "#b7e7c8", cursor: "pointer", fontSize: ".62rem" };
 /**
  * There is no shell behind this terminal, so a pasted script can never run.
  * Sending it anyway used to produce a bare "not permitted" — or nothing at all,
@@ -83,6 +85,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   const [needsGrant, setNeedsGrant] = useState(false);
   const [granting, setGranting] = useState(false);
   const [pendingApproval, setPendingApproval] = useState(null);
+  // Commands that came from the answer together with the one in the input.
+  // They wait here rather than in commandQueue, because the queue starts the
+  // moment the terminal is idle — the user is meant to press Run first, and
+  // only then does the rest of the block follow on its own.
+  const [staged, setStaged] = useState([]);
   const roots = project?.sourceFolders || [];
   const [root, setRoot] = useState(() => roots[0] || "");
   const sessionKey = terminalSessionKey(project?.id, root);
@@ -136,7 +143,18 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   }, [commandText, history, sessionKey]);
 
   useEffect(() => {
-    const receiveCommand = (event) => setCommandText(String(event.detail?.command || ""));
+    const receiveCommand = (event) => {
+      const lines = Array.isArray(event.detail?.lines) ? event.detail.lines.filter(Boolean) : [];
+      if (lines.length > 1) {
+        // A whole block arrived from the answer. The first command waits in
+        // the input for the user's Enter; the rest are held until it finishes.
+        setStaged(lines.slice(1));
+        setCommandText(lines[0]);
+        return;
+      }
+      setStaged([]);
+      setCommandText(String(event.detail?.command || lines[0] || ""));
+    };
     window.addEventListener("luke:work-terminal-command", receiveCommand);
     return () => window.removeEventListener("luke:work-terminal-command", receiveCommand);
   }, []);
@@ -208,11 +226,14 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   };
 
   useEffect(() => {
-    if (busy || !root || commandQueue.length === 0) return;
+    // pendingApproval matters: without it the next queued command would start
+    // the instant this one stopped, replacing the prompt that is waiting for
+    // the user's say-so and quietly running what they were asked about.
+    if (busy || pendingApproval || !root || commandQueue.length === 0) return;
     const [nextCommand] = commandQueue;
     setCommandQueue((current) => current.slice(1));
     void executeCommand(nextCommand);
-  }, [busy, commandQueue, executeCommand, root]);
+  }, [busy, pendingApproval, commandQueue, executeCommand, root]);
 
   const queueCommand = () => {
     const command = commandText.trim();
@@ -220,13 +241,15 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     if (command === "clear") {
       setOutput("");
       setCommandText("");
+      setStaged([]);
       return;
     }
     if (command.includes("\n")) {
       setOutput((current) => `${current ? `${current}\n` : ""}${SCRIPT_NOT_A_COMMAND}`);
       return;
     }
-    setCommandQueue((current) => [...current, command].slice(-50));
+    setCommandQueue((current) => [...current, command, ...staged].slice(-50));
+    setStaged([]);
     setCommandText("");
     setHistoryIndex(-1);
   };
@@ -255,7 +278,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
               <button type="button" style={approvalAllowStyle} onClick={() => void executeCommand(pendingApproval.command, { approved: true })}>Allow once</button>
               <button type="button" style={approvalCancelStyle} onClick={cancelApproval}>Cancel</button>
             </div>
-          </div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
+          </div>}{staged.length > 0 && <div style={stagedStyle} aria-label="Commands that run after this one"><span>{staged.length} more {staged.length === 1 ? "command" : "commands"} run after this one</span><button type="button" style={stagedClearStyle} onClick={() => setStaged([])} title="Do not run the rest of the block">Clear</button></div>}<form onSubmit={(event) => { event.preventDefault(); queueCommand(); }}><span title={terminalSession?.cwd}>{prompt}</span><textarea rows={1} autoComplete="off" spellCheck="false" value={commandText} onChange={(event) => setCommandText(event.target.value)} onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 queueCommand();

@@ -105,3 +105,23 @@ export function expandJsonAnswer(content) {
   }
   return result;
 }
+
+/**
+ * The lines of a ```code block, cleaned up for the Terminal.
+ *
+ * The block was written to be read, so it arrives decorated: a `$` prompt,
+ * numbered steps, backticks, comments. The Terminal takes one command at a
+ * time, so each line is cleaned and handed over on its own. Blank lines are
+ * dropped — an empty line is a press of Enter that nobody asked for, and a
+ * comment would print nothing and still cost a round trip.
+ */
+export function terminalCommandLines(code) {
+  return String(code == null ? "" : code)
+    .split(/\r?\n/)
+    .map((line) => line
+      .replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")
+      .replace(/^\s*[$>]\s+/, "")
+      .replace(/^`+|`+$/g, "")
+      .trim())
+    .filter((line) => line && !line.startsWith("#"));
+}
