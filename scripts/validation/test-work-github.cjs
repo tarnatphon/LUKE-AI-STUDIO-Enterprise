@@ -318,6 +318,63 @@ async function main() {
     workGithub.setToolRunner(null);
     workGithub.setFetchImplementation(null);
   }
+
+  // ── 7. The CLI being installed is not the same as being signed in ─────────
+  // Plenty of Macs have `gh` from Homebrew and never ran `gh auth login`.
+  // Preferring the CLI anyway meant a token the user had just saved was
+  // ignored, and every panel answered with the CLI's raw error instead of
+  // saying what was wrong.
+  section("7. A saved token wins over a CLI that is not signed in");
+  const savedEnvTokens = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, GH_TOKEN: process.env.GH_TOKEN };
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GH_TOKEN;
+
+  const ghCalls = [];
+  const cli = (stdout) => ({ stdout, stderr: "" });
+  const cliFail = (stderr) => { const error = new Error(stderr); error.stderr = stderr; throw error; };
+  workGithub.setToolRunner((tool, args, options) => {
+    if (tool !== "gh") return execFileAsync(tool, args, options);
+    ghCalls.push({ args: [...args], env: (options && options.env) || {}, token: (options && options.token) || null });
+    if (args[0] === "--version") return Promise.resolve(cli("gh version 2.0.0"));
+    if (args[0] === "api" && args[1] === "user") {
+      // Signed in only when a token is handed over.
+      if (options && options.env && options.env.GH_TOKEN) return Promise.resolve(cli("token-user"));
+      return Promise.resolve(cliFail("You are not logged into any GitHub hosts."));
+    }
+    if (args[0] === "repo" && args[1] === "list") return Promise.resolve(cli('[{"nameWithOwner":"me/repo"}]'));
+    return Promise.resolve(cli(""));
+  });
+
+  await workGithub.clearToken().catch(() => {});
+  await refuses(
+    "with the CLI installed but not signed in, it says what is missing",
+    () => workGithub.listRepos({ limit: 5 }),
+    /sign in to github first/i,
+  );
+
+  await workGithub.storeToken(fakeToken);
+  const listed = await workGithub.listRepos({ limit: 5 });
+  check("a saved token is used instead of the unsigned-in CLI",
+    listed.length === 1 && listed[0].nameWithOwner === "me/repo", JSON.stringify(listed));
+  const tokenCall = ghCalls.find((entry) => entry.args[0] === "repo" && entry.args[1] === "list");
+  check("the token is handed to the CLI it rides on",
+    Boolean(tokenCall) && String(tokenCall.env.GH_TOKEN) === fakeToken && String(tokenCall.env.GITHUB_TOKEN) === fakeToken,
+    JSON.stringify(tokenCall ? Object.keys(tokenCall.env) : null));
+  const status7 = await workGithub.authStatus();
+  check("the status names the account that answered",
+    status7.loggedIn === true && status7.login === "token-user" && status7.source === "stored",
+    JSON.stringify(status7));
+  await workGithub.clearToken();
+  await refuses(
+    "without a token and without a signed-in CLI, it still says what is missing",
+    () => workGithub.listRepos({ limit: 5 }),
+    /sign in to github first/i,
+  );
+  workGithub.setToolRunner(null);
+  for (const [key, value] of Object.entries(savedEnvTokens)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   if (envTokens.GITHUB_TOKEN) process.env.GITHUB_TOKEN = envTokens.GITHUB_TOKEN;
   if (envTokens.GH_TOKEN) process.env.GH_TOKEN = envTokens.GH_TOKEN;
 

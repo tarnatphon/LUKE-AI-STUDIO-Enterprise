@@ -227,6 +227,34 @@ async function resolveToken() {
   return { token: null, source: null };
 }
 
+/**
+ * How this machine can reach GitHub right now.
+ *
+ * The CLI being installed is not the same as being signed in: plenty of Macs
+ * have `gh` from Homebrew and never ran `gh auth login`. Preferring the CLI
+ * anyway meant a token the user had just saved was ignored, and every GitHub
+ * panel answered with the CLI's raw error instead of saying what was wrong.
+ *
+ * So: a token the user saved wins; otherwise the CLI's own login is used; if
+ * neither exists the user is told to sign in, in so many words.
+ */
+async function githubAccess() {
+  const { token, source } = await resolveToken();
+  const ghInstalled = await hasGh();
+  if (token) return { token, source, gh: ghInstalled };
+  if (ghInstalled && (await ghLogin())) return { token: null, source: "gh-cli", gh: true };
+  throw reject(
+    "Sign in to GitHub first: paste a personal access token below, or run `gh auth login` on this machine.",
+    401,
+  );
+}
+
+/** The account the CLI itself is signed in as, or null when it is not. */
+async function ghLogin() {
+  const who = await runTool("gh", ["api", "user", "--jq", ".login"], {});
+  return who.ok && who.stdout.trim() ? who.stdout.trim() : null;
+}
+
 async function authStatus() {
   const { token, source } = await resolveToken();
   const ghInstalled = await hasGh();
@@ -356,9 +384,9 @@ async function apiJson(urlPath, { token, method = "GET", body = null } = {}) {
 }
 
 async function listRepos({ limit = 20 } = {}) {
-  const { token } = await resolveToken();
+  const { token, gh } = await githubAccess();
   const count = limitOf(limit, 20);
-  if (await hasGh()) {
+  if (gh) {
     const rows = await ghJson(
       ["repo", "list", "--limit", String(count), "--json", "nameWithOwner,description,updatedAt,visibility"],
       { token },
@@ -382,10 +410,10 @@ async function listRepos({ limit = 20 } = {}) {
 
 async function listIssues({ repo, limit = 20, state = "open" } = {}) {
   const slug = repoSlug(repo);
-  const { token } = await resolveToken();
+  const { token, gh } = await githubAccess();
   const count = limitOf(limit, 20);
   const wanted = state === "closed" ? "closed" : state === "all" ? "all" : "open";
-  if (await hasGh()) {
+  if (gh) {
     const rows = await ghJson(
       ["issue", "list", "--repo", slug, "--limit", String(count), "--state", wanted, "--json", "number,title,state,updatedAt,author"],
       { token },
@@ -411,10 +439,10 @@ async function listIssues({ repo, limit = 20, state = "open" } = {}) {
 
 async function listPullRequests({ repo, limit = 20, state = "open" } = {}) {
   const slug = repoSlug(repo);
-  const { token } = await resolveToken();
+  const { token, gh } = await githubAccess();
   const count = limitOf(limit, 20);
   const wanted = state === "closed" ? "closed" : state === "all" ? "all" : "open";
-  if (await hasGh()) {
+  if (gh) {
     const rows = await ghJson(
       ["pr", "list", "--repo", slug, "--limit", String(count), "--state", wanted, "--json", "number,title,state,updatedAt,author,headRefName"],
       { token },
@@ -568,8 +596,8 @@ async function openPullRequest({ root, title, body: bodyText, base, approvalGran
     finalArgs[finalArgs.indexOf("<the last commit message>")] = clean(state.lastCommit, 120) || head;
   }
 
-  const { token } = await resolveToken();
-  if (await hasGh()) {
+  const { token, gh } = await githubAccess();
+  if (gh) {
     const result = await runTool("gh", finalArgs, { cwd: root, token, env: token ? { GH_TOKEN: token, GITHUB_TOKEN: token } : {} });
     if (!result.ok) {
       throw reject(scrub(result.stderr || result.message, token).slice(0, 400) || "The pull request could not be opened.", 502);
