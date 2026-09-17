@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
+import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, parseToolCall, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -90,6 +91,15 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   // moment the terminal is idle — the user is meant to press Run first, and
   // only then does the rest of the block follow on its own.
   const [staged, setStaged] = useState([]);
+  // A command that fills the panel used to look like it did nothing at all,
+  // because the answer landed below the fold and nothing scrolled to it. The
+  // output now follows the answer — unless the user has scrolled up to read,
+  // and then their place is left alone.
+  const outputRef = useRef(null);
+  const outputFollowsRef = useRef(true);
+  // How many times a command has been retried after its grant was restored.
+  // One, so a folder that cannot be granted cannot spin forever.
+  const retriedRef = useRef(0);
   const roots = project?.sourceFolders || [];
   const [root, setRoot] = useState(() => roots[0] || "");
   const sessionKey = terminalSessionKey(project?.id, root);
@@ -143,6 +153,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
   }, [commandText, history, sessionKey]);
 
   useEffect(() => {
+    const element = outputRef.current;
+    if (element && outputFollowsRef.current) element.scrollTop = element.scrollHeight;
+  }, [output]);
+
+  useEffect(() => {
     const receiveCommand = (event) => {
       const lines = Array.isArray(event.detail?.lines) ? event.detail.lines.filter(Boolean) : [];
       if (lines.length > 1) {
@@ -159,8 +174,13 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     return () => window.removeEventListener("luke:work-terminal-command", receiveCommand);
   }, []);
 
-  const grantAccess = useCallback(async () => {
-    if (!project || !root) return;
+  /**
+   * Re-grant the folders this project already names. It grants nothing the
+   * user did not already choose — the server keeps permissions in memory and
+   * forgets them when it restarts, so this only hands back what was there.
+   */
+  const restoreGrants = useCallback(async () => {
+    if (!project || !root) return { ok: false, reason: "This project has no source folder to grant. Open Edit project and add the folder you want Work to use." };
     setGranting(true);
     try {
       const { grants, failed } = await restoreProjectGrants(project, { force: true });
@@ -168,23 +188,29 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       if (granted > 0 && typeof setProjects === "function") {
         setProjects((current) => (current || []).map((entry) => (entry.id === project.id ? withRestoredGrants(entry, grants) : entry)));
       }
-      if (granted > 0) {
-        setNeedsGrant(false);
-        setOutput((current) => `${current}\nAccess granted for this session. Type your command again.`);
-      } else {
-        // Saying "granted" when nothing was granted is how the user ended up
-        // stuck: the folder looks fixed until the next command fails again.
-        const reason = failed?.length
+      // Saying "granted" when nothing was granted is how the user ended up
+      // stuck: the folder looks fixed until the next command fails again.
+      return granted > 0
+        ? { ok: true }
+        : { ok: false, reason: failed?.length
           ? failed.map((entry) => `${entry.root}: ${entry.error}`).join("; ")
-          : "This project has no source folder to grant. Open Edit project and add the folder you want Work to use.";
-        setOutput((current) => `${current}\nNothing could be granted — ${reason}`);
-      }
+          : "This project has no source folder to grant. Open Edit project and add the folder you want Work to use." };
     } catch (error) {
-      setOutput((current) => `${current}\n${error instanceof Error ? error.message : String(error)}`);
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) };
     } finally {
       setGranting(false);
     }
   }, [project, root, setProjects]);
+
+  const grantAccess = useCallback(async () => {
+    const restored = await restoreGrants();
+    if (restored.ok) {
+      setNeedsGrant(false);
+      setOutput((current) => `${current}\nAccess granted for this session. Type your command again.`);
+    } else {
+      setOutput((current) => `${current}\nNothing could be granted — ${restored.reason}`);
+    }
+  }, [restoreGrants]);
 
   const executeCommand = useCallback(async (command, { approved = false } = {}) => {
     if (!root || !command) return;
@@ -210,11 +236,60 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
       }
       if (!response.ok) throw new Error(data.error || "Work command failed.");
       setNeedsGrant(false);
+      retriedRef.current = 0;
       setOutput((current) => finishRunningLine(current, data.result?.output || "No output."));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setNeedsGrant(/permission/i.test(message));
+      const lapsed = /permission|grant|not granted/i.test(message);
+      // The server keeps permissions in memory, so a restart takes them away
+      // and nothing in the app says so. Rather than leaving the user to press
+      // a button they have to remember, grant it again and run the command
+      // once more — once, so a folder that cannot be granted cannot spin.
+      if (lapsed && retriedRef.current < 1) {
+        retriedRef.current += 1;
+        const restored = await restoreGrants();
+        if (restored.ok) {
+          setOutput((current) => `${current}\nAccess had lapsed — granted again for this session, running it once more.`);
+          setCommandQueue((current) => [command, ...current]);
+          return;
+        }
+        setNeedsGrant(true);
+        setOutput((current) => finishRunningLine(current, `${message}\nNothing has run — ${restored.reason}`));
+        return;
+      }
+      setNeedsGrant(lapsed);
       setOutput((current) => finishRunningLine(current, message));
+    } finally {
+      setBusy(false);
+    }
+  }, [root, project, prompt, restoreGrants]);
+
+  /**
+   * {"tool":"repo_map"} and its like are questions about the code, not shell
+   * commands. Answered here rather than refused: the user pasted what the
+   * model gave them and is entitled to an answer, not a list of programs.
+   */
+  const runToolCall = useCallback(async ({ tool, args }) => {
+    const refusal = toolRefusal(tool);
+    if (refusal !== null) {
+      setOutput((current) => `${current ? `${current}\n` : ""}${prompt} ${JSON.stringify({ tool, ...args })}\n${refusal}`);
+      return;
+    }
+    setBusy(true);
+    setActiveCommand(tool);
+    setPendingApproval(null);
+    setOutput((current) => `${current ? `${current}\n` : ""}${prompt} ${JSON.stringify({ tool, ...args })}\nRunning…`);
+    try {
+      const response = await fetch(TERMINAL_TOOL_ENDPOINTS[tool], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toolPayload(tool, args, { root, projectId: project?.id, grantId: project?.folderGrants?.[root] })),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `${tool} failed.`);
+      setOutput((current) => finishRunningLine(current, summariseToolResult(tool, data)));
+    } catch (error) {
+      setOutput((current) => finishRunningLine(current, error instanceof Error ? error.message : String(error)));
     } finally {
       setBusy(false);
     }
@@ -232,8 +307,10 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     if (busy || pendingApproval || !root || commandQueue.length === 0) return;
     const [nextCommand] = commandQueue;
     setCommandQueue((current) => current.slice(1));
-    void executeCommand(nextCommand);
-  }, [busy, pendingApproval, commandQueue, executeCommand, root]);
+    const call = parseToolCall(nextCommand);
+    if (call) void runToolCall(call);
+    else void executeCommand(nextCommand);
+  }, [busy, pendingApproval, commandQueue, executeCommand, runToolCall, root]);
 
   const queueCommand = () => {
     const command = commandText.trim();
@@ -267,7 +344,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
           <div className="work-terminal-dock-commands">
             {COMMANDS.map((command) => <button type="button" key={command.id} disabled={!root} onClick={() => setCommandText(command.label)}>{command.label}</button>)}
           </div>
-          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}{pendingApproval && <div style={approvalStyle} role="alertdialog" aria-label="Allow this command">
+          {!root ? <div className="work-terminal-dock-empty">Add a source folder to this Work project to enable Terminal.</div> : <div className="work-terminal-session"><pre ref={outputRef} onScroll={(event) => { const element = event.currentTarget; outputFollowsRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 40; }} aria-live="polite">{output}</pre>{commandQueue.length > 0 && <div className="work-terminal-command-queue" style={queueStyle} aria-label="Queued Terminal commands"><strong style={queueHeadingStyle}>Queued</strong>{commandQueue.map((command, index) => <div style={queueItemStyle} key={`${command}-${index}`}><code style={queueCodeStyle}>{command}</code><button style={queueRemoveStyle} type="button" onClick={() => setCommandQueue((current) => current.filter((_, itemIndex) => itemIndex !== index))} title={`Remove queued command ${command}`}><Trash2 size={13} /></button></div>)}</div>}{needsGrant && <div className="work-terminal-grant" style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}><button type="button" onClick={grantAccess} disabled={granting} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: "1px solid rgba(103,211,145,.35)", borderRadius: 7, background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".66rem" }}><ShieldCheck size={13} />{granting ? "Granting…" : "Grant access to this folder again"}</button></div>}{pendingApproval && <div style={approvalStyle} role="alertdialog" aria-label="Allow this command">
             <div style={approvalTextStyle}>
               <strong>Allow this command?</strong>
               <code style={approvalCodeStyle}>{pendingApproval.preview?.command || pendingApproval.command}</code>

@@ -95,7 +95,7 @@ async function main() {
   section("3. The queue waits its turn");
   check("a command runs only when the terminal is idle", /if \(busy \|\| pendingApproval \|\| !root \|\| commandQueue\.length === 0\) return;/.test(dock));
   check("an approval that is waiting stops the queue", /busy \|\| pendingApproval \|\|/.test(dock));
-  check("the queue effect watches the approval", /\}, \[busy, pendingApproval, commandQueue, executeCommand, root\]\);/.test(dock));
+  check("the queue effect watches the approval", /\}, \[busy, pendingApproval, commandQueue, executeCommand, runToolCall, root\]\);/.test(dock));
 
   section("4. Back down to the newest message");
   check("there is a jump button", /className="chat-jump-latest"/.test(chat));

@@ -1,0 +1,106 @@
+/**
+ * Work tool calls, understood outside the chat.
+ *
+ * The model asks Work questions as {"tool":"repo_map"}. Pasted into the
+ * Terminal that used to be refused: "not one of the programs Work can run" —
+ * true, and useless, because the user is then left holding an instruction with
+ * nowhere to put it. The Terminal now answers it instead.
+ *
+ * Only tools that read are run here. Anything that changes a file goes back to
+ * Work Chat, which asks first and keeps a backup the user can undo — running
+ * it from a prompt the user typed would have neither.
+ */
+
+/** Tools that only look, so the Terminal can answer them on its own. */
+export const TERMINAL_TOOL_ENDPOINTS = {
+  repo_map: "/api/work/index/map",
+  read_outline: "/api/work/index/outline",
+  find_symbol: "/api/work/index/symbol",
+  search_code: "/api/work/index/search",
+  list_directory: "/api/work/directory",
+  read_file: "/api/work/file/read",
+};
+
+/** Tools that change things: the chat owns these, with approval and undo. */
+export const CHAT_ONLY_TOOLS = [
+  "write_file",
+  "apply_patch",
+  "create_file",
+  "run_check",
+  "terminal",
+  "review_diff",
+  "update_tasks",
+];
+
+/**
+ * Read a line as a tool call. Anything else — a command, a sentence, a piece
+ * of JSON that is not a tool call — comes back null, so a command is never
+ * mistaken for one.
+ */
+export function parseToolCall(line) {
+  const text = String(line == null ? "" : line).trim();
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const tool = String(parsed.tool || "").trim();
+  if (!tool) return null;
+  return { tool, args: parsed };
+}
+
+/** The body one tool expects, mirroring what Work Chat sends for the same call. */
+export function toolPayload(tool, args, base = {}) {
+  const options = args && typeof args === "object" ? args : {};
+  if (tool === "repo_map") return { ...base, limit: Number(options.limit) || 0 };
+  if (tool === "find_symbol") {
+    return { ...base, name: String(options.name || options.symbol || ""), limit: Number(options.limit) || 20 };
+  }
+  if (tool === "search_code") {
+    return {
+      ...base,
+      pattern: String(options.pattern || options.query || ""),
+      limit: Number(options.limit) || 25,
+      extension: options.extension || null,
+      flags: typeof options.flags === "string" ? options.flags : "",
+    };
+  }
+  return { ...base, path: String(options.path || options.file || options.filePath || "") };
+}
+
+/** A tool's answer, printed the way a terminal prints it. */
+export function summariseToolResult(tool, data, { maxChars = 4000 } = {}) {
+  const payload = data && typeof data === "object" && "result" in data ? data.result : data;
+  if (payload == null) return `${tool}: nothing came back.`;
+  if (typeof payload === "string") return payload;
+  let text = "";
+  try {
+    text = JSON.stringify(payload, null, 2);
+  } catch {
+    text = String(payload);
+  }
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n… trimmed — ${text.length} characters in total.`;
+}
+
+/** Why a tool is not going to run here, and where it belongs instead. */
+export function toolRefusal(tool) {
+  if (TERMINAL_TOOL_ENDPOINTS[tool]) return null;
+  if (CHAT_ONLY_TOOLS.includes(tool)) {
+    return [
+      `${tool} changes things, so it does not run from the Terminal.`,
+      "Send it in the Work chat instead: it asks before it writes, and the",
+      "run keeps a backup you can undo in one click.",
+    ].join("\n");
+  }
+  return [
+    `"${tool}" is not something Work knows how to do.`,
+    "Commands the Terminal runs: node, npm, npx, yarn, pnpm, bun, deno,",
+    "python3, python, make — and read-only ones like ls, cat, pwd and git status.",
+    "Asking about the code itself: {\"tool\":\"repo_map\"}, {\"tool\":\"search_code\",\"pattern\":\"…\"},",
+    "{\"tool\":\"read_outline\",\"path\":\"src/app.js\"}, {\"tool\":\"find_symbol\",\"name\":\"…\"}.",
+  ].join("\n");
+}

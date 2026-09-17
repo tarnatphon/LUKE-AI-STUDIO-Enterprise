@@ -401,6 +401,64 @@ function App() {
     })();
   }, [chatProjects]);
 
+  /**
+   * Ask the server which folders it can actually reach, and re-grant the ones
+   * it cannot.
+   *
+   * The project remembers a grant id, but the server keeps permissions in
+   * memory and forgets them when it restarts — so the app's own memory is not
+   * the truth, and trusting it is why Work needed a button pressed after every
+   * launch. Readiness is the truth: it is answered by the server that holds
+   * (or has lost) the permission.
+   *
+   * This only ever re-grants folders the project already names, so it can
+   * never reach a folder the user did not choose.
+   */
+  const ensureProjectGrants = useCallback(async () => {
+    const project = chatProjects.find((entry) => entry.id === activeProjectId);
+    const roots = Array.isArray(project?.sourceFolders) ? project.sourceFolders.filter(Boolean) : [];
+    if (!project?.id || roots.length === 0) return;
+    try {
+      const response = await fetch("/api/work/readiness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          sourceFolders: roots,
+          folderGrants: project.folderGrants || {},
+          activeRoot: roots[0],
+        }),
+      });
+      const data = await response.json();
+      const missing = (data?.result?.folders || []).filter((folder) => folder.exists && !folder.granted);
+      if (missing.length === 0) return;
+      const { grants } = await restoreProjectGrants(project, { force: true });
+      if (Object.keys(grants || {}).length === 0) return;
+      setChatProjects((current) => current.map((entry) => (entry.id === project.id ? withRestoredGrants(entry, grants) : entry)));
+    } catch {
+      // A folder that cannot be granted says so where the user is working —
+      // the Work panels keep their own button for that case.
+    }
+  }, [chatProjects, activeProjectId]);
+
+  // Checked when Work is opened, and again whenever the window comes back:
+  // a restart while the tab sat in the background is invisible otherwise.
+  useEffect(() => {
+    if (assistantMode !== "work") return;
+    void ensureProjectGrants();
+  }, [assistantMode, ensureProjectGrants]);
+
+  useEffect(() => {
+    if (assistantMode !== "work") return;
+    const recheck = () => { void ensureProjectGrants(); };
+    window.addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      window.removeEventListener("focus", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+    };
+  }, [assistantMode, ensureProjectGrants]);
+
   useEffect(() => {
     if (activeProjectId) localStorage.setItem("active_chat_project", activeProjectId);
     else localStorage.removeItem("active_chat_project");
