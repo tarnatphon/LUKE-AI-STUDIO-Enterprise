@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, ExternalLink, File, FileDiff, Folder, GitBranch, Globe2, PanelRightClose, RefreshCw, Save, Search, Terminal, X } from "lucide-react";
+import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 
 const WORK_FILES_CSS = `.work-files-workspace{display:flex;flex-direction:column;gap:10px}.work-file-list>button,.work-file-breadcrumbs button{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}.work-file-list>button{width:100%;padding:7px 4px;border-radius:7px;font-size:.73rem;text-align:left}.work-file-list>button:hover,.work-file-list>button.active{background:var(--md-sys-color-secondary-container)}.work-file-list>button span,.work-file-editor strong,.work-file-editor small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.work-file-filter{width:100%;box-sizing:border-box;margin-bottom:7px;padding:7px 9px;border:1px solid var(--md-sys-color-outline-variant);border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:.7rem}.work-file-breadcrumbs{display:flex;align-items:center;gap:2px;overflow:auto;margin:-3px 0 8px}.work-file-breadcrumbs button{flex:0 0 auto;padding:3px;color:var(--md-sys-color-outline);font-size:.67rem}.work-file-editor{display:flex;flex-direction:column;gap:9px;min-height:310px;padding:13px;border:1px solid var(--md-sys-color-outline-variant);border-radius:13px;background:var(--md-sys-color-surface-container)}.work-file-editor>header,.work-file-editor>footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.work-file-editor>header>div{min-width:0;display:flex;flex-direction:column;gap:2px}.work-file-editor small,.work-file-editor>footer span{color:var(--md-sys-color-outline);font-size:.65rem}.work-file-editor textarea{flex:1;min-height:220px;resize:vertical;padding:10px;border:1px solid var(--md-sys-color-outline-variant);border-radius:9px;outline:0;background:#111;color:#d8eadf;caret-color:#67d391;font:12px/1.5 monospace;tab-size:2}.work-file-editor button{display:flex;align-items:center;gap:5px;min-height:29px;padding:0 8px;border:1px solid var(--md-sys-color-outline-variant);border-radius:8px;background:transparent;color:inherit;cursor:pointer}.work-file-editor button:disabled{opacity:.4;cursor:not-allowed}`;
 
 const WORK_REVIEW_CSS = `.work-review-list>button{width:100%;display:flex;align-items:center;gap:8px;padding:7px 4px;border:0;border-radius:7px;background:transparent;color:inherit;cursor:pointer;text-align:left}.work-review-list>button:hover,.work-review-list>button.active{background:var(--md-sys-color-secondary-container)}.work-review-list>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.work-review-diff{margin-top:10px}.work-review-diff header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:.7rem}.work-review-diff pre{max-height:430px;overflow:auto;margin:0;padding:10px;border-radius:9px;background:#111;color:#d8eadf;white-space:pre-wrap;font:11px/1.5 monospace}`;
 const WORK_SEARCH_CSS = `.work-project-search{display:flex;flex-direction:column;gap:10px}.work-project-search form{display:flex;gap:6px}.work-project-search input{min-width:0;flex:1;padding:9px 10px;border:1px solid var(--md-sys-color-outline-variant);border-radius:9px;background:var(--md-sys-color-surface-container);color:inherit;font:inherit}.work-project-search form button{display:grid;place-items:center;width:38px;border:0;border-radius:9px;background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);cursor:pointer}.work-project-search form button:disabled{opacity:.45;cursor:not-allowed}.work-project-search>small{color:var(--md-sys-color-outline);font-size:.67rem;line-height:1.4}.work-search-index-status{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:var(--md-sys-color-surface-container);color:var(--md-sys-color-outline);font-size:.65rem}.work-search-index-status button{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--md-sys-color-primary);cursor:pointer;font:inherit}.work-search-index-status button:disabled{opacity:.45}.work-search-result{display:flex;flex-direction:column;gap:5px;width:100%;padding:10px;border:1px solid var(--md-sys-color-outline-variant);border-radius:10px;background:var(--md-sys-color-surface-container);color:inherit;cursor:pointer;text-align:left}.work-search-result:hover{background:var(--md-sys-color-surface-container-high)}.work-search-result header{display:flex;align-items:center;justify-content:space-between;gap:8px}.work-search-result strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.73rem}.work-search-result code{flex:0 0 auto;color:var(--md-sys-color-primary);font-size:.63rem}.work-search-result span{display:-webkit-box;overflow:hidden;color:var(--md-sys-color-outline);font-size:.68rem;line-height:1.4;-webkit-line-clamp:3;-webkit-box-orient:vertical}`;
 
-export default function WorkToolsPanel({ project, approvalMode = "auto", requestedFile = null, onClose }) {
+export default function WorkToolsPanel({ project, setProjects = null, approvalMode = "auto", requestedFile = null, onClose }) {
   const [tab, setTab] = useState("environment");
   const [environment, setEnvironment] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,10 @@ export default function WorkToolsPanel({ project, approvalMode = "auto", request
   const rootStorageKey = `luke_work_root:${project?.id || "none"}`;
   const [selectedRoot, setSelectedRoot] = useState(() => localStorage.getItem(rootStorageKey) || project?.sourceFolders?.[0] || "");
   const fileDirty = Boolean(openFile && fileDraft !== openFile.content);
+  // Nothing in this panel works without a folder this session may read, and a
+  // dead panel says nothing about why. This asks the server what is missing.
+  const [readiness, setReadiness] = useState(null);
+  const [granting, setGranting] = useState(false);
   const scopedBody = useCallback((extra = {}, root = selectedRoot) => ({ ...extra, root, projectId: project?.id, grantId: project?.folderGrants?.[root] }), [project, selectedRoot]);
   const visibleDirectoryEntries = useMemo(() => {
     const query = fileFilter.trim().toLocaleLowerCase();
@@ -55,6 +60,43 @@ export default function WorkToolsPanel({ project, approvalMode = "auto", request
   }, [project, selectedRoot]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const checkReadiness = useCallback(async () => {
+    try {
+      const response = await fetch("/api/work/readiness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project?.id,
+          sourceFolders: project?.sourceFolders || [],
+          folderGrants: project?.folderGrants || {},
+          activeRoot: selectedRoot,
+        }),
+      });
+      const data = await response.json();
+      setReadiness(response.ok ? data.result : null);
+    } catch {
+      setReadiness(null);
+    }
+  }, [project?.id, project?.sourceFolders, project?.folderGrants, selectedRoot]);
+
+  useEffect(() => { void checkReadiness(); }, [checkReadiness]);
+
+  const grantFolders = useCallback(async () => {
+    setGranting(true);
+    try {
+      const { grants, failed } = await restoreProjectGrants(project);
+      if (typeof setProjects === "function") {
+        setProjects((current) => (current || []).map((entry) => (entry.id === project?.id ? withRestoredGrants(entry, grants) : entry)));
+      }
+      setError(failed?.length ? `Could not re-grant: ${failed.map((entry) => entry.root).join(", ")}` : "");
+      await checkReadiness();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : String(requestError));
+    } finally {
+      setGranting(false);
+    }
+  }, [project, setProjects, checkReadiness]);
   useEffect(() => {
     const roots = project?.sourceFolders || [];
     const stored = localStorage.getItem(rootStorageKey);
@@ -238,6 +280,16 @@ export default function WorkToolsPanel({ project, approvalMode = "auto", request
       </nav>
       {environment?.sourceFolders?.length > 1 && <label className="work-root-selector"><span>Source</span><select value={selectedRoot} onChange={(event) => { const nextRoot = event.target.value; if (fileDirty && !window.confirm("Discard the unsaved Work file changes before switching source folders?")) return; setSelectedRoot(nextRoot); setOpenFile(null); setFileDraft(""); }} aria-label="Active Work source folder">{environment.sourceFolders.map((folder) => <option value={folder} key={folder}>{folder}</option>)}</select></label>}
       <div className="work-tools-content">
+        {readiness?.hint && !error && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", marginBottom: "8px", border: "1px solid rgba(255,190,90,.45)", background: "rgba(255,190,90,.1)", borderRadius: "8px", fontSize: ".72rem", lineHeight: 1.45 }}>
+            <span style={{ flex: 1 }}>{readiness.hint}</span>
+            {readiness.missingGrantCount > 0 && (
+              <button type="button" onClick={grantFolders} disabled={granting} style={{ flex: "0 0 auto", padding: "5px 10px", border: "1px solid rgba(103,211,145,.4)", borderRadius: "7px", background: "rgba(103,211,145,.12)", color: "#67d391", cursor: "pointer", fontSize: ".7rem" }}>
+                {granting ? "Granting…" : "Grant access"}
+              </button>
+            )}
+          </div>
+        )}
         {error && <div className="work-tools-error">{error}</div>}
         {!error && !project && <div className="work-tools-empty">Select a Work project to inspect its environment.</div>}
         {!error && project && !project.sourceFolders?.length && <div className="work-tools-empty">Add a source folder in Edit project to enable Files and Review.</div>}

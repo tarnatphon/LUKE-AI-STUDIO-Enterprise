@@ -10,7 +10,76 @@ const execFileAsync = promisify(execFile);
 
 // Palette of commands the typed work terminal may run. Every entry is parsed
 // in-process (no shell) and strictly read-only: file reads and diffs only.
-const READ_ONLY_COMMANDS = ["cat", "head", "tail"];
+const READ_ONLY_COMMANDS = ["cat", "head", "tail", "git", "ls", "dir", "pwd"];
+
+// The words the Work Terminal itself offers on its buttons. They are turned
+// into fixed argv arrays here, so what the user types selects a command and
+// never becomes one.
+const GIT_SUBCOMMANDS = new Set(["status", "diff", "log", "branch"]);
+const MAX_LOG_LINES = 200;
+
+function gitArgs(tokens) {
+  const sub = tokens[0];
+  if (!GIT_SUBCOMMANDS.has(sub)) {
+    throw reject(
+      "Only git status, git diff, git log and git branch can run here, and only to read.",
+      400,
+    );
+  }
+  if (sub === "status") {
+    const short = tokens.some((token) => token === "--short" || token === "-s" || token === "-sb");
+    const branch = tokens.some((token) => token === "-b" || token === "-sb");
+    return ["status", ...(short ? ["--short"] : []), ...(branch && !short ? ["-b"] : [])];
+  }
+  if (sub === "diff") {
+    const stat = tokens.includes("--stat");
+    const cached = tokens.includes("--cached") || tokens.includes("--staged");
+    return ["diff", ...(stat ? ["--stat"] : []), ...(cached ? ["--cached"] : [])];
+  }
+  if (sub === "log") {
+    let lines = 20;
+    let oneline = false;
+    let graph = false;
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token === "--oneline") oneline = true;
+      else if (token === "--graph") graph = true;
+      else if (token === "-n" && i + 1 < tokens.length) lines = parseInt(tokens[i + 1], 10) || lines;
+      else if (/^-\d+$/.test(token)) lines = parseInt(token.slice(1), 10) || lines;
+    }
+    lines = Math.min(Math.max(lines, 1), MAX_LOG_LINES);
+    return ["log", ...(oneline ? ["--oneline"] : []), ...(graph ? ["--graph"] : []), "-n", String(lines)];
+  }
+  return [sub, ...(tokens.includes("-a") || tokens.includes("--all") ? ["-a"] : [])];
+}
+
+async function listDirectory(root, { recursive = false } = {}) {
+  const canonicalRoot = await fs.realpath(root).catch(() => path.resolve(root));
+  if (!recursive) {
+    const dirents = await fs.readdir(canonicalRoot, { withFileTypes: true }).catch(() => []);
+    const lines = dirents
+      .filter((entry) => entry.name !== ".git")
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name));
+    return { output: lines.join("\n") || "(empty)" };
+  }
+  const entries = [];
+  const queue = [""];
+  while (queue.length && entries.length < 200) {
+    const directory = queue.shift();
+    const dirents = await fs.readdir(path.join(canonicalRoot, directory), { withFileTypes: true }).catch(() => []);
+    for (const dirent of dirents) {
+      if (entries.length >= 200) break;
+      const relative = directory ? `${directory}/${dirent.name}` : dirent.name;
+      if (dirent.isDirectory()) {
+        if (![".git", "node_modules", "dist", "build", ".cache"].includes(dirent.name)) queue.push(relative);
+        continue;
+      }
+      if (dirent.isFile()) entries.push(relative);
+    }
+  }
+  return { output: entries.sort().join("\n") || "(empty)" };
+}
 
 // The only command ids the Work terminal palette can ask for. They are fixed
 // argv arrays executed without a shell, so the model can never inject text.
@@ -79,9 +148,42 @@ async function runTypedWorkCommand({ root, command }) {
   }
 
   const [file, ...args] = tokens;
+  const canonicalRoot = await fs.realpath(root).catch(() => path.resolve(root));
+
+  // "list files" is how the Work Terminal labels the button.
+  if (file === "list" && args[0] === "files") {
+    return listDirectory(root, { recursive: false });
+  }
 
   if (!READ_ONLY_COMMANDS.includes(file)) {
     throw reject(`Unsupported command: ${file}. Only parsed read-only commands (${READ_ONLY_COMMANDS.join(", ")}) are allowed.`, 400);
+  }
+
+  if (file === "pwd") {
+    return { output: canonicalRoot };
+  }
+
+  if (file === "ls" || file === "dir") {
+    const recursive = args.some((token) => token === "-R" || token === "--recursive" || token === "-r");
+    return listDirectory(root, { recursive });
+  }
+
+  if (file === "git") {
+    if (args.length === 0) throw reject("Tell git what to do: status, diff, log or branch.", 400);
+    const gitCommand = gitArgs(args);
+    try {
+      const { stdout } = await execFileAsync("git", gitCommand, {
+        cwd: canonicalRoot,
+        shell: false,
+        timeout: 20000,
+        maxBuffer: 1024 * 1024,
+      });
+      return { output: stdout || "(no output)" };
+    } catch (err) {
+      if (err.statusCode) throw err;
+      const detail = String(err.stderr || err.message || "").trim().slice(0, 200);
+      return { output: detail ? `git ${args[0]} could not run here: ${detail}` : `git ${args[0]} produced no output.` };
+    }
   }
 
   if (file === "cat") {
@@ -122,7 +224,10 @@ async function runTypedWorkCommand({ root, command }) {
     const targetFile = await resolveSafePath(root, targetPath);
     try {
       const content = await fs.readFile(targetFile, "utf8");
-      const lines = content.split("\n");
+      // A file that ends with a newline has no last line after it, so the
+      // trailing empty entry is dropped: tail -n 1 has to show "}" and not a
+      // blank line.
+      const lines = content.replace(/\n$/, "").split("\n");
       let selected;
       if (file === "head") {
         selected = lines.slice(0, lineCount);

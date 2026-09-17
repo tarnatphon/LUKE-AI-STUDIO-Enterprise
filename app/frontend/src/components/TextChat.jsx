@@ -3353,7 +3353,7 @@ function TextChat({
         </div>
         {assistantMode === "work" && showBottomTerminal && <WorkTerminalDock project={activeProject} setProjects={setProjects} onClose={() => setShowBottomTerminal(false)} />}
       </section>
-      {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
+      {assistantMode === "work" && showWorkTools && <WorkToolsPanel project={activeProject} setProjects={setProjects} approvalMode={approvalMode} requestedFile={requestedWorkFile} onClose={() => setShowWorkTools(false)} />}
       {assistantMode === "work" && showWorkGithub && <WorkGithubPanel project={activeProject} onClose={() => setShowWorkGithub(false)} />}
       {assistantMode === "work" && showWorkAgent && <WorkAgentPanel tasks={workTasks} review={workReview} onRevert={revertWorkRun} onClose={() => setShowWorkAgent(false)} busy={workAgentBusy} />}
       {assistantMode === "work" && showProjectMemory && <ProjectMemoryPanel project={activeProject} messages={messages} onRestore={(checkpoint) => { setMessages(checkpoint.messages); if (activeConversationId) saveConversationState(activeConversationId, checkpoint.messages, selectedModel); }} onClose={() => setShowProjectMemory(false)} />}

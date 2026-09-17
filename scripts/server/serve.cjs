@@ -1007,6 +1007,7 @@ const {
   grantChatFolder,
   revokeWorkFolderGrant,
 } = require("./work-folder-grants.cjs");
+const { canonicaliseRoot } = require("./work-path-guard.cjs");
 const { buildProjectIndex, invalidateProjectIndex, searchProjectFiles } = require("./work-project-search.cjs");
 // Work agent loop: verify (A), patch (B), understand (C) and undo (D).
 const { detectProjectCommands, runProjectCheck } = require("./work-command-runner.cjs");
@@ -21919,6 +21920,60 @@ const server = http.createServer(async (req, res) => {
       if (error && error.requiresApproval) {
         return json(res, 403, { ok: false, requiresApproval: true, preview: error.preview, error: error.message });
       }
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/work/readiness — why Work can or cannot do something right now
+  if (req.url === "/api/work/readiness" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const projectId = String(body.projectId || "").trim();
+      const roots = Array.isArray(body.sourceFolders) ? body.sourceFolders.filter((entry) => typeof entry === "string" && entry).slice(0, 20) : [];
+      const folders = [];
+      for (const rootValue of roots) {
+        let canonical = null;
+        let exists = false;
+        try {
+          canonical = await canonicaliseRoot(rootValue);
+          exists = true;
+        } catch {
+          canonical = null;
+        }
+        let granted = false;
+        try {
+          assertWorkFolderGrant({ projectId, root: rootValue, grantId: body.folderGrants?.[rootValue] });
+          granted = true;
+        } catch {}
+        folders.push({ root: canonical || rootValue, exists, granted });
+      }
+      const ready = folders.filter((folder) => folder.exists && folder.granted);
+      return json(res, 200, {
+        ok: true,
+        result: {
+          projectId: projectId || null,
+          folders,
+          readyCount: ready.length,
+          missingGrantCount: folders.filter((folder) => folder.exists && !folder.granted).length,
+          missingFolderCount: folders.filter((folder) => !folder.exists).length,
+          activeRoot: body.activeRoot && ready.some((folder) => folder.root === body.activeRoot) ? body.activeRoot : (ready[0]?.root || null),
+          tools: {
+            terminal: ready.length > 0,
+            tools: ready.length > 0,
+            repositoryIndex: ready.length > 0,
+            checks: ready.length > 0,
+          },
+          hint:
+            folders.length === 0
+              ? "This Work project has no source folder yet, so every Work panel is empty. Add the folder you want Work to use in Edit project."
+              : ready.length === 0 && folders.some((folder) => folder.exists)
+                ? "The folder is there but this session has not been granted access to it. Grant it once and every panel starts working."
+                : ready.length === 0
+                  ? "That folder could not be opened on this computer. Re-attach it in Edit project."
+                  : null,
+        },
+      });
+    } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
