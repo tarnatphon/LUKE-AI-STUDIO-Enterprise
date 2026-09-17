@@ -1014,6 +1014,7 @@ const { applyFilePatch } = require("./work-patch-editor.cjs");
 const { repoMap, outlineFile, findSymbol, searchCode, invalidateRepoIndex } = require("./work-repo-index.cjs");
 const { beginRun, snapshotFile, reviewRun, revertRun, listRuns, gitSummary } = require("./work-run-guard.cjs");
 const workGithub = require("./work-github.cjs");
+const chatHistory = require("./chat-history-archive.cjs");
 // Speed: settings chosen from this machine, speculative decoding, and a model
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
@@ -21462,6 +21463,69 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+
+  // POST /api/chat/history/append — archive one finished exchange
+  if (req.url === "/api/chat/history/append" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const result = await chatHistory.appendExchange({
+        conversationId: body.conversationId,
+        userText: body.userText,
+        assistantText: body.assistantText,
+        model: body.model,
+        meta: body.meta,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/chat/history/search — read back only the slices that match
+  if (req.url === "/api/chat/history/search" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const result = await chatHistory.searchHistory({
+        conversationId: body.conversationId,
+        query: body.query,
+        maxSlices: body.maxSlices,
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/chat/history/reference — decide, and fetch in one round trip
+  if (req.url === "/api/chat/history/reference" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const reference = chatHistory.pastReference(body.message);
+      if (!reference.isReference || !body.conversationId) {
+        return json(res, 200, { ok: true, result: { ...reference, slices: [] } });
+      }
+      const found = await chatHistory.searchHistory({
+        conversationId: body.conversationId,
+        query: body.message,
+        maxSlices: body.maxSlices,
+        includeRecent: true,
+      });
+      return json(res, 200, { ok: true, result: { ...reference, turns: found.turns, slices: found.slices } });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // POST /api/chat/history/status — how much of this chat is archived
+  if (req.url === "/api/chat/history/status" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const result = await chatHistory.status(body.conversationId);
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   // POST /api/work/search (bounded, project-grant-confined lexical RAG)
   if (req.url === "/api/work/search" && req.method === "POST") {

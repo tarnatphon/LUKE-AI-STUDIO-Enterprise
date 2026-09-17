@@ -636,6 +636,42 @@ export async function listLlmConversations() {
   return data.conversations || [];
 }
 
+export async function appendChatHistory({ conversationId, userText, assistantText, model }) {
+  const res = await fetch("/api/chat/history/append", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, userText, assistantText, model }),
+  });
+  return await readJsonResponse(res, "Could not archive this turn.");
+}
+
+export async function searchChatHistory({ conversationId, query, maxSlices }) {
+  const res = await fetch("/api/chat/history/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, query, maxSlices }),
+  });
+  return await readJsonResponse(res, "Could not search the chat archive.");
+}
+
+export async function readChatHistoryReference({ conversationId, message, maxSlices }) {
+  const res = await fetch("/api/chat/history/reference", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, message, maxSlices }),
+  });
+  return await readJsonResponse(res, "Could not read the chat archive.");
+}
+
+export async function getChatHistoryStatus({ conversationId }) {
+  const res = await fetch("/api/chat/history/status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId }),
+  });
+  return await readJsonResponse(res, "Could not read the archive status.");
+}
+
 export async function archiveChatMarkdown({ id, title, markdown }) {
   const res = await fetch("/api/llm/archive-markdown", {
     method: "POST",

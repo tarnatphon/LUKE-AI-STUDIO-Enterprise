@@ -21,6 +21,8 @@ import {
   listLlmModels,
   streamChatWithLlm,
   archiveChatMarkdown,
+  appendChatHistory,
+  readChatHistoryReference,
   startLlm,
   startSpeech,
   stopLlm,
@@ -95,6 +97,10 @@ const processMessageContent = (rawText, apiReasoning = "", enableThinking = true
 };
 
 const MAX_WORK_AGENT_ROUNDS = 6;
+// Once a turn is archived, the model keeps this many messages (a few
+// exchanges) so it can still follow "do that again" without the whole
+// transcript. Everything older is read back from the archive on demand.
+const ARCHIVE_LIVE_MESSAGES = 8;
 const MAX_WORK_TOOL_RESULT_CHARS = 24000;
 const MAX_ATTACHED_TEXT_CHARS = 2_000_000;
 const MAX_ATTACHED_AUDIO_BYTES = 100 * 1024 * 1024;
@@ -573,6 +579,38 @@ function TextChat({
       lines.push(`## ${role}`, "", text, "");
     }
     return lines.join("\n");
+  };
+
+  /**
+   * Archive the turn that just finished, then keep only the last few turns in
+   * the model's context. The conversation the user sees is never shortened.
+   */
+  const archiveTurnToHistory = async (convId, allMessages, modelName) => {
+    const rows = allMessages || [];
+    const lastUser = [...rows].reverse().find((message) => message.role === "user");
+    const lastAssistant = [...rows].reverse().find((message) => message.role === "assistant" && !message.error);
+    if (convId && (lastUser?.content || lastAssistant?.content)) {
+      try {
+        await appendChatHistory({
+          conversationId: convId,
+          userText: typeof lastUser?.content === "string" ? lastUser.content : "",
+          assistantText: typeof lastAssistant?.content === "string" ? lastAssistant.content : "",
+          model: modelName,
+        });
+      } catch (err) {
+        console.warn("History archive skipped:", err);
+      }
+    }
+    if (assistantMode !== "work") {
+      freshContextRef.current = true;
+    }
+    setMemoryStatus((prev) => ({
+      ...(prev || {}),
+      compressed: true,
+      archivedCount: rows.length,
+      activeMessageCount: Math.min(ARCHIVE_LIVE_MESSAGES, rows.length),
+      conversationId: convId,
+    }));
   };
 
   const archiveFinishedChat = async (convId, allMessages, modelName) => {
@@ -2184,6 +2222,26 @@ function TextChat({
     // therefore belongs at the END of the newest user message, so the long
     // prefix (system prompt + older messages) stays cacheable.
     const checkCommands = assistantMode === "work" ? await loadCheckPlan() : [];
+    // The archive is the conversation's memory on disk. It is read only when
+    // the message points backwards, so an ordinary question costs nothing.
+    let archivedContext = "";
+    if (activeConversationId && assistantMode !== "work") {
+      try {
+        const reference = await readChatHistoryReference({
+          conversationId: activeConversationId,
+          message: requestText,
+          maxSlices: 4,
+        });
+        if (reference?.result?.isReference && reference.result.slices?.length) {
+          archivedContext = [
+            "Earlier in this conversation, read back from the archive because you asked about it:",
+            ...reference.result.slices.map((slice) => `- Turn ${slice.turn}: ${slice.snippet}`),
+          ].join("\n");
+        }
+      } catch (err) {
+        console.warn("History lookup skipped:", err);
+      }
+    }
     const volatileContext = [
       visionInstruction,
       assistantMode === "work"
@@ -2200,6 +2258,7 @@ function TextChat({
       assistantMode === "work" && activeProject?.id && getProjectMemory(activeProject.id).length
         ? `Project memory:` + "\n" + getProjectMemory(activeProject.id).map((item) => `- [${item.type}${item.pinned ? ", pinned" : ""}] ${item.text}`).join("\n")
         : "",
+      archivedContext,
     ].filter(Boolean).join("\n\n");
     const requestCombinedText = [
       requestText,
@@ -2254,7 +2313,9 @@ function TextChat({
       ragSources: retrievedProjectSources,
     };
     const historyMessages = conversationBase;
-    const modelHistory = (freshContextRef.current && assistantMode !== "work") ? [] : historyMessages;
+    // Compaction decides what fits; the archive means the model no longer has
+    // to start from nothing when a turn has been archived.
+    const modelHistory = historyMessages;
     const nextMessages = [...historyMessages, userMessage];
     const requestConversationMessages = [...modelHistory, { role: "user", content: requestUserMessageContent }];
     if (freshContextRef.current && assistantMode !== "work") freshContextRef.current = false;
@@ -2372,8 +2433,9 @@ function TextChat({
       );
       let contextMessages = managedContext.messages;
       if (assistantMode !== "work" && freshContextRef.current) {
-        const lastUser = requestConversationMessages.filter((message) => message.role === "user").slice(-1);
-        contextMessages = lastUser;
+        // The archive holds the whole conversation, so the model only needs
+        // the last few exchanges to keep the thread.
+        contextMessages = managedContext.messages.slice(-ARCHIVE_LIVE_MESSAGES);
         freshContextRef.current = false;
       }
       const requestMessages = sanitizeMessagesForTemplate([
@@ -2549,7 +2611,7 @@ function TextChat({
       if (assistantMode !== "work") {
         freshContextRef.current = true;
       }
-      archiveFinishedChat(convId, finalMessages, selectedModel);
+      archiveTurnToHistory(convId, finalMessages, selectedModel);
       const chatFolderTools = assistantMode !== "work" && chatFolders.length > 0;
       const workActions = assistantMode === "work" || chatFolderTools ? parseWorkActions(processed.content) : [];
       if (workActions.length > 0 && agentRound < MAX_WORK_AGENT_ROUNDS) {

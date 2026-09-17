@@ -75,3 +75,4 @@ app/runtime-state/**/*.local.json
 # A GitHub token saved from Work: it belongs to this machine only, and must
 # never travel to the repository — not even by accident.
 app/runtime-state/github-auth.json
+app/runtime-state/text-chat/history/
