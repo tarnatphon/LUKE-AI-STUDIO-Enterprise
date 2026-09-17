@@ -85,11 +85,18 @@ export default function WorkToolsPanel({ project, setProjects = null, approvalMo
   const grantFolders = useCallback(async () => {
     setGranting(true);
     try {
-      const { grants, failed } = await restoreProjectGrants(project);
+      const { grants, failed } = await restoreProjectGrants(project, { force: true });
       if (typeof setProjects === "function") {
         setProjects((current) => (current || []).map((entry) => (entry.id === project?.id ? withRestoredGrants(entry, grants) : entry)));
       }
-      setError(failed?.length ? `Could not re-grant: ${failed.map((entry) => entry.root).join(", ")}` : "");
+      const count = Object.keys(grants || {}).length;
+      setError(
+        count > 0
+          ? ""
+          : failed?.length
+            ? `Could not re-grant: ${failed.map((entry) => `${entry.root} (${entry.error})`).join(", ")}`
+            : "There is no source folder to grant. Open Edit project and add the folder you want Work to use.",
+      );
       await checkReadiness();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));

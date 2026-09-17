@@ -24,6 +24,7 @@ const appFile = path.join(root, "app", "frontend", "src", "App.jsx");
 const dockFile = path.join(root, "app", "frontend", "src", "components", "WorkTerminalDock.jsx");
 const chatFile = path.join(root, "app", "frontend", "src", "components", "TextChat.jsx");
 const libFile = path.join(root, "app", "frontend", "src", "lib", "work-grants.mjs");
+const toolsFile = path.join(root, "app", "frontend", "src", "components", "WorkToolsPanel.jsx");
 
 let passed = 0;
 let failed = 0;
@@ -183,6 +184,7 @@ async function main() {
   const dock = fs.readFileSync(dockFile, "utf8");
   const chat = fs.readFileSync(chatFile, "utf8");
   const lib = fs.readFileSync(libFile, "utf8");
+  const toolsPanel = fs.readFileSync(toolsFile, "utf8");
 
   check("a shared helper knows which folders lost their grant", /export function missingGrants/.test(lib));
   check("the helper calls the restore endpoint", /\/api\/work\/folder\/restore/.test(lib));
@@ -193,7 +195,33 @@ async function main() {
   check("TextChat hands the project list to the terminal", /setProjects=\{setProjects\}/.test(chat));
   check("the terminal notices a permission refusal", /setNeedsGrant\(\/permission\/i\.test\(message\)\)/.test(dock));
   check("the terminal offers to grant access again", /grantAccess/.test(dock) && /Grant access to this folder again/.test(dock));
-  check("the terminal also restores through the same helper", /restoreProjectGrants\(project\)/.test(dock));
+  check("the terminal also restores through the same helper", /restoreProjectGrants\(project, \{ force: true \}\)/.test(dock));
+
+  section("6. A grant counts only for the session that received it");
+  // The whole bug was trusting a grant id the current server had never issued,
+  // so the helper is exercised for real rather than only grepped.
+  const grants = await import(`file://${libFile}`);
+  const { missingGrants, allProjectFolders, withRestoredGrants, stripGrants } = grants;
+  const remembered = { sourceFolders: ["/a"], folderGrants: { "/a": "dead-id" } };
+  check("a project read back from storage still needs its folder granted",
+    missingGrants(remembered).length === 1);
+  const granted = withRestoredGrants(remembered, { "/a": "fresh-id" });
+  check("a folder granted this session is not granted over and over",
+    missingGrants(granted).length === 0);
+  check("the restored id is kept on the project", granted.folderGrants["/a"] === "fresh-id");
+  const stripped = stripGrants(granted);
+  check("nothing about a grant is written to storage",
+    Object.keys(stripped.folderGrants || {}).length === 0
+      && Object.keys(stripped.sessionGrants || {}).length === 0);
+  check("a project read back from storage needs its folder granted again",
+    missingGrants(stripped).length === 1);
+  check("a button press re-grants even a folder this session already had",
+    allProjectFolders(granted).length === 1);
+  check("the Work tools button asks for the forced re-grant",
+    /restoreProjectGrants\(project, \{ force: true \}\)/.test(toolsPanel));
+  check("a project with no folders asks for nothing",
+    missingGrants({ sourceFolders: [] }).length === 0
+      && missingGrants(undefined).length === 0);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

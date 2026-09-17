@@ -4,7 +4,7 @@ import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
 import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
 import "./App.css";
-import { missingGrants, restoreProjectGrants, withRestoredGrants } from "./lib/work-grants.mjs";
+import { missingGrants, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
 
 const workspaceLoaders = {
   generator: () => import("./components/Generator"),
@@ -370,7 +370,9 @@ function App() {
   const [assistantMode, setAssistantMode] = useState(() => localStorage.getItem("luke_assistant_mode") === "work" ? "work" : "chat");
 
   useEffect(() => {
-    localStorage.setItem("chat_projects", JSON.stringify(chatProjects));
+    // Grant ids are session state: writing them down is what made Work believe
+    // it still had permission after a restart.
+    localStorage.setItem("chat_projects", JSON.stringify(chatProjects.map(stripGrants)));
   }, [chatProjects]);
 
   // Folder permissions live in the server's memory, so they are gone after a

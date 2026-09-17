@@ -75,10 +75,10 @@ export default function ChatProjects({
     setProjects((current) => {
       if (!editingProject.isNew) {
         return current.map((project) => project.id === editingProject.id
-          ? { ...project, name, sourceFolders: draftFolders, folderGrants: draftFolderGrants, updatedAt: now }
+          ? { ...project, name, sourceFolders: draftFolders, folderGrants: {}, updatedAt: now }
           : project);
       }
-      return [{ id: savedId, name, sourceFolders: draftFolders, folderGrants: draftFolderGrants, pinned: false, createdAt: now, updatedAt: now }, ...current];
+      return [{ id: savedId, name, sourceFolders: draftFolders, folderGrants: {}, pinned: false, createdAt: now, updatedAt: now }, ...current];
     });
     setActiveProjectId(savedId);
     setActiveTab("chat");

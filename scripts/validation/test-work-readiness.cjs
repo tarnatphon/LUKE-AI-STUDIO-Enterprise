@@ -114,6 +114,22 @@ async function main() {
     check("the tools are offered", ready_.data.result.tools.terminal === true && ready_.data.result.tools.checks === true);
     check("an active folder is chosen", ready_.data.result.activeRoot === fs.realpathSync(sandbox), String(ready_.data.result.activeRoot));
 
+    console.log("\n6. A permission left over from a previous session can be recovered");
+    // Exactly the loop a user hit: the project still carries a grant id from
+    // before a restart, every call is refused, and re-granting has to work.
+    const stale = "stale-grant-id-from-another-session";
+    const refused = await call("/api/work/terminal", { root: sandbox, projectId: "p1", grantId: stale, command: "list files" });
+    check("a dead grant is refused", refused.status === 403 && /permission/i.test(String(refused.data?.error)), JSON.stringify(refused.data).slice(0, 160));
+    const asReadiness = await call("/api/work/readiness", { projectId: "p1", sourceFolders: [sandbox], folderGrants: { [sandbox]: stale } });
+    check("readiness sees it as not granted", asReadiness.data.result.missingGrantCount === 1, JSON.stringify(asReadiness.data.result).slice(0, 200));
+    check("and says so", /grant/i.test(String(asReadiness.data.result.hint)), String(asReadiness.data.result.hint));
+
+    const recovered = await call("/api/work/folder/restore", { projectId: "p1", roots: [sandbox] });
+    const freshGrant = recovered.data?.grants?.[sandbox];
+    check("re-granting works even though an old id was stored", Boolean(freshGrant), JSON.stringify(recovered.data).slice(0, 160));
+    const afterRecovery = await call("/api/work/terminal", { root: sandbox, projectId: "p1", grantId: freshGrant, command: "list files" });
+    check("and the command works again", afterRecovery.status === 200 && afterRecovery.data.ok === true, JSON.stringify(afterRecovery.data).slice(0, 160));
+
     console.log("\n5. It never hands out a grant id");
     check("the answer carries no secrets", !/grantId|base64/i.test(JSON.stringify(ready_.data.result.folders)), JSON.stringify(ready_.data.result.folders).slice(0, 160));
   } finally {

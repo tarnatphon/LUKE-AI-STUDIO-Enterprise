@@ -109,12 +109,22 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose 
     if (!project || !root) return;
     setGranting(true);
     try {
-      const { grants } = await restoreProjectGrants(project);
-      if (typeof setProjects === "function") {
+      const { grants, failed } = await restoreProjectGrants(project, { force: true });
+      const granted = Object.keys(grants || {}).length;
+      if (granted > 0 && typeof setProjects === "function") {
         setProjects((current) => (current || []).map((entry) => (entry.id === project.id ? withRestoredGrants(entry, grants) : entry)));
       }
-      setNeedsGrant(false);
-      setOutput((current) => `${current}\nAccess granted for this session. Type your command again.`);
+      if (granted > 0) {
+        setNeedsGrant(false);
+        setOutput((current) => `${current}\nAccess granted for this session. Type your command again.`);
+      } else {
+        // Saying "granted" when nothing was granted is how the user ended up
+        // stuck: the folder looks fixed until the next command fails again.
+        const reason = failed?.length
+          ? failed.map((entry) => `${entry.root}: ${entry.error}`).join("; ")
+          : "This project has no source folder to grant. Open Edit project and add the folder you want Work to use.";
+        setOutput((current) => `${current}\nNothing could be granted — ${reason}`);
+      }
     } catch (error) {
       setOutput((current) => `${current}\n${error instanceof Error ? error.message : String(error)}`);
     } finally {
