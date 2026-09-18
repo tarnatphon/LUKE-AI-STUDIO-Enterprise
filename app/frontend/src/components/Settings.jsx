@@ -5,7 +5,7 @@ import {
   ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
   Monitor, HardDrive, MemoryStick, Thermometer, Hash, Layers,
   ChevronRight, Box, Wand2, Lightbulb, RotateCcw, Check, Palette, Volume2,
-  DownloadCloud, RefreshCw
+  DownloadCloud, RefreshCw, Cloud
 } from "lucide-react";
 import {
   stopServer,
@@ -310,8 +310,103 @@ function Settings({
       text: localStorage.getItem("settings_section_text") === "true",
       speech: localStorage.getItem("settings_section_speech") === "true",
       tts: localStorage.getItem("settings_section_tts") === "true",
+      cloud: localStorage.getItem("settings_section_cloud") === "true",
     };
   });
+
+  // ─── Cloud brain for Work ───
+  // Work can borrow a stronger model from Arena's gateway instead of grinding
+  // along on a 7B one. The key stays on this machine: the server writes it
+  // under app/runtime-state and never hands it back, so this field is
+  // write-only — that is why it shows a hint and not the key.
+  const [remoteProvider, setRemoteProvider] = useState({
+    configured: false,
+    model: "",
+    keyHint: "",
+  });
+  const [remoteKey, setRemoteKey] = useState("");
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteTest, setRemoteTest] = useState(null);
+
+  const refreshRemoteProvider = useCallback(async () => {
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+
+      const data = await response.json();
+
+      if (data?.ok) setRemoteProvider(data.provider || {});
+    } catch {
+      // Offline, or the server is not up: the panel simply stays unconfigured.
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshRemoteProvider();
+  }, [refreshRemoteProvider]);
+
+  const sendRemoteKey = async (action) => {
+    setRemoteBusy(true);
+    setRemoteTest(null);
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/key", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, key: remoteKey }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "That key could not be saved.");
+      }
+
+      setRemoteProvider(data.provider || {});
+      setRemoteKey("");
+
+      if (action === "clear") {
+        showAlert({
+          title: "Cloud brain disconnected",
+          message: "Work is back on the local model. The key is deleted from this machine.",
+        });
+      }
+    } catch (error) {
+      showAlert({
+        title: "Cloud brain",
+        message: error.message || String(error),
+      });
+    } finally {
+      setRemoteBusy(false);
+    }
+  };
+
+  const testRemoteProvider = async () => {
+    setRemoteBusy(true);
+    setRemoteTest(null);
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+
+      const data = await response.json();
+
+      setRemoteTest({
+        ok: Boolean(data?.ok),
+        message: data?.test?.message || data?.error || "No answer came back.",
+      });
+    } catch (error) {
+      setRemoteTest({ ok: false, message: error.message || String(error) });
+    } finally {
+      setRemoteBusy(false);
+    }
+  };
 
   const toggleSection = (section) => {
     setExpandedSections((prev) => {
@@ -1643,6 +1738,104 @@ function Settings({
       {renderTextSettings()}
 
       {/* Speech Settings Section */}
+      <SectionHeader
+        icon={Cloud}
+        title="Cloud brain (Work)"
+        count={1}
+        color="#38bdf8"
+        isExpanded={expandedSections.cloud}
+        onToggle={() => toggleSection("cloud")}
+      />
+
+      {expandedSections.cloud && (
+        <div className="settings-expanded-content">
+          <div className="settings-subsection">
+            <div className="settings-subsection-title">
+              <Cloud size={16} />
+              Arena gateway
+            </div>
+
+            <div className="m3-field-group">
+              <span className="settings-option-desc" style={{ display: "block", marginBottom: "10px" }}>
+                Work reads files, edits them and runs your checks. A small local model writes the tools
+                out as prose instead of using them. With a key, Work sends those turns to Arena's coding
+                router instead — chat stays on this machine.
+              </span>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                <span className="settings-value-badge">
+                  {remoteProvider.configured
+                    ? `connected ${remoteProvider.keyHint || ""}`
+                    : "not connected"}
+                </span>
+                {remoteProvider.model && (
+                  <span className="settings-option-desc">{remoteProvider.model}</span>
+                )}
+              </div>
+
+              <div className="m3-text-field">
+                <label className="m3-text-field-label">Arena API key</label>
+                <input
+                  className="m3-input"
+                  type="password"
+                  value={remoteKey}
+                  onChange={(event) => setRemoteKey(event.target.value)}
+                  placeholder={remoteProvider.configured ? "Paste a new key to replace it" : "sk-…"}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
+                  Made at portal.api.preview.arena.ai → Keys. Kept in app/runtime-state, mode 600,
+                  gitignored, and never shown again.
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  className="m3-button-filled"
+                  disabled={remoteBusy || !remoteKey.trim()}
+                  onClick={() => sendRemoteKey("save")}
+                >
+                  {remoteProvider.configured ? "Replace key" : "Connect"}
+                </button>
+
+                <button
+                  type="button"
+                  className="m3-button-outlined"
+                  disabled={remoteBusy || !remoteProvider.configured}
+                  onClick={testRemoteProvider}
+                >
+                  Test connection
+                </button>
+
+                <button
+                  type="button"
+                  className="m3-button-outlined"
+                  disabled={remoteBusy || !remoteProvider.configured}
+                  onClick={() => sendRemoteKey("clear")}
+                >
+                  Disconnect
+                </button>
+              </div>
+
+              {remoteTest && (
+                <span
+                  className="settings-option-desc"
+                  style={{
+                    marginTop: "10px",
+                    display: "block",
+                    color: remoteTest.ok ? "#22c55e" : "#f87171",
+                  }}
+                >
+                  {remoteTest.message}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {renderSpeechSettings()}
 
       {/* Text to Speech Settings Section */}

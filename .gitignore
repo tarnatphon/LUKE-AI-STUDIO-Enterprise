@@ -81,3 +81,6 @@ app/runtime-state/text-chat/history/
 app/runtime-state/text-chat/arena/
 # Local machine profile (RAM, chip, backend hints). Written by this machine only.
 app/runtime-state/machine-profile.json
+
+# Arena gateway key for Work mode. This machine only, never travels.
+app/runtime-state/text-chat/remote-text-provider.json

@@ -45,6 +45,7 @@ const {
 const {
   createTextModelPool,
 } = require("./text-model-pool.cjs");
+const remoteTextProvider = require("./remote-text-provider.cjs");
 
 // LUKE_AI_TEXT_ARENA_EVALUATOR_IMPORT_V1
 const {
@@ -17731,6 +17732,186 @@ async function readRuntimeRecoveryStream(
   return accumulatedText;
 }
 
+/**
+ * Should this turn go to the cloud instead of the local model?
+ *
+ * Only Work goes. Chat stays on the machine: the user keeps everything local on
+ * purpose, and a key that is saved once should not quietly start sending every
+ * ordinary question off the disk.
+ */
+async function resolveRemoteTextTurn(conversationId) {
+  const key = await remoteTextProvider.readStoredKey();
+
+  if (!key) return null;
+
+  const store = readTextChatStore();
+
+  const conversation = findTextChatConversation(store, conversationId);
+
+  if (!conversation) return null;
+
+  if (conversation.assistantMode !== "work") return null;
+
+  return { conversation, key };
+}
+
+/**
+ * One Work turn against Arena's gateway.
+ *
+ * The events match the local recovery stream exactly — `recovery-start`,
+ * `recovery-attempt`, `recovery-delta`, `recovery-complete` — so the chat
+ * already knows how to read this. Nothing in the UI had to change for Work to
+ * start answering from the cloud, and nothing in the local path was touched to
+ * make it possible.
+ */
+async function generateWithRemoteProvider(
+  conversation,
+  response,
+  { key = "", temperature = undefined, maxTokens = undefined } = {}
+) {
+  const generationId =
+    require("node:crypto").randomUUID();
+
+  const conversationId = conversation.id;
+
+  const state = {
+    generationId,
+    conversationId,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    status: "generating",
+    attempts: [],
+    activeController: null,
+    stopped: false,
+  };
+
+  activeRecoveryGenerations.set(conversationId, state);
+
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+
+  response.flushHeaders?.();
+
+  writeTextGenerationEvent(response, "recovery-start", {
+    generationId,
+    conversationId,
+    modelOrder: [
+      {
+        modelId: remoteTextProvider.ARENA_MODEL,
+      },
+    ],
+    taskDetection: null,
+    source: "remote-text-provider",
+  });
+
+  writeTextGenerationEvent(response, "recovery-attempt", {
+    generationId,
+    attempt: 1,
+    modelId: remoteTextProvider.ARENA_MODEL,
+    source: "remote",
+    status: "generating",
+  });
+
+  const controller = new AbortController();
+
+  state.activeController = controller;
+
+  let content = "";
+
+  try {
+    const result = await remoteTextProvider.streamRemoteChat({
+      key,
+      messages: conversation.messages || [],
+      temperature,
+      maxTokens,
+      signal: controller.signal,
+      onDelta: (delta) => {
+        content += delta;
+
+        writeTextGenerationEvent(response, "recovery-delta", {
+          generationId,
+          content: delta,
+        });
+      },
+    });
+
+    content = result.content || content;
+
+    state.completedAt = new Date().toISOString();
+    state.status = "completed";
+    state.successfulModelId = remoteTextProvider.ARENA_MODEL;
+
+    appendTextChatMessage(conversationId, {
+      role: "assistant",
+      content,
+      modelId: remoteTextProvider.ARENA_MODEL,
+      metadata: {
+        source: "remote-text-provider",
+        provider: "arena",
+        generationId,
+        autosaved: true,
+      },
+    });
+
+    writeTextGenerationEvent(response, "recovery-complete", {
+      generationId,
+      conversationId,
+      content,
+      successfulModelId: remoteTextProvider.ARENA_MODEL,
+      successfulAttempt: 1,
+      fallbackUsed: false,
+      attempts: state.attempts,
+    });
+  } catch (error) {
+    const classified = remoteTextProvider.classifyRemoteError({
+      status: error?.statusCode || 0,
+      body: error?.message || "",
+    });
+
+    const message =
+      error?.statusCode && error.statusCode !== 0
+        ? error.message
+        : classified.message;
+
+    state.completedAt = new Date().toISOString();
+    state.status = "failed";
+
+    state.attempts.push({
+      attempt: 1,
+      modelId: remoteTextProvider.ARENA_MODEL,
+      source: "remote",
+      status: "failed",
+      errorType: error?.code || classified.code,
+      error: message,
+    });
+
+    writeTextGenerationEvent(response, "recovery-failed-attempt", {
+      generationId,
+      attempt: 1,
+      modelId: remoteTextProvider.ARENA_MODEL,
+      errorType: error?.code || classified.code,
+      error: message,
+      hasNextModel: false,
+    });
+
+    writeTextGenerationEvent(response, "recovery-exhausted", {
+      generationId,
+      conversationId,
+      error: message,
+      attempts: state.attempts,
+    });
+  } finally {
+    state.activeController = null;
+    activeRecoveryGenerations.delete(conversationId);
+
+    if (!response.writableEnded) response.end();
+  }
+}
+
 async function generateWithRuntimeRecovery(
   conversationId,
   response,
@@ -24242,6 +24423,24 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      const remoteTurn = await resolveRemoteTextTurn(
+        body.conversationId.trim()
+      );
+
+      if (remoteTurn) {
+        await generateWithRemoteProvider(
+          remoteTurn.conversation,
+          res,
+          {
+            key: remoteTurn.key,
+            temperature: body.temperature,
+            maxTokens: body.maxTokens,
+          }
+        );
+
+        return;
+      }
+
       await generateWithRuntimeRecovery(
         body.conversationId.trim(),
         res,
@@ -24291,6 +24490,79 @@ const server = http.createServer(async (req, res) => {
 
       res.end();
       return;
+    }
+  }
+
+  // POST /api/text-runtime/remote-provider/status — is a cloud brain connected?
+  if (
+    req.url ===
+      "/api/text-runtime/remote-provider/status" &&
+    req.method === "POST"
+  ) {
+    try {
+      return json(res, 200, {
+        ok: true,
+        provider: await remoteTextProvider.providerStatus(),
+      });
+    } catch (error) {
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/text-runtime/remote-provider/key — save or forget the Arena key.
+  // The key is never sent back: only whether one exists, and its last four.
+  if (
+    req.url === "/api/text-runtime/remote-provider/key" &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await readJsonRequestBody(req);
+
+      if (body.action === "clear") {
+        await remoteTextProvider.clearKey();
+
+        return json(res, 200, {
+          ok: true,
+          provider: await remoteTextProvider.providerStatus(),
+        });
+      }
+
+      await remoteTextProvider.saveKey(body.key);
+
+      return json(res, 200, {
+        ok: true,
+        provider: await remoteTextProvider.providerStatus(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/text-runtime/remote-provider/test — one short call, so the user
+  // finds out whether this account is allowed before relying on it.
+  if (
+    req.url === "/api/text-runtime/remote-provider/test" &&
+    req.method === "POST"
+  ) {
+    try {
+      const result = await remoteTextProvider.testRemoteProvider();
+
+      return json(res, result.ok ? 200 : 400, {
+        ok: result.ok,
+        test: result,
+        provider: await remoteTextProvider.providerStatus(),
+      });
+    } catch (error) {
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
