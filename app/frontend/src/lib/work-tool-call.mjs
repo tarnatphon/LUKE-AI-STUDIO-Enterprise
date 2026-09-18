@@ -191,3 +191,61 @@ export function planTasksFromMarkdown(text) {
   // The Work plan holds 24 steps, the same cap the agent works to.
   return tasks.slice(0, 24);
 }
+
+
+/**
+ * Remove the harness noise that sometimes lands inside a model's answer —
+ * an injected <arena-system-message> block, which is not part of what the
+ * model meant to say and makes everything after it unreadable.
+ */
+export function stripHarnessNoise(text) {
+  return String(text == null ? "" : text)
+    .replace(/<arena-system-message>[\s\S]*?<\/arena-system-message>/gi, "")
+    .replace(/<arena-system-message>[\s\S]*$/gi, "");
+}
+
+/** The first complete JSON value in a text that may carry prose around it. */
+function extractJsonValue(text) {
+  const start = String(text).search(/[[{]/);
+  if (start === -1) return null;
+  for (let end = text.length; end > start; end -= 1) {
+    const slice = text.slice(start, end);
+    const last = slice[slice.length - 1];
+    if (last !== "}" && last !== "]") continue;
+    try {
+      return JSON.parse(slice);
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * A luke-actions block: {"actions":[{"tool":"repo_map"}, ...]}.
+ *
+ * That is the list of things Work Chat is asked to do, and the chat already
+ * runs it — with approval and a backup. The Terminal has no idea what to do
+ * with it, and reading it as a program produces a syntax error, so it is
+ * recognised here instead.
+ */
+export function parseActionBlock(text) {
+  const clean = stripHarnessNoise(text)
+    .replace(/^\s*luke-actions\s*$/gim, "")
+    .replace(/^\s*```[a-z-]*\s*$/gim, "")
+    .trim();
+  if (!clean) return null;
+  const value = extractJsonValue(clean);
+  const batch = Array.isArray(value) ? value : (Array.isArray(value?.actions) ? value.actions : null);
+  if (!Array.isArray(batch) || batch.length === 0) return null;
+  const actions = batch.filter((entry) => entry && typeof entry === "object" && String(entry.tool || "").trim());
+  return actions.length > 0 ? { actions } : null;
+}
+
+/** What to say about one. Short, and it says where the thing belongs. */
+export function actionBlockMessage(block) {
+  const count = block?.actions?.length || 0;
+  const names = [...new Set(block.actions.map((entry) => String(entry.tool)))].slice(0, 6).join(", ");
+  return [
+    `That is an action list for Work Chat — ${count} ${count === 1 ? "action" : "actions"} (${names}). The Terminal cannot run it.`,
+    "Nothing was run. In the chat, Work runs those itself, with approval and undo.",
+  ].join("\n");
+}

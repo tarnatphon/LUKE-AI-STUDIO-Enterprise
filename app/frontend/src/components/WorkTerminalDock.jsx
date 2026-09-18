@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, explainNotAProgram, looksLikeCode, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, actionBlockMessage, explainNotAProgram, looksLikeCode, parseActionBlock, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -180,6 +180,17 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
         setStaged([]);
         setPendingScript(null);
         setCommandText(JSON.stringify(call.args));
+        return;
+      }
+
+      // An action list is neither a command nor a program: it is the list of
+      // things Work Chat has been asked to do, and the chat runs that itself.
+      const actionBlock = parseActionBlock(raw);
+      if (actionBlock) {
+        setStaged([]);
+        setPendingScript(null);
+        setCommandText("");
+        setOutput((current) => `${current ? `${current}\n` : ""}${actionBlockMessage(actionBlock)}`);
         return;
       }
 
@@ -419,6 +430,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
       return;
     }
     if (command.includes("\n")) {
+      const actionBlock = parseActionBlock(command);
+      if (actionBlock) {
+        setOutput((current) => `${current ? `${current}\n` : ""}${actionBlockMessage(actionBlock)}`);
+        return;
+      }
       const call = parseToolCall(command);
       if (call) {
         setCommandText(JSON.stringify(call.args));

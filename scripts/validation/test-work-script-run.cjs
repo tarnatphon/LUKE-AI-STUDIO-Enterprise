@@ -252,6 +252,39 @@ async function main() {
   check("each path quotes the block it was given",
     /explainNotAProgram\(raw\)/.test(dock) && /explainNotAProgram\(command\)/.test(dock));
 
+  section("13. An action list is neither a command nor a program");
+  const actions = `luke-actions
+
+{"actions":[
+
+    {"tool":"repo_map"},
+
+    {"tool":"read_file","path":"app/config/update.json"},
+
+    {"tool":"read_file","path":"app/version.json"}
+
+]}
+<arena-system-message>
+The previous assistant response was stopped by the user before it completed.
+</arena-system-message>
+# No test, lint, or build command detected in this project.`;
+
+  const parsed = lib.parseActionBlock(actions);
+  check("the block is recognised despite the noise around it", Boolean(parsed), JSON.stringify(parsed));
+  check("all three actions are read", parsed?.actions?.length === 3, JSON.stringify(parsed?.actions?.map((entry) => entry.tool)));
+  check("the tools are named", JSON.stringify(parsed?.actions?.map((entry) => entry.tool)) === JSON.stringify(["repo_map", "read_file", "read_file"]));
+  check("the injected harness message is dropped", !/arena-system-message/.test(lib.stripHarnessNoise(actions)));
+  check("what follows it is kept", /No test, lint, or build command/.test(lib.stripHarnessNoise(actions)));
+  check("a bare array of actions is read too", lib.parseActionBlock('[{"tool":"repo_map"}]')?.actions?.length === 1);
+  check("a block with no tool in it is not an action list", lib.parseActionBlock('{"files":["a.js"]}') === null);
+  check("plain prose is still not an action list", lib.parseActionBlock("move the parser, then test") === null);
+  check("the message names the tools and the count",
+    /3 actions \(repo_map, read_file\)/.test(lib.actionBlockMessage(parsed)), lib.actionBlockMessage(parsed));
+  check("and says the terminal cannot run it", /Terminal cannot run it/.test(lib.actionBlockMessage(parsed)));
+  check("and where it does belong", /Work runs those itself/.test(lib.actionBlockMessage(parsed)));
+  check("the terminal checks for one before deciding it is code",
+    /const actionBlock = parseActionBlock\(raw\);/.test(dock) && /const actionBlock = parseActionBlock\(command\);/.test(dock));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 
