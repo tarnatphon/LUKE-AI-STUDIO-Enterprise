@@ -1368,6 +1368,74 @@ let llmProc = null;
 let llmProcSeq = 0;
 let llmReady = false;
 let llmError = null;
+/**
+ * What the model load is doing right now, so the screen is not a spinner that
+ * says nothing for a quarter of an hour.
+ *
+ * A load tries every backend with two profiles each, and every one of those is
+ * allowed six minutes on CPU. Four attempts is twenty-four minutes of silence,
+ * which is indistinguishable from hung — so the attempt is reported, the last
+ * thing llama.cpp said is kept, and the whole load is given a budget.
+ */
+let llmLoadProgress = null;
+const LLM_LOAD_BUDGET_MS = 20 * 60 * 1000;
+
+function beginLlmLoadProgress(model, attempts) {
+  const now = Date.now();
+  llmLoadProgress = {
+    model,
+    attempts,
+    attempt: 0,
+    backend: "",
+    binary: "",
+    profile: "",
+    stage: "starting",
+    startedAt: now,
+    deadline: now + LLM_LOAD_BUDGET_MS,
+    lastOutputAt: now,
+    waitedMs: 0,
+    tail: "",
+  };
+}
+
+function noteLlmLoadAttempt({ backend, binary, profile }) {
+  if (!llmLoadProgress) return;
+  const now = Date.now();
+  llmLoadProgress.attempt += 1;
+  llmLoadProgress.backend = String(backend || "");
+  llmLoadProgress.binary = String(binary || "");
+  llmLoadProgress.profile = String(profile || "");
+  llmLoadProgress.stage = "starting";
+  llmLoadProgress.lastOutputAt = now;
+  llmLoadProgress.tail = "";
+}
+
+function noteLlmLoadOutput(output) {
+  if (!llmLoadProgress) return;
+  llmLoadProgress.stage = "loading";
+  llmLoadProgress.lastOutputAt = Date.now();
+  llmLoadProgress.tail = `${llmLoadProgress.tail}${output}`.slice(-800);
+}
+
+/** What /api/llm/status reports while a load is under way. */
+function describeLlmLoad() {
+  if (!llmLoadProgress) return null;
+  const now = Date.now();
+  const lines = llmLoadProgress.tail.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return {
+    model: llmLoadProgress.model,
+    attempt: llmLoadProgress.attempt,
+    attempts: llmLoadProgress.attempts,
+    backend: llmLoadProgress.backend,
+    binary: llmLoadProgress.binary,
+    profile: llmLoadProgress.profile,
+    stage: llmLoadProgress.stage,
+    elapsedMs: now - llmLoadProgress.startedAt,
+    remainingMs: Math.max(0, llmLoadProgress.deadline - now),
+    silentForMs: now - llmLoadProgress.lastOutputAt,
+    lastLine: lines[lines.length - 1] || "",
+  };
+}
 let llmOperationQueue = Promise.resolve();
 let speechReady = false;
 let speechError = null;
@@ -5713,8 +5781,26 @@ async function startLlm(settings = {}) {
     : candidates;
 
   const failures = [];
+  const totalAttempts = sortedCandidates.reduce(
+    (sum, candidate) => sum + buildLlmLoadProfiles(settings, candidate).length,
+    0,
+  );
+  beginLlmLoadProgress(filename, totalAttempts);
+  try {
   for (const backend of sortedCandidates) {
     for (const profile of buildLlmLoadProfiles(settings, backend)) {
+      // A load that has run past the budget is not going to finish. Say what
+      // was tried instead of keeping the screen waiting for another backend.
+      if (llmLoadProgress && Date.now() > llmLoadProgress.deadline) {
+        failures.push({
+          backend: backend.mode,
+          binary: path.basename(backend.path),
+          profile: profile.name,
+          error: `not tried — the load budget of ${Math.round(LLM_LOAD_BUDGET_MS / 60000)} minutes was already spent`,
+        });
+        continue;
+      }
+      noteLlmLoadAttempt({ backend: backend.mode, binary: path.basename(backend.path), profile: profile.name });
       try {
         await startLlmWithBackend({ ...settings, __loadProfile: profile }, backend);
         llmSettings.backendFallbacks = failures;
@@ -5748,6 +5834,9 @@ async function startLlm(settings = {}) {
     }
   }
 
+  } finally {
+    llmLoadProgress = null;
+  }
   const last = failures[failures.length - 1];
   llmSettings.backendFallbacks = failures;
   throw new Error(`Text model failed on all available llama.cpp backends. Last failure: ${last?.error || "unknown error"}`);
@@ -6010,11 +6099,15 @@ async function startLlmWithBackend(settings = {}, backend) {
   llmProc = proc;
   proc.stdout.on("data", (data) => {
     if (llmProc !== proc) return;
+    noteLlmLoadOutput(data.toString());
     process.stdout.write("  [llm] " + data.toString());
   });
   proc.stderr.on("data", (data) => {
     if (llmProc !== proc) return;
     const output = data.toString();
+    // Whatever llama.cpp prints is the only honest progress report there is:
+    // "load_tensors" slowly climbing, or an error nobody would otherwise see.
+    noteLlmLoadOutput(output);
     process.stderr.write("  [llm-err] " + output);
     memoryCalibration.scan(output);
     // "KV self size  =  604.00 MiB" is the exact cost of this context for this
@@ -25066,6 +25159,7 @@ const server = http.createServer(async (req, res) => {
       port: PORT_LLM,
       preferredPort: PREFERRED_LLM_PORT,
       error: llmError,
+      loading: describeLlmLoad(),
       settings: llmSettings,
       backendInstalled: Boolean(backend),
       backendMode: backend?.mode || "",

@@ -107,6 +107,14 @@ const MAX_WORK_AGENT_ROUNDS = 6;
 // longer belongs in the archive, not in every request. It is deliberately the
 // same number the compaction config keeps (keepLastMessages).
 const ARCHIVE_LIVE_MESSAGES = 6;
+/** How long something has been going, in the units a load is measured in. */
+const formatLoadDuration = (ms) => {
+  const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+};
+
 const MAX_WORK_TOOL_RESULT_CHARS = 24000;
 /**
  * How many times a cut-off answer is carried on automatically. Two means an
@@ -428,6 +436,10 @@ function TextChat({
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [webTimeFilter, setWebTimeFilter] = useState("any");
   const [loadingModel, setLoadingModel] = useState(null);
+  // A model load can try several backends, each allowed minutes. Saying which
+  // one is running — and what llama.cpp last printed — is the difference
+  // between "slow" and "broken", which a spinner alone cannot tell apart.
+  const [loadProgress, setLoadProgress] = useState(null);
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -1423,6 +1435,28 @@ function TextChat({
       setIsBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!loadingModel) {
+      setLoadProgress(null);
+      return undefined;
+    }
+    let active = true;
+    const tick = async () => {
+      try {
+        const status = await getLlmStatus();
+        if (active) setLoadProgress(status?.loading || null);
+      } catch {
+        if (active) setLoadProgress(null);
+      }
+    };
+    void tick();
+    const timer = window.setInterval(tick, 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [loadingModel]);
 
   const handleCancelLlmLoad = async () => {
     try {
@@ -3055,9 +3089,28 @@ function TextChat({
               }}>
                 {loadingModel}
               </code>
-              <p style={{ fontSize: "0.9rem", color: "var(--md-sys-color-outline)", lineHeight: 1.5, marginBottom: "24px" }}>
-                Initializing llama.cpp server and loading the model weights into memory. This can take up to 30 seconds depending on model size and hardware speed.
+              <p style={{ fontSize: "0.9rem", color: "var(--md-sys-color-outline)", lineHeight: 1.5, marginBottom: "12px" }}>
+                {loadProgress
+                  ? `Trying ${loadProgress.backend || "backend"} (${loadProgress.profile}) — attempt ${loadProgress.attempt} of ${loadProgress.attempts} · ${formatLoadDuration(loadProgress.elapsedMs)}`
+                  : "Initializing llama.cpp server and loading the model weights into memory. This can take up to 30 seconds depending on model size and hardware speed."}
               </p>
+              {loadProgress?.lastLine && (
+                <code style={{
+                  display: "block", marginBottom: "12px", padding: "6px 10px",
+                  borderRadius: "6px", background: "var(--md-sys-color-surface-variant)",
+                  color: "var(--md-sys-color-on-surface-variant)",
+                  fontSize: "0.74rem", fontFamily: "monospace", lineHeight: 1.45,
+                  maxHeight: "72px", overflow: "hidden", wordBreak: "break-all",
+                }}>
+                  {loadProgress.lastLine}
+                </code>
+              )}
+              {loadProgress && loadProgress.silentForMs > 60000 && (
+                <p style={{ fontSize: "0.82rem", color: "var(--md-sys-color-outline)", lineHeight: 1.5, marginBottom: "12px" }}>
+                  llama.cpp has printed nothing for {formatLoadDuration(loadProgress.silentForMs)}. Reading a model from an
+                  external disk is slow the first time — cache it in Settings, then Performance, and later loads start in seconds.
+                </p>
+              )}
               <button className="m3-btn m3-btn-error" onClick={handleCancelLlmLoad}
                 style={{ display: "inline-flex", alignItems: "center", gap: "8px", height: "38px", padding: "0 16px", fontSize: "0.85rem", borderRadius: "var(--md-shape-corner-medium)" }}
               >
