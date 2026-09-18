@@ -136,6 +136,33 @@ check("the renderer imposes the split only when the model used no fences",
   /workMode && !fromJson\.includes\("```"\)/.test(chat) && /splitAnswerBlocks\(fromJson\)/.test(chat),
   "renderer hook");
 
+  section("8. An answer that is only the instructions, written back");
+  const blocks = await import(`file://${path.join(root, "app", "frontend", "src", "lib", "work-answer-blocks.mjs")}`);
+  check("the echoed round instructions are recognised",
+    blocks.looksLikeInstructionEcho("# No test, lint, or build command detected in this project.\n\n# Update tasks\nupdate_tasks\n\n# Start editing") === true);
+  check("a bare tool name under a heading is recognised too",
+    blocks.looksLikeInstructionEcho("# Update tasks\nupdate_tasks\n\n# Start editing") === true);
+  check("a real plan with substance is not an echo",
+    blocks.looksLikeInstructionEcho("# Update tasks\n- [ ] move the parser into its own file and update the imports\n- [ ] run the project checks afterwards") === false);
+  check("a heading inside a real answer is not an echo",
+    blocks.looksLikeInstructionEcho("# Start editing\nI will move the parser into its own file first, then update the three imports.") === false);
+  check("a plain answer is not an echo", blocks.looksLikeInstructionEcho("There is no package.json here, so nothing can be installed.") === false);
+  check("an empty answer is not an echo", blocks.looksLikeInstructionEcho("") === false);
+  check("round instructions are fenced apart from the user's message",
+    chat.includes("[Round context — instructions about this turn") && chat.includes("[/Round context]"));
+  check("they ride on the user turn, so the cached system prompt stays stable",
+    chat.includes("      wrappedVolatileContext,\n"));
+  check("they say outright that they are not to be repeated",
+    /Never repeat these lines, and never write their headings, in your reply\./.test(chat));
+  check("and the stable system prompt carries the same rule",
+    /Never copy the round context into your reply/.test(chat));
+  check("an echo is answered once, plainly",
+    /if \(queuedItem\?\.echoRetried\) \{/.test(chat) && /echoRetried: true,/.test(chat));
+  check("the second time, the run stops and says why",
+    /Work stopped: the model kept writing the round instructions back/.test(chat));
+  check("the stop is shown where the user is looking", /className="work-echo-notice"/.test(chat));
+  check("and can be dismissed", /onClick=\{\(\) => setWorkEchoNotice\(""\)\}/.test(chat));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;
 }

@@ -125,3 +125,42 @@ export function terminalCommandLines(code) {
       .trim())
     .filter((line) => line && !line.startsWith("#"));
 }
+
+/**
+ * An answer that is the instructions, repeated.
+ *
+ * Work tells the model which round it is on, that no check command was found,
+ * and to post its plan with update_tasks. A small model reads those lines and
+ * writes them back as its answer — "# No test...", "# Update tasks",
+ * "update_tasks", "# Start editing" — which looks like work and is none.
+ *
+ * Recognised so the run can be put right: one plain request to do the work,
+ * and then, if it happens again, a stop and an explanation instead of a loop.
+ */
+const ECHO_MARKERS = [
+  /no test,? lint or build command/i,
+  /post your plan with update_tasks/i,
+  /^\s*#\s*update tasks/im,
+  /^\s*#\s*start editing/im,
+  /autonomous work run is on tool round/i,
+  /keep it up to date with update_tasks/i,
+  /verification commands available in this project/i,
+];
+
+export function looksLikeInstructionEcho(content) {
+  const text = String(content == null ? "" : content);
+  if (!text.trim()) return false;
+  let hits = 0;
+  for (const marker of ECHO_MARKERS) {
+    if (marker.test(text)) hits += 1;
+  }
+  if (hits === 0) return false;
+  // Echo only if nothing else of substance was said: a heading or two inside
+  // a real answer is fine, an answer made of nothing else is not.
+  const body = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !ECHO_MARKERS.some((marker) => marker.test(line)));
+  const substance = body.filter((line) => line.length > 24).length;
+  return hits >= 2 || (hits === 1 && substance === 0);
+}

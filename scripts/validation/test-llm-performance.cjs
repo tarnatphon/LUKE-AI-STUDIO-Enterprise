@@ -159,10 +159,16 @@ async function main() {
   check("project memory is not in the system prompt", !systemBlock.includes("getProjectMemory"));
   check("the system prompt keeps the stable instructions", ["systemPrompt.trim()", "workInstruction", "chatFolderInstruction", "approvalInstruction"].every((part) => systemBlock.includes(part)));
   check("volatile context is built separately", chat.includes("const volatileContext = ["));
-  check("volatile context rides on the user message", chat.includes("      volatileContext,\n"));
+  check("volatile context rides on the user message", chat.includes("      wrappedVolatileContext,\n"));
   check("the round counter moved there", /volatileContext[\s\S]{0,900}tool round/.test(chat));
   check("the plan moved there too", /volatileContext[\s\S]{0,900}workTasks/.test(chat));
   check("the reason is written down for the next person", chat.includes("reuses the KV cache"));
+  check("the round context is fenced, so it is not read as the user's message",
+    chat.includes("[Round context — instructions about this turn") && chat.includes("[/Round context]"));
+  check("and says outright that it is never to be repeated",
+    /Never repeat these lines, and never write their headings, in your reply\./.test(chat));
+  check("the same rule is in the stable system prompt, where it costs no cache",
+    /Never copy the round context into your reply/.test(chat));
 
   // ── 5. The endpoints ────────────────────────────────────────────────────
   section("5. The endpoints answer");

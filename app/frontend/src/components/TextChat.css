@@ -1541,3 +1541,35 @@
 }
 
 .chat-jump-latest:hover { background: var(--md-sys-color-surface-variant); }
+
+/* Work stopped because the model wrote the instructions back instead of
+   working. Saying so beats a run that spins. */
+.work-echo-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(250, 204, 21, .3);
+  border-radius: 10px;
+  background: rgba(250, 204, 21, .08);
+  color: var(--md-sys-color-on-surface);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.work-echo-notice svg { flex: 0 0 auto; color: #f5c451; }
+
+.work-echo-notice span { flex: 1; min-width: 0; }
+
+.work-echo-notice button {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 1rem;
+  cursor: pointer;
+}

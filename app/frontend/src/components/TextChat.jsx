@@ -7,7 +7,7 @@ import WorkTerminalDock from "./WorkTerminalDock";
 import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
-import { expandJsonAnswer, splitAnswerBlocks, terminalCommandLines } from "../lib/work-answer-blocks.mjs";
+import { expandJsonAnswer, looksLikeInstructionEcho, splitAnswerBlocks, terminalCommandLines } from "../lib/work-answer-blocks.mjs";
 import {
   ZIP_MAX_BYTES,
   describeZipLimit,
@@ -440,6 +440,9 @@ function TextChat({
   // one is running — and what llama.cpp last printed — is the difference
   // between "slow" and "broken", which a spinner alone cannot tell apart.
   const [loadProgress, setLoadProgress] = useState(null);
+  // Set when the model writes the round instructions back instead of doing the
+  // work twice over. Better a sentence explaining it than a run that spins.
+  const [workEchoNotice, setWorkEchoNotice] = useState("");
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -2367,12 +2370,25 @@ function TextChat({
         : "",
       archivedContext,
     ].filter(Boolean).join("\n\n");
+    // This block changes every round, so it stays in the user turn on purpose:
+    // the system prompt is stable, which is what lets llama.cpp reuse its KV
+    // cache between turns. Fenced and told not to be repeated instead, because
+    // a small model that reads it as content answers by writing it back —
+    // "# Update tasks", "update_tasks", "# Start editing" — and does nothing.
+    const wrappedVolatileContext = volatileContext
+      ? [
+        "[Round context — instructions about this turn, not part of the user's message.",
+        "Never repeat these lines, and never write their headings, in your reply.]",
+        volatileContext,
+        "[/Round context]",
+      ].join("\n")
+      : "";
     const requestCombinedText = [
       requestText,
       documentContext,
       projectSearchContext,
       chatFolderContext,
-      volatileContext,
+      wrappedVolatileContext,
     ].filter(Boolean).join("\n\n").trim();
     const attachmentSummary = documentAttachments.length
       ? `[Attached documents: ${documentAttachments.map((attachment) => attachment.name).join(", ")}. Relevant sections selected automatically.]`
@@ -2493,6 +2509,7 @@ function TextChat({
             ].join("\n"),
             [
               "Rules you must keep: never claim a file says something you did not read; never invent a commandId that is not listed; never say the work is done because it looks right — say it is done because the check passed.",
+              "Never copy the round context into your reply: it arrives fenced as \"[Round context]\" and its lines — \"No test, lint or build command...\", \"# Update tasks\", \"update_tasks\", \"# Start editing\" — are instructions about the turn, not an answer to give. Writing them back is doing nothing.",
               "Do not ask the user to copy commands. Do not ask them to paste or run anything either: use the tools, read their results, and carry on by yourself.",
             ].join(" "),
             [
@@ -2766,6 +2783,28 @@ function TextChat({
       archiveTurnToHistory(convId, finalMessages, selectedModel);
       const chatFolderTools = assistantMode !== "work" && chatFolders.length > 0;
       const workActions = assistantMode === "work" || chatFolderTools ? parseWorkActions(processed.content) : [];
+      // The model sometimes answers with the round instructions themselves —
+      // "# Update tasks", "update_tasks", "# Start editing" — which is not
+      // work and is not an answer either. Asked once, plainly, to do the job;
+      // if it repeats them, the run stops and says why instead of looping.
+      if (assistantMode === "work" && workActions.length === 0 && looksLikeInstructionEcho(processed.content)) {
+        if (queuedItem?.echoRetried) {
+          setWorkEchoNotice("Work stopped: the model kept writing the round instructions back instead of doing the task. Try a larger model, or ask for one smaller step at a time.");
+        } else {
+          setMessageQueue((current) => [...current, {
+            id: `work_echo_${Date.now()}`,
+            text: [
+              "[Your last reply repeated the round instructions instead of doing the work. Never write those headings again.]",
+              "Now do the work. Either emit ONE fenced ```luke-actions block containing {\"actions\":[ ... ]} that moves the task forward, or, if the task needs no file changes, answer in plain text.",
+            ].join("\n"),
+            attachments: [],
+            baseMessages: finalMessages,
+            preserveComposer: true,
+            agentRound: agentRound + 1,
+            echoRetried: true,
+          }]);
+        }
+      }
       if (workActions.length > 0 && agentRound < MAX_WORK_AGENT_ROUNDS) {
         const toolResults = assistantMode === "work"
           ? await executeWorkActions(workActions)
@@ -3307,6 +3346,14 @@ function TextChat({
           </button>
         )}
         </div>
+
+        {workEchoNotice && (
+          <div className="work-echo-notice" role="status">
+            <ShieldAlert size={15} />
+            <span>{workEchoNotice}</span>
+            <button type="button" onClick={() => setWorkEchoNotice("")} aria-label="Dismiss">×</button>
+          </div>
+        )}
 
         {/* ─── Multi-Model Arena ──────────────────────────────── */}
         {/* LUKE_AI_TEXT_MODEL_ARENA_RENDER_V1 */}
