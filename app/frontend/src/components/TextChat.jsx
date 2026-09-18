@@ -1481,7 +1481,7 @@ function TextChat({
     setWorkModelNotice(
       ramGb > 0 && best.minMemoryGb > ramGb
         ? `Work needs a model trained for tools, and the smallest one that does the job needs ${best.minMemoryGb} GB — this machine has ${ramGb} GB. ${selectedModel} will write the tools out as text instead of using them; Work mode is not going to work well until there is more memory or a cloud model.`
-        : `Work needs a model trained for tools. ${selectedModel} is small enough that it writes the tools out as text instead of using them — install ${best.name} (${best.approxSize}, needs ${best.minMemoryGb} GB) for ${memory} and Work stops needing babysitting. Or connect Arena's gateway in Settings and Work will use that model instead.`,
+        : `Work needs a model trained for tools. ${selectedModel} is small enough that it writes the tools out as text instead of using them — install ${best.name} (${best.approxSize}, needs ${best.minMemoryGb} GB) for ${memory} and Work stops needing babysitting. Or connect a cloud provider in Settings and Work will use that model instead.`,
     );
   }, [assistantMode, selectedModel, specs]);
 

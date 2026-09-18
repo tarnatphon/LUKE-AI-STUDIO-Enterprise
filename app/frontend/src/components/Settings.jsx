@@ -315,17 +315,24 @@ function Settings({
   });
 
   // ─── Cloud brain for Work ───
-  // Work can borrow a stronger model from Arena's gateway instead of grinding
-  // along on a 7B one. The key stays on this machine: the server writes it
-  // under app/runtime-state and never hands it back, so this field is
-  // write-only — that is why it shows a hint and not the key.
+  // Work reads files, edits them and runs your checks. That job is too much for
+  // a small local model, which answers by writing the tools out as prose. These
+  // providers are tried in order; when one is rate limited, has started
+  // charging, or has dropped the model, the next one takes the turn — and when
+  // the whole chain is spent, this machine does.
+  //
+  // Keys stay here: the server writes them under app/runtime-state and never
+  // hands one back, so these fields are write-only — that is why each shows a
+  // hint and not the key.
   const [remoteProvider, setRemoteProvider] = useState({
-    configured: false,
-    model: "",
-    keyHint: "",
+    providers: [],
+    order: [],
+    chain: [],
+    localFallback: true,
   });
-  const [remoteKey, setRemoteKey] = useState("");
-  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteKeys, setRemoteKeys] = useState({});
+  const [remoteModels, setRemoteModels] = useState({});
+  const [remoteBusy, setRemoteBusy] = useState("");
   const [remoteTest, setRemoteTest] = useState(null);
 
   const refreshRemoteProvider = useCallback(async () => {
@@ -348,15 +355,15 @@ function Settings({
     refreshRemoteProvider();
   }, [refreshRemoteProvider]);
 
-  const sendRemoteKey = async (action) => {
-    setRemoteBusy(true);
+  const sendRemoteKey = async (providerId, action) => {
+    setRemoteBusy(providerId);
     setRemoteTest(null);
 
     try {
       const response = await fetch("/api/text-runtime/remote-provider/key", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, key: remoteKey }),
+        body: JSON.stringify({ providerId, action, key: remoteKeys[providerId] || "" }),
       });
 
       const data = await response.json();
@@ -366,45 +373,86 @@ function Settings({
       }
 
       setRemoteProvider(data.provider || {});
-      setRemoteKey("");
-
-      if (action === "clear") {
-        showAlert({
-          title: "Cloud brain disconnected",
-          message: "Work is back on the local model. The key is deleted from this machine.",
-        });
-      }
+      setRemoteKeys((current) => ({ ...current, [providerId]: "" }));
     } catch (error) {
       showAlert({
         title: "Cloud brain",
         message: error.message || String(error),
       });
     } finally {
-      setRemoteBusy(false);
+      setRemoteBusy("");
     }
   };
 
-  const testRemoteProvider = async () => {
-    setRemoteBusy(true);
+  const saveRemoteModel = async (providerId) => {
+    setRemoteBusy(providerId);
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/model", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ providerId, model: remoteModels[providerId] || "" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "That model could not be saved.");
+      }
+
+      setRemoteProvider(data.provider || {});
+    } catch (error) {
+      showAlert({
+        title: "Cloud brain",
+        message: error.message || String(error),
+      });
+    } finally {
+      setRemoteBusy("");
+    }
+  };
+
+  const toggleLocalFallback = async () => {
+    setRemoteBusy("local");
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/model", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ localFallback: !remoteProvider.localFallback }),
+      });
+
+      const data = await response.json();
+
+      if (data?.ok) setRemoteProvider(data.provider || {});
+    } catch {
+      // The switch simply stays where it was.
+    } finally {
+      setRemoteBusy("");
+    }
+  };
+
+  const testRemote = async (providerId) => {
+    setRemoteBusy(providerId);
     setRemoteTest(null);
 
     try {
       const response = await fetch("/api/text-runtime/remote-provider/test", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ providerId }),
       });
 
       const data = await response.json();
 
       setRemoteTest({
+        providerId,
         ok: Boolean(data?.ok),
         message: data?.test?.message || data?.error || "No answer came back.",
       });
     } catch (error) {
-      setRemoteTest({ ok: false, message: error.message || String(error) });
+      setRemoteTest({ providerId, ok: false, message: error.message || String(error) });
     } finally {
-      setRemoteBusy(false);
+      setRemoteBusy("");
     }
   };
 
@@ -1741,7 +1789,7 @@ function Settings({
       <SectionHeader
         icon={Cloud}
         title="Cloud brain (Work)"
-        count={1}
+        count={(remoteProvider.chain || []).length}
         color="#38bdf8"
         isExpanded={expandedSections.cloud}
         onToggle={() => toggleSection("cloud")}
@@ -1752,85 +1800,149 @@ function Settings({
           <div className="settings-subsection">
             <div className="settings-subsection-title">
               <Cloud size={16} />
-              Arena gateway
+              Free providers, tried in order
             </div>
 
             <div className="m3-field-group">
-              <span className="settings-option-desc" style={{ display: "block", marginBottom: "10px" }}>
-                Work reads files, edits them and runs your checks. A small local model writes the tools
-                out as prose instead of using them. With a key, Work sends those turns to Arena's coding
-                router instead — chat stays on this machine.
+              <span className="settings-option-desc" style={{ display: "block", marginBottom: "12px" }}>
+                Work sends its turns to the first provider below that answers. A rate limit, a paywall or a
+                model that has disappeared moves to the next one. Chat never leaves this machine.
               </span>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                <span className="settings-value-badge">
-                  {remoteProvider.configured
-                    ? `connected ${remoteProvider.keyHint || ""}`
-                    : "not connected"}
-                </span>
-                {remoteProvider.model && (
-                  <span className="settings-option-desc">{remoteProvider.model}</span>
-                )}
-              </div>
-
-              <div className="m3-text-field">
-                <label className="m3-text-field-label">Arena API key</label>
-                <input
-                  className="m3-input"
-                  type="password"
-                  value={remoteKey}
-                  onChange={(event) => setRemoteKey(event.target.value)}
-                  placeholder={remoteProvider.configured ? "Paste a new key to replace it" : "sk-…"}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
-                  Made at portal.api.preview.arena.ai → Keys. Kept in app/runtime-state, mode 600,
-                  gitignored, and never shown again.
-                </span>
-              </div>
-
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
-                <button
-                  type="button"
-                  className="m3-button-filled"
-                  disabled={remoteBusy || !remoteKey.trim()}
-                  onClick={() => sendRemoteKey("save")}
-                >
-                  {remoteProvider.configured ? "Replace key" : "Connect"}
-                </button>
-
-                <button
-                  type="button"
-                  className="m3-button-outlined"
-                  disabled={remoteBusy || !remoteProvider.configured}
-                  onClick={testRemoteProvider}
-                >
-                  Test connection
-                </button>
-
-                <button
-                  type="button"
-                  className="m3-button-outlined"
-                  disabled={remoteBusy || !remoteProvider.configured}
-                  onClick={() => sendRemoteKey("clear")}
-                >
-                  Disconnect
-                </button>
-              </div>
-
-              {remoteTest && (
-                <span
-                  className="settings-option-desc"
+              {(remoteProvider.providers || []).map((item) => (
+                <div
+                  key={item.id}
                   style={{
-                    marginTop: "10px",
-                    display: "block",
-                    color: remoteTest.ok ? "#22c55e" : "#f87171",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    marginBottom: "12px",
                   }}
                 >
-                  {remoteTest.message}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <strong style={{ fontSize: "0.9rem" }}>{item.label}</strong>
+                    <span className="settings-value-badge">
+                      {item.configured ? `connected ${item.keyHint || ""}` : "not connected"}
+                    </span>
+                    {remoteProvider.chain?.includes(item.id) && (
+                      <span className="settings-option-desc">
+                        link {(remoteProvider.chain || []).indexOf(item.id) + 1}
+                      </span>
+                    )}
+                  </div>
+
+                  <span className="settings-option-desc" style={{ display: "block", marginBottom: "8px" }}>
+                    {item.note}
+                  </span>
+
+                  <div className="m3-text-field">
+                    <label className="m3-text-field-label">API key</label>
+                    <input
+                      className="m3-input"
+                      type="password"
+                      value={remoteKeys[item.id] || ""}
+                      onChange={(event) =>
+                        setRemoteKeys((current) => ({ ...current, [item.id]: event.target.value }))
+                      }
+                      placeholder={item.configured ? "Paste a new key to replace it" : "Key from " + item.docs.split(" →")[0]}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
+                      {item.docs}
+                    </span>
+                  </div>
+
+                  <div className="m3-text-field" style={{ marginTop: "8px" }}>
+                    <label className="m3-text-field-label">Model</label>
+                    <input
+                      className="m3-input"
+                      value={
+                        remoteModels[item.id] !== undefined ? remoteModels[item.id] : item.model
+                      }
+                      disabled={item.modelLocked}
+                      onChange={(event) =>
+                        setRemoteModels((current) => ({ ...current, [item.id]: event.target.value }))
+                      }
+                      spellCheck={false}
+                    />
+                    {item.modelLocked && (
+                      <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
+                        A router account may only call the router, so this one is fixed.
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      className="m3-button-filled"
+                      disabled={remoteBusy === item.id || !(remoteKeys[item.id] || "").trim()}
+                      onClick={() => sendRemoteKey(item.id, "save")}
+                    >
+                      {item.configured ? "Replace key" : "Connect"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="m3-button-outlined"
+                      disabled={remoteBusy === item.id || !item.configured}
+                      onClick={() => testRemote(item.id)}
+                    >
+                      Test
+                    </button>
+
+                    {!item.modelLocked && (
+                      <button
+                        type="button"
+                        className="m3-button-outlined"
+                        disabled={remoteBusy === item.id}
+                        onClick={() => saveRemoteModel(item.id)}
+                      >
+                        Save model
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="m3-button-outlined"
+                      disabled={remoteBusy === item.id || !item.configured}
+                      onClick={() => sendRemoteKey(item.id, "clear")}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+
+                  {remoteTest && remoteTest.providerId === item.id && (
+                    <span
+                      className="settings-option-desc"
+                      style={{
+                        marginTop: "10px",
+                        display: "block",
+                        color: remoteTest.ok ? "#22c55e" : "#f87171",
+                      }}
+                    >
+                      {remoteTest.message}
+                    </span>
+                  )}
+                </div>
+              ))}
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                <input
+                  type="checkbox"
+                  checked={remoteProvider.localFallback !== false}
+                  disabled={remoteBusy === "local"}
+                  onChange={toggleLocalFallback}
+                />
+                <span className="settings-option-desc">
+                  When every provider is spent, finish the turn on the local model
                 </span>
-              )}
+              </label>
+
+              <span className="settings-option-desc" style={{ marginTop: "8px", display: "block" }}>
+                Keys are kept in app/runtime-state, mode 600, gitignored, and never shown again.
+              </span>
             </div>
           </div>
         </div>

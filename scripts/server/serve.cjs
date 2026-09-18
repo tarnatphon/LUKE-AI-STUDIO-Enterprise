@@ -17740,9 +17740,9 @@ async function readRuntimeRecoveryStream(
  * ordinary question off the disk.
  */
 async function resolveRemoteTextTurn(conversationId) {
-  const key = await remoteTextProvider.readStoredKey();
+  const config = await remoteTextProvider.readConfig();
 
-  if (!key) return null;
+  if (!config.order.some((providerId) => config.keys[providerId])) return null;
 
   const store = readTextChatStore();
 
@@ -17752,7 +17752,7 @@ async function resolveRemoteTextTurn(conversationId) {
 
   if (conversation.assistantMode !== "work") return null;
 
-  return { conversation, key };
+  return { conversation };
 }
 
 /**
@@ -17767,12 +17767,15 @@ async function resolveRemoteTextTurn(conversationId) {
 async function generateWithRemoteProvider(
   conversation,
   response,
-  { key = "", temperature = undefined, maxTokens = undefined } = {}
+  { temperature = undefined, maxTokens = undefined } = {}
 ) {
-  const generationId =
-    require("node:crypto").randomUUID();
+  const generationId = require("node:crypto").randomUUID();
 
   const conversationId = conversation.id;
+
+  const config = await remoteTextProvider.readConfig();
+
+  const queue = config.order.filter((providerId) => config.keys[providerId]);
 
   const state = {
     generationId,
@@ -17796,62 +17799,188 @@ async function generateWithRemoteProvider(
 
   response.flushHeaders?.();
 
+  const localModel = config.useLocalFallback ? [{ modelId: "local" }] : [];
+
   writeTextGenerationEvent(response, "recovery-start", {
     generationId,
     conversationId,
     modelOrder: [
-      {
-        modelId: remoteTextProvider.ARENA_MODEL,
-      },
+      ...queue.map((providerId) => ({
+        modelId: `${providerId}/${config.models[providerId] || remoteTextProvider.PROVIDERS[providerId].model}`,
+      })),
+      ...localModel,
     ],
     taskDetection: null,
     source: "remote-text-provider",
-  });
-
-  writeTextGenerationEvent(response, "recovery-attempt", {
-    generationId,
-    attempt: 1,
-    modelId: remoteTextProvider.ARENA_MODEL,
-    source: "remote",
-    status: "generating",
   });
 
   const controller = new AbortController();
 
   state.activeController = controller;
 
+  let attempt = 0;
   let content = "";
+  let used = null;
+  const failures = [];
 
-  try {
-    const result = await remoteTextProvider.streamRemoteChat({
-      key,
-      messages: conversation.messages || [],
-      temperature,
-      maxTokens,
-      signal: controller.signal,
-      onDelta: (delta) => {
-        content += delta;
+  for (const providerId of queue) {
+    const provider = remoteTextProvider.PROVIDERS[providerId];
 
-        writeTextGenerationEvent(response, "recovery-delta", {
-          generationId,
-          content: delta,
-        });
-      },
+    const model =
+      config.models[providerId] || provider.model;
+
+    attempt += 1;
+
+    writeTextGenerationEvent(response, "recovery-attempt", {
+      generationId,
+      attempt,
+      modelId: `${providerId}/${model}`,
+      source: "remote",
+      provider: providerId,
+      status: "generating",
     });
 
-    content = result.content || content;
+    let streamed = "";
 
+    try {
+      const result = await remoteTextProvider.streamRemoteChat({
+        providerId,
+        key: config.keys[providerId],
+        messages: conversation.messages || [],
+        model,
+        temperature,
+        maxTokens,
+        signal: controller.signal,
+        onDelta: (delta) => {
+          streamed += delta;
+
+          writeTextGenerationEvent(response, "recovery-delta", {
+            generationId,
+            content: delta,
+          });
+        },
+      });
+
+      content = result.content || streamed;
+
+      used = { providerId, model, label: provider.label };
+
+      break;
+    } catch (error) {
+      const failure = {
+        attempt,
+        providerId,
+        modelId: `${providerId}/${model}`,
+        source: "remote",
+        status: "failed",
+        errorType: error?.code || "failed",
+        error: error?.message || `${provider.label} could not be reached.`,
+      };
+
+      failures.push(failure);
+      state.attempts.push(failure);
+
+      writeTextGenerationEvent(response, "recovery-failed-attempt", {
+        generationId,
+        attempt,
+        modelId: failure.modelId,
+        errorType: failure.errorType,
+        error: failure.error,
+        hasNextModel: true,
+      });
+
+      // A key the provider refuses is about that key, not about the chain:
+      // saying the same thing three more times helps nobody.
+      if (!remoteTextProvider.isRetryable(error?.code || "failed")) break;
+    }
+  }
+
+  // The last link is this machine. Not one provider's quota decides whether
+  // Work can answer.
+  if (!used && config.useLocalFallback) {
+    attempt += 1;
+
+    writeTextGenerationEvent(response, "recovery-attempt", {
+      generationId,
+      attempt,
+      modelId: "local",
+      source: "local",
+      status: "generating",
+    });
+
+    try {
+      const payload = createTextGenerationPayload(conversation, {
+        temperature,
+        maxTokens,
+        responseFormat: null,
+      });
+
+      payload.stream = false;
+
+      const data = await requestTextRuntime("/v1/chat/completions", {
+        method: "POST",
+        body: payload,
+        timeoutMs: 600000,
+      });
+
+      content = String(
+        data?.choices?.[0]?.message?.content || ""
+      );
+
+      if (content) {
+        writeTextGenerationEvent(response, "recovery-delta", {
+          generationId,
+          content,
+        });
+      }
+
+      used = {
+        providerId: "local",
+        model: payload.model || "local",
+        label: "Local model",
+      };
+    } catch (error) {
+      const failure = {
+        attempt,
+        providerId: "local",
+        modelId: "local",
+        source: "local",
+        status: "failed",
+        errorType: "local_unavailable",
+        error:
+          error?.message ||
+          "The local model could not answer either.",
+      };
+
+      failures.push(failure);
+      state.attempts.push(failure);
+
+      writeTextGenerationEvent(response, "recovery-failed-attempt", {
+        generationId,
+        attempt,
+        modelId: "local",
+        errorType: failure.errorType,
+        error: failure.error,
+        hasNextModel: false,
+      });
+    }
+  }
+
+  if (used && content) {
     state.completedAt = new Date().toISOString();
     state.status = "completed";
-    state.successfulModelId = remoteTextProvider.ARENA_MODEL;
+    state.successfulModelId = used.model;
 
     appendTextChatMessage(conversationId, {
       role: "assistant",
       content,
-      modelId: remoteTextProvider.ARENA_MODEL,
+      modelId: used.model,
       metadata: {
-        source: "remote-text-provider",
-        provider: "arena",
+        source:
+          used.providerId === "local"
+            ? "local-fallback"
+            : "remote-text-provider",
+        provider: used.providerId,
         generationId,
         autosaved: true,
       },
@@ -17861,55 +17990,32 @@ async function generateWithRemoteProvider(
       generationId,
       conversationId,
       content,
-      successfulModelId: remoteTextProvider.ARENA_MODEL,
-      successfulAttempt: 1,
-      fallbackUsed: false,
+      successfulModelId: used.model,
+      successfulAttempt: attempt,
+      fallbackUsed: attempt > 1,
+      provider: used.providerId,
       attempts: state.attempts,
     });
-  } catch (error) {
-    const classified = remoteTextProvider.classifyRemoteError({
-      status: error?.statusCode || 0,
-      body: error?.message || "",
-    });
-
-    const message =
-      error?.statusCode && error.statusCode !== 0
-        ? error.message
-        : classified.message;
+  } else {
+    const summary = failures.length
+      ? failures.map((failure) => `${failure.modelId}: ${failure.error}`).join(" ")
+      : "No provider in the chain could answer.";
 
     state.completedAt = new Date().toISOString();
     state.status = "failed";
 
-    state.attempts.push({
-      attempt: 1,
-      modelId: remoteTextProvider.ARENA_MODEL,
-      source: "remote",
-      status: "failed",
-      errorType: error?.code || classified.code,
-      error: message,
-    });
-
-    writeTextGenerationEvent(response, "recovery-failed-attempt", {
-      generationId,
-      attempt: 1,
-      modelId: remoteTextProvider.ARENA_MODEL,
-      errorType: error?.code || classified.code,
-      error: message,
-      hasNextModel: false,
-    });
-
     writeTextGenerationEvent(response, "recovery-exhausted", {
       generationId,
       conversationId,
-      error: message,
+      error: summary,
       attempts: state.attempts,
     });
-  } finally {
-    state.activeController = null;
-    activeRecoveryGenerations.delete(conversationId);
-
-    if (!response.writableEnded) response.end();
   }
+
+  state.activeController = null;
+  activeRecoveryGenerations.delete(conversationId);
+
+  if (!response.writableEnded) response.end();
 }
 
 async function generateWithRuntimeRecovery(
@@ -24432,7 +24538,6 @@ const server = http.createServer(async (req, res) => {
           remoteTurn.conversation,
           res,
           {
-            key: remoteTurn.key,
             temperature: body.temperature,
             maxTokens: body.maxTokens,
           }
@@ -24512,7 +24617,43 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // POST /api/text-runtime/remote-provider/key — save or forget the Arena key.
+  // POST /api/text-runtime/remote-provider/model — which model to call, and
+  // whether the local model is still the last link when the chain is spent.
+  if (
+    req.url === "/api/text-runtime/remote-provider/model" &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await readJsonRequestBody(req);
+
+      if (body.localFallback !== undefined) {
+        const config = await remoteTextProvider.readConfig();
+
+        config.useLocalFallback = body.localFallback !== false;
+
+        await remoteTextProvider.writeConfig({
+          ...config,
+          savedAt: new Date().toISOString(),
+        });
+      }
+
+      if (body.providerId && body.model !== undefined) {
+        await remoteTextProvider.setModel(body.providerId, body.model);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        provider: await remoteTextProvider.providerStatus(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/text-runtime/remote-provider/key — save or forget a provider key.
   // The key is never sent back: only whether one exists, and its last four.
   if (
     req.url === "/api/text-runtime/remote-provider/key" &&
@@ -24522,7 +24663,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonRequestBody(req);
 
       if (body.action === "clear") {
-        await remoteTextProvider.clearKey();
+        await remoteTextProvider.clearKey(body.providerId);
 
         return json(res, 200, {
           ok: true,
@@ -24530,7 +24671,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      await remoteTextProvider.saveKey(body.key);
+      await remoteTextProvider.saveKey(body.providerId, body.key);
 
       return json(res, 200, {
         ok: true,
@@ -24551,7 +24692,11 @@ const server = http.createServer(async (req, res) => {
     req.method === "POST"
   ) {
     try {
-      const result = await remoteTextProvider.testRemoteProvider();
+      const testBody = await readJsonRequestBody(req);
+
+      const result = await remoteTextProvider.testRemoteProvider(
+        testBody.providerId
+      );
 
       return json(res, result.ok ? 200 : 400, {
         ok: result.ok,
