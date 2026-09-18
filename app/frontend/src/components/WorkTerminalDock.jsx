@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, NOT_A_PROGRAM, TERMINAL_TOOL_ENDPOINTS, looksLikeCode, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, explainNotAProgram, looksLikeCode, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -200,7 +200,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
         // it, in which case saying so beats a syntax error from node.
         if (!looksLikeCode(raw)) {
           setCommandText("");
-          if (!offerPlan(raw)) setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+          if (!offerPlan(raw)) setOutput((current) => `${current ? `${current}\n` : ""}${explainNotAProgram(raw)}`);
           return;
         }
         setCommandText("");
@@ -425,7 +425,7 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
         return;
       }
       if (!looksLikeCode(command)) {
-        if (!offerPlan(command)) setOutput((current) => `${current ? `${current}\n` : ""}${NOT_A_PROGRAM}`);
+        if (!offerPlan(command)) setOutput((current) => `${current ? `${current}\n` : ""}${explainNotAProgram(command)}`);
         return;
       }
       setPendingScript({ code: command, interpreter: "auto" });

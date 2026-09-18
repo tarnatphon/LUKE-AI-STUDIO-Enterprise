@@ -218,8 +218,17 @@ async function main() {
   check("a tool call is folded back onto one line and left for the user",
     /const call = parseToolCall\(raw\) \|\| parseToolCall\(lines\.join\("\\n"\)\);[\s\S]*?setCommandText\(JSON\.stringify\(call\.args\)\);/.test(dock));
   check("notes are named rather than run", /if \(!looksLikeCode\(raw\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
-  check("and the same judgement is made for a pasted block", /if \(!looksLikeCode\(command\)\) \{[\s\S]*?NOT_A_PROGRAM/.test(dock));
+  check("and the same judgement is made for a pasted block", /if \(!looksLikeCode\(command\)\) \{[\s\S]*?explainNotAProgram\(command\)/.test(dock));
   check("the message is one line, because it prints in a terminal", lib.NOT_A_PROGRAM.split("\n").length === 1, String(lib.NOT_A_PROGRAM.split("\n").length));
+  check("and the refusal quotes the block, so the user can see which one", /move the parser/.test(lib.explainNotAProgram("First we move the parser\nThen we test it")), lib.explainNotAProgram("First we move the parser\nThen we test it"));
+  check("it quotes at most two lines", lib.explainNotAProgram("one\ntwo\nthree").split("\n").length === 3, lib.explainNotAProgram("one\ntwo\nthree"));
+  check("an empty block gets the plain message", lib.explainNotAProgram("   ") === lib.NOT_A_PROGRAM);
+  check("a bullet with no space after the mark is a step",
+    lib.planTasksFromMarkdown("-Move the parser").length === 1);
+  check("a bullet drawn with a dot is a step",
+    lib.planTasksFromMarkdown("• Move the parser").length === 1);
+  check("an indented step is a step",
+    lib.planTasksFromMarkdown("   - [ ] Move the parser").length === 1);
 
   section("12. A plan written as markdown has somewhere to go");
   const plan = lib.planTasksFromMarkdown("# Update tasks\n- [ ] move the parser\n- [x] read the file\n- [-] run the tests");
@@ -238,8 +247,10 @@ async function main() {
   check("and says nothing was run", /NOT_A_PROGRAM\} It reads like a plan/.test(dock));
   check("accepting it replaces the plan", /onClick=\{acceptPlan\}.*Set as my plan/.test(dock) || /Set as my plan/.test(dock));
   check("dismissing keeps the plan as it was", /Kept the plan as it was\./.test(dock));
-  check("without a plan in the block, the plain refusal stands",
+  check("without a plan in the block, the refusal stands",
     /if \(!offerPlan\(raw\)\) setOutput/.test(dock) && /if \(!offerPlan\(command\)\) setOutput/.test(dock));
+  check("each path quotes the block it was given",
+    /explainNotAProgram\(raw\)/.test(dock) && /explainNotAProgram\(command\)/.test(dock));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

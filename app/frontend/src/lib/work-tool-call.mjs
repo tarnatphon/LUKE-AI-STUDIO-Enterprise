@@ -143,6 +143,23 @@ export function looksLikeCode(text) {
 export const NOT_A_PROGRAM = "No program in that block — it reads like notes. Nothing was run.";
 
 /**
+ * The refusal, with the block's own first lines under it.
+ *
+ * "It reads like notes" is no use if the user cannot see which block, or what
+ * it says — and a model that labels prose as ```code produces a lot of blocks.
+ * Quoting the opening lines turns a dead end into something readable.
+ */
+export function explainNotAProgram(block, maxLines = 2) {
+  const lines = String(block == null ? "" : block)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, maxLines)
+    .map((line) => `  ${line.slice(0, 120)}`);
+  return lines.length ? `${NOT_A_PROGRAM}\n${lines.join("\n")}` : NOT_A_PROGRAM;
+}
+
+/**
  * A task list, read as a plan.
  *
  * The model is asked to post its plan with update_tasks, and sometimes writes
@@ -157,7 +174,9 @@ export function planTasksFromMarkdown(text) {
     if (value) tasks.push({ id: String(tasks.length + 1), text: value, status });
   };
   for (const rawLine of String(text == null ? "" : text).split(/\r?\n/)) {
-    const line = rawLine.trim().replace(/^#{1,6}\s+/, "");
+    // Models decorate lists several ways — "•", no space after the mark, an
+    // indent — and all of them mean the same step.
+    const line = rawLine.trim().replace(/\t/g, " ").replace(/^#{1,6}\s*/, "").replace(/^[•·]/, "-");
     if (!line) continue;
     const checkbox = line.match(/^(?:[-*+]|\d+[.)])?\s*\[([ xX~-])\]\s*(.*)$/);
     if (checkbox) {
@@ -165,7 +184,8 @@ export function planTasksFromMarkdown(text) {
       add(checkbox[2], mark === " " ? "todo" : (mark === "-" || mark === "~" ? "doing" : "done"));
       continue;
     }
-    const bullet = line.match(/^(?:[-*+]|\d+[.)])\s+(.+)$/);
+    // A mark with no space after it ("-Move the parser") is still a step.
+    const bullet = line.match(/^(?:[-*+]|\d+[.)])\s*(.+)$/);
     if (bullet) add(bullet[1], "todo");
   }
   // The Work plan holds 24 steps, the same cap the agent works to.
