@@ -1573,3 +1573,35 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
+/* Work cannot be carried by a model that writes tools out as prose, and the
+   user deserves to be told that rather than to watch it struggle. */
+.work-model-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(129, 168, 255, .32);
+  border-radius: 10px;
+  background: rgba(129, 168, 255, .09);
+  color: var(--md-sys-color-on-surface);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.work-model-notice svg { flex: 0 0 auto; color: #9ec1ff; }
+
+.work-model-notice span { flex: 1; min-width: 0; }
+
+.work-model-notice button {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 1rem;
+  cursor: pointer;
+}

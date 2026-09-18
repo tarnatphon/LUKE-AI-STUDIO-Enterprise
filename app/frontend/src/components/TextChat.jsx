@@ -8,6 +8,7 @@ import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
 import { expandJsonAnswer, looksLikeInstructionEcho, splitAnswerBlocks, terminalCommandLines } from "../lib/work-answer-blocks.mjs";
+import { isWorkReadyModel, recommendWorkModel } from "../lib/text-model-library.mjs";
 import {
   ZIP_MAX_BYTES,
   describeZipLimit,
@@ -443,6 +444,10 @@ function TextChat({
   // Set when the model writes the round instructions back instead of doing the
   // work twice over. Better a sentence explaining it than a run that spins.
   const [workEchoNotice, setWorkEchoNotice] = useState("");
+  // Work asks for tool use, file edits and reading the failures. A model too
+  // small for that answers by writing the tools out as prose, and no amount of
+  // patching this app changes it — so say so, and say what to install.
+  const [workModelNotice, setWorkModelNotice] = useState("");
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -1460,6 +1465,25 @@ function TextChat({
       window.clearInterval(timer);
     };
   }, [loadingModel]);
+
+  useEffect(() => {
+    if (assistantMode !== "work" || !selectedModel || isWorkReadyModel(selectedModel)) {
+      setWorkModelNotice("");
+      return;
+    }
+    const ramGb = Math.max(0, Number(specs?.ram_total_gb) || 0);
+    const best = recommendWorkModel(ramGb);
+    if (!best) {
+      setWorkModelNotice("");
+      return;
+    }
+    const memory = ramGb > 0 ? `this machine's ${ramGb} GB` : "a machine with enough memory";
+    setWorkModelNotice(
+      ramGb > 0 && best.minMemoryGb > ramGb
+        ? `Work needs a model trained for tools, and the smallest one that does the job needs ${best.minMemoryGb} GB — this machine has ${ramGb} GB. ${selectedModel} will write the tools out as text instead of using them; Work mode is not going to work well until there is more memory or a cloud model.`
+        : `Work needs a model trained for tools. ${selectedModel} is small enough that it writes the tools out as text instead of using them — install ${best.name} (${best.approxSize}, needs ${best.minMemoryGb} GB) for ${memory} and Work stops needing babysitting.`,
+    );
+  }, [assistantMode, selectedModel, specs]);
 
   const handleCancelLlmLoad = async () => {
     try {
@@ -3346,6 +3370,14 @@ function TextChat({
           </button>
         )}
         </div>
+
+        {workModelNotice && (
+          <div className="work-model-notice" role="status">
+            <ShieldAlert size={15} />
+            <span>{workModelNotice}</span>
+            <button type="button" onClick={() => setWorkModelNotice("")} aria-label="Dismiss">×</button>
+          </div>
+        )}
 
         {workEchoNotice && (
           <div className="work-echo-notice" role="status">

@@ -1,3 +1,4 @@
+import { TEXT_MODEL_LIBRARY } from "../lib/text-model-library.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
@@ -154,69 +155,8 @@ const MODEL_LIBRARY = [
   },
 ];
 
-const TEXT_MODEL_LIBRARY = [
-  {
-    group: "Recommended Text Models (llama.cpp)",
-    items: [
-      {
-        name: "Qwen2.5 Coder 0.5B Instruct Q4_K_M",
-        filename: "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
-        format: "GGUF",
-        approxSize: "491 MB",
-        resolution: "N/A",
-        notes: "Extremely fast, lightweight assistant, perfect for low RAM/VRAM machines.",
-        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
-        recommendedTiers: ["Low"],
-      },
-      {
-        name: "SmolLM2 1.7B Instruct Q4_K_M",
-        filename: "smollm2-1.7b-instruct-q4_k_m.gguf",
-        format: "GGUF",
-        approxSize: "1.1 GB",
-        resolution: "N/A",
-        notes: "Excellent lightweight assistant with strong logic, reasoning, and prompt expansion capabilities.",
-        url: "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
-        recommendedTiers: ["Low"],
-      },
-      {
-        name: "Qwen2.5-Coder-7B-Instruct",
-        filename: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-        format: "GGUF",
-        size: "4.7 GB",
-        approxSize: "4.7 GB",
-        resolution: "N/A",
-        notes: "Highly intelligent coding and text assistant. Recommended for mid/high tier systems.",
-        url: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-        recommendedTiers: ["Mid", "High"],
-      },
-      {
-        name: "Llama-3.1-8B-Instruct",
-        filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-        format: "GGUF",
-        size: "4.9 GB",
-        approxSize: "4.9 GB",
-        resolution: "N/A",
-        notes: "Excellent general-purpose text model. Recommended for high-tier systems.",
-        url: "https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-        recommendedTiers: ["High"],
-      },
-      {
-        name: "LLaVA 1.5 7B",
-        filename: "ggml-model-q4_k.gguf",
-        format: "GGUF",
-        size: "4.5 GB",
-        approxSize: "4.5 GB",
-        resolution: "N/A",
-        notes: "Multimodal model capable of understanding images. Downloads companion vision projector automatically.",
-        url: "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf",
-        projectorUrl: "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf",
-        projectorFilename: "mmproj-model-f16.gguf",
-        recommendedTiers: ["Mid", "High"],
-      },
-    ],
-  },
-];
-
+// The library lives in its own module so the chat can ask what Work needs
+// without pulling the whole manager into the first paint.
 const OPENVINO_MODEL_LIBRARY = [
   {
     group: "Intel NPU - OpenVINO Test",

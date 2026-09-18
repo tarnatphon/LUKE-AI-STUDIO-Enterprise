@@ -76,3 +76,8 @@ app/runtime-state/**/*.local.json
 # never travel to the repository — not even by accident.
 app/runtime-state/github-auth.json
 app/runtime-state/text-chat/history/
+
+# Model Arena runs on this machine: scores, verdicts and progress. Local truth.
+app/runtime-state/text-chat/arena/
+# Local machine profile (RAM, chip, backend hints). Written by this machine only.
+app/runtime-state/machine-profile.json
