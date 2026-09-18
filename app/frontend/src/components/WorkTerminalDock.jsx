@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, actionBlockMessage, explainNotAProgram, looksLikeCode, parseActionBlock, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, actionBlockMessage, bareToolName, explainNotAProgram, looksLikeCode, parseActionBlock, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },
@@ -191,6 +191,16 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
         setPendingScript(null);
         setCommandText("");
         setOutput((current) => `${current ? `${current}\n` : ""}${actionBlockMessage(actionBlock)}`);
+        return;
+      }
+
+      // Just a tool's name, under a heading: turn it into the call it was
+      // reaching for and leave it in the input, so the tool runner answers.
+      const named = bareToolName(raw);
+      if (named) {
+        setStaged([]);
+        setPendingScript(null);
+        setCommandText(JSON.stringify({ tool: named }));
         return;
       }
 
@@ -433,6 +443,11 @@ export default function WorkTerminalDock({ project, setProjects = null, onClose,
       const actionBlock = parseActionBlock(command);
       if (actionBlock) {
         setOutput((current) => `${current ? `${current}\n` : ""}${actionBlockMessage(actionBlock)}`);
+        return;
+      }
+      const named = bareToolName(command);
+      if (named) {
+        setCommandText(JSON.stringify({ tool: named }));
         return;
       }
       const call = parseToolCall(command);

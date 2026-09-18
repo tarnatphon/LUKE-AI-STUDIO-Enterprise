@@ -285,6 +285,22 @@ The previous assistant response was stopped by the user before it completed.
   check("the terminal checks for one before deciding it is code",
     /const actionBlock = parseActionBlock\(raw\);/.test(dock) && /const actionBlock = parseActionBlock\(command\);/.test(dock));
 
+  section("14. A block that is nothing but a tool's name");
+  check("the name is found under the headings", lib.bareToolName("# Update tasks\nupdate_tasks\n\n# Start editing") === "update_tasks", String(lib.bareToolName("# Update tasks\nupdate_tasks")));
+  check("a tool the terminal may run is found too", lib.bareToolName("repo_map") === "repo_map", String(lib.bareToolName("repo_map")));
+  check("backticks around it do not matter", lib.bareToolName("`repo_map`") === "repo_map");
+  check("two names are not one call", lib.bareToolName("update_tasks\nrepo_map") === null, String(lib.bareToolName("update_tasks\nrepo_map")));
+  check("an unknown word is not a tool", lib.bareToolName("move the parser") === null);
+  check("a name with arguments is not bare", lib.bareToolName('{"tool":"repo_map"}') === null);
+  check("prose under a heading is not a tool", lib.bareToolName("# Start editing\nmove the parser") === null);
+  check("the terminal turns it into the call it meant",
+    /const named = bareToolName\(raw\);[\s\S]*?setCommandText\(JSON\.stringify\(\{ tool: named \}\)\);/.test(dock));
+  check("and so does a pasted block", /const named = bareToolName\(command\);/.test(dock));
+  check("every tool the terminal offers is a known name",
+    Object.keys(lib.TERMINAL_TOOL_ENDPOINTS).every((tool) => lib.KNOWN_TOOLS.includes(tool)));
+  check("and so is every tool that belongs to the chat",
+    lib.CHAT_ONLY_TOOLS.every((tool) => lib.KNOWN_TOOLS.includes(tool)));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 

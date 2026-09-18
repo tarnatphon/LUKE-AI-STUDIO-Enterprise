@@ -249,3 +249,26 @@ export function actionBlockMessage(block) {
     "Nothing was run. In the chat, Work runs those itself, with approval and undo.",
   ].join("\n");
 }
+
+
+/** Every tool Work knows: the ones the Terminal runs and the ones it does not. */
+export const KNOWN_TOOLS = [...Object.keys(TERMINAL_TOOL_ENDPOINTS), ...CHAT_ONLY_TOOLS];
+
+/**
+ * A block that is nothing but a tool's name.
+ *
+ * The model sometimes writes "update_tasks" on its own under a heading, with
+ * no arguments and no braces. It is not a command and not a program, and
+ * reading it as either produces noise — but the name is known, so the block
+ * becomes the call it was reaching for and the tool runner answers it: run it
+ * if the Terminal may, or explain where it belongs if it may not.
+ */
+export function bareToolName(text) {
+  const lines = stripHarnessNoise(text)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("```") && !line.startsWith("//"));
+  if (lines.length !== 1) return null;
+  const word = lines[0].replace(/[`"']/g, "").trim().toLowerCase();
+  return KNOWN_TOOLS.includes(word) ? word : null;
+}
