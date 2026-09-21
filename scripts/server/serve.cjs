@@ -17777,6 +17777,20 @@ async function generateWithRemoteProvider(
 
   const queue = config.order.filter((providerId) => config.keys[providerId]);
 
+  // One source of truth. The browser only ever sends { conversationId,
+  // modelId }, so temperature and maxTokens arrive undefined here; taking them
+  // straight from the body would mean a temperature the user turned in Settings
+  // quietly does nothing the moment a cloud provider answers, and the output
+  // cap falls back to whatever the gateway feels like. Building the local
+  // payload once keeps both paths honest. autoRoute is off because the local
+  // model id is of no use to a provider on the other side of the internet.
+  const basePayload = createTextGenerationPayload(conversation, {
+    temperature,
+    maxTokens,
+    autoRoute: false,
+    responseFormat: null,
+  });
+
   const state = {
     generationId,
     conversationId,
@@ -17846,12 +17860,13 @@ async function generateWithRemoteProvider(
       const result = await remoteTextProvider.streamRemoteChat({
         providerId,
         key: config.keys[providerId],
-        // The same messages the local path builds, so the cloud model is handed
-        // the same contract rather than a bare transcript.
-        messages: getTextGenerationMessages(conversation),
+        // The same messages and settings the local path builds, so the cloud
+        // model is handed the same contract rather than a bare transcript.
+        messages: basePayload.messages,
         model,
-        temperature,
-        maxTokens,
+        temperature: basePayload.temperature,
+        topP: basePayload.top_p,
+        maxTokens: basePayload.max_tokens,
         signal: controller.signal,
         onDelta: (delta) => {
           streamed += delta;
@@ -17911,13 +17926,7 @@ async function generateWithRemoteProvider(
     });
 
     try {
-      const payload = createTextGenerationPayload(conversation, {
-        temperature,
-        maxTokens,
-        responseFormat: null,
-      });
-
-      payload.stream = false;
+      const payload = { ...basePayload, stream: false };
 
       const data = await requestTextRuntime("/v1/chat/completions", {
         method: "POST",

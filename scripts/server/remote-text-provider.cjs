@@ -134,6 +134,7 @@ function buildRemotePayload({
   providerId = "nvidia",
   model = "",
   temperature = undefined,
+  topP = undefined,
   maxTokens = undefined,
   stream = true,
 } = {}) {
@@ -160,6 +161,11 @@ function buildRemotePayload({
   const numericTemperature = Number(temperature);
   if (Number.isFinite(numericTemperature) && numericTemperature > 0) {
     payload.temperature = numericTemperature;
+  }
+
+  const numericTopP = Number(topP);
+  if (Number.isFinite(numericTopP) && numericTopP > 0 && numericTopP <= 1) {
+    payload.top_p = numericTopP;
   }
 
   const numericMaxTokens = Number(maxTokens);
@@ -474,6 +480,7 @@ async function streamRemoteChat({
   messages = [],
   model = "",
   temperature = undefined,
+  topP = undefined,
   maxTokens = undefined,
   signal = null,
   onDelta = () => {},
@@ -501,7 +508,7 @@ async function streamRemoteChat({
       method: "POST",
       headers: remoteHeaders(secret),
       body: JSON.stringify(
-        buildRemotePayload({ messages, providerId, model, temperature, maxTokens, stream: true }),
+        buildRemotePayload({ messages, providerId, model, temperature, topP, maxTokens, stream: true }),
       ),
       signal: controller.signal,
     });

@@ -173,10 +173,32 @@ async function main() {
     /failures\.map\(\(failure\) => `\$\{failure\.modelId\}: \$\{failure\.error\}`\)/.test(serveSource));
   check("the local generator is called only when the cloud is not used",
     (serveSource.match(/await generateWithRuntimeRecovery\(/g) || []).length === 1);
-  check("the cloud turn is handed the same messages the local turn builds",
-    /messages: getTextGenerationMessages\(conversation\)/.test(serveSource));
+  // One source of truth. The browser sends only { conversationId, modelId }, so
+  // taking temperature and maxTokens straight off the body means the user's own
+  // Settings do nothing on a cloud turn, and the output cap becomes whatever
+  // the gateway happens to default to.
+  check("the cloud turn builds the same payload the local turn builds",
+    /const basePayload = createTextGenerationPayload\(conversation,/.test(serveSource));
+  check("and hands its messages to the provider",
+    /messages: basePayload\.messages/.test(serveSource));
+  check("and its temperature, so the user's setting is honoured in the cloud too",
+    /temperature: basePayload\.temperature/.test(serveSource));
+  check("and its output cap, so an answer is not cut off mid code block",
+    /maxTokens: basePayload\.max_tokens/.test(serveSource));
+  check("and its top_p", /topP: basePayload\.top_p/.test(serveSource));
+  check("the local model router is not consulted for a turn that will not run locally",
+    /autoRoute: false/.test(serveSource));
+  check("the local fallback reuses the same payload rather than building a second one",
+    /const payload = \{ \.\.\.basePayload, stream: false \}/.test(serveSource));
   check("and not a bare transcript with the contract missing",
     !/messages: conversation\.messages \|\| \[\],\s*model,/.test(serveSource));
+  check("nor settings taken raw off the request body",
+    !/temperature,\s*maxTokens,\s*signal: controller\.signal/.test(serveSource));
+
+  const withTopP = provider.buildRemotePayload({ providerId: "nvidia", topP: 0.9, maxTokens: 2048, temperature: 0.7 });
+  check("top_p and the output cap reach the provider", withTopP.top_p === 0.9 && withTopP.max_tokens === 2048);
+  check("an out-of-range top_p is not sent", !("top_p" in provider.buildRemotePayload({ providerId: "nvidia", topP: 4 })));
+  check("and neither is a nonsense output cap", !("max_tokens" in provider.buildRemotePayload({ providerId: "nvidia", maxTokens: -5 })));
 
   section("8. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));
