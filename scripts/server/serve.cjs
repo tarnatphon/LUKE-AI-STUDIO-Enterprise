@@ -17769,9 +17769,22 @@ async function generateWithRemoteProvider(
   response,
   { temperature = undefined, maxTokens = undefined } = {}
 ) {
-  const generationId = require("node:crypto").randomUUID();
-
   const conversationId = conversation.id;
+
+  // The same guard the local path holds. Without it a second turn for one
+  // conversation overwrites the first one's entry in the registry: the Stop
+  // button loses the abort handle it needs, and whichever finishes first
+  // deletes a registration that belongs to the other.
+  if (activeRecoveryGenerations.has(conversationId)) {
+    const error = new Error(
+      "A recovery generation is already active for this conversation."
+    );
+
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const generationId = createTextChatId("generation");
 
   const config = await remoteTextProvider.readConfig();
 

@@ -200,7 +200,28 @@ async function main() {
   check("an out-of-range top_p is not sent", !("top_p" in provider.buildRemotePayload({ providerId: "nvidia", topP: 4 })));
   check("and neither is a nonsense output cap", !("max_tokens" in provider.buildRemotePayload({ providerId: "nvidia", maxTokens: -5 })));
 
-  section("8. The Settings panel never shows a key it already holds");
+  section("8. The registry the Stop button and the concurrency guard depend on");
+  const remoteFn = serveSource.slice(
+    serveSource.indexOf("async function generateWithRemoteProvider("),
+    serveSource.indexOf("async function generateWithRuntimeRecovery("),
+  );
+  check("the cloud branch is the one being described", remoteFn.length > 2000);
+  check("a second turn for one conversation is refused, as it is locally",
+    /activeRecoveryGenerations\.has\(conversationId\)/.test(remoteFn)
+    && /statusCode = 409/.test(remoteFn));
+  check("and it registers itself so Stop can reach it",
+    /activeRecoveryGenerations\.set\(conversationId, state\)/.test(remoteFn));
+  check("it hands the abort handle to that registry",
+    /state\.activeController = controller/.test(remoteFn));
+  check("and clears the registration when the turn ends",
+    /activeRecoveryGenerations\.delete\(conversationId\)/.test(remoteFn));
+  check("the guard comes before anything is registered",
+    remoteFn.indexOf("activeRecoveryGenerations.has(") < remoteFn.indexOf("activeRecoveryGenerations.set("));
+  check("generation ids come from the house helper, not an inline require",
+    /createTextChatId\("generation"\)/.test(remoteFn)
+    && !/require\("node:crypto"\)/.test(remoteFn));
+
+  section("9. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));
   check("it never renders a stored key back", !/value=\{remoteProvider\.key\b/.test(settings));
   check("it shows a hint instead", /keyHint/.test(settings));
@@ -208,7 +229,7 @@ async function main() {
   check("it can forget a key from the same place", /sendRemoteKey\(/.test(settings));
   check("it can test a provider before relying on it", /remote-provider\/test/.test(settings));
 
-  section("9. A key that is saved can be forgotten, and an old file still reads");
+  section("10. A key that is saved can be forgotten, and an old file still reads");
   const original = fs.existsSync(provider.PROVIDER_FILE)
     ? fs.readFileSync(provider.PROVIDER_FILE, "utf8")
     : null;
