@@ -190,8 +190,24 @@ function remoteHeaders(key) {
   };
 }
 
+/**
+ * The base URL a provider is reached at.
+ *
+ * Overridable so the chain can be driven against a local stand-in instead of
+ * the internet. Every assertion in the companion suite that only reads this
+ * file's source proves what the code says; pointing it at a real socket proves
+ * what the code does.
+ */
+function baseUrlFor(providerId) {
+  providerOrThrow(providerId);
+
+  const override = String(process.env.LUKE_REMOTE_PROVIDER_BASE_URL || "").trim();
+
+  return (override || PROVIDERS[providerId].baseUrl).replace(/\/+$/, "");
+}
+
 function remoteEndpoint(providerId) {
-  return `${providerOrThrow(providerId).baseUrl}/chat/completions`;
+  return `${baseUrlFor(providerId)}/chat/completions`;
 }
 
 /**
@@ -292,9 +308,17 @@ function isRetryable(code) {
 function createSseDecoder() {
   let buffer = "";
 
+  // The stream arrives as bytes. String() on a Uint8Array produces
+  // "100,97,116,97,58" — comma separated byte values — which starts no `data:`
+  // line, so every frame is silently dropped and a streamed answer comes back
+  // empty. TextDecoder in streaming mode also holds an incomplete multi-byte
+  // character across reads, which matters here: a Thai syllable is three bytes
+  // and a chunk boundary can land in the middle of one.
+  const bytes = new TextDecoder("utf-8");
+
   return {
     push(chunk) {
-      buffer += String(chunk || "");
+      buffer += typeof chunk === "string" ? chunk : bytes.decode(chunk, { stream: true });
 
       const frames = buffer.split("\n\n");
       buffer = frames.pop() || "";
@@ -314,6 +338,8 @@ function createSseDecoder() {
     },
 
     flush() {
+      buffer += bytes.decode();
+
       const rest = buffer;
       buffer = "";
 
@@ -591,6 +617,7 @@ async function streamRemoteChat({
 async function streamRemoteChain({
   messages = [],
   temperature = undefined,
+  topP = undefined,
   maxTokens = undefined,
   signal = null,
   onDelta = () => {},
@@ -621,6 +648,7 @@ async function streamRemoteChain({
         messages,
         model: link.model,
         temperature,
+        topP,
         maxTokens,
         signal,
         onDelta,
@@ -689,6 +717,7 @@ async function testRemoteProvider(providerId) {
 
 module.exports = {
   DEFAULT_ORDER,
+  baseUrlFor,
   DEFAULT_TIMEOUT_MS,
   PROVIDERS,
   PROVIDER_FILE,
