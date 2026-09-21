@@ -83,7 +83,29 @@ async function main() {
     provider.buildRemotePayload({ providerId: "arena", model: "claude-opus-4-6" }).model === "coding-router-preview");
   check("it streams", payload.stream === true);
   check("junk messages are dropped, not forwarded", payload.messages.length === 2, String(payload.messages.length));
-  check("roles are only user or assistant", payload.messages.every((message) => ["user", "assistant"].includes(message.role)));
+  check("roles survive as themselves, not flattened",
+    payload.messages.every((message) => ["user", "assistant"].includes(message.role)));
+
+  // The contract lives in a system message. Demote it to a user turn and the
+  // model never reads it — which is how Work ends up writing tool names out as
+  // prose, the failure this whole app is built to contain.
+  const withSystem = provider.buildRemotePayload({
+    providerId: "nvidia",
+    messages: [
+      { role: "system", content: "the contract" },
+      { role: "user", content: "fix it" },
+      { role: "tool", content: "some tool output" },
+    ],
+  });
+  check("the system prompt reaches the provider as a system message",
+    withSystem.messages[0].role === "system" && withSystem.messages[0].content === "the contract",
+    JSON.stringify(withSystem.messages[0]));
+  check("and is not demoted to a user turn",
+    !withSystem.messages.some((message) => message.role === "user" && message.content === "the contract"));
+  check("a tool transcript is not forwarded as though it were speech",
+    !withSystem.messages.some((message) => message.content === "some tool output"));
+  check("the conversation itself still follows",
+    withSystem.messages.length === 2 && withSystem.messages[1].role === "user");
   check("a nonsense temperature is not sent", !("temperature" in provider.buildRemotePayload({ providerId: "nvidia", temperature: "hot" })));
   const headers = provider.remoteHeaders(FAKE_KEY);
   check("the key travels as a bearer token", headers.authorization === `Bearer ${FAKE_KEY}`);
@@ -151,6 +173,10 @@ async function main() {
     /failures\.map\(\(failure\) => `\$\{failure\.modelId\}: \$\{failure\.error\}`\)/.test(serveSource));
   check("the local generator is called only when the cloud is not used",
     (serveSource.match(/await generateWithRuntimeRecovery\(/g) || []).length === 1);
+  check("the cloud turn is handed the same messages the local turn builds",
+    /messages: getTextGenerationMessages\(conversation\)/.test(serveSource));
+  check("and not a bare transcript with the contract missing",
+    !/messages: conversation\.messages \|\| \[\],\s*model,/.test(serveSource));
 
   section("8. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));

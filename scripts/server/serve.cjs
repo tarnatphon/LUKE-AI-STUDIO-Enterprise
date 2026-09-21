@@ -17846,7 +17846,9 @@ async function generateWithRemoteProvider(
       const result = await remoteTextProvider.streamRemoteChat({
         providerId,
         key: config.keys[providerId],
-        messages: conversation.messages || [],
+        // The same messages the local path builds, so the cloud model is handed
+        // the same contract rather than a bare transcript.
+        messages: getTextGenerationMessages(conversation),
         model,
         temperature,
         maxTokens,

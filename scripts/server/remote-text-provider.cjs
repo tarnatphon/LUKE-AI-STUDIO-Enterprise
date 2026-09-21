@@ -139,10 +139,15 @@ function buildRemotePayload({
 } = {}) {
   const provider = providerOrThrow(providerId);
 
+  // The three roles that exist in a conversation. `system` is not a detail:
+  // the restore prompt carries the contract Work writes its answers under, and
+  // demoting it to a user turn is how a model ends up writing tool names out as
+  // prose. Anything else is a tool result or a stray, and is dropped.
   const normalizedMessages = (Array.isArray(messages) ? messages : [])
     .filter((message) => message && typeof message.content === "string")
+    .filter((message) => ["system", "user", "assistant"].includes(message.role))
     .map((message) => ({
-      role: message.role === "assistant" ? "assistant" : "user",
+      role: message.role,
       content: message.content,
     }));
 
