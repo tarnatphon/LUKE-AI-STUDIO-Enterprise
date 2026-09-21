@@ -24,7 +24,23 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+const os = require("node:os");
+
 const root = path.resolve(__dirname, "..", "..");
+
+// The keys belong to the user, not to a test run. Backing the real file up in
+// memory and restoring it in a `finally` is one interrupted run — a killed
+// process, a stopped mac.sh — away from leaving the saved key destroyed. So
+// this suite points the module at a throwaway file before it is even loaded.
+const SCRATCH_FILE = path.join(os.tmpdir(), `luke-provider-test-${process.pid}.json`);
+const REAL_KEY_FILE = path.join(root, "app", "runtime-state", "text-chat", "remote-text-provider.json");
+
+const realKeyBefore = fs.existsSync(REAL_KEY_FILE)
+  ? { mtime: fs.statSync(REAL_KEY_FILE).mtimeMs, content: fs.readFileSync(REAL_KEY_FILE, "utf8") }
+  : null;
+
+process.env.LUKE_REMOTE_PROVIDER_FILE = SCRATCH_FILE;
+
 const provider = require(path.join(root, "scripts", "server", "remote-text-provider.cjs"));
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
 const gitignore = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
@@ -51,9 +67,15 @@ const FAKE_KEY = "sk-arena-SECRET-abcdef123456";
 
 async function main() {
   section("1. The keys live on this machine and nowhere else");
-  const relative = path.relative(root, provider.PROVIDER_FILE);
-  check("they are stored inside the app folder", relative.startsWith("app" + path.sep + "runtime-state"), relative);
+  const moduleSource = fs.readFileSync(
+    path.join(root, "scripts", "server", "remote-text-provider.cjs"),
+    "utf8",
+  );
+  check("by default the keys are stored inside the app folder",
+    /"app",\s*"runtime-state",\s*"text-chat",\s*"remote-text-provider\.json"/.test(moduleSource));
   check("that file is gitignored", gitignore.includes("remote-text-provider.json"));
+  check("a test run is pointed somewhere throwaway instead", provider.PROVIDER_FILE === SCRATCH_FILE,
+    provider.PROVIDER_FILE);
 
   const status = await provider.providerStatus();
   check("the status never carries a key itself", !JSON.stringify(status).includes("SECRET"));
@@ -230,10 +252,6 @@ async function main() {
   check("it can test a provider before relying on it", /remote-provider\/test/.test(settings));
 
   section("10. A key that is saved can be forgotten, and an old file still reads");
-  const original = fs.existsSync(provider.PROVIDER_FILE)
-    ? fs.readFileSync(provider.PROVIDER_FILE, "utf8")
-    : null;
-
   try {
     await provider.saveKey("nvidia", FAKE_KEY);
     check("a saved key is readable back", (await provider.readStoredKey("nvidia")) === FAKE_KEY);
@@ -260,13 +278,16 @@ async function main() {
     check("and the local model is still the last link by default",
       (await provider.providerStatus()).localFallback === true);
   } finally {
-    if (original) {
-      fs.mkdirSync(path.dirname(provider.PROVIDER_FILE), { recursive: true });
-      fs.writeFileSync(provider.PROVIDER_FILE, original, { mode: 0o600 });
-    } else {
-      await provider.writeConfig({ keys: {}, order: [...provider.DEFAULT_ORDER], models: {}, useLocalFallback: true });
-    }
+    fs.rmSync(SCRATCH_FILE, { force: true });
   }
+
+  // The point of the scratch file: a suite that saves, clears and rewrites keys
+  // must leave the one holding the user's real key exactly as it found it.
+  const realKeyAfter = fs.existsSync(REAL_KEY_FILE)
+    ? { mtime: fs.statSync(REAL_KEY_FILE).mtimeMs, content: fs.readFileSync(REAL_KEY_FILE, "utf8") }
+    : null;
+  check("the run never touched the file holding the user's real key",
+    JSON.stringify(realKeyBefore) === JSON.stringify(realKeyAfter));
 
   let rejected = false;
   try {

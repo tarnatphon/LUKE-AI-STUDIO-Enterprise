@@ -35,13 +35,19 @@ const fsp = require("node:fs/promises");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const PROVIDER_FILE = path.join(
-  ROOT,
-  "app",
-  "runtime-state",
-  "text-chat",
-  "remote-text-provider.json",
-);
+
+/**
+ * Where the keys live.
+ *
+ * The default is inside the app folder — on the external disk with everything
+ * else this app keeps, mode 0600, gitignored. The override exists so a test can
+ * point the module at a throwaway file instead of writing to the one holding
+ * the user's real key. A suite that has to back that file up in memory and
+ * restore it in a `finally` is one interrupted run away from destroying it.
+ */
+const PROVIDER_FILE = process.env.LUKE_REMOTE_PROVIDER_FILE
+  ? path.resolve(process.env.LUKE_REMOTE_PROVIDER_FILE)
+  : path.join(ROOT, "app", "runtime-state", "text-chat", "remote-text-provider.json");
 
 const DEFAULT_TIMEOUT_MS = 600000;
 const PROBE_TIMEOUT_MS = 60000;
