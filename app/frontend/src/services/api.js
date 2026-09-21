@@ -824,6 +824,10 @@ export async function streamChatWithLlm(messages, options = {}, onToken = () => 
       temperature: options.temperature,
       max_tokens: options.maxTokens,
       stream: true,
+      // Work may answer from the cloud; chat never does. The mode lives in App
+      // state and localStorage, so it has to travel with the request — nothing
+      // on the server knows it otherwise.
+      assistantMode: options.assistantMode === "work" ? "work" : "chat",
       // New sampling parameters
       top_p: options.topP,
       top_k: options.topK,

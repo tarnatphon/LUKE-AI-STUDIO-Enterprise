@@ -26635,9 +26635,113 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
     }
   }
 
+/**
+ * Work borrows a brain from the cloud, on the endpoint the app actually calls.
+ *
+ * The chain used to hang off /api/text-runtime/generate-with-recovery, which
+ * only PersistentTextChat calls — and PersistentTextChat is lazy imported in
+ * App.jsx and never rendered. So the whole cloud path was unreachable: the live
+ * chat goes through /api/llm/chat, and assistantMode was never persisted on a
+ * conversation, so the gate that read it could never open.
+ *
+ * Returns false when nothing was written to the response, which means "carry on
+ * as though this function did not exist" — no key saved, or every provider
+ * failed before producing a word. That is what keeps the local model as the last
+ * link: the caller falls through to it with the response untouched. Once a
+ * single delta has gone out the headers are committed, so a failure from there
+ * is reported to the user instead.
+ */
+async function routeWorkTurnToCloud(req, res, body) {
+  const config = await remoteTextProvider.readConfig();
+
+  if (!config.order.some((providerId) => config.keys[providerId])) return false;
+
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+
+  const controller = new AbortController();
+
+  req.on("close", () => {
+    if (!res.writableEnded) controller.abort();
+  });
+
+  let started = false;
+
+  const head = () => {
+    if (started) return;
+
+    started = true;
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+  };
+
+  // The same wire format the local runtime streams, so the reader in
+  // streamChatWithLlm needs no idea which side answered.
+  const send = (text) => {
+    if (!text) return;
+
+    head();
+
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`,
+    );
+  };
+
+  const result = await remoteTextProvider.streamRemoteChain({
+    messages,
+    temperature: body.temperature,
+    topP: body.top_p ?? body.topP,
+    maxTokens: body.max_tokens ?? body.maxTokens,
+    signal: controller.signal,
+    onDelta: send,
+  });
+
+  if (result.content) {
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [{ delta: {}, finish_reason: "stop" }],
+        cloud: { provider: result.providerId, model: result.model },
+      })}\n\n`,
+    );
+    res.write("data: [DONE]\n\n");
+    res.end();
+
+    return true;
+  }
+
+  // Not one word arrived, so the response is still clean and the local model
+  // can take the turn exactly as it would have.
+  if (!started) return false;
+
+  const summary = (result.failures || [])
+    .map((failure) => `${failure.label}: ${failure.message}`)
+    .join("\n");
+
+  send(`\n\n[The cloud providers could not finish this turn.]\n${summary}`);
+  res.write("data: [DONE]\n\n");
+  res.end();
+
+  return true;
+}
+
   if (req.url === "/api/llm/chat" && req.method === "POST") {
     const body = await readJsonBody(req, res);
     if (!body) return;
+
+    // Work, and Work only, may answer from the cloud. Chat stays on this
+    // machine. A false here means nothing was written and the local path
+    // continues untouched.
+    if (
+      body.assistantMode === "work" &&
+      (await routeWorkTurnToCloud(req, res, body))
+    ) {
+      return;
+    }
+
     if (!llmReady) {
       // The arena may have released the chat model to make room; bring it back
       // instead of making the user reload it by hand.

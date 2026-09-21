@@ -2656,6 +2656,7 @@ function TextChat({
         : getAutoMaxResponseTokens(promptTokenEstimate, thinkingEnabled);
 
       const streamOptions = {
+        assistantMode,
         temperature: textSettings?.temperature || 0.7,
         maxTokens: effectiveMaxTokens,
         topP: textSettings?.topP,

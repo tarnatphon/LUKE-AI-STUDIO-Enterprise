@@ -222,7 +222,27 @@ async function main() {
   check("an out-of-range top_p is not sent", !("top_p" in provider.buildRemotePayload({ providerId: "nvidia", topP: 4 })));
   check("and neither is a nonsense output cap", !("max_tokens" in provider.buildRemotePayload({ providerId: "nvidia", maxTokens: -5 })));
 
-  section("8. The registry the Stop button and the concurrency guard depend on");
+  // The chain is only worth anything on an endpoint the running application
+  // reaches. It once hung off generate-with-recovery, which only
+  // PersistentTextChat calls — and PersistentTextChat is never rendered.
+  section("8. The cloud path sits on the endpoint the app actually calls");
+  const apiSource = fs.readFileSync(
+    path.join(root, "app", "frontend", "src", "services", "api.js"),
+    "utf8",
+  );
+  const chatSource = fs.readFileSync(
+    path.join(root, "app", "frontend", "src", "components", "TextChat.jsx"),
+    "utf8",
+  );
+  check("the mode travels with the chat request",
+    /assistantMode: options\.assistantMode === "work" \? "work" : "chat"/.test(apiSource));
+  check("and the chat window supplies it", /const streamOptions = \{\s*assistantMode,/.test(chatSource));
+  check("the server routes Work at /api/llm/chat",
+    /body\.assistantMode === "work" &&\s*\(await routeWorkTurnToCloud\(req, res, body\)\)/.test(serveSource));
+  check("which is the endpoint the chat window calls",
+    /fetchWithTimeoutAndRetry\("\/api\/llm\/chat"/.test(apiSource));
+
+  section("9. The registry the Stop button and the concurrency guard depend on");
   const remoteFn = serveSource.slice(
     serveSource.indexOf("async function generateWithRemoteProvider("),
     serveSource.indexOf("async function generateWithRuntimeRecovery("),
@@ -243,7 +263,7 @@ async function main() {
     /createTextChatId\("generation"\)/.test(remoteFn)
     && !/require\("node:crypto"\)/.test(remoteFn));
 
-  section("9. The Settings panel never shows a key it already holds");
+  section("10. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));
   check("it never renders a stored key back", !/value=\{remoteProvider\.key\b/.test(settings));
   check("it shows a hint instead", /keyHint/.test(settings));
@@ -251,7 +271,7 @@ async function main() {
   check("it can forget a key from the same place", /sendRemoteKey\(/.test(settings));
   check("it can test a provider before relying on it", /remote-provider\/test/.test(settings));
 
-  section("10. A key that is saved can be forgotten, and an old file still reads");
+  section("11. A key that is saved can be forgotten, and an old file still reads");
   try {
     await provider.saveKey("nvidia", FAKE_KEY);
     check("a saved key is readable back", (await provider.readStoredKey("nvidia")) === FAKE_KEY);
