@@ -213,11 +213,15 @@ async function main() {
         )
       : null;
 
+  // It may not exist yet: the app creates these on first use, so a suite
+  // that demands one cannot run on a fresh checkout.
   const originalFeedbackStore =
-    fs.readFileSync(
-      feedbackStoreFile,
-      "utf8"
-    );
+    fs.existsSync(feedbackStoreFile)
+      ? fs.readFileSync(
+          feedbackStoreFile,
+          "utf8"
+        )
+      : null;
 
   fs.writeFileSync(
     conversationStoreFile,
@@ -524,11 +528,15 @@ async function main() {
 
     fs.rmSync(conversationStoreFile, { force: true });
 
-    fs.writeFileSync(
-      feedbackStoreFile,
-      originalFeedbackStore,
-      "utf8"
-    );
+    if (originalFeedbackStore === null) {
+      fs.rmSync(feedbackStoreFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        feedbackStoreFile,
+        originalFeedbackStore,
+        "utf8"
+      );
+    }
   }
 
   console.log(

@@ -246,17 +246,25 @@ async function main() {
         )
       : null;
 
+  // It may not exist yet: the app creates these on first use, so a suite
+  // that demands one cannot run on a fresh checkout.
   const originalHealth =
-    fs.readFileSync(
-      healthFile,
-      "utf8"
-    );
+    fs.existsSync(healthFile)
+      ? fs.readFileSync(
+          healthFile,
+          "utf8"
+        )
+      : null;
 
+  // It may not exist yet: the app creates these on first use, so a suite
+  // that demands one cannot run on a fresh checkout.
   const originalInstalled =
-    fs.readFileSync(
-      installedFile,
-      "utf8"
-    );
+    fs.existsSync(installedFile)
+      ? fs.readFileSync(
+          installedFile,
+          "utf8"
+        )
+      : null;
 
   fs.writeFileSync(
     conversationFile,
@@ -698,15 +706,25 @@ async function main() {
 
     fs.rmSync(conversationFile, { force: true });
 
-    fs.writeFileSync(
-      healthFile,
-      originalHealth
-    );
+    if (originalHealth === null) {
+      fs.rmSync(healthFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        healthFile,
+        originalHealth,
+        "utf8"
+      );
+    }
 
-    fs.writeFileSync(
-      installedFile,
-      originalInstalled
-    );
+    if (originalInstalled === null) {
+      fs.rmSync(installedFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        installedFile,
+        originalInstalled,
+        "utf8"
+      );
+    }
   }
 
   console.log(

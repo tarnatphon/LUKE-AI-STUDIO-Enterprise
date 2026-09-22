@@ -239,11 +239,15 @@ async function main() {
         )
       : null;
 
+  // It may not exist yet: the app creates these on first use, so a suite
+  // that demands one cannot run on a fresh checkout.
   const originalInstalled =
-    fs.readFileSync(
-      installedFile,
-      "utf8"
-    );
+    fs.existsSync(installedFile)
+      ? fs.readFileSync(
+          installedFile,
+          "utf8"
+        )
+      : null;
 
   fs.writeFileSync(
     storeFile,
@@ -796,11 +800,15 @@ async function main() {
 
     fs.rmSync(storeFile, { force: true });
 
-    fs.writeFileSync(
-      installedFile,
-      originalInstalled,
-      "utf8"
-    );
+    if (originalInstalled === null) {
+      fs.rmSync(installedFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        installedFile,
+        originalInstalled,
+        "utf8"
+      );
+    }
   }
 
   console.log(
