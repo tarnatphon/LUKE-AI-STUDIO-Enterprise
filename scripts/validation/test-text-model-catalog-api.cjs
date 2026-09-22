@@ -187,6 +187,12 @@ async function main() {
   const baseUrl =
     `http://127.0.0.1:${port}`;
 
+  // Prove the endpoint serves a checkout the app has never written to. In a
+  // batch run an earlier suite leaves this file behind, which is exactly how a
+  // 500 on a fresh clone stayed invisible: every suite that could have caught
+  // it ran after one that had already created the file.
+  fs.rmSync(queueFile, { force: true });
+
   const child = spawn(
     process.execPath,
     [serverFile],
@@ -239,6 +245,19 @@ async function main() {
         baseUrl,
         "/api/text-models/download-queue"
       );
+
+    if (queueResult.status !== 200) {
+      throw new Error(
+        "Download queue endpoint failed on a checkout with no queue file: " +
+        `status ${queueResult.status}`
+      );
+    }
+
+    if (!fs.existsSync(queueFile)) {
+      throw new Error(
+        "Reading the queue did not create the file for later writes."
+      );
+    }
 
     if (
       queueResult.status !== 200 ||

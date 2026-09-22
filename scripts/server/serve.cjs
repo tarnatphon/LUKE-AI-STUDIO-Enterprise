@@ -9895,6 +9895,26 @@ function readTextModelPolicy() {
 }
 
 function readTextModelQueue() {
+  // The queue is per-machine state and ships with nothing, so the first read
+  // creates it - the same as the installed-model registry, the model health
+  // store and the feedback store already do. Without this the download queue
+  // endpoint answered 500 on any checkout the app had not written to yet.
+  if (!fs.existsSync(textModelQueuePath)) {
+    const initial = {
+      schemaVersion: 1,
+      updatedAt: null,
+      activeItemId: null,
+      items: [],
+    };
+
+    writeJsonFileAtomic(
+      textModelQueuePath,
+      initial
+    );
+
+    return initial;
+  }
+
   const queue = readJsonFileStrict(
     textModelQueuePath,
     "Text model queue"
