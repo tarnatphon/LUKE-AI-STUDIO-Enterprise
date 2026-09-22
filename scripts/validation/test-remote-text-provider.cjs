@@ -181,50 +181,29 @@ async function main() {
     rest.length === 0 && provider.extractDelta(decoder.flush()[0] || "") === "!");
 
   section("7. The local path is left exactly as it was");
-  check("Work decides per turn whether to go to the cloud", /async function resolveRemoteTextTurn\(/.test(serveSource));
-  check("and only goes when at least one key exists",
-    /config\.order\.some\(\(providerId\) => config\.keys\[providerId\]\)\)/.test(serveSource));
-  check("chat stays on this machine", /conversation\.assistantMode !== "work"\s*\)\s*return null;/.test(serveSource));
-  check("when the chain is spent, this machine takes the turn",
-    /config\.useLocalFallback[\s\S]{0,1500}requestTextRuntime\([\s\S]{0,200}"\/v1\/chat\/completions"/.test(serveSource));
-  check("the local answer is saved like any other turn", /appendTextChatMessage\(/.test(serveSource));
-  check("the cloud turn emits the events the chat already reads",
-    /"recovery-start"/.test(serveSource) && /"recovery-attempt"/.test(serveSource)
-    && /"recovery-delta"/.test(serveSource) && /"recovery-complete"/.test(serveSource));
-  check("a failure names every link that failed, not just the last",
-    /failures\.map\(\(failure\) => `\$\{failure\.modelId\}: \$\{failure\.error\}`\)/.test(serveSource));
-  check("the local generator is called only when the cloud is not used",
+  const routeFn = serveSource.slice(
+    serveSource.indexOf("async function routeWorkTurnToCloud("),
+    serveSource.indexOf("  if (req.url === \"/api/llm/chat\""),
+  );
+  check("there is one cloud path, and it is the one on /api/llm/chat", routeFn.length > 800);
+  check("only a Work turn is offered to the cloud",
+    /body\.assistantMode === "work" &&/.test(serveSource));
+  check("chat is not mentioned in that condition",
+    !/body\.assistantMode === "chat"/.test(serveSource));
+  check("when the chain is spent and nothing was written, the local model takes the turn",
+    /if \(!started && config\.useLocalFallback !== false\) return false;/.test(routeFn));
+  check("and the Settings toggle to refuse that fallback is honoured",
+    /config\.useLocalFallback !== false/.test(routeFn));
+  check("tokens go out in the frames the local runtime already streams",
+    /choices: \[\{ delta: \{ content: text \} \}\]/.test(routeFn));
+  check("the stream is closed the way the reader expects",
+    /res\.write\("data: \[DONE\]\\n\\n"\)/.test(routeFn));
+  check("no unreachable second implementation is left behind",
+    !/generateWithRemoteProvider/.test(serveSource)
+    && !/resolveRemoteTextTurn/.test(serveSource));
+  check("and the recovery generator is called from exactly one place",
     (serveSource.match(/await generateWithRuntimeRecovery\(/g) || []).length === 1);
-  // One source of truth. The browser sends only { conversationId, modelId }, so
-  // taking temperature and maxTokens straight off the body means the user's own
-  // Settings do nothing on a cloud turn, and the output cap becomes whatever
-  // the gateway happens to default to.
-  check("the cloud turn builds the same payload the local turn builds",
-    /const basePayload = createTextGenerationPayload\(conversation,/.test(serveSource));
-  check("and hands its messages to the provider",
-    /messages: basePayload\.messages/.test(serveSource));
-  check("and its temperature, so the user's setting is honoured in the cloud too",
-    /temperature: basePayload\.temperature/.test(serveSource));
-  check("and its output cap, so an answer is not cut off mid code block",
-    /maxTokens: basePayload\.max_tokens/.test(serveSource));
-  check("and its top_p", /topP: basePayload\.top_p/.test(serveSource));
-  check("the local model router is not consulted for a turn that will not run locally",
-    /autoRoute: false/.test(serveSource));
-  check("the local fallback reuses the same payload rather than building a second one",
-    /const payload = \{ \.\.\.basePayload, stream: false \}/.test(serveSource));
-  check("and not a bare transcript with the contract missing",
-    !/messages: conversation\.messages \|\| \[\],\s*model,/.test(serveSource));
-  check("nor settings taken raw off the request body",
-    !/temperature,\s*maxTokens,\s*signal: controller\.signal/.test(serveSource));
 
-  const withTopP = provider.buildRemotePayload({ providerId: "nvidia", topP: 0.9, maxTokens: 2048, temperature: 0.7 });
-  check("top_p and the output cap reach the provider", withTopP.top_p === 0.9 && withTopP.max_tokens === 2048);
-  check("an out-of-range top_p is not sent", !("top_p" in provider.buildRemotePayload({ providerId: "nvidia", topP: 4 })));
-  check("and neither is a nonsense output cap", !("max_tokens" in provider.buildRemotePayload({ providerId: "nvidia", maxTokens: -5 })));
-
-  // The chain is only worth anything on an endpoint the running application
-  // reaches. It once hung off generate-with-recovery, which only
-  // PersistentTextChat calls — and PersistentTextChat is never rendered.
   section("8. The cloud path sits on the endpoint the app actually calls");
   const apiSource = fs.readFileSync(
     path.join(root, "app", "frontend", "src", "services", "api.js"),
@@ -242,26 +221,21 @@ async function main() {
   check("which is the endpoint the chat window calls",
     /fetchWithTimeoutAndRetry\("\/api\/llm\/chat"/.test(apiSource));
 
-  section("9. The registry the Stop button and the concurrency guard depend on");
-  const remoteFn = serveSource.slice(
-    serveSource.indexOf("async function generateWithRemoteProvider("),
-    serveSource.indexOf("async function generateWithRuntimeRecovery("),
-  );
-  check("the cloud branch is the one being described", remoteFn.length > 2000);
-  check("a second turn for one conversation is refused, as it is locally",
-    /activeRecoveryGenerations\.has\(conversationId\)/.test(remoteFn)
-    && /statusCode = 409/.test(remoteFn));
-  check("and it registers itself so Stop can reach it",
-    /activeRecoveryGenerations\.set\(conversationId, state\)/.test(remoteFn));
-  check("it hands the abort handle to that registry",
-    /state\.activeController = controller/.test(remoteFn));
-  check("and clears the registration when the turn ends",
-    /activeRecoveryGenerations\.delete\(conversationId\)/.test(remoteFn));
-  check("the guard comes before anything is registered",
-    remoteFn.indexOf("activeRecoveryGenerations.has(") < remoteFn.indexOf("activeRecoveryGenerations.set("));
-  check("generation ids come from the house helper, not an inline require",
-    /createTextChatId\("generation"\)/.test(remoteFn)
-    && !/require\("node:crypto"\)/.test(remoteFn));
+  section("9. The live route commits nothing until it has something to say");
+  check("the headers are written only once a first token exists",
+    /const head = \(\) => \{\s*if \(started\) return;/.test(routeFn)
+    && routeFn.indexOf("if (started) return;") < routeFn.indexOf("res.writeHead(200"));
+  check("a client that walks away cancels the request upstream",
+    /req\.on\("close", \(\) => \{/.test(routeFn) && /controller\.abort\(\)/.test(routeFn));
+  check("nothing is buffered that could be lost, each delta goes straight out",
+    /onDelta: send/.test(routeFn));
+  check("a failure after bytes are out is told to the user, not swallowed",
+    /The cloud providers could not finish this turn/.test(routeFn));
+  check("and it names every provider that refused",
+    /result\.failures \|\| \[\]/.test(routeFn)
+    && /failure\.label\}: \$\{failure\.message\}/.test(routeFn));
+  check("an empty provider list never reaches the network",
+    /if \(!config\.order\.some\(\(providerId\) => config\.keys\[providerId\]\)\) return false;/.test(routeFn));
 
   section("10. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));

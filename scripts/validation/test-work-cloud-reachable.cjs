@@ -301,7 +301,36 @@ async function main() {
 
     gatewayMode = "answer";
 
-    section("8. Disconnecting puts the turn back on this machine");
+    section("8. Turning the local fallback off is honoured");
+    const toggleOff = await post("/api/text-runtime/remote-provider/model", {
+      localFallback: false,
+    });
+    check("the switch can be turned off",
+      toggleOff.status === 200 && toggleOff.data.provider.localFallback === false,
+      JSON.stringify(toggleOff.data?.provider?.localFallback));
+
+    seen.length = 0;
+    gatewayMode = "refuse";
+
+    const noFallback = await fetch(`${baseUrl}/api/llm/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages, assistantMode: "work", stream: true }),
+    });
+
+    check("the gateway was tried", seen.length === 1, String(seen.length));
+    check("and the turn did not fall back to the local model", noFallback.status === 200, String(noFallback.status));
+
+    const explained = await readSse(noFallback);
+    check("the user is told what refused, in words",
+      /could not finish this turn/i.test(explained.content) && /NVIDIA/i.test(explained.content),
+      explained.content.slice(0, 160));
+
+    gatewayMode = "answer";
+
+    await post("/api/text-runtime/remote-provider/model", { localFallback: true });
+
+    section("9. Disconnecting puts the turn back on this machine");
     const cleared = await post("/api/text-runtime/remote-provider/key", {
       providerId: "nvidia",
       action: "clear",
