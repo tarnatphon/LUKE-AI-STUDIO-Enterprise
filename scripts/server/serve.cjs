@@ -24357,6 +24357,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // POST /api/text-runtime/remote-provider/models — the names a provider
+  // actually serves, read off the provider rather than out of this file.
+  if (
+    req.url === "/api/text-runtime/remote-provider/models" &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await readJsonRequestBody(req);
+
+      const result = await remoteTextProvider.listRemoteModels(body.providerId);
+
+      return json(res, result.ok ? 200 : 502, {
+        ok: result.ok,
+        models: result.models,
+        message: result.message,
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   // POST /api/text-runtime/remote-provider/key — save or forget a provider key.
   // The key is never sent back: only whether one exists, and its last four.
   if (

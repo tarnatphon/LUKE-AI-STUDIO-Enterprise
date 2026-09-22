@@ -334,6 +334,10 @@ function Settings({
   const [remoteModels, setRemoteModels] = useState({});
   const [remoteBusy, setRemoteBusy] = useState("");
   const [remoteTest, setRemoteTest] = useState(null);
+  // Model names read off the provider. Catalogues rotate, so the list is asked
+  // for rather than remembered — a name that no longer exists costs a 404 and a
+  // wasted link on every turn.
+  const [remoteModelList, setRemoteModelList] = useState({});
 
   const refreshRemoteProvider = useCallback(async () => {
     try {
@@ -426,6 +430,36 @@ function Settings({
       if (data?.ok) setRemoteProvider(data.provider || {});
     } catch {
       // The switch simply stays where it was.
+    } finally {
+      setRemoteBusy("");
+    }
+  };
+
+  const loadRemoteModels = async (providerId) => {
+    setRemoteBusy(providerId);
+    setRemoteTest(null);
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ providerId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.ok) {
+        setRemoteTest({
+          providerId,
+          ok: false,
+          message: data?.message || data?.error || "That provider did not return a model list.",
+        });
+        return;
+      }
+
+      setRemoteModelList((current) => ({ ...current, [providerId]: data.models || [] }));
+    } catch (error) {
+      setRemoteTest({ providerId, ok: false, message: error.message || String(error) });
     } finally {
       setRemoteBusy("");
     }
@@ -1870,6 +1904,37 @@ function Settings({
                       <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
                         A router account may only call the router, so this one is fixed.
                       </span>
+                    )}
+
+                    {!item.modelLocked && (
+                      <>
+                        <button
+                          type="button"
+                          className="m3-button-outlined"
+                          style={{ marginTop: "8px" }}
+                          disabled={remoteBusy === item.id}
+                          onClick={() => loadRemoteModels(item.id)}
+                        >
+                          List models
+                        </button>
+
+                        {(remoteModelList[item.id] || []).length > 0 && (
+                          <select
+                            className="m3-input"
+                            style={{ marginTop: "8px" }}
+                            value={remoteModels[item.id] !== undefined ? remoteModels[item.id] : item.model}
+                            onChange={(event) =>
+                              setRemoteModels((current) => ({ ...current, [item.id]: event.target.value }))
+                            }
+                          >
+                            {(remoteModelList[item.id] || []).map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </>
                     )}
                   </div>
 

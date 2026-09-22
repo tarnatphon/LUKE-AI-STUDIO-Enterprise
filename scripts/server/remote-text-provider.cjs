@@ -64,7 +64,10 @@ const PROVIDERS = {
     id: "nvidia",
     label: "NVIDIA NIM",
     baseUrl: "https://integrate.api.nvidia.com/v1",
-    model: "moonshotai/kimi-k2.5",
+    // Checked against the provider's own /v1/models list, which needs no key:
+    // kimi-k2.5 is not there, kimi-k3 is. A name that does not exist costs a
+    // 404 and a wasted link every single turn.
+    model: "moonshotai/kimi-k3",
     docs: "build.nvidia.com → any model → Get API key",
     note: "The only free catalogue with no daily quota — 40 requests a minute, and that is the whole limit.",
   },
@@ -681,6 +684,66 @@ async function streamRemoteChain({
   return { content: "", providerId: null, model: "", failures, exhausted: true };
 }
 
+/**
+ * The models a provider actually serves right now.
+ *
+ * Catalogues rotate — a model that was free last month is behind a card this
+ * one — so the name in Settings is offered from the provider's own list rather
+ * than from whatever this file happened to say when it was written.
+ */
+async function listRemoteModels(providerId) {
+  const provider = providerOrThrow(providerId);
+  const config = await readConfig();
+  const key = config.keys[providerId] || "";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${baseUrlFor(providerId)}/models`, {
+      headers: key ? remoteHeaders(key) : { accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      const classified = classifyRemoteError({ status: response.status, body: text, providerId });
+
+      return { ok: false, code: classified.code, message: classified.message, models: [] };
+    }
+
+    let parsed = null;
+
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return {
+        ok: false,
+        code: "unexpected_shape",
+        message: `${provider.label} answered, but not with a model list.`,
+        models: [],
+      };
+    }
+
+    const models = (Array.isArray(parsed?.data) ? parsed.data : [])
+      .map((entry) => (typeof entry === "string" ? entry : entry?.id))
+      .filter((id) => typeof id === "string" && id.trim())
+      .sort();
+
+    return { ok: true, code: "listed", message: `${provider.label} serves ${models.length} models.`, models };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "unreachable",
+      message: scrubKey(error?.message || `${provider.label} could not be reached.`, key),
+      models: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** One short call to one provider, so the user can find out before relying. */
 async function testRemoteProvider(providerId) {
   const provider = providerOrThrow(providerId);
@@ -728,6 +791,7 @@ module.exports = {
   extractDelta,
   isDone,
   isRetryable,
+  listRemoteModels,
   providerStatus,
   readConfig,
   readStoredKey,

@@ -132,6 +132,12 @@ async function main() {
   const headers = provider.remoteHeaders(FAKE_KEY);
   check("the key travels as a bearer token", headers.authorization === `Bearer ${FAKE_KEY}`);
   check("and nowhere else in the headers", !JSON.stringify({ ...headers, authorization: "" }).includes("SECRET"));
+  // Checked against the provider's own /v1/models, which answers without a key
+  // (2026-09-22): kimi-k2.5 is not in it, kimi-k3 is. A default that does not
+  // exist costs a 404 and a wasted link on every turn.
+  const VERIFIED_NVIDIA = ["moonshotai/kimi-k3", "moonshotai/kimi-k2.6", "nvidia/nemotron-3-super-120b-a12b", "z-ai/glm-5.3"];
+  check("the default NVIDIA model is one the provider was seen to serve",
+    VERIFIED_NVIDIA.includes(provider.PROVIDERS.nvidia.model), provider.PROVIDERS.nvidia.model);
   check("each provider has its own endpoint",
     provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("groq")
     && provider.remoteEndpoint("zai").includes("z.ai"));

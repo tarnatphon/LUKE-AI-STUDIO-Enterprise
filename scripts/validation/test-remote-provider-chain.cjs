@@ -70,8 +70,26 @@ async function main() {
   /** Behaviour per model: { status, body, chunks, delayMs, echoAuth } */
   const behaviour = {};
   const seen = [];
+  let modelsMode = "answer";
 
   const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url.endsWith("/models")) {
+      if (modelsMode === "refuse") {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid key" }));
+        return;
+      }
+
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          object: "list",
+          data: [{ id: "moonshotai/kimi-k3" }, { id: "z-ai/glm-5.3" }, "plain-string-model"],
+        }),
+      );
+      return;
+    }
+
     let raw = "";
 
     req.on("data", (chunk) => {
@@ -308,7 +326,23 @@ async function main() {
       provider.extractDelta(asciiDecoder.push(asciiBytes)[0] || "") === "plain",
       String(asciiDecoder.push(asciiBytes)[0]));
 
-    section("11. The user's real key file was never part of any of this");
+    section("11. The model list is read off the provider, not remembered");
+    const listed = await provider.listRemoteModels("nvidia");
+    check("the provider's own catalogue comes back", listed.ok === true && listed.models.length === 3,
+      JSON.stringify(listed));
+    check("it is sorted and complete",
+      listed.models.join(",") === ["moonshotai/kimi-k3", "plain-string-model", "z-ai/glm-5.3"].sort().join(","),
+      listed.models.join(","));
+    check("and the count is reported in words", /3 models/.test(listed.message), listed.message);
+
+    modelsMode = "refuse";
+    const refusedList = await provider.listRemoteModels("nvidia");
+    check("a provider that refuses says so instead of returning nothing",
+      refusedList.ok === false && refusedList.code === "invalid_key" && refusedList.models.length === 0,
+      JSON.stringify(refusedList).slice(0, 140));
+    modelsMode = "answer";
+
+    section("12. The user's real key file was never part of any of this");
     const realAfter = fs.existsSync(REAL_KEY_FILE)
       ? fs.readFileSync(REAL_KEY_FILE, "utf8")
       : null;

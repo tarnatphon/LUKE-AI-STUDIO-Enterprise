@@ -116,6 +116,12 @@ async function main() {
   let gatewayMode = "answer";
 
   const gateway = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url.endsWith("/models")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ object: "list", data: [{ id: "moonshotai/kimi-k3" }] }));
+      return;
+    }
+
     let raw = "";
 
     req.on("data", (chunk) => {
@@ -251,6 +257,13 @@ async function main() {
     check("the gateway really was reached", seen.length === 1, String(seen.length));
     check("and the result says which model answered", /answered through/i.test(tested.data.test?.message || ""), tested.data.test?.message);
     check("the key is not in the result", !tested.text.includes("SECRET"));
+
+    section("3b. The model list can be read off the provider");
+    const listed = await post("/api/text-runtime/remote-provider/models", { providerId: "nvidia" });
+    check("the endpoint answers", listed.status === 200 && listed.data.ok === true,
+      `${listed.status} ${JSON.stringify(listed.data).slice(0, 140)}`);
+    check("and it carries real ids", Array.isArray(listed.data.models) && listed.data.models.includes("moonshotai/kimi-k3"),
+      JSON.stringify(listed.data.models));
 
     section("4. A Work turn now reaches the cloud");
     seen.length = 0;
