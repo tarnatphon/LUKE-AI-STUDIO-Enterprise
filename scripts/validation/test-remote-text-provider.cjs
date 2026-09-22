@@ -162,6 +162,18 @@ async function main() {
       "nvidia/nemotron-3.5-lightning:free",
     ].includes(provider.PROVIDERS.openrouter.model),
     provider.PROVIDERS.openrouter.model);
+  check("and so is every alternate standing behind it",
+    (provider.PROVIDERS.openrouter.fallbackModels || []).length > 0
+    && provider.PROVIDERS.openrouter.fallbackModels.every((model) => model.endsWith(":free")),
+    JSON.stringify(provider.PROVIDERS.openrouter.fallbackModels));
+  check("the alternates are the next best free ones, in order",
+    JSON.stringify(provider.PROVIDERS.openrouter.fallbackModels)
+      === JSON.stringify(["qwen/qwen3.8-27b:free", "thinkingmachines/inkling:free"]),
+    JSON.stringify(provider.PROVIDERS.openrouter.fallbackModels));
+  check("a model that expires in days is not in the chain or behind it",
+    ![provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]
+      .some((model) => model.startsWith("nex-agi/")),
+    JSON.stringify([provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]));
   check("and the panel does not call a billed model free",
     /bills per token/.test(provider.PROVIDERS.groq.note)
     && !/\bfree\b/i.test(provider.PROVIDERS.groq.note),

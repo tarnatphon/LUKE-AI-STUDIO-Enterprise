@@ -50,6 +50,10 @@ function section(title) {
 
 // A key for every link in the chain, whatever the chain currently is — so
 // reordering the providers does not silently untest one of them.
+// The free tier sits second: the provider with no daily quota absorbs the
+// traffic, and the one whose free lineup rotates is the reserve behind it.
+const SECOND_LINK = provider.DEFAULT_ORDER[1];
+
 const KEYS = Object.fromEntries(
   provider.DEFAULT_ORDER.map((providerId, index) => [
     providerId,
@@ -61,6 +65,7 @@ const KEYS = Object.fromEntries(
 const MODEL_OWNER = {};
 for (const [id, entry] of Object.entries(provider.PROVIDERS)) {
   MODEL_OWNER[entry.model] = id;
+  for (const alternate of entry.fallbackModels || []) MODEL_OWNER[alternate] = id;
 }
 
 function sseChunk(text) {
@@ -186,6 +191,9 @@ async function main() {
     check("every link is one a free key can reach",
       provider.DEFAULT_ORDER.every((providerId) => KEYS[providerId]),
       JSON.stringify(Object.keys(KEYS)));
+    check("and the free tier whose lineup rotates carries alternates",
+      (provider.PROVIDERS[SECOND_LINK].fallbackModels || []).length > 0,
+      JSON.stringify(provider.PROVIDERS[SECOND_LINK].fallbackModels));
 
     section("1. A provider that answers is the one the chain lands on");
     reset({ [NVIDIA]: { chunks: ["The ", "test ", "passes now."] } });
@@ -268,6 +276,75 @@ async function main() {
     check("nothing was produced", fifth.content === "" && fifth.providerId === null);
     check("every link is named in the failures", fifth.failures.length === 3, String(fifth.failures.length));
     check("and the caller is told the chain is spent", fifth.exhausted === true);
+
+    section("6b. A free model that vanishes is answered by the next free one under the same key");
+    const ALTERNATES = provider.PROVIDERS[SECOND_ID].fallbackModels;
+
+    reset({
+      [NVIDIA]: { status: 429, error: "slow down" },
+      [SECOND]: { status: 404, error: "model not found" },
+      [ALTERNATES[0]]: { chunks: ["the ", "alternate answered"] },
+    });
+
+    const alternateTurn = await provider.streamRemoteChain({ messages: MESSAGES });
+
+    check("three requests were made", seen.length === 3, String(seen.length));
+    check("the second one went to the next free model on the same provider",
+      seen[2].owner === SECOND_ID && seen[2].model === ALTERNATES[0], seen[2].model);
+    check("under the same key, so the user is not asked for a second one",
+      seen[2].authorization === `Bearer ${KEYS[SECOND_ID]}`, seen[2].authorization);
+    check("and it answered",
+      alternateTurn.providerId === SECOND_ID && alternateTurn.content === "the alternate answered",
+      alternateTurn.content);
+    check("the vanished model is still recorded, not quietly swapped",
+      alternateTurn.failures.some((failure) => failure.providerId === SECOND_ID && failure.code === "unknown_model"),
+      JSON.stringify(alternateTurn.failures));
+    check("and the failure names the model that went",
+      alternateTurn.failures.some((failure) => failure.model === SECOND),
+      JSON.stringify(alternateTurn.failures));
+
+    section("6c. When every free model has gone, the chain still reaches the next provider");
+    reset({
+      [NVIDIA]: { status: 429, error: "slow down" },
+      [SECOND]: { status: 404, error: "model not found" },
+      ...Object.fromEntries(ALTERNATES.map((alternate) => [alternate, { status: 404, error: "model not found" }])),
+      [THIRD]: { chunks: ["the last link answered"] },
+    });
+
+    const allGone = await provider.streamRemoteChain({ messages: MESSAGES });
+
+    check("every free model on that provider was tried",
+      seen.length === 3 + ALTERNATES.length, String(seen.length));
+    check("and the alternates did not trap the chain there",
+      allGone.providerId === THIRD_ID && allGone.content === "the last link answered",
+      allGone.content);
+
+    section("6d. A model the user chose is never second-guessed");
+    const CHOSEN = "chosen/model-id";
+
+    await provider.setModel(SECOND_ID, CHOSEN);
+
+    reset({
+      [NVIDIA]: { status: 429, error: "slow down" },
+      [CHOSEN]: { status: 404, error: "model not found" },
+      [ALTERNATES[0]]: { chunks: ["should not be reached"] },
+      [THIRD]: { chunks: ["the last link answered"] },
+    });
+
+    const chosenTurn = await provider.streamRemoteChain({ messages: MESSAGES });
+
+    check("only the model the user chose was asked",
+      seen.length === 3 && seen[1].model === CHOSEN,
+      JSON.stringify(seen.map((entry) => entry.model)));
+    check("no alternate was substituted for it",
+      !seen.some((entry) => ALTERNATES.includes(entry.model)),
+      JSON.stringify(seen.map((entry) => entry.model)));
+    check("and the chain moved to the next provider instead",
+      chosenTurn.providerId === THIRD_ID, String(chosenTurn.providerId));
+
+    const cleared = await provider.readConfig();
+    delete cleared.models[SECOND_ID];
+    await provider.writeConfig(cleared);
 
     section("7. No error can carry the key, even when the gateway echoes it back");
     reset({ [NVIDIA]: { status: 403, error: "nope", echoAuth: true } });

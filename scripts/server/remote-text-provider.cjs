@@ -67,6 +67,12 @@ const PROVIDERS = {
     // Checked against the provider's own /v1/models list, which needs no key:
     // kimi-k2.5 is not there, kimi-k3 is. A name that does not exist costs a
     // 404 and a wasted link every single turn.
+    // 2.8T parameters, 1M context, built for long-horizon agentic work. The
+    // same weights cost $1.50-$12.95 per 1M tokens on every OpenRouter endpoint
+    // that sells them; NVIDIA serves them for free at 40 requests a minute with
+    // no daily quota. That is the best free thing here, which is why it is
+    // first, and why the scarce OpenRouter quota is the reserve behind it and
+    // not the primary.
     model: "moonshotai/kimi-k3",
     docs: "build.nvidia.com → any model → Get API key",
     note: "The only free catalogue with no daily quota — 40 requests a minute, and that is the whole limit.",
@@ -86,11 +92,27 @@ const PROVIDERS = {
     id: "openrouter",
     label: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
-    // From openrouter.ai/api/v1/models?max_price=0&supported_parameters=tools:
-    // pricing "0" for prompt and completion, tools supported, no expiration
-    // date. Poolside built it as a coding agent — 70.2% on Terminal-Bench 2.1.
-    // The :free suffix is what makes it zero; without it the same model bills.
+    // From openrouter.ai/api/v1/models?max_price=0&supported_parameters=tools,
+    // read 2026-09-22: 19 models, every one priced "0" for prompt and
+    // completion, all tool-capable. Ranked by OpenRouter's own
+    // artificial_analysis indices (intelligence / coding / agentic), among the
+    // ones carrying no expiration_date:
+    //
+    //   poolside/laguna-s-2.1:free    62.3 / 68.2 / 43.9   262K ctx
+    //   qwen/qwen3.8-27b:free         44.7 / 68.1 / 45.8   262K ctx
+    //   thinkingmachines/inkling:free 28.1 / 72.9 / 33.7     1M ctx
+    //
+    // The two nex-agi models scored higher still (66.0 / 71.0 / 66.6) but carry
+    // an expiration_date of 2026-09-25 — free for three more days is not free.
+    // The :free suffix is what makes the price zero; the same model without it
+    // bills, which is why the suffix is asserted rather than assumed.
     model: "poolside/laguna-s-2.1:free",
+    // OpenRouter's free lineup rotates under you — Qwen3 Coder 480B stopped
+    // being free on 2026-07-21 — so the best free tier cannot hang on one id.
+    // These are tried under the same key, in order, when the model itself is
+    // the thing that failed. A model the user picked in Settings is never
+    // second-guessed.
+    fallbackModels: ["qwen/qwen3.8-27b:free", "thinkingmachines/inkling:free"],
     docs: "openrouter.ai → Keys",
     note: "Free models cost nothing per token, no card needed. The catch is a request count, not a bill: about 50 a day until you have ever bought $10 of credit, then 1,000.",
   },
@@ -326,6 +348,21 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
 function isRetryable(code) {
   return ["rate_limited", "now_paid", "unknown_model", "upstream_error", "unreachable", "harness_restricted"].includes(code);
 }
+
+/**
+ * The refusals that are about the model rather than the provider.
+ *
+ * A free lineup rotates: a `:free` id that worked last month answers 404 today,
+ * or starts answering 402 because it stopped being free. Neither says anything
+ * about the other free models on the same account, so they are worth one more
+ * attempt against the alternates before abandoning a provider that still works.
+ * Everything else — a rate limit, an outage, a refused key — fails the same way
+ * against every model the provider has.
+ *
+ * Both of these arrive as a response status, so they land before a single delta
+ * is read: retrying cannot splice a second answer onto the first.
+ */
+const MODEL_LEVEL_FAILURES = new Set(["unknown_model", "now_paid"]);
 
 // ── reading the stream ─────────────────────────────────────────────────────
 
@@ -657,54 +694,73 @@ async function streamRemoteChain({
 
   const queue = config.order
     .filter((providerId) => config.keys[providerId])
-    .map((providerId) => ({
-      provider: PROVIDERS[providerId],
-      key: config.keys[providerId],
-      model: config.models[providerId] || PROVIDERS[providerId].model,
-    }));
+    .map((providerId) => {
+      const provider = PROVIDERS[providerId];
+      const chosen = String(config.models[providerId] || "").trim();
+      return {
+        provider,
+        key: config.keys[providerId],
+        // A model the user picked is the model they get. The alternates exist
+        // only to survive a free lineup rotating a default out from under the
+        // chain, and second-guessing a deliberate choice is not that.
+        models: chosen ? [chosen] : [provider.model, ...(provider.fallbackModels || [])].filter(Boolean),
+      };
+    });
 
   const failures = [];
 
   for (const link of queue) {
-    onProvider(link.provider.id, link.model);
+    let abandon = false;
 
-    let content = "";
+    for (const model of link.models) {
+      onProvider(link.provider.id, model);
 
-    try {
-      const result = await streamRemoteChat({
-        providerId: link.provider.id,
-        key: link.key,
-        messages,
-        model: link.model,
-        temperature,
-        topP,
-        maxTokens,
-        signal,
-        onDelta,
-      });
+      let content = "";
 
-      return {
-        content: result.content || content,
-        providerId: link.provider.id,
-        model: result.model,
-        failures,
-      };
-    } catch (error) {
-      const failure = {
-        providerId: link.provider.id,
-        label: link.provider.label,
-        code: error?.code || "failed",
-        status: error?.statusCode || 0,
-        message: error?.message || `${link.provider.label} could not be reached.`,
-      };
+      try {
+        const result = await streamRemoteChat({
+          providerId: link.provider.id,
+          key: link.key,
+          messages,
+          model,
+          temperature,
+          topP,
+          maxTokens,
+          signal,
+          onDelta,
+        });
 
-      failures.push(failure);
-      onFailure(failure);
+        return {
+          content: result.content || content,
+          providerId: link.provider.id,
+          model: result.model,
+          failures,
+        };
+      } catch (error) {
+        const failure = {
+          providerId: link.provider.id,
+          label: link.provider.label,
+          model,
+          code: error?.code || "failed",
+          status: error?.statusCode || 0,
+          message: error?.message || `${link.provider.label} could not be reached.`,
+        };
 
-      // A key the provider refuses is about this key, not about the chain:
-      // stop and say so, rather than trying the same thing three more times.
-      if (!isRetryable(failure.code) && failure.code !== "rate_limited") break;
+        failures.push(failure);
+        onFailure(failure);
+
+        // The model is the problem, not the provider — try the next free one
+        // under the same key before giving up on an account that still works.
+        if (MODEL_LEVEL_FAILURES.has(failure.code)) continue;
+
+        // A key the provider refuses is about this key, not about the chain:
+        // stop and say so, rather than trying the same thing three more times.
+        if (!isRetryable(failure.code) && failure.code !== "rate_limited") abandon = true;
+        break;
+      }
     }
+
+    if (abandon) break;
   }
 
   return { content: "", providerId: null, model: "", failures, exhausted: true };
