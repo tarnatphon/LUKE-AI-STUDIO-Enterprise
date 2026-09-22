@@ -6,6 +6,7 @@ let testPortOffset = 0;
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 const {
   spawn,
@@ -24,12 +25,22 @@ const serverFile = path.join(
   "serve.cjs"
 );
 
-const storeFile = path.join(
+// The user's real conversation archive. This suite must never write it: it
+// used to overwrite it and restore it in a `finally`, which does not run
+// on SIGKILL.
+const realStoreFile = path.join(
   root,
   "app",
   "runtime-state",
   "text-chat",
   "conversations.json"
+);
+
+// The server is pointed at a throwaway file instead, through
+// LUKE_TEXT_CHAT_STORE.
+const storeFile = path.join(
+  os.tmpdir(),
+  `luke-text-chat-streaming-${process.pid}.json`
 );
 
 const componentFile = path.join(
@@ -218,11 +229,15 @@ async function readGenerationStream(
 }
 
 async function main() {
-  const originalStore =
-    fs.readFileSync(
-      storeFile,
-      "utf8"
-    );
+  // What the real archive looks like now, so the end of the run can prove
+  // it still looks like this.
+  const realBefore =
+    fs.existsSync(realStoreFile)
+      ? fs.readFileSync(
+          realStoreFile,
+          "utf8"
+        )
+      : null;
 
   fs.writeFileSync(
     storeFile,
@@ -401,6 +416,8 @@ async function main() {
           "127.0.0.1",
         LUKE_AI_PORT:
           String(appPort),
+        LUKE_TEXT_CHAT_STORE:
+          storeFile,
         LLM_PORT:
           String(runtimePort),
         LUKE_AI_TEXT_RUNTIME_BASE_URL:
@@ -756,11 +773,26 @@ async function main() {
       }
     );
 
-    fs.writeFileSync(
-      storeFile,
-      originalStore,
-      "utf8"
+    const realAfter =
+      fs.existsSync(realStoreFile)
+        ? fs.readFileSync(
+            realStoreFile,
+            "utf8"
+          )
+        : null;
+
+    if (realAfter !== realBefore) {
+      throw new Error(
+        "This suite wrote to the real conversation archive. " +
+        "The server must be reached only through LUKE_TEXT_CHAT_STORE."
+      );
+    }
+
+    console.log(
+      "PASS: The real conversation archive was never touched."
     );
+
+    fs.rmSync(storeFile, { force: true });
   }
 
   console.log(

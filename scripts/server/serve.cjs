@@ -11698,13 +11698,28 @@ function getTextModelHardwareRecommendation(
 
 
 // LUKE_AI_PERSISTENT_TEXT_CHAT_V1
-const textChatStorePath = path.join(
-  ROOT,
-  "app",
-  "runtime-state",
-  "text-chat",
-  "conversations.json"
-);
+//
+// The conversation archive — the user's own chat history, kept on the external
+// disk with everything else this app writes.
+//
+// The override exists so a test can aim the server at a throwaway file instead.
+// test-persistent-text-chat.cjs used to read this file into memory, overwrite
+// it with an empty store, run the server against it, and write the original
+// back in a `finally`. A `finally` does not run on SIGKILL, so one interrupted
+// run — a killed sandbox, a timeout, a power cut — left the user's entire
+// history replaced by an empty one, with no copy anywhere.
+const textChatStorePath =
+  process.env.LUKE_TEXT_CHAT_STORE
+    ? path.resolve(
+        process.env.LUKE_TEXT_CHAT_STORE
+      )
+    : path.join(
+        ROOT,
+        "app",
+        "runtime-state",
+        "text-chat",
+        "conversations.json"
+      );
 
 function createInitialTextChatStore() {
   return {

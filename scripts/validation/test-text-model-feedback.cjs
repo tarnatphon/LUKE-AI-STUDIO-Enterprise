@@ -5,6 +5,7 @@ let testPortOffset = 0;
 
 const fs = require("node:fs");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 const {
   spawn,
@@ -23,14 +24,23 @@ const serverFile = path.join(
   "serve.cjs"
 );
 
-const conversationStoreFile =
-  path.join(
-    root,
-    "app",
-    "runtime-state",
-    "text-chat",
-    "conversations.json"
-  );
+// The user's real conversation archive. This suite must never write it: it
+// used to overwrite it and restore it in a `finally`, which does not run
+// on SIGKILL.
+const realConversationStoreFile = path.join(
+  root,
+  "app",
+  "runtime-state",
+  "text-chat",
+  "conversations.json"
+);
+
+// The server is pointed at a throwaway file instead, through
+// LUKE_TEXT_CHAT_STORE.
+const conversationStoreFile = path.join(
+  os.tmpdir(),
+  `luke-text-chat-feedback-${process.pid}.json`
+);
 
 const feedbackStoreFile =
   path.join(
@@ -193,11 +203,15 @@ async function waitForServer(
 }
 
 async function main() {
-  const originalConversationStore =
-    fs.readFileSync(
-      conversationStoreFile,
-      "utf8"
-    );
+  // What the real archive looks like now, so the end of the run can prove
+  // it still looks like this.
+  const realBefore =
+    fs.existsSync(realConversationStoreFile)
+      ? fs.readFileSync(
+          realConversationStoreFile,
+          "utf8"
+        )
+      : null;
 
   const originalFeedbackStore =
     fs.readFileSync(
@@ -257,6 +271,8 @@ async function main() {
           "127.0.0.1",
         LUKE_AI_PORT:
           String(port),
+        LUKE_TEXT_CHAT_STORE:
+          conversationStoreFile,
       },
       stdio: [
         "ignore",
@@ -487,11 +503,26 @@ async function main() {
   } finally {
     await stopProcess(child);
 
-    fs.writeFileSync(
-      conversationStoreFile,
-      originalConversationStore,
-      "utf8"
+    const realAfter =
+      fs.existsSync(realConversationStoreFile)
+        ? fs.readFileSync(
+            realConversationStoreFile,
+            "utf8"
+          )
+        : null;
+
+    if (realAfter !== realBefore) {
+      throw new Error(
+        "This suite wrote to the real conversation archive. " +
+        "The server must be reached only through LUKE_TEXT_CHAT_STORE."
+      );
+    }
+
+    console.log(
+      "PASS: The real conversation archive was never touched."
     );
+
+    fs.rmSync(conversationStoreFile, { force: true });
 
     fs.writeFileSync(
       feedbackStoreFile,
