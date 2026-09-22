@@ -138,6 +138,19 @@ async function main() {
   const VERIFIED_NVIDIA = ["moonshotai/kimi-k3", "moonshotai/kimi-k2.6", "nvidia/nemotron-3-super-120b-a12b", "z-ai/glm-5.3"];
   check("the default NVIDIA model is one the provider was seen to serve",
     VERIFIED_NVIDIA.includes(provider.PROVIDERS.nvidia.model), provider.PROVIDERS.nvidia.model);
+
+  // Groq, from console.groq.com/docs/models (2026-09-22), and Z.ai from its own
+  // pricing page — where GLM-4.7-Flash is the row that reads Free across input,
+  // cached input and output.
+  check("the default Groq model is one its catalogue lists",
+    ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"].includes(provider.PROVIDERS.groq.model),
+    provider.PROVIDERS.groq.model);
+  check("the default Z.ai model is one of the ones priced at zero",
+    ["glm-4.7-flash", "glm-4.5-flash"].includes(provider.PROVIDERS.zai.model),
+    provider.PROVIDERS.zai.model);
+  check("and the panel does not call a billed model free",
+    /billed per token/.test(provider.PROVIDERS.groq.note)
+    && !/free/i.test(provider.PROVIDERS.groq.note.replace(/free part is a rate-limited allowance/, "")));
   check("each provider has its own endpoint",
     provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("groq")
     && provider.remoteEndpoint("zai").includes("z.ai"));

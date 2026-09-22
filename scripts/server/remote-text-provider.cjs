@@ -75,17 +75,23 @@ const PROVIDERS = {
     id: "zai",
     label: "Z.ai (GLM)",
     baseUrl: "https://api.z.ai/api/paas/v4",
+    // Listed at $0 for input, cached input and output on Z.ai's own pricing
+    // page, with 203K of context. The suffix no longer implies free —
+    // GLM-5.3-Flash costs money — so the name matters.
     model: "glm-4.7-flash",
     docs: "z.ai → API keys",
-    note: "Flash models are priced at zero per token, not handed out as trial credit.",
+    note: "GLM-4.7-Flash is priced at zero per token, not handed out as trial credit. 203K context.",
   },
   groq: {
     id: "groq",
     label: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
+    // A real, current production id. Unlike the other two, this one is not
+    // priced at zero — $0.15 in and $0.60 out per million tokens. Calling it
+    // free in the panel would be how the user meets their first bill.
     model: "openai/gpt-oss-120b",
     docs: "console.groq.com → API Keys",
-    note: "The most generous daily request cap of the free tiers; tokens per minute is the real ceiling.",
+    note: "Fast, 131K context — but billed per token ($0.15 in / $0.60 out per million). The free part is a rate-limited allowance, not a zero price.",
   },
   arena: {
     id: "arena",
