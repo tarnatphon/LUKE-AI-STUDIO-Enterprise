@@ -283,9 +283,13 @@ class TextRuntimeSupervisor {
       !command ||
       !Array.isArray(args)
     ) {
-      throw new Error(
+      // Not installed or not configured here, which is not the same as
+      // broken: the caller needs 503, not a server fault.
+      const error = new Error(
         "Text runtime command is not configured."
       );
+      error.statusCode = 503;
+      throw error;
     }
 
     const configuredWorkingDirectory =

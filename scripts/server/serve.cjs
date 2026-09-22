@@ -3765,7 +3765,7 @@ function runExclusiveTtsOperation(operation) {
 async function startTts(settings = {}) {
   const runtime = getTtsRuntimeStatus();
   if (!runtime.installed) {
-    throw new Error("Kokoro TTS runtime is not installed. Run scripts/setup/setup-tts for this platform.");
+    throw serviceUnavailable("Kokoro TTS runtime is not installed. Run scripts/setup/setup-tts for this platform.");
   }
   const model = resolveTtsModel(settings.model || ttsSettings.model);
   PORT_TTS = PREFERRED_TTS_PORT;
@@ -4003,7 +4003,7 @@ function synthesizeTts(text, options = {}) {
     }
     const runtime = getTtsRuntimeStatus();
     if (!runtime.installed) {
-      reject(new Error("Kokoro TTS runtime is not installed."));
+      reject(serviceUnavailable("Kokoro TTS runtime is not installed."));
       return;
     }
     const model = resolveTtsModel(options.model || ttsSettings.model);
@@ -4119,7 +4119,7 @@ function ensureSpeechBackendInstalled(preference = speechSettings.backendPrefere
   if (backend.cli) return backend;
   const details = attempted?.stderr || attempted?.stdout || attempted?.message || attempted?.error || "";
   const extra = details ? ` Setup output: ${String(details).trim().slice(-900)}` : "";
-  throw new Error(`${backend.label || "Selected"} whisper.cpp backend is not installed. The app tried to repair it automatically but no compatible binary was found at ${backend.pathHint || "app/speech-backend"}.${extra} On macOS, run scripts/setup/setup-whisper.sh or install Homebrew whisper-cpp, then relaunch.`);
+  throw serviceUnavailable(`${backend.label || "Selected"} whisper.cpp backend is not installed. The app tried to repair it automatically but no compatible binary was found at ${backend.pathHint || "app/speech-backend"}.${extra} On macOS, run scripts/setup/setup-whisper.sh or install Homebrew whisper-cpp, then relaunch.`);
 }
 
 async function startSpeech(settings = {}) {
@@ -4221,7 +4221,7 @@ function listTranscriptions() {
 function transcribeWavBuffer(buffer, options = {}) {
   return new Promise((resolve, reject) => {
     if (!isWaveBuffer(buffer)) {
-      reject(new Error("Speech transcription currently accepts WAV audio only."));
+      reject(clientError("Speech transcription currently accepts WAV audio only."));
       return;
     }
     const backendPreference = normalizeSpeechBackendPreference(options.backendPreference || speechSettings.backendPreference);
@@ -5542,7 +5542,7 @@ async function startOpenVinoWorker(settings = {}) {
 }
 
 async function generateWithOpenVino(body) {
-  if (!openvinoReady || !openvinoPort) throw new Error("OpenVINO NPU worker is not ready. Load an OpenVINO NPU model first.");
+  if (!openvinoReady || !openvinoPort) throw serviceUnavailable("OpenVINO NPU worker is not ready. Load an OpenVINO NPU model first.");
   const steps = Math.max(1, Math.min(8, Number(body.steps) || 4));
   generationState = { active: true, step: 0, steps, speed: "", decoding: false };
   try {
@@ -5780,10 +5780,10 @@ async function startLlm(settings = {}) {
   const filename = path.basename(String(settings.model || ""));
   const modelPath = path.join(LLM_MODELS, filename);
   if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
-    throw new Error("Select a downloaded GGUF text model first.");
+    throw clientError("Select a downloaded GGUF text model first.");
   }
   if (!filename.toLowerCase().endsWith(".gguf")) {
-    throw new Error("Text generation requires a .gguf model.");
+    throw clientError("Text generation requires a .gguf model.");
   }
 
   const candidates = getLlmBackendCandidates();
@@ -5866,10 +5866,10 @@ async function startLlmWithBackend(settings = {}, backend) {
   const filename = path.basename(String(settings.model || ""));
   const modelPath = path.join(LLM_MODELS, filename);
   if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
-    throw new Error("Select a downloaded GGUF text model first.");
+    throw clientError("Select a downloaded GGUF text model first.");
   }
   if (!filename.toLowerCase().endsWith(".gguf")) {
-    throw new Error("Text generation requires a .gguf model.");
+    throw clientError("Text generation requires a .gguf model.");
   }
   // A model kept on an external disk is copied to the internal disk once and
   // loaded from there — tens of seconds become a couple of seconds.
@@ -7429,10 +7429,10 @@ function sanitizeChatConversationForStorage(conversation = {}) {
 
 function getChatConversationPath(id) {
   const safeId = safeOutputName(id);
-  if (!safeId) throw new Error("A chat id is required.");
+  if (!safeId) throw clientError("A chat id is required.");
   const filePath = path.join(CHAT_HISTORY, `${safeId}.json`);
   if (!pathInside(filePath, CHAT_HISTORY)) {
-    throw new Error("Invalid chat id.");
+    throw clientError("Invalid chat id.");
   }
   return filePath;
 }
@@ -7484,7 +7484,7 @@ function deleteChatConversation(id) {
 function saveGeneratedOutput(imageDataUrl, metadata = {}) {
   const match = String(imageDataUrl || "").match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/);
   if (!match) {
-    throw new Error("Expected a real base64 PNG, JPEG, or WebP image data URL");
+    throw clientError("Expected a real base64 PNG, JPEG, or WebP image data URL");
   }
 
   const mime = match[1];
@@ -7658,7 +7658,7 @@ function streamModelUpload(req, filename, targetDir = MODELS, mode = "image") {
           ? lowerName.endsWith(".json")
         : isModelFile(lowerName);
     if (!safeFilename || !valid) {
-      reject(new Error(mode === "text"
+      reject(clientError(mode === "text"
         ? "Filename must end with .gguf"
         : mode === "speech"
           ? "Filename must end with .bin"
@@ -7720,6 +7720,27 @@ function json(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
   res.end(body);
+}
+
+/**
+ * An error the request caused, or a part of the app that is not installed here
+ * — as opposed to the server being broken.
+ *
+ * Every route answers `error.statusCode || 500`, so an error with no status is
+ * indistinguishable from a crash. On a fresh install that turned "you have not
+ * downloaded a model yet" and "you left a field out" into server faults:
+ * eighteen 500s on a clean checkout, which is exactly the noise a real 500 had
+ * to hide in. 400 for a request that cannot possibly work, 503 for a subsystem
+ * that is not installed on this machine.
+ */
+function clientError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function serviceUnavailable(message) {
+  return clientError(message, 503);
 }
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
@@ -19718,9 +19739,7 @@ const server = http.createServer(async (req, res) => {
         result,
       });
     } catch (error) {
-      return json(
-        res,
-        500,
+      return json(res, error.statusCode || 500,
         {
           ok: false,
           error:
@@ -20779,11 +20798,20 @@ const server = http.createServer(async (req, res) => {
       const body =
         await readJsonRequestBody(req);
 
+      // Without this, a missing rootPath reaches path.join inside the manager
+      // and comes back as a Node internals error: a 500 that reads like a
+      // server fault for a request that left one field out.
+      const rootPath =
+        typeof body.rootPath === "string"
+          ? body.rootPath.trim()
+          : "";
+
+      if (!rootPath) throw clientError("rootPath is required.");
+
       const plan =
         storageLifecycleManager
           .createPlan({
-            rootPath:
-              body.rootPath,
+            rootPath,
             maxFiles:
               body.maxFiles ||
               5000,
@@ -22658,7 +22686,7 @@ const server = http.createServer(async (req, res) => {
           runtimeInstallQueue.getSnapshot(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -22794,7 +22822,7 @@ const server = http.createServer(async (req, res) => {
           runtimeInstallQueue.clearCompleted(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -22818,7 +22846,7 @@ const server = http.createServer(async (req, res) => {
         ...detection,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -22961,7 +22989,7 @@ const server = http.createServer(async (req, res) => {
           ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23024,7 +23052,7 @@ const server = http.createServer(async (req, res) => {
           textRuntimeSupervisor.getStatus(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23050,7 +23078,7 @@ const server = http.createServer(async (req, res) => {
         supervisor,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23076,7 +23104,7 @@ const server = http.createServer(async (req, res) => {
         supervisor,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23102,7 +23130,7 @@ const server = http.createServer(async (req, res) => {
         supervisor,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23123,7 +23151,7 @@ const server = http.createServer(async (req, res) => {
           textRuntimeSupervisor.resetSupervisor(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23416,7 +23444,7 @@ const server = http.createServer(async (req, res) => {
         buildRuntimeStorageUsage()
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23488,7 +23516,7 @@ const server = http.createServer(async (req, res) => {
         })
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23516,7 +23544,7 @@ const server = http.createServer(async (req, res) => {
         storage
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23616,7 +23644,7 @@ const server = http.createServer(async (req, res) => {
           readInstalledTextModels(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23638,7 +23666,7 @@ const server = http.createServer(async (req, res) => {
         buildTextModelUpdateStatus()
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23834,7 +23862,7 @@ const server = http.createServer(async (req, res) => {
         buildTextModelHardwareCompatibility()
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23911,7 +23939,7 @@ const server = http.createServer(async (req, res) => {
           readAutomaticModelRouterPolicy(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -23976,7 +24004,7 @@ const server = http.createServer(async (req, res) => {
         ...getTextModelFeedbackSummary(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24081,7 +24109,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24109,7 +24137,7 @@ const server = http.createServer(async (req, res) => {
           getInstalledTextModelsForSelection(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24212,7 +24240,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24233,7 +24261,7 @@ const server = http.createServer(async (req, res) => {
         ...getModelHealthSummary(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24273,7 +24301,7 @@ const server = http.createServer(async (req, res) => {
           ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24368,7 +24396,7 @@ const server = http.createServer(async (req, res) => {
         provider: await remoteTextProvider.providerStatus(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -24486,7 +24514,7 @@ const server = http.createServer(async (req, res) => {
         provider: await remoteTextProvider.providerStatus(),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -24521,7 +24549,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24645,7 +24673,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24683,7 +24711,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24776,7 +24804,7 @@ const server = http.createServer(async (req, res) => {
         ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24824,7 +24852,7 @@ const server = http.createServer(async (req, res) => {
           ),
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -24947,7 +24975,7 @@ const server = http.createServer(async (req, res) => {
           store.conversations,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -25032,7 +25060,7 @@ const server = http.createServer(async (req, res) => {
         conversation,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -25174,7 +25202,7 @@ const server = http.createServer(async (req, res) => {
         models: catalog.models,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -25198,7 +25226,7 @@ const server = http.createServer(async (req, res) => {
             .downloadPolicy,
       });
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -25268,7 +25296,7 @@ const server = http.createServer(async (req, res) => {
         buildRuntimeDependencyStatus()
       );
     } catch (error) {
-      return json(res, 500, {
+      return json(res, error.statusCode || 500, {
         ok: false,
         error:
           error instanceof Error
@@ -25325,7 +25353,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, deleted });
     } catch (err) {
       console.error("  [api] Cleanup failed:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -25404,7 +25432,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, conversation });
     } catch (err) {
       console.error("  [api] Failed to save chat conversation:", err);
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25416,7 +25444,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, deleted });
     } catch (err) {
       console.error("  [api] Failed to delete chat conversation:", err);
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25477,7 +25505,7 @@ const server = http.createServer(async (req, res) => {
       const result = await runExclusiveLlmOperation(() => benchmarkLlmModel(body));
       return json(res, 200, result);
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25519,7 +25547,7 @@ const server = http.createServer(async (req, res) => {
       const saved = writeArenaPolicyOverrides(nextOverrides);
       return json(res, 200, { ok: true, policy: next, saved: saved });
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25533,7 +25561,7 @@ const server = http.createServer(async (req, res) => {
         },
       });
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25660,7 +25688,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, transcription: result });
     } catch (err) {
       speechError = err.message || String(err);
-      return json(res, err.message?.includes("too large") ? 413 : 500, { ok: false, error: speechError });
+      return json(res, err.statusCode || (err.message?.includes("too large") ? 413 : 500), { ok: false, error: speechError });
     }
   }
 
@@ -25689,7 +25717,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
     } catch (err) {
       console.error("  [api] Failed to import speech model:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -25706,7 +25734,7 @@ const server = http.createServer(async (req, res) => {
       fs.unlinkSync(modelPath);
       return json(res, 200, { ok: true });
     } catch (err) {
-      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "Speech model not found" : err.message });
+      return json(res, err.statusCode || (err.code === "ENOENT" ? 404 : 500), { ok: false, error: err.code === "ENOENT" ? "Speech model not found" : err.message });
     }
   }
 
@@ -25745,7 +25773,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     } catch (err) {
       console.error("  [api] Failed to delete transcription:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -25825,7 +25853,7 @@ const server = http.createServer(async (req, res) => {
       const model = installTtsCatalogModel(body.modelId || body.model_id || body.model || body.filename);
       return json(res, 200, { ok: true, message: "TTS model manifest installed", filename: model.filename, model });
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -25836,7 +25864,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
     } catch (err) {
       console.error("  [api] Failed to import TTS model:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -25853,7 +25881,7 @@ const server = http.createServer(async (req, res) => {
       fs.unlinkSync(modelPath);
       return json(res, 200, { ok: true });
     } catch (err) {
-      return json(res, err.code === "ENOENT" ? 404 : 500, { ok: false, error: err.code === "ENOENT" ? "TTS model not found" : err.message });
+      return json(res, err.statusCode || (err.code === "ENOENT" ? 404 : 500), { ok: false, error: err.code === "ENOENT" ? "TTS model not found" : err.message });
     }
   }
 
@@ -25888,7 +25916,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     } catch (err) {
       console.error("  [api] Failed to delete TTS output:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -26180,7 +26208,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
       }
     }
   } catch (err) {
-    return json(res, 500, { ok: false, error: err.message || String(err) });
+    return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
   }
 }
 
@@ -26239,7 +26267,7 @@ async function benchmarkLlmModel(settings = {}) {
   const filename = path.basename(String(settings.model || llmSettings.model || ""));
   const modelPath = path.join(LLM_MODELS, filename);
   if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
-    throw new Error("Select a downloaded GGUF text model before benchmarking.");
+    throw clientError("Select a downloaded GGUF text model before benchmarking.");
   }
 
   const previous = {
@@ -26389,7 +26417,7 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
       });
       return json(res, 200, { ok: true, ...result });
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -26548,9 +26576,7 @@ async function routeWorkTurnToCloud(req, res, body) {
             .getStatus(),
       });
     } catch (error) {
-      return json(
-        res,
-        500,
+      return json(res, error.statusCode || 500,
         {
           ok: false,
           error:
@@ -27128,9 +27154,7 @@ async function routeWorkTurnToCloud(req, res, body) {
       );
 
     } catch (error) {
-      return json(
-        res,
-        500,
+      return json(res, error.statusCode || 500,
         {
           ok: false,
           error:
@@ -27503,9 +27527,7 @@ async function routeWorkTurnToCloud(req, res, body) {
         );
 
       } catch (error) {
-        return json(
-          res,
-          500,
+        return json(res, error.statusCode || 500,
           {
             ok: false,
             error:
@@ -27537,9 +27559,7 @@ async function routeWorkTurnToCloud(req, res, body) {
         );
 
       } catch (error) {
-        return json(
-          res,
-          500,
+        return json(res, error.statusCode || 500,
           {
             ok: false,
             error:
@@ -28098,7 +28118,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       if (!fs.existsSync(runtimePython)) return json(res, 409, { ok: false, code: "I2V_NOT_INSTALLED", error: "Image-to-Video is not installed yet. Use the Install button in Image-to-Video." });
       const result = spawnSync(runtimePython, [worker, "--model", modelId, "--image", inputPath, "--output", outputPath, "--prompt", String(body.prompt || ""), "--seconds", String(Math.max(2, Math.min(10, Number(body.seconds) || 5))), "--references", manifestPath, "--reference-lock", body.referenceLock === false ? "0" : "1", "--automatic-match", automaticMatch ? "1" : "0"], { encoding: "utf8", timeout: 60 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 });
       let parsed = null; try { parsed = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).pop()); } catch (_) {}
-      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
+      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, _.statusCode || 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
       // LUKE_AI_I2V_VIDEO_ASSET_REGISTRATION_V1
       try {
         if (
@@ -28280,7 +28300,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       }
 
       return json(res, 200, { ok: true, output: path.relative(ROOT, outputPath), message: `Video saved to ${path.relative(ROOT, outputPath)}` });
-    } catch (err) { return json(res, 500, { ok: false, error: err.message || String(err) }); }
+    } catch (err) { return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) }); }
   }
 
   // GET /api/hardware-specs
@@ -28379,6 +28399,10 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   // POST /api/model-cache/clear — give the internal disk space back
   if (req.url === "/api/model-cache/clear" && req.method === "POST") {
     try {
+      // `body` was used here but never read off the request, so this route
+      // threw ReferenceError on every call and answered 500. It has never
+      // once cleared a cache.
+      const body = await readJsonRequestBody(req);
       const result = await modelCache.clearCache({ useInternalDisk: body.useInternalDisk === true });
       return json(res, 200, { ok: true, result });
     } catch (error) {
@@ -28574,7 +28598,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       startOpenVinoModelDownload(modelId);
       return json(res, 200, { ok: true, message: "OpenVINO model download started" });
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -28629,7 +28653,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     try {
       return json(res, 200, await generateWithOpenVino(body));
     } catch (err) {
-      return json(res, 500, { ok: false, error: err.message || String(err) });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message || String(err) });
     }
   }
 
@@ -28679,7 +28703,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 200, { ok: true, output: { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}` } });
     } catch (err) {
       console.error("  [api] Failed to save output:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -28692,7 +28716,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 200, { ok: true, deleted });
     } catch (err) {
       console.error("  [api] Failed to delete outputs:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -28704,7 +28728,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result, filename: result.filename });
     } catch (err) {
       console.error("  [api] Failed to import model:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -28715,7 +28739,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 200, { ok: true, message: `Imported ${result.filename}`, model: result });
     } catch (err) {
       console.error("  [api] Failed to import text model:", err);
-      return json(res, 500, { ok: false, error: err.message });
+      return json(res, err.statusCode || 500, { ok: false, error: err.message });
     }
   }
 
@@ -28732,7 +28756,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       fs.unlinkSync(modelPath);
       return json(res, 200, { ok: true });
     } catch (err) {
-      return json(res, err.code === "ENOENT" ? 404 : 500, {
+      return json(res, err.statusCode || (err.code === "ENOENT" ? 404 : 500), {
         ok: false,
         error: err.code === "ENOENT" ? "Text model not found" : err.message,
       });
@@ -28765,7 +28789,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       }
     } catch (err) {
       console.error(`  [api] Failed to delete model ${safeFilename}:`, err);
-      return json(res, 500, { error: err.message });
+      return json(res, err.statusCode || 500, { error: err.message });
     }
   }
 
