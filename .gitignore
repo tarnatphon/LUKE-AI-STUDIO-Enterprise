@@ -84,3 +84,18 @@ app/runtime-state/machine-profile.json
 
 # Arena gateway key for Work mode. This machine only, never travels.
 app/runtime-state/text-chat/remote-text-provider.json
+
+# Machine state the app rewrites on every boot. Tracking these broke `git pull`
+# on the user's own machine: run the app once, four tracked files change, and
+# the next update is refused with "Your local changes would be overwritten by
+# merge". The app recreates all four from nothing when they are absent, so
+# nothing is lost by keeping them out of git.
+app/runtime-state/storage/storage-availability-watcher.json
+app/runtime-state/storage/storage-destination-state.json
+app/runtime-state/storage/storage-provider-state.json
+# Seeded at schema v1 and migrated to v2 by the app on first boot, so the
+# tracked copy is stale the moment the app runs once.
+app/runtime-state/social-agency/thai-modern-bags.json
+# Text runtime supervision: pid, health timestamps, restart counts, event log.
+# Written whenever the local runtime is started or stopped.
+app/runtime-state/text-chat/runtime-supervisor.json

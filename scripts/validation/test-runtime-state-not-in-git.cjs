@@ -70,9 +70,42 @@ function spawnSyncGit(args) {
   return spawnSync("git", args, { cwd: root, stdio: "ignore" });
 }
 
+/**
+ * Every tracked file the working tree currently disagrees with.
+ *
+ * The app runs from a git checkout on the user's own disk, so a tracked file it
+ * rewrites is a `git pull` that refuses to run. Comparing this set before and
+ * after a run catches any state file that finds its way back into git, without
+ * the check failing merely because unrelated work is in progress.
+ */
+function gitTrackedDirt() {
+  const { spawnSync } = require("node:child_process");
+  const result = spawnSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=no", "--", "app/runtime-state"],
+    { cwd: root, encoding: "utf8" },
+  );
+  return new Set(
+    String(result.stdout || "")
+      .split("\n")
+      .map((line) => line.slice(3).trim())
+      .filter(Boolean),
+  );
+}
+
+/** Machine state the app rewrites on every boot, and must never track. */
+const REWRITTEN_ON_BOOT = [
+  "app/runtime-state/storage/storage-availability-watcher.json",
+  "app/runtime-state/storage/storage-destination-state.json",
+  "app/runtime-state/storage/storage-provider-state.json",
+  "app/runtime-state/social-agency/thai-modern-bags.json",
+  "app/runtime-state/text-chat/runtime-supervisor.json",
+];
+
 async function main() {
   console.log("Runtime state isolation validation");
 
+  const dirtBefore = gitTrackedDirt();
   const beforeHash = sha256(policyFile);
   const hadOverrides = fs.existsSync(overridesFile);
   const previousOverrides = hadOverrides ? fs.readFileSync(overridesFile, "utf8") : null;
@@ -145,6 +178,27 @@ async function main() {
       (assetResponse.headers.get("cache-control") || "").includes("max-age=31536000"),
       "fingerprinted bundles are cached immutably (fast reloads)"
     );
+
+    // One boot of the app, plus ordinary reads, must not touch a single
+    // tracked file. This is the invariant the header comment describes; until
+    // it was asserted, four files under app/runtime-state were tracked and the
+    // app rewrote all four on every start, so the user's own `git pull` broke
+    // the first time anybody committed a change to one of them.
+    const dirtAfter = gitTrackedDirt();
+    const newlyDirty = [...dirtAfter].filter((entry) => !dirtBefore.has(entry));
+
+    assert(
+      newlyDirty.length === 0,
+      "running the app leaves no tracked runtime-state file modified",
+    );
+    if (newlyDirty.length > 0) console.log(`     newly dirty: ${newlyDirty.join(", ")}`);
+
+    for (const relative of REWRITTEN_ON_BOOT) {
+      assert(
+        gitIgnored(path.join(root, relative)),
+        `${path.basename(relative)} is ignored, so the app rewriting it cannot break a pull`,
+      );
+    }
 
     const shipped = JSON.parse(fs.readFileSync(policyFile, "utf8"));
     assert(
