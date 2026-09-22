@@ -82,12 +82,14 @@ function spawnSyncGit(args) {
  */
 function gitTrackedDirt() {
   const { spawnSync } = require("node:child_process");
-  // app/config as well as app/runtime-state: the model settings used to be
-  // saved into a tracked config file, which is the same failure in a different
-  // folder.
+  // The whole repository, not just the folders that have offended so far.
+  // Two separate bugs lived in two separate directories - app/runtime-state and
+  // app/config - and a check scoped to the one already found is a check that
+  // waits to be surprised again. Comparing before and after is what keeps
+  // unrelated work in progress from failing this.
   const result = spawnSync(
     "git",
-    ["status", "--porcelain", "--untracked-files=no", "--", "app/runtime-state", "app/config"],
+    ["status", "--porcelain", "--untracked-files=no"],
     { cwd: root, encoding: "utf8" },
   );
   return new Set(
@@ -233,7 +235,7 @@ async function main() {
 
     assert(
       newlyDirty.length === 0,
-      "running the app leaves no tracked state or config file modified",
+      "running the app leaves no tracked file modified anywhere in the repository",
     );
     if (newlyDirty.length > 0) console.log(`     newly dirty: ${newlyDirty.join(", ")}`);
 
