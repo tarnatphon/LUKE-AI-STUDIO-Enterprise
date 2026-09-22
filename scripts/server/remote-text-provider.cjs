@@ -82,6 +82,18 @@ const PROVIDERS = {
     docs: "z.ai → API keys",
     note: "GLM-4.7-Flash is priced at zero per token, not handed out as trial credit. 203K context.",
   },
+  openrouter: {
+    id: "openrouter",
+    label: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    // From openrouter.ai/api/v1/models?max_price=0&supported_parameters=tools:
+    // pricing "0" for prompt and completion, tools supported, no expiration
+    // date. Poolside built it as a coding agent — 70.2% on Terminal-Bench 2.1.
+    // The :free suffix is what makes it zero; without it the same model bills.
+    model: "poolside/laguna-s-2.1:free",
+    docs: "openrouter.ai → Keys",
+    note: "Free models cost nothing per token, no card needed. The catch is a request count, not a bill: about 50 a day until you have ever bought $10 of credit, then 1,000.",
+  },
   groq: {
     id: "groq",
     label: "Groq",
@@ -91,7 +103,7 @@ const PROVIDERS = {
     // free in the panel would be how the user meets their first bill.
     model: "openai/gpt-oss-120b",
     docs: "console.groq.com → API Keys",
-    note: "Fast, 131K context — but billed per token ($0.15 in / $0.60 out per million). The free part is a rate-limited allowance, not a zero price.",
+    note: "Not in the chain by default: it bills per token ($0.15 in / $0.60 out per million). Connect it only if you accept paying.",
   },
   arena: {
     id: "arena",
@@ -105,8 +117,16 @@ const PROVIDERS = {
   },
 };
 
-/** Tried in this order; local is the last link, after all of them. */
-const DEFAULT_ORDER = ["nvidia", "zai", "groq"];
+/**
+ * Tried in this order; local is the last link, after all of them.
+ *
+ * Every provider here is free in the sense that matters — nothing is billed per
+ * token. NVIDIA has no daily quota at all, OpenRouter's :free models are priced
+ * at zero, Z.ai's Flash models are priced at zero. Groq and Arena are in the
+ * catalogue for anyone who wants them, but neither is free, so neither is
+ * turned on by default.
+ */
+const DEFAULT_ORDER = ["nvidia", "openrouter", "zai"];
 
 // ── small helpers ──────────────────────────────────────────────────────────
 

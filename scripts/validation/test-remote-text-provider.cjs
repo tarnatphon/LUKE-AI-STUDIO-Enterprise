@@ -79,7 +79,9 @@ async function main() {
 
   const status = await provider.providerStatus();
   check("the status never carries a key itself", !JSON.stringify(status).includes("SECRET"));
-  check("it says which providers exist", status.providers.length === 4, String(status.providers.length));
+  check("it says which providers exist",
+    status.providers.length === Object.keys(provider.PROVIDERS).length,
+    String(status.providers.length));
   check("and for each one whether a key is saved", status.providers.every((item) => typeof item.configured === "boolean"));
   check("a hint is shown, never the key",
     status.providers.every((item) => item.keyHint === "" || /^…[A-Za-z0-9]{1,6}$/.test(item.keyHint)));
@@ -148,9 +150,22 @@ async function main() {
   check("the default Z.ai model is one of the ones priced at zero",
     ["glm-4.7-flash", "glm-4.5-flash"].includes(provider.PROVIDERS.zai.model),
     provider.PROVIDERS.zai.model);
+
+  // OpenRouter, from openrouter.ai/api/v1/models?max_price=0&supported_
+  // parameters=tools (2026-09-22): pricing "0" for prompt and completion, tools
+  // supported, no expiration date.
+  check("the default OpenRouter model was listed at zero with tool support",
+    [
+      "poolside/laguna-s-2.1:free",
+      "qwen/qwen3.8-27b:free",
+      "thinkingmachines/inkling:free",
+      "nvidia/nemotron-3.5-lightning:free",
+    ].includes(provider.PROVIDERS.openrouter.model),
+    provider.PROVIDERS.openrouter.model);
   check("and the panel does not call a billed model free",
-    /billed per token/.test(provider.PROVIDERS.groq.note)
-    && !/free/i.test(provider.PROVIDERS.groq.note.replace(/free part is a rate-limited allowance/, "")));
+    /bills per token/.test(provider.PROVIDERS.groq.note)
+    && !/\bfree\b/i.test(provider.PROVIDERS.groq.note),
+    provider.PROVIDERS.groq.note);
   check("each provider has its own endpoint",
     provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("groq")
     && provider.remoteEndpoint("zai").includes("z.ai"));
@@ -184,6 +199,26 @@ async function main() {
   check("the order starts with the provider that has no daily quota",
     provider.DEFAULT_ORDER[0] === "nvidia", provider.DEFAULT_ORDER.join(" -> "));
   check("and tries all three before giving up", provider.DEFAULT_ORDER.length === 3);
+
+  // The user asked for free, and free means nothing is billed per token. A
+  // rate limit is a free tier; a price per million tokens is not.
+  const NOT_FREE = ["groq", "arena"];
+  check("nothing in the chain bills per token",
+    !provider.DEFAULT_ORDER.some((providerId) => NOT_FREE.includes(providerId)),
+    provider.DEFAULT_ORDER.join(" -> "));
+  check("a provider that charges is still offered, just not turned on",
+    NOT_FREE.every((providerId) => provider.PROVIDERS[providerId])
+    && NOT_FREE.every((providerId) => !provider.DEFAULT_ORDER.includes(providerId)));
+  check("and its note says so before anyone connects it",
+    /Not in the chain by default/.test(provider.PROVIDERS.groq.note),
+    provider.PROVIDERS.groq.note);
+  check("OpenRouter's free model carries the suffix that makes it zero",
+    provider.PROVIDERS.openrouter.model.endsWith(":free"),
+    provider.PROVIDERS.openrouter.model);
+  check("its note names the real catch — a request count, not a bill",
+    /request count/.test(provider.PROVIDERS.openrouter.note)
+    && /50 a day/.test(provider.PROVIDERS.openrouter.note),
+    provider.PROVIDERS.openrouter.note);
 
   section("6. A stream that arrives in pieces still reads as one answer");
   const decoder = provider.createSseDecoder();

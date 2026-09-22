@@ -48,11 +48,14 @@ function section(title) {
   console.log(`\n${title}`);
 }
 
-const KEYS = {
-  nvidia: "nvapi-SECRET-nvidia-key-0001",
-  zai: "zai-SECRET-zai-key-0002",
-  groq: "gsk-SECRET-groq-key-0003",
-};
+// A key for every link in the chain, whatever the chain currently is — so
+// reordering the providers does not silently untest one of them.
+const KEYS = Object.fromEntries(
+  provider.DEFAULT_ORDER.map((providerId, index) => [
+    providerId,
+    `test-SECRET-${providerId}-key-000${index + 1}`,
+  ]),
+);
 
 /** Which model belongs to which provider, so a request can be recognised. */
 const MODEL_OWNER = {};
@@ -155,8 +158,10 @@ async function main() {
   }
 
   const NVIDIA = provider.PROVIDERS.nvidia.model;
-  const ZAI = provider.PROVIDERS.zai.model;
-  const GROQ = provider.PROVIDERS.groq.model;
+  const SECOND_ID = provider.DEFAULT_ORDER[1];
+  const SECOND = provider.PROVIDERS[SECOND_ID].model;
+  const THIRD_ID = provider.DEFAULT_ORDER[2];
+  const THIRD = provider.PROVIDERS[THIRD_ID].model;
 
   const reset = (rules) => {
     seen.length = 0;
@@ -172,6 +177,16 @@ async function main() {
   ];
 
   try {
+    section("0. Nothing in the chain bills per token");
+    check("the chain has three links", provider.DEFAULT_ORDER.length === 3,
+      provider.DEFAULT_ORDER.join(" -> "));
+    check("and none of them is a provider that charges",
+      !provider.DEFAULT_ORDER.includes("groq") && !provider.DEFAULT_ORDER.includes("arena"),
+      provider.DEFAULT_ORDER.join(" -> "));
+    check("every link is one a free key can reach",
+      provider.DEFAULT_ORDER.every((providerId) => KEYS[providerId]),
+      JSON.stringify(Object.keys(KEYS)));
+
     section("1. A provider that answers is the one the chain lands on");
     reset({ [NVIDIA]: { chunks: ["The ", "test ", "passes now."] } });
 
@@ -205,33 +220,33 @@ async function main() {
     section("3. A rate limit moves the turn to the next provider");
     reset({
       [NVIDIA]: { status: 429, error: "rate_limited" },
-      [ZAI]: { chunks: ["answered ", "by the second link"] },
+      [SECOND]: { chunks: ["answered ", "by the second link"] },
     });
 
     const second = await provider.streamRemoteChain({ messages: MESSAGES });
 
     check("two providers were tried", seen.length === 2, String(seen.length));
-    check("the second one answered", second.providerId === "zai" && second.content === "answered by the second link", second.content);
+    check("the second one answered", second.providerId === SECOND_ID && second.content === "answered by the second link", second.content);
     check("the first failure was recorded, not swallowed",
       second.failures.length === 1 && second.failures[0].providerId === "nvidia" && second.failures[0].code === "rate_limited",
       JSON.stringify(second.failures));
-    check("the third was never bothered", !seen.some((entry) => entry.owner === "groq"));
+    check("the third was never bothered", !seen.some((entry) => entry.owner === THIRD_ID), THIRD_ID);
 
     section("4. A provider that started charging is passed over");
     reset({
       [NVIDIA]: { status: 402, error: "payment required" },
-      [ZAI]: { chunks: ["second link again"] },
+      [SECOND]: { chunks: ["second link again"] },
     });
 
     const third = await provider.streamRemoteChain({ messages: MESSAGES });
-    check("a paywall moves on", third.providerId === "zai" && third.failures[0].code === "now_paid",
+    check("a paywall moves on", third.providerId === SECOND_ID && third.failures[0].code === "now_paid",
       JSON.stringify(third.failures));
     check("and the message says the free tier is gone", /charg/i.test(third.failures[0].message), third.failures[0].message);
 
     section("5. A refused key stops the chain instead of repeating itself");
     reset({
       [NVIDIA]: { status: 401, error: "invalid key" },
-      [ZAI]: { chunks: ["should not be reached"] },
+      [SECOND]: { chunks: ["should not be reached"] },
     });
 
     const fourth = await provider.streamRemoteChain({ messages: MESSAGES });
@@ -244,8 +259,8 @@ async function main() {
     section("6. When every link is spent, the chain says so rather than failing quietly");
     reset({
       [NVIDIA]: { status: 429, error: "slow down" },
-      [ZAI]: { status: 429, error: "slow down" },
-      [GROQ]: { status: 429, error: "slow down" },
+      [SECOND]: { status: 429, error: "slow down" },
+      [THIRD]: { status: 429, error: "slow down" },
     });
 
     const fifth = await provider.streamRemoteChain({ messages: MESSAGES });
