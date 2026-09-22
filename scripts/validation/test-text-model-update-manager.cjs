@@ -189,8 +189,11 @@ async function main() {
       ? fs.readFileSync(installedFile, "utf8")
       : null;
 
+  // The app creates this on first use, so a fresh checkout does not have it.
   const originalQueue =
-    fs.readFileSync(queueFile, "utf8");
+    fs.existsSync(queueFile)
+      ? fs.readFileSync(queueFile, "utf8")
+      : null;
 
   const catalog =
     JSON.parse(originalCatalog);
@@ -416,11 +419,15 @@ async function main() {
       "utf8"
     );
 
-    fs.writeFileSync(
-      queueFile,
-      originalQueue,
-      "utf8"
-    );
+    if (originalQueue === null) {
+      fs.rmSync(queueFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        queueFile,
+        originalQueue,
+        "utf8"
+      );
+    }
 
     if (originalInstalled === null) {
       fs.rmSync(

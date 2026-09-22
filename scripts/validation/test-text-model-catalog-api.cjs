@@ -161,8 +161,11 @@ async function waitForServer(baseUrl, child) {
 }
 
 async function main() {
+  // The app creates this on first use, so a fresh checkout does not have it.
   const originalQueue =
-    fs.readFileSync(queueFile, "utf8");
+    fs.existsSync(queueFile)
+      ? fs.readFileSync(queueFile, "utf8")
+      : null;
 
   fs.writeFileSync(
     queueFile,
@@ -267,11 +270,15 @@ async function main() {
   } finally {
     await stopProcess(child);
 
-    fs.writeFileSync(
-      queueFile,
-      originalQueue,
-      "utf8"
-    );
+    if (originalQueue === null) {
+      fs.rmSync(queueFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        queueFile,
+        originalQueue,
+        "utf8"
+      );
+    }
   }
 }
 

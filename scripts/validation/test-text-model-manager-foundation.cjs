@@ -6,10 +6,16 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..", "..");
 
+// What has to ship with the repository for this feature to exist at all.
+//
+// The download queue used to be on this list. It does not belong here: it is
+// per-machine state under app/runtime-state, the app creates it on first use,
+// and the server boots and serves the model catalogue without it. Keeping it in
+// the contract is what forced the file to stay tracked in git, and a tracked
+// file the app rewrites is a `git pull` that refuses to run.
 const requiredFiles = [
   "docs/beta7/text-model-manager-v1-spec.md",
   "app/config/text-models/catalog-policy.json",
-  "app/runtime-state/text-models/download-queue.json",
 ];
 
 for (const relativePath of requiredFiles) {
@@ -30,15 +36,17 @@ const policy = JSON.parse(
   ),
 );
 
-const queue = JSON.parse(
-  fs.readFileSync(
-    path.join(
-      root,
-      "app/runtime-state/text-models/download-queue.json",
-    ),
-    "utf8",
-  ),
+// The download queue is per-machine state the app writes on first use, so on a
+// fresh checkout it is simply not there yet. Read it when it exists and check
+// its shape; its absence is not a defect.
+const queuePath = path.join(
+  root,
+  "app/runtime-state/text-models/download-queue.json",
 );
+
+const queue = fs.existsSync(queuePath)
+  ? JSON.parse(fs.readFileSync(queuePath, "utf8"))
+  : null;
 
 if (policy.catalogMode !== "signed") {
   throw new Error("Text model catalog must use signed mode.");
@@ -72,11 +80,12 @@ if (
 }
 
 if (
-  queue.schemaVersion !== 1 ||
-  queue.activeItemId !== null ||
-  !Array.isArray(queue.items)
+  queue !== null &&
+  (queue.schemaVersion !== 1 ||
+    queue.activeItemId !== null ||
+    !Array.isArray(queue.items))
 ) {
-  throw new Error("Initial download queue state is invalid.");
+  throw new Error("Download queue state is invalid.");
 }
 
 console.log("PASS: Signed catalog policy is enabled.");

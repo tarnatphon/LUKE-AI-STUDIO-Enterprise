@@ -22,6 +22,7 @@
  */
 
 const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 const os = require("node:os");
@@ -43,7 +44,6 @@ process.env.LUKE_REMOTE_PROVIDER_FILE = SCRATCH_FILE;
 
 const provider = require(path.join(root, "scripts", "server", "remote-text-provider.cjs"));
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
-const gitignore = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
 const settings = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "Settings.jsx"), "utf8");
 
 let passed = 0;
@@ -73,7 +73,12 @@ async function main() {
   );
   check("by default the keys are stored inside the app folder",
     /"app",\s*"runtime-state",\s*"text-chat",\s*"remote-text-provider\.json"/.test(moduleSource));
-  check("that file is gitignored", gitignore.includes("remote-text-provider.json"));
+  // Ask git rather than reading .gitignore for a line: the rule that covers
+  // this file is `app/runtime-state/`, so a string search for the filename
+  // fails while the file is in fact ignored. What matters is git's answer.
+  check("that file is gitignored",
+    spawnSync("git", ["check-ignore", "-q", "app/runtime-state/text-chat/remote-text-provider.json"],
+      { cwd: root }).status === 0);
   check("a test run is pointed somewhere throwaway instead", provider.PROVIDER_FILE === SCRATCH_FILE,
     provider.PROVIDER_FILE);
 

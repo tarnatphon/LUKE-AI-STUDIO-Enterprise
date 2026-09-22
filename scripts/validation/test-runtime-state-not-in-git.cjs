@@ -93,14 +93,24 @@ function gitTrackedDirt() {
   );
 }
 
-/** Machine state the app rewrites on every boot, and must never track. */
-const REWRITTEN_ON_BOOT = [
-  "app/runtime-state/storage/storage-availability-watcher.json",
-  "app/runtime-state/storage/storage-destination-state.json",
-  "app/runtime-state/storage/storage-provider-state.json",
-  "app/runtime-state/social-agency/thai-modern-bags.json",
-  "app/runtime-state/text-chat/runtime-supervisor.json",
-];
+/**
+ * Every path git is tracking under a directory.
+ *
+ * The copies under releases/ are frozen snapshots of past builds, so this is
+ * scoped to the live app folder: an anchored `app/runtime-state/` ignore rule
+ * does not reach them, and they are meant to stay in git.
+ */
+function gitTrackedUnder(directory) {
+  const { spawnSync } = require("node:child_process");
+  const result = spawnSync("git", ["ls-files", "--", directory], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return String(result.stdout || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 async function main() {
   console.log("Runtime state isolation validation");
@@ -193,12 +203,32 @@ async function main() {
     );
     if (newlyDirty.length > 0) console.log(`     newly dirty: ${newlyDirty.join(", ")}`);
 
-    for (const relative of REWRITTEN_ON_BOOT) {
-      assert(
-        gitIgnored(path.join(root, relative)),
-        `${path.basename(relative)} is ignored, so the app rewriting it cannot break a pull`,
+    // Not a list of known offenders — the invariant itself. Any file git
+    // tracks under app/runtime-state is a file the app can rewrite, and so a
+    // future update that git will refuse to apply on the user's machine.
+    const trackedState = gitTrackedUnder("app/runtime-state");
+
+    assert(
+      trackedState.length === 0,
+      "git tracks nothing under app/runtime-state",
+    );
+    if (trackedState.length > 0) {
+      console.log(
+        `     tracked: ${trackedState.slice(0, 5).join(", ")}` +
+          (trackedState.length > 5 ? `, and ${trackedState.length - 5} more` : ""),
       );
     }
+
+    assert(
+      gitIgnored(path.join(root, "app/runtime-state/text-chat/conversations.json")),
+      "the whole directory is ignored, so the app writing it cannot break a pull",
+    );
+
+    // The frozen build snapshots are the deliberate exception.
+    assert(
+      gitTrackedUnder("releases").some((entry) => entry.includes("app/runtime-state/")),
+      "the release snapshots under releases/ still carry their state, as intended",
+    );
 
     const shipped = JSON.parse(fs.readFileSync(policyFile, "utf8"));
     assert(

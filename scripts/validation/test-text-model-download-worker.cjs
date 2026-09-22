@@ -228,8 +228,11 @@ async function main() {
   const originalCatalog =
     fs.readFileSync(catalogFile, "utf8");
 
+  // The app creates this on first use, so a fresh checkout does not have it.
   const originalQueue =
-    fs.readFileSync(queueFile, "utf8");
+    fs.existsSync(queueFile)
+      ? fs.readFileSync(queueFile, "utf8")
+      : null;
 
   const testHome = fs.mkdtempSync(
     path.join(
@@ -497,11 +500,15 @@ async function main() {
       "utf8"
     );
 
-    fs.writeFileSync(
-      queueFile,
-      originalQueue,
-      "utf8"
-    );
+    if (originalQueue === null) {
+      fs.rmSync(queueFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        queueFile,
+        originalQueue,
+        "utf8"
+      );
+    }
 
     fs.rmSync(
       testHome,

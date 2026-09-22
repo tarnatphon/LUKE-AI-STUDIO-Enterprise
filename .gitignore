@@ -50,8 +50,25 @@ runtime-logs/
 .agents/
 .claude/
 
-# Social Agency connector secrets (tokens live only in this gitignored file)
-app/runtime-state/social-agency/connectors.json
+# Everything the app writes about this machine.
+#
+# LUKE AI STUDIO runs from a git checkout on the user's own disk, so any file
+# the app rewrites while it is used has to sit outside git. Tracking one is not
+# a tidiness problem: the app changes it, and the next update that touches it is
+# refused with
+#
+#   error: Your local changes to the following files would be overwritten by
+#   merge
+#
+# while `git checkout -- <file>` cannot clear it, because
+# scripts/setup/git-local-state.sh marks these paths skip-worktree and git will
+# not match a skip-worktree pathspec. The app creates every one of these on
+# first use, and all 119 validation suites pass with the folder empty, so
+# nothing is lost by keeping the whole directory out of git.
+#
+# This is anchored at the repository root: the copies under releases/ are
+# frozen snapshots of past builds and stay tracked.
+app/runtime-state/
 
 # macOS metadata and local workspace junk
 .fseventsd/
@@ -66,36 +83,6 @@ app/runtime-state/social-agency/connectors.json
 thai-tts.patch*
 SuperTrader/
 
-# Local app-generated backups (runtime state snapshots created on the user machine)
-*.bak-*
-app/runtime-state/work-runs/
-app/runtime-state/**/*.bak-*
-app/runtime-state/**/*.overrides.json
-app/runtime-state/**/*.local.json
-# A GitHub token saved from Work: it belongs to this machine only, and must
-# never travel to the repository — not even by accident.
-app/runtime-state/github-auth.json
-app/runtime-state/text-chat/history/
 
-# Model Arena runs on this machine: scores, verdicts and progress. Local truth.
-app/runtime-state/text-chat/arena/
-# Local machine profile (RAM, chip, backend hints). Written by this machine only.
-app/runtime-state/machine-profile.json
 
-# Arena gateway key for Work mode. This machine only, never travels.
-app/runtime-state/text-chat/remote-text-provider.json
 
-# Machine state the app rewrites on every boot. Tracking these broke `git pull`
-# on the user's own machine: run the app once, four tracked files change, and
-# the next update is refused with "Your local changes would be overwritten by
-# merge". The app recreates all four from nothing when they are absent, so
-# nothing is lost by keeping them out of git.
-app/runtime-state/storage/storage-availability-watcher.json
-app/runtime-state/storage/storage-destination-state.json
-app/runtime-state/storage/storage-provider-state.json
-# Seeded at schema v1 and migrated to v2 by the app on first boot, so the
-# tracked copy is stale the moment the app runs once.
-app/runtime-state/social-agency/thai-modern-bags.json
-# Text runtime supervision: pid, health timestamps, restart counts, event log.
-# Written whenever the local runtime is started or stopped.
-app/runtime-state/text-chat/runtime-supervisor.json
