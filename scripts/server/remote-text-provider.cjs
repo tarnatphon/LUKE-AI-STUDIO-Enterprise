@@ -836,11 +836,20 @@ async function testRemoteProvider(providerId) {
     return { ok: false, code: "no_key", message: `No ${provider.label} key is saved yet.` };
   }
 
+  // Test the model the user actually chose, resolved the same way the chain
+  // resolves it. This used to send no model at all, so buildRemotePayload fell
+  // back to the built-in default — the Test button said "ok" for an account
+  // whose *selected* model was gone, and then every real turn 404'd on a
+  // provider the panel had just declared healthy.
+  const chosen = String(config.models[providerId] || "").trim();
+  const model = chosen || provider.model;
+
   try {
     const result = await streamRemoteChat({
       providerId,
       key,
       messages: [{ role: "user", content: "Reply with the single word: ready" }],
+      model,
       maxTokens: 16,
       timeoutMs: PROBE_TIMEOUT_MS,
     });
@@ -848,6 +857,7 @@ async function testRemoteProvider(providerId) {
     return {
       ok: true,
       code: "reachable",
+      model: result.model,
       message: `${provider.label} answered through ${result.model}.`,
       sample: String(result.content || "").trim().slice(0, 120),
     };
@@ -855,6 +865,7 @@ async function testRemoteProvider(providerId) {
     return {
       ok: false,
       code: error?.code || "failed",
+      model,
       message: error?.message || `${provider.label} could not be reached.`,
     };
   }
