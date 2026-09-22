@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 "use strict";
 
-let testPortOffset = 0;
-
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
@@ -49,7 +47,10 @@ function getFreePort() {
     server.listen(
       {
         host: "127.0.0.1",
-        port: 38000 + ((process.pid + testPortOffset++) % 2000),
+        // Ask the operating system. A port derived from the process id is not
+        // a free port: if anything else holds it, the suite dies with
+        // EADDRINUSE before its first assertion.
+        port: 0,
       },
       () => {
         const address = server.address();
