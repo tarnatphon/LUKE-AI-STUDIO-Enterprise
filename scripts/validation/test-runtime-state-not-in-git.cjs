@@ -34,6 +34,8 @@ const overridesFile = path.join(
   "text-chat",
   "model-arena-policy.overrides.json"
 );
+const modelSettingsSeed = path.join(root, "app", "config", "llm-model-settings.json");
+const modelSettingsState = path.join(root, "app", "runtime-state", "llm-model-settings.json");
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,9 +82,12 @@ function spawnSyncGit(args) {
  */
 function gitTrackedDirt() {
   const { spawnSync } = require("node:child_process");
+  // app/config as well as app/runtime-state: the model settings used to be
+  // saved into a tracked config file, which is the same failure in a different
+  // folder.
   const result = spawnSync(
     "git",
-    ["status", "--porcelain", "--untracked-files=no", "--", "app/runtime-state"],
+    ["status", "--porcelain", "--untracked-files=no", "--", "app/runtime-state", "app/config"],
     { cwd: root, encoding: "utf8" },
   );
   return new Set(
@@ -119,6 +124,11 @@ async function main() {
   const beforeHash = sha256(policyFile);
   const hadOverrides = fs.existsSync(overridesFile);
   const previousOverrides = hadOverrides ? fs.readFileSync(overridesFile, "utf8") : null;
+  const hadSettingsState = fs.existsSync(modelSettingsState);
+  const previousSettingsState = hadSettingsState
+    ? fs.readFileSync(modelSettingsState, "utf8")
+    : null;
+  const seedBefore = sha256(modelSettingsSeed);
 
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -165,6 +175,30 @@ async function main() {
       "the shipped config file in git is not modified while the app is used"
     );
     assert(fs.existsSync(overridesFile), "the user's choice is stored in runtime-state instead");
+
+    // Saving a model setting used to write app/config/llm-model-settings.json,
+    // which is tracked - the same failure one folder over, and the reason the
+    // committed copy carries one machine's preferredBackend. This is the
+    // request that proves it now writes somewhere git ignores.
+    const savedSettings = await fetch(`${baseUrl}/api/llm/model-settings`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "guard-probe.gguf", preferredBackend: "cpu" }),
+    }).then((response) => response.json());
+
+    assert(savedSettings.ok === true, "a model setting can be saved");
+    assert(
+      sha256(modelSettingsSeed) === seedBefore,
+      "the tracked seed in app/config is not written while the app is used",
+    );
+    assert(
+      fs.existsSync(modelSettingsState),
+      "it lands in app/runtime-state, which git ignores",
+    );
+    assert(
+      gitIgnored(modelSettingsState),
+      "and that file is ignored, so saving a setting cannot break a pull",
+    );
     assert(gitIgnored(overridesFile), "that runtime-state file is ignored by git, so pulls never collide");
 
     // A fresh read must still see the choice after the merge.
@@ -199,7 +233,7 @@ async function main() {
 
     assert(
       newlyDirty.length === 0,
-      "running the app leaves no tracked runtime-state file modified",
+      "running the app leaves no tracked state or config file modified",
     );
     if (newlyDirty.length > 0) console.log(`     newly dirty: ${newlyDirty.join(", ")}`);
 
@@ -241,6 +275,9 @@ async function main() {
     if (child.exitCode === null) child.kill("SIGKILL");
     if (previousOverrides === null) fs.rmSync(overridesFile, { force: true });
     else fs.writeFileSync(overridesFile, previousOverrides);
+
+    if (previousSettingsState === null) fs.rmSync(modelSettingsState, { force: true });
+    else fs.writeFileSync(modelSettingsState, previousSettingsState);
   }
 
   console.log("\nPASS: runtime state isolation validation completed.");

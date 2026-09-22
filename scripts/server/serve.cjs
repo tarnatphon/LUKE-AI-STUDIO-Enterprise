@@ -1225,7 +1225,16 @@ const LLM_BACKEND_PATHS = {
   macX64: path.join(ROOT, "app", "llm-backend", "mac", "x64", "llama-server"),
 };
 const LLM_CONFIG_DIR = path.join(ROOT, "app", "config");
+// A read-only seed. It is tracked in git, so the app must not write it: a
+// tracked file the app rewrites is a `git pull` that refuses to run on the
+// user's machine. It has already happened here - the committed copy carries one
+// machine's `preferredBackend: "metal"` and `lastBackendMode: "Metal GPU"`.
 const LLM_MODEL_SETTINGS_PATH = path.join(LLM_CONFIG_DIR, "llm-model-settings.json");
+// Where this machine's settings actually live, under the ignored runtime-state
+// folder. The override lets a test aim it at a throwaway file.
+const LLM_MODEL_SETTINGS_STATE_PATH = process.env.LUKE_LLM_MODEL_SETTINGS_FILE
+  ? path.resolve(process.env.LUKE_LLM_MODEL_SETTINGS_FILE)
+  : path.join(ROOT, "app", "runtime-state", "llm-model-settings.json");
 const LLM_BENCHMARK_PATH = path.join(LLM_CONFIG_DIR, "llm-benchmarks.json");
 if (!fs.existsSync(LLM_CONFIG_DIR)) {
   fs.mkdirSync(LLM_CONFIG_DIR, { recursive: true });
@@ -2856,11 +2865,21 @@ function writeJsonFile(filePath, value) {
 }
 
 function getPersistedLlmModelSettings() {
+  // This machine's copy wins. The seed is the fallback, so a checkout that has
+  // been saving into it all along keeps the settings it already has - nothing
+  // is lost by the move, it just stops being written from here on.
+  if (fs.existsSync(LLM_MODEL_SETTINGS_STATE_PATH)) {
+    return readJsonFile(LLM_MODEL_SETTINGS_STATE_PATH, { models: {} });
+  }
+
   return readJsonFile(LLM_MODEL_SETTINGS_PATH, { models: {} });
 }
 
 function savePersistedLlmModelSettings(settings) {
-  writeJsonFile(LLM_MODEL_SETTINGS_PATH, settings && typeof settings === "object" ? settings : { models: {} });
+  writeJsonFile(
+    LLM_MODEL_SETTINGS_STATE_PATH,
+    settings && typeof settings === "object" ? settings : { models: {} },
+  );
 }
 
 function getLlmModelSettings(filename) {
