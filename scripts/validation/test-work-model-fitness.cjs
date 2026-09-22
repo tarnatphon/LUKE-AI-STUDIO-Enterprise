@@ -75,8 +75,8 @@ async function main() {
     && lib.isWorkReadyModel("") === false);
 
   section("3. Work says so out loud");
-  check("the chat watches the mode, the model and the machine",
-    /\}, \[assistantMode, selectedModel, specs\]\);/.test(chat));
+  check("the chat watches the mode, the model, the machine and the cloud chain",
+    /\}, \[assistantMode, selectedModel, specs, cloudChain\]\);/.test(chat));
   check("and only speaks in Work mode", /if \(assistantMode !== "work" \|\| !selectedModel \|\| isWorkReadyModel\(selectedModel\)\)/.test(chat));
   check("it names the model that is loaded", /\$\{selectedModel\}/.test(chat));
   check("it names one that would work, and its size", /\$\{best\.name\} \(\$\{best\.approxSize\}/.test(chat));
@@ -85,6 +85,25 @@ async function main() {
     /best\.minMemoryGb > ramGb[\s\S]{0,500}Work mode is not going to work well/.test(chat));
   check("it can be dismissed", /onClick=\{\(\) => setWorkModelNotice\(""\)\}/.test(chat));
   check("it is shown where the user is working", /className="work-model-notice"/.test(chat));
+
+  // Once a cloud provider is connected the warning is simply wrong: Work is not
+  // going to use the local model for the turn, so telling the user their model
+  // is too small sends them off to download 17 GB for nothing.
+  check("the chat asks which providers are connected",
+    /\/api\/text-runtime\/remote-provider\/status/.test(chat)
+    && /setCloudChain\(/.test(chat));
+  check("and it asks again when the mode changes",
+    /\}, \[assistantMode\]\);/.test(chat));
+  check("a connected provider replaces the warning instead of sitting under it",
+    /if \(cloudChain\.length > 0\) \{\s*setWorkModelNotice\(/.test(chat));
+  check("that replacement names the provider Work will use",
+    /Work will answer through \$\{cloudChain\[0\]\}/.test(chat));
+  check("and the rest of the chain behind it",
+    /cloudChain\.slice\(1\)\.join\(" then "\)/.test(chat));
+  check("it comes before the download advice, not after",
+    chat.indexOf("if (cloudChain.length > 0)") < chat.indexOf("const best = recommendWorkModel(ramGb)"));
+  check("and it still says the local model is not thrown away",
+    /stays loaded for chat and as the last resort/.test(chat));
 
   section("4. The library stays out of the first paint");
   check("it is a module of its own", fs.existsSync(libraryFile));

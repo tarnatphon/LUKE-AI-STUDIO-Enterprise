@@ -448,6 +448,10 @@ function TextChat({
   // small for that answers by writing the tools out as prose, and no amount of
   // patching this app changes it — so say so, and say what to install.
   const [workModelNotice, setWorkModelNotice] = useState("");
+  // Which cloud providers Work will answer through, in order. Once one is
+  // connected the "this model is too small" warning is simply wrong — Work is
+  // not going to use the local model for the turn.
+  const [cloudChain, setCloudChain] = useState([]);
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -1467,8 +1471,50 @@ function TextChat({
   }, [loadingModel]);
 
   useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      try {
+        const response = await fetch("/api/text-runtime/remote-provider/status", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+
+        const data = await response.json();
+
+        if (!active || !data?.ok) return;
+
+        const providers = data.provider?.providers || [];
+
+        setCloudChain(
+          (data.provider?.chain || []).map(
+            (providerId) => providers.find((item) => item.id === providerId)?.label || providerId,
+          ),
+        );
+      } catch {
+        if (active) setCloudChain([]);
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [assistantMode]);
+
+  useEffect(() => {
     if (assistantMode !== "work" || !selectedModel || isWorkReadyModel(selectedModel)) {
       setWorkModelNotice("");
+      return;
+    }
+    if (cloudChain.length > 0) {
+      setWorkModelNotice(
+        `Work will answer through ${cloudChain[0]}${
+          cloudChain.length > 1 ? `, falling back to ${cloudChain.slice(1).join(" then ")}` : ""
+        }. ${selectedModel} stays loaded for chat and as the last resort.`,
+      );
       return;
     }
     const ramGb = Math.max(0, Number(specs?.ram_total_gb) || 0);
@@ -1483,7 +1529,7 @@ function TextChat({
         ? `Work needs a model trained for tools, and the smallest one that does the job needs ${best.minMemoryGb} GB — this machine has ${ramGb} GB. ${selectedModel} will write the tools out as text instead of using them; Work mode is not going to work well until there is more memory or a cloud model.`
         : `Work needs a model trained for tools. ${selectedModel} is small enough that it writes the tools out as text instead of using them — install ${best.name} (${best.approxSize}, needs ${best.minMemoryGb} GB) for ${memory} and Work stops needing babysitting. Or connect a cloud provider in Settings and Work will use that model instead.`,
     );
-  }, [assistantMode, selectedModel, specs]);
+  }, [assistantMode, selectedModel, specs, cloudChain]);
 
   const handleCancelLlmLoad = async () => {
     try {
