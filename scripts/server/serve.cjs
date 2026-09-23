@@ -5736,7 +5736,7 @@ function evaluateContextPlan(modelFilename, isGpu) {
   // it prints "KV self size = 604.00 MiB" at start-up, which is exact, while
   // any guess from the file size is either pessimistic or dangerous.
   const kvGbPerToken = readKvProfile(
-    (typeof RUNTIME_STATE_DIR === "string" && RUNTIME_STATE_DIR) ? RUNTIME_STATE_DIR : path.join(ROOT, "app", "runtime-state"),
+    path.join(ROOT, "app", "runtime-state"),
     modelFilename,
   );
 
@@ -6172,7 +6172,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     const kvMib = parseKvSelfSizeMib(output);
     if (kvMib > 0 && llmSettings.contextSize) {
       recordKvProfile(
-        (typeof RUNTIME_STATE_DIR === "string" && RUNTIME_STATE_DIR) ? RUNTIME_STATE_DIR : path.join(ROOT, "app", "runtime-state"),
+        path.join(ROOT, "app", "runtime-state"),
         filename,
         { contextSize: Number(llmSettings.contextSize), kvMib },
       );
@@ -28328,8 +28328,13 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       const runtimePython = path.join(ROOT, "app", "runtimes", "image-to-video", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
       if (!fs.existsSync(runtimePython)) return json(res, 409, { ok: false, code: "I2V_NOT_INSTALLED", error: "Image-to-Video is not installed yet. Use the Install button in Image-to-Video." });
       const result = spawnSync(runtimePython, [worker, "--model", modelId, "--image", inputPath, "--output", outputPath, "--prompt", String(body.prompt || ""), "--seconds", String(Math.max(2, Math.min(10, Number(body.seconds) || 5))), "--references", manifestPath, "--reference-lock", body.referenceLock === false ? "0" : "1", "--automatic-match", automaticMatch ? "1" : "0"], { encoding: "utf8", timeout: 60 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 });
-      let parsed = null; try { parsed = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).pop()); } catch (_) {}
-      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, _.statusCode || 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
+      // The catch binding used to be `_`, and the error return below read
+      // `_.statusCode`. That binding only exists inside the catch block, so
+      // every worker failure threw ReferenceError instead of reporting why it
+      // failed - the user saw "_ is not defined" and the worker's own stderr
+      // was discarded. There is no HTTP status on a spawn error to read anyway.
+      let parsed = null; try { parsed = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).pop()); } catch { parsed = null; }
+      if (result.error || result.status !== 0 || !parsed?.ok) return json(res, 500, { ok: false, error: parsed?.error || String(result.stderr || result.error?.message || "Image-to-video worker failed.") });
       // LUKE_AI_I2V_VIDEO_ASSET_REGISTRATION_V1
       try {
         if (
