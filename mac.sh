@@ -40,12 +40,19 @@ SETUP_SCRIPT="$SCRIPT_DIR/scripts/setup/setup.sh"
 
 # ── Self-heal the built frontend: every bundle referenced by index.html ──────
 #    must exist, otherwise the browser loads a half broken app.
+#
+#    This checks every file git tracks under app/dist, not just the bundles
+#    named in index.html. index.html only references the entry point, so a
+#    grep of it sees 3 files out of 55 — the other 52 are the code-split chunks
+#    the app fetches when you open Asset Library, Generator, Settings and so
+#    on. Restoring only what index.html names leaves those missing, and the
+#    app starts cleanly and then fails the moment you navigate to one of them.
 if [[ -f "$DIST_INDEX" ]] && command -v git >/dev/null 2>&1; then
   MISSING_ASSET=0
-  while IFS= read -r asset; do
-    [[ -z "$asset" ]] && continue
-    [[ -f "$APP_DIR/dist/$asset" ]] || MISSING_ASSET=1
-  done < <(grep -o 'assets/[A-Za-z0-9._-]*' "$DIST_INDEX" | sort -u)
+  while IFS= read -r tracked; do
+    [[ -z "$tracked" ]] && continue
+    [[ -f "$SCRIPT_DIR/$tracked" ]] || MISSING_ASSET=1
+  done < <(git -C "$SCRIPT_DIR" ls-files app/dist)
   if [[ "$MISSING_ASSET" == "1" ]]; then
     echo "  [dist] Restoring missing frontend files..."
     git -C "$SCRIPT_DIR" checkout -- app/dist || true
