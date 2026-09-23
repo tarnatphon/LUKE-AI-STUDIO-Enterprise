@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, ShieldCheck, SquareTerminal, Trash2, X } from "lucide-react";
 import { restoreProjectGrants, withRestoredGrants } from "../lib/work-grants.mjs";
 import { looksLikeCommand } from "../lib/work-answer-blocks.mjs";
-import { CHAT_ONLY_TOOLS, TERMINAL_TOOL_ENDPOINTS, actionBlockMessage, bareToolName, explainNotAProgram, looksLikeCode, parseActionBlock, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
+import { CHAT_ONLY_TOOLS, NOT_A_PROGRAM, TERMINAL_TOOL_ENDPOINTS, actionBlockMessage, bareToolName, explainNotAProgram, looksLikeCode, parseActionBlock, parseToolCall, planTasksFromMarkdown, summariseToolResult, toolPayload, toolRefusal } from "../lib/work-tool-call.mjs";
 
 const COMMANDS = [
   { id: "git-status", label: "git status" },

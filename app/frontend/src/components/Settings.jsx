@@ -1,3 +1,4 @@
+import { getSliderStyle } from "../lib/slider-style.mjs";
 import React, { memo, useEffect, useState, useCallback } from "react";
 import PerformancePanel from "./PerformancePanel";
 import {
@@ -208,13 +209,7 @@ function SectionHeader({ icon: Icon, title, count, color, isExpanded, onToggle }
   );
 }
 
-const getSliderStyle = (value, min, max) => {
-  const v = Number(value);
-  const mn = Number(min);
-  const mx = Number(max);
-  const pct = mx === mn ? 0 : ((v - mn) / (mx - mn)) * 100;
-  return { "--value": `${pct}%` };
-};
+
 
 // ─── Main Settings Component ───
 function Settings({

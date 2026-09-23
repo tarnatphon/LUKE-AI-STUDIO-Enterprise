@@ -32,6 +32,21 @@ function git(args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
 
+/**
+ * `git ls-files --error-unmatch` exits non-zero for a path that is not in the
+ * index, and execFileSync turns that into a throw rather than a string. Asking
+ * it and comparing the output therefore only worked while app/dist happened to
+ * be clean; the first newly built bundle crashed this suite instead of being
+ * reported by it.
+ */
+function isTracked(relative) {
+  try {
+    return git(["ls-files", "--error-unmatch", relative]) === relative;
+  } catch {
+    return false;
+  }
+}
+
 // Roots mac.sh creates itself at install time; nothing in them comes from git.
 const MACHINE_GENERATED = [
   "app/backend/",
@@ -77,11 +92,7 @@ function main() {
 
   console.log(`  referenced: ${referenced.size} · must come from git: ${fromGit.length} · machine state: ${machineState.length}`);
 
-  const missing = [];
-  for (const relative of fromGit) {
-    const tracked = git(["ls-files", "--error-unmatch", relative]) === relative;
-    if (!tracked) missing.push(relative);
-  }
+  const missing = fromGit.filter((relative) => !isTracked(relative));
 
   if (missing.length) console.log(`  not tracked: ${missing.join(", ")}`);
 
@@ -118,7 +129,7 @@ function main() {
   assert(assets.length > 0, `index.html references ${assets.length} bundle files.`);
 
   const untrackedAssets = assets.filter(
-    (asset) => git(["ls-files", "--error-unmatch", path.join("app", "dist", asset)]) !== path.join("app", "dist", asset)
+    (asset) => !isTracked(path.join("app", "dist", asset))
   );
 
   assert(
@@ -166,8 +177,12 @@ function checkSelfHealSeesWholeTree() {
   );
   assert(Boolean(victim), `Found a tracked chunk index.html does not name (${victim}).`);
 
-  const before = git(["status", "--porcelain", "app/dist"]);
-  assert(before === "", "app/dist is clean before the self-heal is exercised.");
+  // The block runs `git checkout -- app/dist`, which restores from the index.
+  // Staged work therefore survives it, but an unstaged edit would be destroyed,
+  // so that is the only state this needs to insist on — not a pristine tree,
+  // which would make the suite unusable in the same commit that rebuilds dist.
+  const unstaged = () => git(["diff", "--name-only", "--", "app/dist"]);
+  assert(unstaged() === "", "app/dist has no unstaged edits for the self-heal to destroy.");
 
   const script = path.join(
     os.tmpdir(),
@@ -209,10 +224,7 @@ function checkSelfHealSeesWholeTree() {
     execFileSync("git", ["checkout", "--", "app/dist"], { cwd: root });
   }
 
-  assert(
-    git(["status", "--porcelain", "app/dist"]) === "",
-    "app/dist is clean again afterwards."
-  );
+  assert(unstaged() === "", "app/dist has no unstaged edits afterwards either.");
 }
 
 try {

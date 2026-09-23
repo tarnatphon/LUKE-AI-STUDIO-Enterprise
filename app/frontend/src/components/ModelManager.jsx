@@ -1,4 +1,5 @@
 import { TEXT_MODEL_LIBRARY } from "../lib/text-model-library.mjs";
+import { getSliderStyle } from "../lib/slider-style.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
@@ -1799,7 +1800,7 @@ function ModelManager({
               step="512"
               value={contextWindow}
               onChange={(event) => updateContextWindow(event.target.value)}
-              style={typeof getSliderStyle === "function" ? getSliderStyle(contextWindow, 0, 20000) : undefined}
+              style={getSliderStyle(contextWindow, 0, 20000)}
             />
             <button
               type="button"
