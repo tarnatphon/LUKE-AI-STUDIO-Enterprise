@@ -29028,10 +29028,26 @@ function cacheControlForStaticFile(requestUrl) {
 }
 
   // ── Static frontend files ─────────────────────────────────────────────────
-  let filePath = path.join(DIST, req.url === "/" ? "index.html" : req.url);
-  filePath = filePath.split("?")[0];
+  //
+  // req.url is the raw request target, and path.resolve walks ".." straight out
+  // of DIST. Without a containment check this served anything on the machine:
+  // GET /../../../../../etc/passwd answered 200 with the password file, and a
+  // canary written outside the build came back verbatim. Both measured against a
+  // running server, not reasoned about. Anything resolving outside the built
+  // frontend now gets the same answer as an unknown route inside the app.
+  const requestedPath = String(req.url || "/").split("?")[0].split("#")[0];
+  const distRoot = path.resolve(DIST);
+  let filePath = path.resolve(
+    distRoot,
+    requestedPath.startsWith("/") ? `.${requestedPath}` : `./${requestedPath}`
+  );
+
+  if (filePath !== distRoot && !filePath.startsWith(`${distRoot}${path.sep}`)) {
+    filePath = path.join(distRoot, "index.html");
+  }
+
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-    filePath = path.join(DIST, "index.html");
+    filePath = path.join(distRoot, "index.html");
   }
 
   const ext  = path.extname(filePath).toLowerCase();
