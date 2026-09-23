@@ -1066,6 +1066,34 @@ const path     = require("path");
 const { spawn, spawnSync, execSync, exec, execFile } = require("child_process");
 const { comprehensiveWebSearch } = require("../search/core");
 
+/**
+ * The last net under the process.
+ *
+ * Node ends the process on an uncaught exception or an unhandled rejection. In
+ * a server that is answering requests, one route that threw where nothing
+ * caught it was enough to close LUKE AI STUDIO down for every conversation —
+ * which is exactly what POST /api/assets did. The request handler now has its
+ * own catch, but a stray throw in a five-second poller, a scheduler tick or a
+ * stream callback reaches none of it.
+ *
+ * The tradeoff is deliberate and worth stating: resuming after an uncaught
+ * exception can in principle leave something half-done, which is why Node's
+ * own advice is to exit. This is a single-user desktop application, the state
+ * it writes goes through atomic file writes, and the alternative is the user
+ * losing an in-progress session to a background poller. So it logs loudly and
+ * stays up. If that ever proves wrong, the fix is to remove these two handlers
+ * and nothing else depends on them.
+ */
+process.on("uncaughtException", (error) => {
+  console.error("  [fatal-guard] Uncaught exception — the process is staying up.");
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("  [fatal-guard] Unhandled rejection — the process is staying up.");
+  console.error(reason instanceof Error ? reason.stack || reason.message : String(reason));
+});
+
 // HTTP keep-alive agent for llama-server (eliminates TCP handshake per request)
 const llmHttpAgent = new http.Agent({
   keepAlive: true,
@@ -5568,14 +5596,22 @@ function startBackendReadyPoll() {
   const isNpu = currentSettings.backendType === "apple-npu" || currentSettings.backendType === "openvino-npu";
   const maxAttempts = isNpu ? 1200 : 240;
   const interval = setInterval(async () => {
-    attempts += 1;
-    if (!backendProc || backendReady || attempts > maxAttempts) {
+    // An async callback with no catch is an unhandled rejection waiting to
+    // happen, and Node ends the process on one. Every other timer in this
+    // file guards itself; this was the one that did not.
+    try {
+      attempts += 1;
+      if (!backendProc || backendReady || attempts > maxAttempts) {
+        clearInterval(interval);
+        return;
+      }
+      if (await pingBackendReady()) {
+        markBackendReady();
+        clearInterval(interval);
+      }
+    } catch (error) {
       clearInterval(interval);
-      return;
-    }
-    if (await pingBackendReady()) {
-      markBackendReady();
-      clearInterval(interval);
+      console.error("  [backend] readiness poll failed:", error?.message || String(error));
     }
   }, 500);
 }
