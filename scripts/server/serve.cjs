@@ -28645,7 +28645,23 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     if (!body) return;
     console.log("  [api] Restart backend request:", body);
     const newSettings = {};
-    if (body.model)    newSettings.model    = body.backend_type === "openvino-npu" ? String(body.model) : path.join(MODELS, body.model);
+    if (body.model) {
+      // The OpenVINO branch is handed the absolute path this server itself
+      // published, and the other branch a filename under the models folder.
+      // Either way the answer has to stay inside the folder it came from.
+      const modelRoot =
+        body.backend_type === "openvino-npu" ? OPENVINO_MODELS : MODELS;
+      const containedModel = resolveInsideRoot(modelRoot, body.model);
+
+      if (containedModel === null) {
+        return json(res, 400, {
+          ok: false,
+          error: "Model paths must stay inside the models folder.",
+        });
+      }
+
+      newSettings.model = containedModel;
+    }
     if (body.steps)    newSettings.steps    = parseInt(body.steps);
     if (body.cfgScale) newSettings.cfgScale = parseFloat(body.cfgScale);
     if (body.sampler)  newSettings.sampler  = body.sampler;
@@ -29012,6 +29028,27 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   if (req.url.startsWith("/api/")) {
     return json(res, 404, { ok: false, error: "Unknown API endpoint" });
   }
+
+/**
+ * Resolve a path a caller asked for and refuse to leave the folder it belongs
+ * in. Returns null when it escapes.
+ *
+ * path.join happily walks ".." out of the root, and the request body is not a
+ * place to trust a path from: POST /api/restart-backend took body.model straight
+ * into the image backend's model argument, so a body naming ../../../../etc/...
+ * put an arbitrary file on a subprocess command line. Nothing else in this file
+ * contained a request-derived path either.
+ */
+function resolveInsideRoot(rootDir, requested) {
+  const root = path.resolve(rootDir);
+  const resolved = path.resolve(path.join(root, String(requested == null ? "" : requested)));
+
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    return null;
+  }
+
+  return resolved;
+}
 
 function cacheControlForStaticFile(requestUrl) {
   const pathname = String(requestUrl || "/").split("?")[0].split("#")[0];
