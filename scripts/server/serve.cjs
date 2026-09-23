@@ -7777,9 +7777,120 @@ function resolveRuntimeDependencyPath(relativePath) {
   return path.resolve(ROOT, relativePath);
 }
 
+/**
+ * Which python a dependency check should ask.
+ *
+ * The image-to-video runtime keeps its own virtualenv, and the modules the
+ * catalog lists belong to it — so that venv is asked first, and the system
+ * python only stands in when the runtime has never been installed. A check can
+ * name an interpreter of its own, which is how a test points this at a
+ * throwaway one instead of whatever happens to be on PATH.
+ */
+function resolveRuntimeDependencyPython(check) {
+  const explicit = String(check?.python || "").trim();
+  if (explicit) return explicit;
+
+  const venvPython =
+    process.platform === "win32"
+      ? path.join(ROOT, "app", "runtimes", "image-to-video", "venv", "Scripts", "python.exe")
+      : path.join(ROOT, "app", "runtimes", "image-to-video", "venv", "bin", "python");
+
+  if (fs.existsSync(venvPython)) return venvPython;
+
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+const runtimePythonProbeCache = new Map();
+const RUNTIME_PYTHON_PROBE_TTL_MS = 30000;
+
+/**
+ * Is this module importable — without importing it.
+ *
+ * `find_spec` answers that from the finder alone. Importing torch to find out
+ * whether torch is installed takes seconds and drags CUDA or Metal up with it,
+ * on an endpoint the dashboard polls. Results are cached for half a minute for
+ * the same reason.
+ */
+function probeRuntimePythonModule(pythonPath, moduleName) {
+  const cacheKey = `${pythonPath}\u0000${moduleName}`;
+  const cached = runtimePythonProbeCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.at < RUNTIME_PYTHON_PROBE_TTL_MS) {
+    return cached.result;
+  }
+
+  const script = [
+    "import importlib.util, sys",
+    "try:",
+    `    spec = importlib.util.find_spec(${JSON.stringify(String(moduleName))})`,
+    "except Exception:",
+    "    sys.exit(2)",
+    "sys.exit(0 if spec else 1)",
+    "",
+  ].join("\n");
+
+  let result;
+
+  try {
+    const run = spawnSync(pythonPath, ["-c", script], {
+      encoding: "utf8",
+      timeout: 8000,
+      windowsHide: true,
+    });
+
+    if (run.error) {
+      result = {
+        status: run.error.code === "ENOENT" ? "no-python" : "probe-failed",
+        ok: false,
+        error: run.error.code || String(run.error.message || "python could not be run"),
+      };
+    } else if (run.status === 0) {
+      result = { status: "ready", ok: true };
+    } else if (run.status === 1) {
+      result = { status: "missing", ok: false };
+    } else {
+      result = {
+        status: "probe-failed",
+        ok: false,
+        error: String(run.stderr || run.stdout || `python exited with ${run.status}`).trim().slice(0, 200),
+      };
+    }
+  } catch (error) {
+    result = { status: "probe-failed", ok: false, error: String(error?.message || error) };
+  }
+
+  runtimePythonProbeCache.set(cacheKey, { at: Date.now(), result });
+
+  return result;
+}
+
+/** This machine, in the spelling the catalog uses for `platforms`. */
+const RUNTIME_DEPENDENCY_PLATFORM = `${process.platform}-${process.arch}`;
+
+/**
+ * Does this dependency apply to the machine we are actually on.
+ *
+ * Every entry in the shipped catalog says darwin-arm64, and the status used to
+ * ignore that field entirely — so on any other machine the three required
+ * entries were reported missing and the whole endpoint answered ok:false,
+ * permanently, for runtimes that were never meant to exist there. A dependency
+ * with no platforms listed applies everywhere.
+ */
+function runtimeDependencyAppliesHere(dependency) {
+  const platforms = Array.isArray(dependency?.platforms)
+    ? dependency.platforms.filter((entry) => typeof entry === "string" && entry.trim())
+    : [];
+
+  if (!platforms.length) return true;
+
+  return platforms.includes(RUNTIME_DEPENDENCY_PLATFORM);
+}
+
 function inspectRuntimeDependencyCheck(check) {
   if (!check || typeof check !== "object") {
     return {
+      type: String(check?.type || "unknown"),
+      status: "invalid",
       ok: false,
       error: "Invalid runtime dependency check",
     };
@@ -7806,6 +7917,11 @@ function inspectRuntimeDependencyCheck(check) {
       } catch {}
     }
 
+    const satisfied =
+      check.type === "executable"
+        ? exists && executable
+        : exists;
+
     return {
       type: check.type,
       path: absolutePath,
@@ -7814,10 +7930,11 @@ function inspectRuntimeDependencyCheck(check) {
         check.type === "executable"
           ? executable
           : undefined,
-      ok:
-        check.type === "executable"
-          ? exists && executable
-          : exists,
+      // Every check carries a status now. This one used to be the only field
+      // python-module had, so a client reading check.status got a real value
+      // from one kind of check and undefined from the other four.
+      status: satisfied ? "ready" : "missing",
+      ok: satisfied,
     };
   }
 
@@ -7843,27 +7960,48 @@ function inspectRuntimeDependencyCheck(check) {
       } catch {}
     }
 
+    const satisfied = exists && directory && writable;
+
     return {
       type: check.type,
       path: absolutePath,
       exists,
       directory,
       writable,
-      ok: exists && directory && writable,
+      status: satisfied ? "ready" : "missing",
+      ok: satisfied,
     };
   }
 
   if (check.type === "python-module") {
+    const moduleName = String(check.module || "").trim();
+
+    if (!moduleName) {
+      return {
+        type: check.type,
+        module: "",
+        status: "invalid",
+        ok: false,
+        error: "A python-module check needs a module name.",
+      };
+    }
+
+    const pythonPath = resolveRuntimeDependencyPython(check);
+    const probe = probeRuntimePythonModule(pythonPath, moduleName);
+
     return {
       type: check.type,
-      module: check.module,
-      status: "not-probed",
-      ok: false,
+      module: moduleName,
+      python: pythonPath,
+      status: probe.status,
+      ok: probe.ok,
+      ...(probe.error ? { error: probe.error } : {}),
     };
   }
 
   return {
-    type: check.type,
+    type: String(check.type || "unknown"),
+    status: "unsupported",
     ok: false,
     error: "Unsupported runtime dependency check",
   };
@@ -7874,11 +8012,18 @@ function buildRuntimeDependencyStatus() {
 
   const dependencies = catalog.dependencies.map(
     (dependency) => {
-      const checks = Array.isArray(dependency.checks)
-        ? dependency.checks.map(
-            inspectRuntimeDependencyCheck
-          )
-        : [];
+      const required = dependency.required === true;
+      const applicable = runtimeDependencyAppliesHere(dependency);
+
+      // A dependency that is not for this machine is not probed. Checking
+      // whether a darwin-arm64 venv exists on Linux only produces a "missing"
+      // that nothing can act on, and spends a python subprocess doing it.
+      const checks =
+        applicable && Array.isArray(dependency.checks)
+          ? dependency.checks.map(
+              inspectRuntimeDependencyCheck
+            )
+          : [];
 
       const installed =
         checks.length > 0 &&
@@ -7890,21 +8035,33 @@ function buildRuntimeDependencyStatus() {
         id: dependency.id,
         name: dependency.name,
         category: dependency.category,
-        required: dependency.required === true,
+        required,
         platforms: dependency.platforms || [],
+        applicable,
         installed,
-        state: installed ? "ready" : "missing",
+        state: !applicable
+          ? "not-applicable"
+          : installed
+            ? "ready"
+            : "missing",
         checks,
         install: dependency.install || {},
       };
     }
   );
 
-  const required = dependencies.filter(
+  // Only what applies here can be required of this machine. Counting a
+  // darwin-arm64 runtime as "required and missing" on anything else is how the
+  // endpoint came to answer ok:false on every non-Apple-Silicon install.
+  const relevant = dependencies.filter(
+    (dependency) => dependency.applicable
+  );
+
+  const required = relevant.filter(
     (dependency) => dependency.required
   );
 
-  const optional = dependencies.filter(
+  const optional = relevant.filter(
     (dependency) => !dependency.required
   );
 
@@ -7912,18 +8069,21 @@ function buildRuntimeDependencyStatus() {
     ok: required.every(
       (dependency) => dependency.installed
     ),
-    platform: `${process.platform}-${process.arch}`,
+    platform: RUNTIME_DEPENDENCY_PLATFORM,
     catalogVersion: catalog.catalogVersion,
     defaultDownloadDirectory:
       catalog.defaultDownloadDirectory,
     fallbackDownloadDirectory:
       catalog.fallbackDownloadDirectory,
     summary: {
+      // Still every entry in the catalog, so the dashboard's "all runtimes"
+      // count keeps meaning the catalog rather than this machine.
       total: dependencies.length,
-      ready: dependencies.filter(
+      notApplicable: dependencies.length - relevant.length,
+      ready: relevant.filter(
         (dependency) => dependency.installed
       ).length,
-      missing: dependencies.filter(
+      missing: relevant.filter(
         (dependency) => !dependency.installed
       ).length,
       requiredMissing: required.filter(

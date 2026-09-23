@@ -50,6 +50,7 @@ const STATE_LABELS = {
   "rolled-back": "กู้คืนระบบเดิมแล้ว",
   ready: "พร้อมใช้งาน",
   missing: "ยังไม่ได้ติดตั้ง",
+  "not-applicable": "ไม่ใช้กับเครื่องนี้",
 };
 
 function formatBytes(value) {
@@ -93,7 +94,7 @@ function getStatusClass(state) {
     return "runtime-status-error";
   }
 
-  if (state === "cancelled") {
+  if (state === "cancelled" || state === "not-applicable") {
     return "runtime-status-muted";
   }
 
@@ -159,11 +160,18 @@ function RuntimeDependencyCard({
 }) {
   const active = Boolean(job && ACTIVE_STATES.has(job.state));
   const completed = job?.state === "completed";
+  // The server now says when a runtime is not for this machine at all, and
+  // that cannot be recovered from `installed` alone — both a missing runtime
+  // and an inapplicable one are false.
+  const notApplicable = dependency.state === "not-applicable";
+
   const state = active || job
     ? job.state
-    : dependency.installed
-      ? "ready"
-      : "missing";
+    : notApplicable
+      ? "not-applicable"
+      : dependency.installed
+        ? "ready"
+        : "missing";
 
   const isBusy = busyDependencyId === dependency.id;
 
@@ -195,7 +203,11 @@ function RuntimeDependencyCard({
 
       <div className="runtime-card-details">
         <span>
-          {dependency.required ? "จำเป็นต่อระบบ" : "ติดตั้งเพิ่มเติมได้"}
+          {notApplicable && dependency.platforms?.length
+            ? `สำหรับ ${dependency.platforms.join(", ")}`
+            : dependency.required
+              ? "จำเป็นต่อระบบ"
+              : "ติดตั้งเพิ่มเติมได้"}
         </span>
 
         <span>
