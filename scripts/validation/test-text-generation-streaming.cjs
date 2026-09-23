@@ -16,6 +16,12 @@ const root = path.resolve(
   ".."
 );
 
+// A fresh clone has no app/runtime-state at all, and whether an earlier suite
+// happened to create the folder is not something a scan should depend on.
+const { ensureRuntimeStateLayout } = require("./helpers/runtime-state-paths.cjs");
+
+ensureRuntimeStateLayout(root);
+
 const serverFile = path.join(
   root,
   "scripts",
@@ -39,6 +45,24 @@ const realStoreFile = path.join(
 const storeFile = path.join(
   os.tmpdir(),
   `luke-text-chat-streaming-${process.pid}.json`
+);
+
+// The router refuses to generate with an empty model registry, and this suite
+// never seeded one. It passed anyway whenever an earlier suite in the same scan
+// had installed a model, and failed on a fresh checkout with
+//
+//   event: error
+//   data: {"error":"No installed text models are available."}
+//
+// which read like a streaming bug and was a missing-state bug. It is the reason
+// this suite looked intermittent for so long: it was never timing, it was
+// whichever suite happened to run before it.
+const installedFile = path.join(
+  root,
+  "app",
+  "runtime-state",
+  "text-models",
+  "installed-models.json"
 );
 
 const componentFile = path.join(
@@ -249,6 +273,41 @@ async function main() {
         lastOpenedConversationId:
           null,
         conversations: [],
+      },
+      null,
+      2
+    ) + "\n",
+    "utf8"
+  );
+
+  const installedBefore =
+    fs.existsSync(installedFile)
+      ? fs.readFileSync(
+          installedFile,
+          "utf8"
+        )
+      : null;
+
+  ensureRuntimeStateLayout(root);
+
+  fs.writeFileSync(
+    installedFile,
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        updatedAt: new Date().toISOString(),
+        activeModelId: "local-model",
+        models: [
+          {
+            id: "local-model@1.0.0:q4",
+            modelId: "local-model",
+            modelName: "Local Model",
+            installedPath: "/tmp/luke-streaming-local-model.gguf",
+            contextLength: 32768,
+            capabilities: ["coding", "qwen"],
+            installedAt: new Date().toISOString(),
+          },
+        ],
       },
       null,
       2
@@ -773,6 +832,16 @@ async function main() {
         runtimeServer.close(resolve);
       }
     );
+
+    if (installedBefore === null) {
+      fs.rmSync(installedFile, { force: true });
+    } else {
+      fs.writeFileSync(
+        installedFile,
+        installedBefore,
+        "utf8"
+      );
+    }
 
     const realAfter =
       fs.existsSync(realStoreFile)

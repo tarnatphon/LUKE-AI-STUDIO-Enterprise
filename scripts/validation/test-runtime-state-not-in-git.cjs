@@ -25,6 +25,12 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..", "..");
+
+// A fresh clone has no app/runtime-state at all, and whether an earlier suite
+// happened to create the folder is not something a scan should depend on.
+const { ensureRuntimeStateLayout } = require("./helpers/runtime-state-paths.cjs");
+
+ensureRuntimeStateLayout(root);
 const serverFile = path.join(root, "scripts", "server", "serve.cjs");
 const policyFile = path.join(root, "app", "config", "text-chat", "model-arena-policy.json");
 const overridesFile = path.join(

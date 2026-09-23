@@ -16,6 +16,12 @@ const root = path.resolve(
   ".."
 );
 
+// A fresh clone has no app/runtime-state at all, and whether an earlier suite
+// happened to create the folder is not something a scan should depend on.
+const { ensureRuntimeStateLayout } = require("./helpers/runtime-state-paths.cjs");
+
+ensureRuntimeStateLayout(root);
+
 const serverFile = path.join(
   root,
   "scripts",
