@@ -7737,7 +7737,7 @@ function streamModelUpload(req, filename, targetDir = MODELS, mode = "image") {
 
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+  res.writeHead(code, { "Content-Type": "application/json" });
   res.end(body);
 }
 
@@ -19787,6 +19787,23 @@ const storageRecoveryReadinessCertifier =
 storageAvailabilityWatcher.start();
 
 const handleRequest = async (req, res) => {
+  // Cross-origin access belongs to the compatibility endpoints that third-party
+  // image tools call, and nowhere else. The interface is served by this same
+  // server, so it is same-origin and needs no CORS header at all — while a
+  // wildcard on every answer let any page the user happened to visit preflight,
+  // POST JSON to the local API, and read the response back. Measured: OPTIONS
+  // on /api/restart-backend answered 204 with Allow-Origin *, Allow-Headers
+  // Content-Type and Allow-Methods GET,POST for an arbitrary Origin.
+  const requestPathname = String(req.url || "/").split("?")[0];
+  const crossOriginAllowed =
+    requestPathname.startsWith("/v1/") ||
+    requestPathname.startsWith("/sdapi/") ||
+    requestPathname.startsWith("/tts-outputs/");
+
+  if (crossOriginAllowed) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+
     if (String(req.url || "").split("?")[0] === "/api/llm/archive-markdown") {
       lukeArchiveChatMarkdown(req, res, require("path").join(__dirname, "..", ".."));
       return;
@@ -23341,9 +23358,14 @@ const handleRequest = async (req, res) => {
   }
 
 
-  // CORS preflight
+  // CORS preflight. Where cross-origin is not allowed this still answers, but
+  // without the headers, so the browser blocks the request that follows.
   if (req.method === "OPTIONS") {
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST" });
+    if (crossOriginAllowed) {
+      res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST" });
+    } else {
+      res.writeHead(204);
+    }
     res.end(); return;
   }
 
@@ -28886,7 +28908,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     const ext = path.extname(filePath).toLowerCase();
     fs.readFile(filePath, (err, data) => {
       if (err) return json(res, 500, { error: err.message });
-      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Access-Control-Allow-Origin": "*" });
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
       res.end(data);
     });
     return;
@@ -28901,7 +28923,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     const ext = path.extname(filePath).toLowerCase();
     fs.readFile(filePath, (err, data) => {
       if (err) return json(res, 500, { ok: false, error: err.message });
-      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Access-Control-Allow-Origin": "*" });
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
       res.end(data);
     });
     return;
@@ -29094,7 +29116,6 @@ function cacheControlForStaticFile(requestUrl) {
     if (err) { res.writeHead(404); res.end("Not found"); return; }
     res.writeHead(200, {
       "Content-Type": mime,
-      "Access-Control-Allow-Origin": "*",
       // Vite fingerprints every bundle (TextChat-BTsA6k4P.js). Without these
       // headers the browser keeps the old bundle after an update and the user
       // sees a UI that no longer exists in the code.
