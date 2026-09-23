@@ -397,7 +397,13 @@ async function main() {
     try {
       fs.rmSync(temporaryDir, { recursive: true, force: true });
     } catch (_) {}
-    if (fs.existsSync(policyFile) === false) throw new Error("arena policy file is missing");
+    if (fs.existsSync(policyFile) === false) {
+      // Throwing from a finally replaces whatever the try block already threw,
+      // so the real failure would be hidden behind this one. Mark it instead;
+      // the process still exits non-zero.
+      console.error("FAIL: arena policy file is missing");
+      process.exitCode = 1;
+    }
   }
 }
 

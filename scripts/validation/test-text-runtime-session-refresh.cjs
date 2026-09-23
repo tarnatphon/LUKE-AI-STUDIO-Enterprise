@@ -623,15 +623,15 @@ async function main() {
         : null;
 
     if (realAfter !== realBefore) {
-      throw new Error(
-        "This suite wrote to the real conversation archive. " +
-        "The server must be reached only through LUKE_TEXT_CHAT_STORE."
-      );
-    }
-
-    console.log(
-      "PASS: The real conversation archive was never touched."
-    );
+      // Throwing here would replace whatever the try block already
+      // threw, hiding the real failure - and the cleanup below would
+      // never run. Mark it instead; the process still exits non-zero.
+      console.error("FAIL: " +         "This suite wrote to the real conversation archive. " +
+        "The server must be reached only through LUKE_TEXT_CHAT_STORE.");
+      process.exitCode = 1;
+      } else {
+    console.log("PASS: The real conversation archive was never touched.");
+      }
 
     fs.rmSync(storeFile, { force: true });
   }

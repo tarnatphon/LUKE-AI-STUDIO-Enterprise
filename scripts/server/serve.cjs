@@ -82,15 +82,6 @@ const memoryCalibration = new MemoryCalibration({ logger: console });
 // conversationId/runId → active arena run state
 const activeArenaRuns = new Map();
 
-function readJsonFile(filePath, fallback = null) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
-
 /**
  * Arena policy = shipped defaults (tracked config) + user choices (untracked).
  *
@@ -7254,14 +7245,6 @@ function isModelFile(filename) {
     }
   } catch (_) {}
   return false;
-}
-
-function formatBytes(bytes) {
-  const value = Number(bytes) || 0;
-  if (value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const idx = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
-  return `${(value / (1024 ** idx)).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
 
 function getModelLoadIssue(modelPath) {
@@ -25500,8 +25483,6 @@ const handleRequest = async (req, res) => {
             : String(error),
       });
     }
-
-    return;
   }
 
   if (req.url === "/api/health" && req.method === "GET") {
