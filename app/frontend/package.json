@@ -23,6 +23,8 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
     "vite": "^8.0.16"
   },
   "currentVersion": "1.0.0-beta.12"
