@@ -83,7 +83,19 @@ function extractRoutes(source) {
   const routes = [];
   const seen = new Set();
 
-  for (const re of [/req\.url\s*===\s*"([^"]+)"/g, /req\.url\.startsWith\("([^"]+)"\)/g]) {
+  // Not every route is spelled `req.url ===`. Three other forms exist, and an
+  // extractor that only knew the first one reported 266 routes when the server
+  // declares 273 — which is how POST /api/assets, a route that killed the whole
+  // process, stayed outside the sweep.
+  const forms = [
+    /req\.url\s*===\s*"(\/[^"]+)"/g,
+    /req\.url\.startsWith\("(\/[^"]+)"\)/g,
+    /String\(req\.url[^)]*\)\.split\("\?"\)\[0\]\s*===\s*"(\/[^"]+)"/g,
+    /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*===\s*"(\/(?:api|v1|sdapi|tts-outputs)[^"]*)"/g,
+    /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\.startsWith\("(\/(?:api|v1|sdapi|tts-outputs)[^"]*)"\)/g,
+  ];
+
+  for (const re of forms) {
     let match;
     while ((match = re.exec(source)) !== null) {
       const condition = enclosingCondition(match.index);
@@ -161,7 +173,7 @@ async function main() {
   const source = fs.readFileSync(serverFile, "utf8");
   const routes = extractRoutes(source);
 
-  assert(routes.length > 200, `The extractor found ${routes.length} routes, which is more than 200.`);
+  assert(routes.length > 270, `The extractor found ${routes.length} routes, which is more than 270.`);
   assert(
     routes.filter((route) => route.method === "POST").length > 100,
     `${routes.filter((route) => route.method === "POST").length} of them are POST-only — the ones a GET sweep never reached.`
@@ -279,6 +291,22 @@ async function main() {
     assert(
       !/ReferenceError|TypeError:|is not a function|Cannot read propert/.test(serverLog),
       "The server log carries no uncaught exception from any route."
+    );
+
+    // The sweep above is only a test if the server is still there at the end of
+    // it. POST /api/assets used to throw where nothing caught it, and Node ends
+    // the process on an unhandled rejection — so the suite would have recorded
+    // one route as failed and then measured nothing at all.
+    let aliveAfter = false;
+    try {
+      const health = await fetch(`${baseUrl}/api/health`);
+      aliveAfter = health.status === 200;
+    } catch {}
+
+    assert(aliveAfter, "The server is still running after every route was called.");
+    assert(
+      !/Unhandled error on/.test(serverLog),
+      "No route threw past its own handler into the request-level net."
     );
 
     // ── the three routes this sweep was written to catch ───────────────────

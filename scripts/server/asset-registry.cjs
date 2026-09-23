@@ -148,9 +148,11 @@ class AssetRegistry {
     statePath,
   } = {}) {
     if (!statePath) {
-      throw new Error(
+      const error = new Error(
         "AssetRegistry statePath is required."
       );
+      error.statusCode = 400;
+      throw error;
     }
 
     this.statePath =
@@ -325,9 +327,11 @@ class AssetRegistry {
       );
 
     if (!normalizedPath) {
-      throw new Error(
+      const error = new Error(
         "existingPath is required for path upsert."
       );
+      error.statusCode = 400;
+      throw error;
     }
 
     const existing =
@@ -377,9 +381,11 @@ class AssetRegistry {
         );
 
     if (!asset) {
-      throw new Error(
+      const error = new Error(
         "Asset not found."
       );
+      error.statusCode = 404;
+      throw error;
     }
 
     return asset;
@@ -394,9 +400,13 @@ class AssetRegistry {
     if (
       !ASSET_TYPES.has(type)
     ) {
-      throw new Error(
+      // A caller's mistake, not a server fault — and before this had a status
+      // it was an uncaught throw that ended the process.
+      const error = new Error(
         "Unsupported asset type."
       );
+      error.statusCode = 400;
+      throw error;
     }
 
     const timestamp =
@@ -514,9 +524,11 @@ class AssetRegistry {
       if (
         !ASSET_TYPES.has(type)
       ) {
-        throw new Error(
+        const error = new Error(
           "Unsupported asset type."
         );
+        error.statusCode = 400;
+        throw error;
       }
 
       asset.type =

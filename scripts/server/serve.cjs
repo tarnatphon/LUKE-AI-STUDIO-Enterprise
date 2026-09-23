@@ -19767,7 +19767,7 @@ const storageRecoveryReadinessCertifier =
 
 storageAvailabilityWatcher.start();
 
-const server = http.createServer(async (req, res) => {
+const handleRequest = async (req, res) => {
     if (String(req.url || "").split("?")[0] === "/api/llm/archive-markdown") {
       lukeArchiveChatMarkdown(req, res, require("path").join(__dirname, "..", ".."));
       return;
@@ -27385,26 +27385,33 @@ async function routeWorkTurnToCloud(req, res, body) {
         "/api/assets" &&
       req.method === "POST"
     ) {
-      const body =
-        await readJsonBody(
-          req
+      try {
+        const body =
+          await readJsonBody(
+            req
+          );
+
+        const registry =
+          getLukeAssetRegistry();
+
+        return json(
+          res,
+          201,
+          {
+            ok: true,
+
+            asset:
+              registry.create(
+                body || {}
+              ),
+          }
         );
-
-      const registry =
-        getLukeAssetRegistry();
-
-      return json(
-        res,
-        201,
-        {
-          ok: true,
-
-          asset:
-            registry.create(
-              body || {}
-            ),
-        }
-      );
+      } catch (error) {
+        return json(res, error.statusCode || 400, {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const assetMatch =
@@ -29012,6 +29019,47 @@ function cacheControlForStaticFile(requestUrl) {
     });
     res.end(data);
   });
+};
+
+/**
+ * One bad request must not take the application down.
+ *
+ * The handler above is a single async function nine thousand lines long. Node
+ * ends the process on an unhandled rejection, so a throw anywhere in it that no
+ * route caught — POST /api/assets with a body it did not recognise did exactly
+ * this — killed LUKE AI STUDIO outright, for every conversation, over one
+ * malformed request. Nothing in this file had an uncaughtException or
+ * unhandledRejection handler either.
+ *
+ * So the rejection is caught here. If nothing has been written yet the caller
+ * gets a 500 saying so; if a stream is already open the headers are committed
+ * and all that is left is to end it. Either way the process stays up.
+ */
+const server = http.createServer((req, res) => {
+  Promise.resolve()
+    .then(() => handleRequest(req, res))
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+
+      console.error(`  [http] Unhandled error on ${req.method} ${req.url}: ${message}`);
+      if (error instanceof Error && error.stack) console.error(error.stack);
+
+      if (res.writableEnded || res.headersSent) {
+        try {
+          res.end();
+        } catch {}
+        return;
+      }
+
+      try {
+        json(res, error?.statusCode || 500, { ok: false, error: message });
+      } catch {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: message }));
+        } catch {}
+      }
+    });
 });
 
 server.timeout = 0; // Disable socket timeout for large model uploads/downloads
