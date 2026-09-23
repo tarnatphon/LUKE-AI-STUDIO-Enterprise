@@ -426,6 +426,16 @@ async function main() {
         PORT: String(backendPort),
         LUKE_AI_HOST: "127.0.0.1",
         LUKE_AI_PORT: String(backendPort),
+        // This suite tests the download worker, not the host's disks. The
+        // server refuses any model unless the storage directory has the model's
+        // size plus a 10 GiB reserve free, and without these overrides it
+        // measures the real machine - so on a sandbox with under 10 GiB spare
+        // the enqueue is rejected with INSUFFICIENT_STORAGE and the suite fails
+        // for a reason that has nothing to do with what it is testing. The
+        // server already provides these three test hooks; pin them.
+        LUKE_AI_TEST_TOTAL_RAM_BYTES: String(32 * 1024 ** 3),
+        LUKE_AI_TEST_AVAILABLE_RAM_BYTES: String(24 * 1024 ** 3),
+        LUKE_AI_TEST_FREE_STORAGE_BYTES: String(200 * 1024 ** 3),
       },
       stdio: ["ignore", "pipe", "pipe"],
     }
