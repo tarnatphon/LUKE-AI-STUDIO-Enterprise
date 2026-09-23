@@ -26946,12 +26946,20 @@ async function routeWorkTurnToCloud(req, res, body) {
             batchId
           );
 
+        // The runner is reached through its getter. The bare name
+        // `imageToVideoProcessRunner` was never declared, and this cannot be
+        // made safe by `typeof`: optional chaining evaluates its base first,
+        // so `typeof imageToVideoProcessRunner?.drainQueue` throws
+        // ReferenceError instead of yielding "undefined". Every resume failed.
+        const processRunner =
+          getImageToVideoProcessRunner();
+
         if (
-          typeof imageToVideoProcessRunner
+          typeof processRunner
             ?.drainQueue ===
           "function"
         ) {
-          imageToVideoProcessRunner
+          processRunner
             .drainQueue();
         }
 

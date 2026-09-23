@@ -109,7 +109,82 @@ function extractRoutes(source) {
     }
   }
 
+  // A sixth form: eleven routes are declared as regular expressions rather than
+  // string comparisons, and every one of them was invisible to the five above.
+  // That is not a curiosity — POST .../batches/<id>/resume was one of them, and
+  // it threw a ReferenceError on every call. A sweep that cannot see a route
+  // cannot report it broken.
+  const regexForm = /\/\^\\\/(?:api|v1|sdapi|tts-outputs)[^\n]*?\$\//g;
+  let regexMatch;
+  while ((regexMatch = regexForm.exec(source)) !== null) {
+    const condition = enclosingCondition(regexMatch.index);
+    const declared = condition.match(/req\.method\s*===\s*"([A-Z]+)"/);
+    const method = declared ? declared[1] : "POST";
+
+    // Every branch, not just the first. Taking only the first alternative of
+    // (pause|resume|cancel|retry-failed) swept /pause and passed while /resume
+    // threw on every call.
+    for (const url of regexRouteToUrls(regexMatch[0])) {
+      if (!url.startsWith("/")) continue;
+      const key = `${method} ${url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      routes.push({ method, url, prefix: false });
+    }
+  }
+
   return routes;
+}
+
+/**
+ * A regular expression route turned into one URL it accepts, so the sweep has
+ * something concrete to call. Capture groups become a placeholder, alternations
+ * take their first branch, and optional groups are dropped — the sweep covers
+ * the shortest URL the route matches.
+ */
+function regexRouteToUrls(literal) {
+  let variants = [literal.slice(2, -2)];
+
+  const expand = (pattern) => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const next = [];
+      for (const variant of variants) {
+        const match = variant.match(pattern);
+        if (match) {
+          changed = true;
+          const branches =
+            pattern.source.startsWith("\\(\\?:")
+              ? [match[1], ""]
+              : match[1].split("|");
+          for (const branch of branches) {
+            next.push(
+              variant.slice(0, match.index) + branch + variant.slice(match.index + match[0].length)
+            );
+          }
+        } else {
+          next.push(variant);
+        }
+      }
+      variants = next;
+    }
+  };
+
+  expand(/\(\?:(.*?)\)\?/);
+  expand(/\(([^()|]*\|[^()]*)\)/);
+
+  return [
+    ...new Set(
+      variants.map((variant) =>
+        variant
+          .replace(/\(\[\^\/\??\][+*]\)/g, "probe-id")
+          .replace(/\\\//g, "/")
+          .replace(/\\\./g, ".")
+          .replace(/\\\?/g, "?")
+      )
+    ),
+  ];
 }
 
 /** Routes that exist only to catch everything else; the bare prefix is not a route. */
@@ -173,7 +248,12 @@ async function main() {
   const source = fs.readFileSync(serverFile, "utf8");
   const routes = extractRoutes(source);
 
-  assert(routes.length > 270, `The extractor found ${routes.length} routes, which is more than 270.`);
+  assert(routes.length > 280, `The extractor found ${routes.length} routes, which is more than 280.`);
+  const regexRoutes = routes.filter((route) => route.url.includes("probe-id"));
+  assert(
+    regexRoutes.length >= 11,
+    `${regexRoutes.length} of them are declared as regular expressions — the form that hid the broken resume route.`
+  );
   assert(
     routes.filter((route) => route.method === "POST").length > 100,
     `${routes.filter((route) => route.method === "POST").length} of them are POST-only — the ones a GET sweep never reached.`
