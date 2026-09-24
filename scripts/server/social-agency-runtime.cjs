@@ -367,7 +367,8 @@ function pickPillar(pillars, counts, { pillar, angle, seed = "" } = {}) {
 }
 
 // ── P5: product import helpers (pure) ──
-function extractProductsFromHtml(html, pageUrl) {
+function extractProductsFromHtml(html, pageUrl, opts = {}) {
+  const anchorsOnly = Boolean(opts && opts.anchorsOnly);
   const src = String(html || "");
   const out = [];
   const seen = new Set();
@@ -413,8 +414,8 @@ function extractProductsFromHtml(html, pageUrl) {
       push({ name: l.hint, image: l.image || "", sourceUrl: l.url });
     }
   }
-  // 3. this page itself (meta fallback; skipped only when JSON-LD already gave items)
-  if (!hadStructured) {
+  // 3. this page itself (meta fallback; skipped for JSON-LD pages and deep intermediates)
+  if (!hadStructured && !anchorsOnly) {
     const meta = (prop) => {
       const r = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i");
       const mm = src.match(r);
@@ -427,6 +428,22 @@ function extractProductsFromHtml(html, pageUrl) {
     if (name) push({ name, description: meta("og:description") || meta("description"), price: priceM ? (priceM[1] || priceM[2]) : "", currency: "THB", image: meta("og:image"), sourceUrl: pageUrl });
   }
   return out;
+}
+
+// merge a crawled candidate into the import list (same page = enrich, else add, never dupe)
+function mergeProductCandidate(products, p) {
+  if (!p || !p.name) return;
+  const same = products.find((x) => x.sourceUrl && p.sourceUrl && x.sourceUrl === p.sourceUrl);
+  if (same) {
+    for (const k of ["description", "price", "currency", "image"]) {
+      if (!same[k] && p[k]) same[k] = p[k];
+    }
+    if (p.name && same.name && p.name !== same.name && (p.name.includes(same.name) || same.name.includes(p.name)) && p.name.length <= 120) {
+      same.name = p.name.length > same.name.length ? p.name : same.name;
+    }
+    return;
+  }
+  if (!products.some((x) => String(x.name).toLowerCase() === String(p.name).toLowerCase())) products.push(p);
 }
 
 function discoverProductLinks(html, pageUrl) {
@@ -1907,32 +1924,44 @@ class SocialAgencyRuntime {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const url = String(body.url || "").trim();
     if (!/^https?:\/\//i.test(url)) throw new Error("ลิงก์ต้องขึ้นต้นด้วย http(s)://");
-    const maxPages = clampNumber(body.maxPages, 1, 6, 5);
+    const deep = body.deep === true;
+    const maxPages = deep ? 25 : clampNumber(body.maxPages, 1, 6, 5);
     const html = await this._fetchHtml(url, 12000);
     const products = extractProductsFromHtml(html, url);
     let fetched = 1;
     let failed = 0;
+    const seenUrls = new Set([url]);
+    // level 1: direct product links
     const links = discoverProductLinks(html, url).slice(0, maxPages - 1);
     const extra = await Promise.allSettled(links.map((l) => this._fetchHtml(l.url, 8000)));
+    const level2 = [];
     extra.forEach((r, i) => {
-      if (r.status === "fulfilled") {
-        fetched += 1;
-        for (const p of extractProductsFromHtml(r.value, links[i].url)) {
-          // merge crawled detail into anchor candidate (same page, no dupes)
-          const same = products.find((x) => x.sourceUrl && p.sourceUrl && x.sourceUrl === p.sourceUrl);
-          if (same) {
-            for (const k of ["description", "price", "currency", "image"]) {
-              if (!same[k] && p[k]) same[k] = p[k];
-            }
-            if (p.name && same.name && p.name !== same.name && (p.name.includes(same.name) || same.name.includes(p.name)) && p.name.length <= 120) {
-              same.name = p.name.length > same.name.length ? p.name : same.name;
-            }
-            continue;
-          }
-          if (!products.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) products.push(p);
+      if (r.status !== "fulfilled") { failed += 1; return; }
+      fetched += 1;
+      seenUrls.add(links[i].url);
+      const found = deep
+        ? extractProductsFromHtml(r.value, links[i].url, { anchorsOnly: true })
+        : extractProductsFromHtml(r.value, links[i].url);
+      for (const p of found) mergeProductCandidate(products, p);
+      if (deep) {
+        for (const l of discoverProductLinks(r.value, links[i].url)) {
+          if (seenUrls.has(l.url)) continue;
+          seenUrls.add(l.url);
+          if (fetched + failed + level2.length < maxPages) level2.push(l.url);
         }
-      } else failed += 1;
+      }
     });
+    // level 2 (deep only): leaf detail pages
+    if (deep && level2.length) {
+      const extra2 = await Promise.allSettled(level2.map((u) => this._fetchHtml(u, 8000)));
+      extra2.forEach((r, i) => {
+        if (r.status !== "fulfilled") { failed += 1; return; }
+        fetched += 1;
+        for (const p of extractProductsFromHtml(r.value, level2[i])) {
+          mergeProductCandidate(products, p);
+        }
+      });
+    }
     try {
       if (!client.website) {
         client.website = new URL(url).origin;

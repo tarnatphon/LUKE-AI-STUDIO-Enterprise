@@ -907,6 +907,38 @@ async function main() {
     assert.ok(listingRes.fetched >= 2, "crawl followed links, fetched=" + listingRes.fetched);
   });
 
+  // ── P5e: deep import follows two levels (top -> subs -> leaves) ──
+  const deepTop = `<html><head><title>ร้านทั้งร้าน</title></head><body>` +
+    `<a href="/สินค้า/sub1.html">หมวดซีดี</a>` +
+    `<a href="/สินค้า/sub2.html">หมวดดินสอ</a></body></html>`;
+  const deepSub = (leafs) => `<html><head><title>หมวดย่อย</title></head><body>` +
+    leafs.map((c) => `<a href="/สินค้า/${c}.html"><span>กระเป๋า ${c.toUpperCase()}</span></a>`).join("") + `</body></html>`;
+  const deepDetail = (code) => `<html><head><title>กระเป๋า ${code}</title><meta property="og:title" content="กระเป๋า ${code}"></head><body><h1>กระเป๋า ${code}</h1></body></html>`;
+  const deepSrv = http.createServer((req, res) => {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    const u = String(req.url || "");
+    if (u.startsWith("/top")) res.end(deepTop);
+    else if (u.includes("sub1")) res.end(deepSub(["cdb-001", "cdb-002"]));
+    else if (u.includes("sub2")) res.end(deepSub(["pnc-001", "pnc-002"]));
+    else {
+      const code = (u.match(/(cdb|pnc)-\d+/i) || ["X-0"])[0].toUpperCase();
+      res.end(deepDetail(code));
+    }
+  });
+  await new Promise((resolve) => deepSrv.listen(0, "127.0.0.1", resolve));
+  const deepBase = `http://127.0.0.1:${deepSrv.address().port}`;
+  let deepRes = null;
+  try {
+    deepRes = await rt.importUrl(clientId, { url: `${deepBase}/top.html`, deep: true });
+  } finally { deepSrv.close(); }
+  check("deep import follows two levels", () => {
+    const names = deepRes.products.map((p) => p.name);
+    for (const c of ["CDB-001", "CDB-002", "PNC-001", "PNC-002"]) {
+      assert.ok(names.some((n) => n.includes(c)), "missing " + c + ": " + JSON.stringify(names));
+    }
+    assert.strictEqual(deepRes.fetched, 7, "1 top + 2 subs + 4 leaves, fetched=" + deepRes.fetched);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

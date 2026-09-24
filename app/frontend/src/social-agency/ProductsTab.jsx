@@ -13,6 +13,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [urlBusy, setUrlBusy] = useState(false);
   const [urlFound, setUrlFound] = useState(null);
   const [urlSel, setUrlSel] = useState([]);
+  const [deep, setDeep] = useState(false);
   const [folder, setFolder] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
   const [scanFound, setScanFound] = useState(null);
@@ -79,6 +80,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       const data = await postJson(`/api/social-agency/products/import-url?clientId=${encodeURIComponent(clientId)}`, {
         url: url.trim(),
         maxPages: 5,
+        deep,
       });
       setUrlFound(data);
       setUrlSel((data.products || []).map((_, i) => i));
@@ -99,6 +101,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       const data = await postJson(`/api/social-agency/products/import-url?clientId=${encodeURIComponent(clientId)}`, {
         url: url.trim(),
         maxPages: 5,
+        deep,
       });
       const found = data.products || [];
       if (!found.length) {
@@ -284,6 +287,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
               placeholder="https://…"
               style={{ flex: 1 }}
             />
+            <label className="sa-check" title="ตามลิงก์ลงไปอีก 1 ชั้น เหมาะกับหน้าหลัก/หน้าหมวดหมู่">
+              <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} disabled={urlBusy} /> เจาะลึก 2 ชั้น
+            </label>
             <button className="sa-btn primary sm" disabled={urlBusy || !url.trim()} onClick={fetchUrl}>
               {urlBusy ? "กำลังดึง…" : "ดึงข้อมูล"}
             </button>
