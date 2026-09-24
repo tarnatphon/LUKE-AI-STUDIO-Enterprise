@@ -875,6 +875,38 @@ async function main() {
     assert.notStrictEqual(fb2[0].sku, sku, "heavy product goes last");
   });
 
+  // ── P5d: listing-page import (nested anchors + encoded URLs, 127.0.0.1 fixture) ──
+  // (reuses `http` already required above in main)
+  const detailHtml = (code) => `<html><head><title>กระเป๋าใส่แผ่นซีดี ${code} | Thai Modern Bags</title><meta property="og:title" content="กระเป๋าใส่แผ่นซีดี ${code}"><meta property="og:description" content="รายละเอียด ${code}"></head><body><h1>กระเป๋าใส่แผ่นซีดี ${code}</h1></body></html>`;
+  const listingHtml = `<html><head><title>รายการสินค้าหมวดซีดี</title></head><body>` +
+    `<a href="/%E0%B8%AA%E0%B8%B4%E0%B8%99%E0%B8%84%E0%B9%89%E0%B8%B2/cdb-001.html"><img src="http://x/y.jpg" alt="กระเป๋าใส่แผ่นซีดี CDB-001"></a>` +
+    `<a href="/%E0%B8%AA%E0%B8%B4%E0%B8%99%E0%B8%84%E0%B9%89%E0%B8%B2/cdb-002.html"><span>กระเป๋าใส่แผ่นซีดี CDB-002</span></a>` +
+    `<a href="/%E0%B8%AA%E0%B8%B4%E0%B8%99%E0%B8%84%E0%B9%89%E0%B8%B2/cdb-003.html">กระเป๋าใส่แผ่นซีดี CDB-003</a>` +
+    `<a href="/about.html">เกี่ยวกับเรา</a></body></html>`;
+  const listingSrv = http.createServer((req, res) => {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    if (String(req.url || "").startsWith("/listing")) res.end(listingHtml);
+    else {
+      const code = (String(req.url || "").match(/cdb-\d+/i) || ["CDB-000"])[0].toUpperCase();
+      res.end(detailHtml(code));
+    }
+  });
+  await new Promise((resolve) => listingSrv.listen(0, "127.0.0.1", resolve));
+  const listingBase = `http://127.0.0.1:${listingSrv.address().port}`;
+  let listingRes = null;
+  try {
+    listingRes = await rt.importUrl(clientId, { url: `${listingBase}/listing.html`, maxPages: 5 });
+  } finally { listingSrv.close(); }
+  check("listing import yields separate items", () => {
+    const names = listingRes.products.map((p) => p.name);
+    assert.ok(names.some((n) => n.includes("CDB-001")), "img-alt anchor: " + JSON.stringify(names));
+    assert.ok(names.some((n) => n.includes("CDB-002")), "nested-span anchor: " + JSON.stringify(names));
+    assert.ok(names.some((n) => n.includes("CDB-003")), "plain anchor: " + JSON.stringify(names));
+    assert.ok(!names.some((n) => n.includes("เกี่ยวกับเรา")), "nav link excluded: " + JSON.stringify(names));
+    assert.ok(listingRes.products.length >= 3, "got " + listingRes.products.length);
+    assert.ok(listingRes.fetched >= 2, "crawl followed links, fetched=" + listingRes.fetched);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

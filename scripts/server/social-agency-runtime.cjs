@@ -406,8 +406,15 @@ function extractProductsFromHtml(html, pageUrl) {
     const img = Array.isArray(d.image) ? d.image[0] : d.image;
     push({ name: d.name, description: d.description, price: offers.price, currency: offers.priceCurrency, image: typeof img === "string" ? img : img?.url, sourceUrl: pageUrl });
   }
-  // 2. meta fallback (single product guess)
-  if (!out.length) {
+  // 2. listing anchors (category pages: one candidate per product link)
+  const hadStructured = out.length > 0;
+  if (!hadStructured) {
+    for (const l of discoverProductLinks(src, pageUrl)) {
+      push({ name: l.hint, image: l.image || "", sourceUrl: l.url });
+    }
+  }
+  // 3. this page itself (meta fallback; skipped only when JSON-LD already gave items)
+  if (!hadStructured) {
     const meta = (prop) => {
       const r = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i");
       const mm = src.match(r);
@@ -427,17 +434,29 @@ function discoverProductLinks(html, pageUrl) {
   const seen = new Set();
   let origin = "";
   try { origin = new URL(pageUrl).origin; } catch { return links; }
-  const re = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]{2,80})<\/a>/gi;
+  const re = /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  while ((m = re.exec(String(html || ""))) && links.length < 12) {
+  const src = String(html || "");
+  while ((m = re.exec(src)) && links.length < 12) {
     let abs = "";
-    try { abs = new URL(m[1], pageUrl).href; } catch { continue; }
+    try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
     if (!abs.startsWith(origin)) continue;
-    if (abs === pageUrl) continue;
-    if (!/\/(product|products|shop|item|items|goods|collection|p|sku|pd)[\/_-]|สินค้า|product-/i.test(abs)) continue;
+    if (abs.split("#")[0] === String(pageUrl).split("#")[0]) continue;
+    let decoded = abs;
+    try { decoded = decodeURIComponent(abs); } catch { /* keep raw */ }
+    if (!/\/(product|products|shop|item|items|goods|collection|p|sku|pd)[\/_-]|สินค้า|ผลิตภัณฑ์|product-/i.test(decoded)) continue;
     if (seen.has(abs)) continue;
+    let hint = m[3].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (hint.length < 2) {
+      const alt = m[3].match(/<img\b[^>]*alt=(["'])(.*?)\1/i);
+      hint = alt ? alt[2].replace(/\s+/g, " ").trim() : "";
+    }
+    if (hint.length < 2) continue;
     seen.add(abs);
-    links.push({ url: abs, hint: m[2].trim().slice(0, 80) });
+    let img = "";
+    const im = m[3].match(/<img\b[^>]*src=(["'])(.*?)\1/i);
+    if (im) { try { img = new URL(im[2], pageUrl).href; } catch { img = ""; } }
+    links.push({ url: abs, hint: hint.slice(0, 80), image: img.slice(0, 500) });
   }
   return links;
 }
@@ -1899,6 +1918,17 @@ class SocialAgencyRuntime {
       if (r.status === "fulfilled") {
         fetched += 1;
         for (const p of extractProductsFromHtml(r.value, links[i].url)) {
+          // merge crawled detail into anchor candidate (same page, no dupes)
+          const same = products.find((x) => x.sourceUrl && p.sourceUrl && x.sourceUrl === p.sourceUrl);
+          if (same) {
+            for (const k of ["description", "price", "currency", "image"]) {
+              if (!same[k] && p[k]) same[k] = p[k];
+            }
+            if (p.name && same.name && p.name !== same.name && (p.name.includes(same.name) || same.name.includes(p.name)) && p.name.length <= 120) {
+              same.name = p.name.length > same.name.length ? p.name : same.name;
+            }
+            continue;
+          }
           if (!products.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) products.push(p);
         }
       } else failed += 1;
