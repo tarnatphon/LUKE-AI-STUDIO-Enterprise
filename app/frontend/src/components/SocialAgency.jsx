@@ -137,6 +137,12 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   }, [state, refresh]);
 
+  const handleSaveMetrics = useCallback(async (entryId, metrics) => {
+    if (!state?.activeClientId) return;
+    await postJson(`/api/social-agency/calendar/${encodeURIComponent(entryId)}?clientId=${encodeURIComponent(state.activeClientId)}`, { metrics }, "PATCH");
+    refresh();
+  }, [state, refresh]);
+
   const activeClient = useMemo(
     () => state?.clients?.find((c) => c.id === state.activeClientId) || null,
     [state]
@@ -486,6 +492,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           videoGenError={videoGenError}
           onUseHook={handleUseHook}
           onRepurpose={handleRepurpose}
+          onSaveMetrics={handleSaveMetrics}
           onOpenChat={onOpenChat}
         />
       )}

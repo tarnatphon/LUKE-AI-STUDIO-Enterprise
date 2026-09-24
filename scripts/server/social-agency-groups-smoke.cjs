@@ -747,6 +747,49 @@ async function main() {
     assert.ok(repDate.body.created.every((e) => e.date === bangkokToday(11)), "children on override date");
   });
 
+  const m1 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(12), time: "10:00", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+  const m2 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(13), time: "10:00", platform: "instagram", sku, angle: "เคล็ดลับการใช้งาน" } });
+  const m3 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(14), time: "10:00", platform: "line", sku, angle: "เรื่องจากลูกค้า" } });
+  rt.updateCalendarEntry(clientId, m1.id, { status: "published", metrics: { likes: 100, comments: 10, shares: 5, views: 1000 } });
+  rt.updateCalendarEntry(clientId, m2.id, { status: "published", metrics: { likes: 20, comments: 2, shares: 1 } });
+  rt.updateCalendarEntry(clientId, m3.id, { metrics: { likes: 5 } });
+  check("metrics patch validates + merges", () => {
+    const g = (id) => rt._findEntry(clientId, id).entry.metrics;
+    assert.strictEqual(g(m1.id).likes, 100);
+    assert.strictEqual(g(m1.id).views, 1000);
+    assert.strictEqual(g(m2.id).views, undefined);
+    assert.ok(g(m3.id).recordedAt, "recordedAt stamped");
+    assert.throws(() => rt.updateCalendarEntry(clientId, m1.id, { metrics: { likes: -1 } }), /ตัวเลข/);
+    assert.throws(() => rt.updateCalendarEntry(clientId, m1.id, { metrics: { likes: "เยอะ" } }), /ตัวเลข/);
+  });
+
+  check("metrics merge keeps old numbers", () => {
+    rt.updateCalendarEntry(clientId, m2.id, { metrics: { likes: 30 } });
+    const m = rt._findEntry(clientId, m2.id).entry.metrics;
+    assert.strictEqual(m.likes, 30);
+    assert.strictEqual(m.comments, 2);
+  });
+
+  const mPatch = await call("PATCH", `/api/social-agency/calendar/${m3.id}?clientId=${clientId}`, { metrics: { shares: 2 } });
+  check("PATCH calendar route saves metrics", () => {
+    assert.strictEqual(mPatch.statusCode, 200);
+    assert.strictEqual(mPatch.body.entry.metrics.shares, 2);
+    assert.strictEqual(mPatch.body.entry.metrics.likes, 5);
+  });
+
+  const perfRes = await call("GET", `/api/social-agency/performance?clientId=${clientId}`);
+  check("GET /performance aggregates + ranks + suggests", () => {
+    assert.strictEqual(perfRes.statusCode, 200);
+    const pf = perfRes.body.performance;
+    assert.strictEqual(pf.measured, 3);
+    assert.ok(Array.isArray(pf.pillars) && Array.isArray(pf.angles) && Array.isArray(pf.platforms));
+    const sell = pf.pillars.find((p) => p.name === "ขายตรง");
+    assert.strictEqual(sell.avg, 115);
+    assert.strictEqual(pf.top[0].id, m1.id);
+    assert.strictEqual(pf.bottom[0].id, m3.id);
+    assert.ok(pf.suggestions.some((s) => s.includes("ขายตรง")), "suggests best pillar");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

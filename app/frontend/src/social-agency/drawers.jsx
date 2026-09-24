@@ -49,9 +49,29 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onRepurpose, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onRepurpose, onSaveMetrics, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
+  const [metricsForm, setMetricsForm] = useState({
+    likes: entry.metrics?.likes ?? "",
+    comments: entry.metrics?.comments ?? "",
+    shares: entry.metrics?.shares ?? "",
+    views: entry.metrics?.views ?? "",
+  });
+  const [metricsBusy, setMetricsBusy] = useState(false);
+  const [metricsError, setMetricsError] = useState("");
+  const saveMetrics = async () => {
+    if (!onSaveMetrics) return;
+    setMetricsBusy(true);
+    setMetricsError("");
+    try {
+      await onSaveMetrics(entry.id, metricsForm);
+    } catch (err) {
+      setMetricsError(err.message);
+    } finally {
+      setMetricsBusy(false);
+    }
+  };
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
   const run = useMemo(
@@ -176,6 +196,39 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
               ))}
             </ul>
           ) : null}
+        </section>
+      )}
+
+      {(entry.status === "published" || entry.metrics) && (
+        <section className="sa-drawer-section">
+          <h4>📊 ผลงานโพสต์</h4>
+          {entry.metrics ? (
+            <p className="sa-muted">
+              ❤️ {entry.metrics.likes ?? 0} · 💬 {entry.metrics.comments ?? 0} · 🔁 {entry.metrics.shares ?? 0} · 👁️ {entry.metrics.views ?? 0}
+              {entry.metrics.recordedAt ? ` · บันทึก ${formatDateTimeTh(entry.metrics.recordedAt)}` : ""}
+            </p>
+          ) : (
+            <p className="sa-muted">ยังไม่มีตัวเลข — กรอกยอดจากแพลตฟอร์มด้านล่าง แล้วแท็บ Insights จะจัดอันดับให้เอง</p>
+          )}
+          {onSaveMetrics && (
+            <div className="sa-style-row">
+              {["likes", "comments", "shares", "views"].map((k) => (
+                <input
+                  key={k}
+                  type="number"
+                  min="0"
+                  value={metricsForm[k]}
+                  onChange={(e) => setMetricsForm({ ...metricsForm, [k]: e.target.value })}
+                  placeholder={{ likes: "❤️ ไลก์", comments: "💬 คอมเมนต์", shares: "🔁 แชร์", views: "👁️ วิว" }[k]}
+                  aria-label={k}
+                />
+              ))}
+              <button className="sa-btn primary sm" disabled={metricsBusy} onClick={saveMetrics}>
+                {metricsBusy ? "กำลังบันทึก…" : "บันทึกยอด"}
+              </button>
+            </div>
+          )}
+          {metricsError && <p className="sa-error-banner">{metricsError}</p>}
         </section>
       )}
 

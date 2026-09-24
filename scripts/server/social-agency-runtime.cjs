@@ -1465,6 +1465,18 @@ class SocialAgencyRuntime {
     if (patch.status !== undefined && ENTRY_STATUSES.includes(patch.status) && !entry.inFlight) {
       entry.status = patch.status;
     }
+    if (patch.metrics !== undefined && patch.metrics && typeof patch.metrics === "object") {
+      const clean = {};
+      for (const k of ["likes", "comments", "shares", "views"]) {
+        const v = patch.metrics[k];
+        if (v === undefined || v === null || v === "") continue;
+        const n = Math.floor(Number(v));
+        if (!Number.isFinite(n) || n < 0) throw new Error(`ยอด ${k} ต้องเป็นตัวเลข 0 ขึ้นไป`);
+        if (n > 1000000000) throw new Error(`ยอด ${k} สูงเกินจริง`);
+        clean[k] = n;
+      }
+      entry.metrics = { ...(entry.metrics || {}), ...clean, recordedAt: new Date().toISOString() };
+    }
     entry.updatedAt = new Date().toISOString();
     this._write(state);
     return entry;
@@ -1597,6 +1609,60 @@ class SocialAgencyRuntime {
     }
     this._write(state);
     return { created, count: created.length };
+  }
+
+  // ── performance loop (P4): engagement -> pillar/angle ranking ──
+  buildPerformance(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const engagementOf = (m) => (m.likes || 0) + (m.comments || 0) + (m.shares || 0);
+    const rows = (client.calendar || [])
+      .filter((e) => e.metrics && Number.isFinite(e.metrics.likes))
+      .map((e) => ({
+        id: e.id,
+        date: e.date,
+        platform: e.platform,
+        pillar: e.pillar || "—",
+        angle: e.angle || "—",
+        excerpt: String(e.caption || "").split("\n").map((s) => s.trim()).filter(Boolean)[0]?.slice(0, 80) || "(ไม่มีแคปชัน)",
+        engagement: engagementOf(e.metrics),
+        metrics: e.metrics,
+      }));
+    const group = (key) => {
+      const m = {};
+      for (const r of rows) {
+        m[r[key]] = m[r[key]] || { name: r[key], count: 0, total: 0 };
+        m[r[key]].count += 1;
+        m[r[key]].total += r.engagement;
+      }
+      return Object.values(m)
+        .map((g) => ({ name: g.name, count: g.count, avg: Math.round(g.total / g.count) }))
+        .sort((a, b) => b.avg - a.avg);
+    };
+    const pillars = group("pillar");
+    const platforms = group("platform");
+    const byEng = [...rows].sort((a, b) => b.engagement - a.engagement);
+    const suggestions = [];
+    if (pillars.length >= 2 && pillars[0].avg > 0) {
+      const best = pillars[0];
+      const worst = pillars[pillars.length - 1];
+      suggestions.push(`เสา "${best.name}" ได้ engagement เฉลี่ยสูงสุด (${best.avg}/โพสต์ จาก ${best.count} โพสต์) — พิจารณาเพิ่มน้ำหนักในแท็บ Style`);
+      if (worst.name !== best.name && best.avg >= worst.avg * 2) {
+        suggestions.push(`เสา "${worst.name}" ได้เฉลี่ยแค่ ${worst.avg}/โพสต์ — ลองลดน้ำหนักหรือเปลี่ยนมุมในเสานี้`);
+      }
+    }
+    if (platforms.length >= 2 && platforms[0].avg > 0) {
+      suggestions.push(`แพลตฟอร์มที่ปังสุดคือ ${platforms[0].name} (เฉลี่ย ${platforms[0].avg}/โพสต์) — เอาโพสต์ดีจากที่อื่นมาแตกเข้า ${platforms[0].name} บ้าง`);
+    }
+    return {
+      measured: rows.length,
+      total: (client.calendar || []).length,
+      pillars,
+      angles: group("angle"),
+      platforms,
+      top: byEng.slice(0, 3),
+      bottom: byEng.slice(-3).reverse(),
+      suggestions: suggestions.slice(0, 3),
+    };
   }
 
   // ── local LLM bridge (injected by serve.cjs — same llama-server as Chat) ──
@@ -4016,6 +4082,9 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/backup/restore" && method === "POST") {
         const body = await readBody();
         return json(res, 200, { ok: true, ...this.restoreBackup(clientId || body.clientId || undefined, body.snapshot) });
+      }
+      if (pathname === "/api/social-agency/performance" && method === "GET") {
+        return json(res, 200, { ok: true, performance: this.buildPerformance(clientId) });
       }
       if (pathname === "/api/social-agency/weekly-summary" && method === "GET") {
         const weekOffset = Number(parsed.searchParams.get("weekOffset") || 0) || 0;

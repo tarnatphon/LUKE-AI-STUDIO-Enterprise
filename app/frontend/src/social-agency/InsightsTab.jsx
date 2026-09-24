@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, Send, Download, Save, Upload, ChevronLeft, ChevronRight, HardDrive } from "lucide-react";
+import { BarChart3, Send, Download, Save, Upload, ChevronLeft, ChevronRight, HardDrive, TrendingUp } from "lucide-react";
 import { api, postJson, bangkokToday } from "./lib.js";
 
 export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
@@ -14,6 +14,8 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
   const [backups, setBackups] = useState([]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState("");
+  const [perf, setPerf] = useState(null);
+  const [perfError, setPerfError] = useState("");
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -46,6 +48,23 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
         if (!cancelled) setBackups(data.backups || []);
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, refreshKey]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    api(`/api/social-agency/performance?clientId=${encodeURIComponent(clientId)}`)
+      .then((data) => {
+        if (cancelled) return;
+        setPerf(data.performance);
+        setPerfError("");
+      })
+      .catch((err) => {
+        if (!cancelled) setPerfError(err.message);
+      });
     return () => {
       cancelled = true;
     };
@@ -135,6 +154,48 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
 
   return (
     <div className="sa-insights">
+      <section className="sa-insights-card">
+        <header>
+          <TrendingUp size={15} />
+          <b>ผลงานโพสต์</b>
+          <span className="sa-muted">{perf ? `วัดผลแล้ว ${perf.measured}/${perf.total} โพสต์` : "…"}</span>
+        </header>
+        {perfError && <p className="sa-error-banner">{perfError}</p>}
+        {perf && perf.measured === 0 && (
+          <p className="sa-muted">ยังไม่มีตัวเลข — เปิด drawer ของโพสต์ที่เผยแพร่แล้ว กรอกยอดไลก์/คอมเมนต์/แชร์/วิว ระบบจะจัดอันดับเสา·มุม·แพลตฟอร์มให้เอง</p>
+        )}
+        {perf && perf.measured > 0 && (
+          <>
+            <div className="sa-insights-stats">
+              {perf.pillars.map((p) => (
+                <span key={p.name}><b>{p.avg}</b> {p.name} ({p.count})</span>
+              ))}
+            </div>
+            {perf.suggestions.map((s, i) => (
+              <p key={i} className="sa-muted">💡 {s}</p>
+            ))}
+            <p><b>🏆 ท็อปโพสต์</b></p>
+            <ul className="sa-insights-backups">
+              {perf.top.map((t) => (
+                <li key={t.id}>
+                  <span className="sa-ov-name">{t.excerpt}</span>
+                  <span className="sa-muted">{t.engagement} · {t.platform} · {t.pillar}</span>
+                </li>
+              ))}
+            </ul>
+            <p><b>📉 ต้องปรับปรุง</b></p>
+            <ul className="sa-insights-backups">
+              {perf.bottom.map((t) => (
+                <li key={t.id}>
+                  <span className="sa-ov-name">{t.excerpt}</span>
+                  <span className="sa-muted">{t.engagement} · {t.platform} · {t.pillar}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
       <section className="sa-insights-card">
         <header>
           <BarChart3 size={15} />
