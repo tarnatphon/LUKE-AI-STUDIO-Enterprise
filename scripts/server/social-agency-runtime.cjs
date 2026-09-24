@@ -43,6 +43,7 @@ const NODE_DEFS = [
   { key: "create", label: "เขียนคอนเทนต์" },
   { key: "check", label: "AI Check" },
   { key: "autofix", label: "แก้อัตโนมัติ" },
+  { key: "score", label: "คะแนนไวรัล" },
   { key: "gate", label: "ประตูอนุมัติ" },
   { key: "publish", label: "เผยแพร่" },
   { key: "result", label: "ผลลัพธ์" },
@@ -544,6 +545,51 @@ function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avo
     if (!denied.has(last)) return { prompt: last, cameraId: cam.id, cameraLabel: cam.label };
   }
   return { prompt: last, cameraId: lastCamera.id, cameraLabel: lastCamera.label };
+}
+// ── P1: viral score + hook variants ──
+function scoreViralCaption(caption, platform) {
+  const text = String(caption || "");
+  const lines = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const first = lines[0] || "";
+  const tags = text.match(/#[^\s#]+/g) || [];
+  const noTags = text.replace(/#[^\s#]+/g, "");
+  const emojiCount = (text.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) || []).length;
+  const rules = PLATFORM_VERSION_RULES[platform] || {};
+  const maxChars = rules.maxChars || 2000;
+  const maxTags = rules.maxHashtags || 8;
+  const breakdown = [];
+  const add = (label, max, pass) => { breakdown.push({ label, max, points: pass ? max : 0, pass: !!pass }); };
+  add("hook บรรทัดแรกสั้น (≤60 ตัวอักษร)", 15, first.length > 0 && first.length <= 60);
+  add("มีตัวเลข/ของเฉพาะเจาะจง", 10, /[0-9%฿]/.test(noTags) || /(บาท|ชิ้น|วัน|ชั่วโมง|นาที|รุ่น|ใบ|ตัว|คู่)/.test(noTags));
+  add("มีคำถามหรือ CTA", 10, /[?]/.test(text) || /(ทัก|สั่ง|จอง|คลิก|กด|ลอง|มาดู|แวะ|สอบถาม|สนใจ|ซื้อ|พรีออเดอร์|แชท|ไลน์|line|inbox|dm)/i.test(text));
+  add("อีโมจิพอดี (1–4)", 10, emojiCount >= 1 && emojiCount <= 4);
+  add(`ความยาวเหมาะกับแพลตฟอร์ม`, 15, noTags.trim().length >= 40 && noTags.trim().length <= maxChars);
+  add("ไร้คำโฆษณาโบราณ", 10, !/(ในยุคที่|สำคัญอย่างยิ่ง|ที่สุดในโลก|อันดับหนึ่ง|การันตีร้อยเปอร์เซ็นต์|ห้ามพลาดเด็ดขาด)/.test(text));
+  add(`แฮชแท็ก ${tags.length}/${maxTags}`, 10, tags.length >= 1 && tags.length <= maxTags);
+  add("คำลงท้ายไทย (ครับ/ค่ะ/นะ)", 10, /(ครับ|ค่ะ|คะ|นะ|จ้า|เลย|แล้ว)/.test(noTags));
+  add("พูดกับคนอ่านโดยตรง", 10, /(คุณ|เพื่อนๆ|สาย|คนรัก|ใครที่|สาวๆ|หนุ่มๆ|แม่ค้า|ลูกค้า|ใครกำลัง)/.test(noTags));
+  return { score: breakdown.reduce((a, c) => a + c.points, 0), breakdown };
+}
+
+function buildTemplateHooks(product, { angle, seed = "" } = {}) {
+  const name = product?.name || "สินค้าใหม่";
+  const cat = product?.category || "ของดี";
+  const cands = [
+    `${name} รุ่นที่หลายคนถามหา กลับมาแล้ว`,
+    `ใครกำลังมองหา${cat} หยุดเลื่อนก่อน 10 วินาที`,
+    `ของมันต้องมี: ${name} เล่าให้ฟังใน 3 บรรทัด`,
+    `เบื้องหลัง${angle || "งานจริง"} ที่ไม่ค่อยมีใครเล่า`,
+    `ลูกค้าถามเยอะสุดสัปดาห์นี้: ${name}ต่างจากเดิมยังไง`,
+    `${cat}ที่หยิบใช้ทุกวัน เลือกยังไงไม่ให้พลาด`,
+  ];
+  let h = 0;
+  for (const ch of String(seed)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const out = [];
+  for (let i = 0; i < cands.length && out.length < 3; i++) {
+    const c = cands[(h + i) % cands.length];
+    if (!out.includes(c)) out.push(c);
+  }
+  return out;
 }
 // ── group 4 helpers: per-platform caption versions ──
 function splitHashtags(text) {
@@ -1565,6 +1611,21 @@ class SocialAgencyRuntime {
     return caption;
   }
 
+  async _llmHookVariants({ caption, client, product, platform, angle }) {
+    const first = String(caption || "").split(/\n+/).map((s) => s.trim()).filter(Boolean)[0] || "";
+    const raw = await this._llmChat(
+      [
+        { role: "system", content: "คุณเป็นนักเขียน hook โฆษณาโซเชียลไทย ตอบกลับเป็น JSON ล้วนห้ามมีข้อความอื่น รูปแบบ {\"hooks\":[\"hook1\",\"hook2\",\"hook3\"]} hook ละไม่เกิน 60 ตัวอักษร ภาษาไทยพูดจริง ดึงดูดให้หยุดเลื่อน ห้ามคลิกเบตหลอกลวง" },
+        { role: "user", content: `สินค้า: ${product?.name || ""} (${product?.category || ""})\nมุม: ${angle}\nแพลตฟอร์ม: ${platform}\nบรรทัดแรกเดิม: ${first}\n\nเขียน hook ทางเลือก 3 แบบที่ไม่ซ้ำบรรทัดเดิม` },
+      ],
+      { json: true, temperature: 0.9, maxTokens: 300, timeoutMs: 240000 }
+    );
+    const parsed = SocialAgencyRuntime.extractJson(raw);
+    const hooks = Array.isArray(parsed?.hooks) ? parsed.hooks.map((h) => String(h || "").trim()).filter((h) => h && h.length <= 120) : [];
+    if (!hooks.length) throw new Error("hook ว่าง");
+    return hooks.slice(0, 3);
+  }
+
   async _llmFixCaption({ caption, issues, client, product, platform, angle }) {
     const raw = await this._llmChat(
       [
@@ -2029,13 +2090,35 @@ class SocialAgencyRuntime {
           source = "template";
         }
       }
+      let hooks = [];
+      let hookSource = "template";
+      try {
+        const hv = await this._llmHookVariants({ caption, client, product, platform: entry.platform, angle: entry.angle });
+        if (hv && hv.length) { hooks = hv; hookSource = "llm"; }
+      } catch (err) {
+        console.warn("[social-agency] hooks fallback to template:", err.message);
+      }
+      if (!hooks.length) hooks = buildTemplateHooks(product, { angle: entry.angle, seed: entry.id });
+      const capLines = String(caption || "").split("\n");
+      const firstIdx = capLines.findIndex((s) => s.trim());
+      const rest = firstIdx >= 0 ? capLines.slice(firstIdx + 1).join("\n") : "";
+      const scored = [{ text: firstIdx >= 0 ? capLines[firstIdx].trim() : "", current: true }]
+        .concat(hooks.filter((h) => h && h.trim()).map((h) => ({ text: h.trim(), current: false })));
+      for (const s of scored) s.score = scoreViralCaption(s.text + (rest ? "\n" + rest : ""), entry.platform).score;
+      scored.sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      if (best && !best.current && firstIdx >= 0) {
+        capLines[firstIdx] = best.text;
+        caption = capLines.join("\n");
+      }
+      const hookVariants = scored.map((s) => ({ text: s.text, score: s.score, used: s === best }));
       const imagePrompt = buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
       const animateSib = (client.calendar || []).filter((e) => e.id !== entry.id);
       const animateBuilt = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: animateSib.map((e) => e.animatePrompt), avoidCameras: animateSib.map((e) => e.animateCamera) });
       return {
         output: caption.replace(/\n+/g, " ").slice(0, 110) + (caption.length > 110 ? "…" : ""),
         detail: `${caption}\n\n— image prompt สำหรับ Image workspace —\n${imagePrompt}\n\n— animate prompt สำหรับวิดีโอ —\n${animateBuilt.prompt} (มุมกล้อง: ${animateBuilt.cameraLabel})\n(แหล่ง: ${source})`,
-        entryPatch: { caption, imagePrompt, animatePrompt: animateBuilt.prompt, animateCamera: animateBuilt.cameraId, animateCameraLabel: animateBuilt.cameraLabel, captionSource: source },
+        entryPatch: { caption, imagePrompt, animatePrompt: animateBuilt.prompt, animateCamera: animateBuilt.cameraId, animateCameraLabel: animateBuilt.cameraLabel, captionSource: source, hook: best ? best.text : "", hookVariants, hookSource },
       };
     });
 
@@ -2100,22 +2183,38 @@ class SocialAgencyRuntime {
       }
     }
 
-    // 7. gate
-    const { client: gateClient } = fresh();
+    // 7. viral score
+    await this._nodeStep(clientId, runId, "score", async () => {
+      const { entry } = fresh();
+      const v = scoreViralCaption(entry.caption, entry.platform);
+      const fails = v.breakdown.filter((b) => !b.pass).map((b) => b.label);
+      return {
+        output: `ไวรัลสกอร์ ${v.score}/100${fails.length ? ` — ขาด: ${fails.slice(0, 3).join(", ")}` : " — ครบทุกข้อ"}`,
+        detail: v.breakdown.map((b) => `${b.pass ? "✓" : "✗"} ${b.label} (+${b.points}/${b.max})`).join("\n"),
+        entryPatch: { viralScore: { score: v.score, breakdown: v.breakdown, gradedAt: new Date().toISOString() } },
+      };
+    });
+
+    // 8. gate
+    const { client: gateClient, entry: gateEntry } = fresh();
     const threshold = clampNumber(gateClient.settings?.threshold, 50, 95, 80);
-    const gatePass = ctx.force || (check && check.score !== null && check.score >= threshold);
+    const viralThreshold = clampNumber(gateClient.settings?.viralThreshold, 0, 100, 60);
+    const viralScore = gateEntry && gateEntry.viralScore ? gateEntry.viralScore.score : null;
+    const checkOk = check && check.score !== null && check.score >= threshold;
+    const viralOk = viralScore !== null && viralScore >= viralThreshold;
+    const gatePass = ctx.force || (checkOk && viralOk);
     if (!gatePass) {
       this._mutateRun(clientId, runId, (run, client, entry) => {
         const node = run.nodes.find((n) => n.key === "gate");
         if (node) {
           node.status = "waiting";
-          node.output = `รอการอนุมัติจากคน (score ${check?.score ?? "-"} < ${threshold})`;
-          node.detail = `คะแนน ${check?.score ?? "-"} ยังไม่ถึงเกณฑ์ ${threshold} — เข้าคิวอนุมัติ\nปัญหา:\n- ${(check?.issues || []).join("\n- ") || "(ไม่มี)"}`;
+          node.output = `รอการอนุมัติจากคน (check ${check?.score ?? "-"} / ไวรัล ${viralScore ?? "-"} — เกณฑ์ ${threshold}/${viralThreshold})`;
+          node.detail = `คะแนน check ${check?.score ?? "-"} / ไวรัล ${viralScore ?? "-"} ยังไม่ถึงเกณฑ์ ${threshold}/${viralThreshold} — เข้าคิวอนุมัติ\nสาเหตุ: ${!checkOk ? "AI Check ไม่ผ่าน" : "ไวรัลสกอร์ไม่ถึง"}\nปัญหา:\n- ${(check?.issues || []).join("\n- ") || "(ไม่มี)"}`;
         }
         const publishNode = run.nodes.find((n) => n.key === "publish");
         if (publishNode) publishNode.status = "waiting";
         run.status = "needs_review";
-        run.gate = { decision: "review", reason: `score ${check?.score ?? "-"} < ${threshold}` };
+        run.gate = { decision: "review", reason: `check ${check?.score ?? "-"}<${threshold} / viral ${viralScore ?? "-"}<${viralThreshold}` };
         run.finishedAt = new Date().toISOString();
         run.durationMs = Date.now() - startedMs;
         if (entry) {
@@ -2127,11 +2226,11 @@ class SocialAgencyRuntime {
       return { outcome: "needs_review" };
     }
     await this._nodeStep(clientId, runId, "gate", async () => ({
-      output: ctx.force ? "ผ่าน — อนุมัติโดยคน" : `ผ่านอัตโนมัติ (score ${check?.score} >= ${threshold})`,
-      detail: ctx.force ? "ผู้ใช้อนุมัติเองจากคิวอนุมัติ" : `คะแนน ${check?.score} ถึงเกณฑ์ ${threshold} → เผยแพร่อัตโนมัติ`,
+      output: ctx.force ? "ผ่าน — อนุมัติโดยคน" : `ผ่านอัตโนมัติ (check ${check?.score}≥${threshold} + ไวรัล ${viralScore}≥${viralThreshold})`,
+      detail: ctx.force ? "ผู้ใช้อนุมัติเองจากคิวอนุมัติ" : `คะแนน check ${check?.score} ถึงเกณฑ์ ${threshold} และไวรัล ${viralScore} ถึงเกณฑ์ ${viralThreshold} → เผยแพร่อัตโนมัติ`,
     }));
 
-    // 8. publisher
+    // 9. publisher
     await this._mutateRun(clientId, runId, (run, client, entry) => {
       if (entry) {
         entry.status = "publishing";
@@ -2159,7 +2258,7 @@ class SocialAgencyRuntime {
       };
     });
 
-    // 9. result
+    // 10. result
     await this._nodeStep(clientId, runId, "result", async () => {
       const { entry, run } = fresh();
       const summary = `เผยแพร่สำเร็จ · ${entry.productName} · ${entry.platform}${run.publish ? ` · ${run.publish.mode}` : ""} · ใช้เวลารวม ${Math.round((Date.now() - startedMs) / 100) / 10}s`;
@@ -2194,6 +2293,26 @@ class SocialAgencyRuntime {
   _isTransientError(err) {
     const msg = String(err?.message || "");
     return /network|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|HTTP 5\d\d|timeout/i.test(msg);
+  }
+
+  useEntryHook(clientId, entryId, index) {
+    const { state, entry } = this._findEntry(clientId, entryId);
+    const variants = entry.hookVariants || [];
+    const v = variants[Number(index)];
+    if (!v || !v.text) throw new Error("ไม่พบ hook ตัวที่เลือก");
+    const lines = String(entry.caption || "").split("\n");
+    const at = lines.findIndex((s) => s.trim());
+    if (at < 0) lines.unshift(v.text);
+    else lines[at] = v.text;
+    entry.caption = lines.join("\n").slice(0, 4000);
+    entry.hook = v.text;
+    entry.hookVariants = variants.map((x, xi) => ({ text: x.text, score: x.score, used: xi === Number(index) }));
+    const vs = scoreViralCaption(entry.caption, entry.platform);
+    entry.viralScore = { score: vs.score, breakdown: vs.breakdown, gradedAt: new Date().toISOString() };
+    entry.captionManual = true;
+    entry.updatedAt = new Date().toISOString();
+    this._write(state);
+    return entry;
   }
 
   approveEntry(clientId, entryId) {
@@ -3572,6 +3691,16 @@ class SocialAgencyRuntime {
         if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
         return json(res, 200, { ok: true, entry: this.rejectEntry(clientId || body.clientId, body.entryId) });
       }
+      if (pathname === "/api/social-agency/entry-hook" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        if (body.index === undefined || body.index === null) return fail(new Error("ต้องระบุ index"), 400);
+        try {
+          return json(res, 200, { ok: true, entry: this.useEntryHook(clientId || body.clientId, body.entryId, body.index) });
+        } catch (error) {
+          return fail(error, 404);
+        }
+      }
 
       // inline entry image generation (preview before publish)
       if (pathname === "/api/social-agency/generate-image" && method === "POST") {
@@ -3677,6 +3806,8 @@ class SocialAgencyRuntime {
 
 // Test seam: lets the smoke suite assert the template output directly.
 SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
+SocialAgencyRuntime._scoreViral = scoreViralCaption;
+SocialAgencyRuntime._templateHooks = buildTemplateHooks;
 SocialAgencyRuntime._templateCaption = buildTemplateCaption;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };

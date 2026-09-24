@@ -622,6 +622,50 @@ async function main() {
     }
   });
 
+  check("viral scorer rewards strong hooks, penalizes weak posts", () => {
+    const good = "ใครกำลังมองหากระเป๋ากล้อง หยุดเลื่อนก่อน 10 วินาทีนะ 📷\nรุ่น CAM-009 ใส่เลนส์ได้ 3 ตัว ผ้ากันน้ำ ซิป YKK ทนๆ เลย\nทักแชทสอบถามได้ครับ มีแค่ 20 ใบ\n#กระเป๋ากล้อง #camerabag #ของมันต้องมี";
+    const bad = "สินค้าดีมีคุณภาพ\nสนใจติดต่อ";
+    const g = SocialAgencyRuntime._scoreViral(good, "facebook");
+    const b = SocialAgencyRuntime._scoreViral(bad, "facebook");
+    assert.ok(g.score >= 80, "good scores high, got " + g.score);
+    assert.ok(b.score < 50, "bad scores low, got " + b.score);
+    assert.strictEqual(g.breakdown.reduce((a, c) => a + c.points, 0), g.score);
+    assert.strictEqual(b.breakdown.reduce((a, c) => a + c.points, 0), b.score);
+  });
+
+  check("template hooks are TH, unique and seed-stable", () => {
+    const p = { name: "กระเป๋ากล้อง", category: "กระเป๋า" };
+    const a = SocialAgencyRuntime._templateHooks(p, { angle: "เปิดตัวสินค้า", seed: "e1" });
+    const b2 = SocialAgencyRuntime._templateHooks(p, { angle: "เปิดตัวสินค้า", seed: "e1" });
+    const c = SocialAgencyRuntime._templateHooks(p, { angle: "เปิดตัวสินค้า", seed: "e2" });
+    assert.strictEqual(a.length, 3);
+    assert.deepStrictEqual(a, b2);
+    assert.ok(a.every((h) => /[\u0E00-\u0E7F]/.test(h)), "thai hooks");
+    assert.strictEqual(new Set(a).size, 3, "unique");
+    assert.notDeepStrictEqual(a, c);
+  });
+
+  const he = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(6), time: "12:00", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+  {
+    const f = rt._findEntry(clientId, he.id);
+    f.entry.caption = "บรรทัดแรกเดิม\nเนื้อหาข้างในยาวพอสมควรมีรายละเอียดให้อ่านกันครับ #tag1";
+    f.entry.captionManual = true;
+    f.entry.hookVariants = [
+      { text: "บรรทัดแรกเดิม", score: 40, used: true },
+      { text: "ใครกำลังมองหากระเป๋า หยุดเลื่อนก่อนนะ", score: 85, used: false },
+    ];
+    rt._write(f.state);
+  }
+  const hookRes = await call("POST", "/api/social-agency/entry-hook", { clientId, entryId: he.id, index: 1 });
+  check("POST /entry-hook swaps first line and rescores", () => {
+    assert.strictEqual(hookRes.statusCode, 200);
+    const { entry: ue } = rt._findEntry(clientId, he.id);
+    assert.ok(ue.caption.startsWith("ใครกำลังมองหากระเป๋า"), "first line swapped");
+    assert.ok(ue.viralScore && Number.isFinite(ue.viralScore.score), "rescored");
+    assert.strictEqual(ue.hookVariants.filter((h) => h.used).length, 1);
+    assert.strictEqual(ue.captionManual, true);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

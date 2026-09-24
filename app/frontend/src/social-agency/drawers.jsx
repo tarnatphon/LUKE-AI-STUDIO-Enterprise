@@ -49,7 +49,7 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, busy }) {
   const [date, setDate] = useState(entry.date);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
@@ -139,6 +139,31 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           <button className="sa-btn ghost sm" onClick={() => copy(entry.caption, "caption")}>
             <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอก"}
           </button>
+        </section>
+      )}
+
+      {(entry.viralScore || (entry.hookVariants && entry.hookVariants.length > 0)) && (
+        <section className="sa-drawer-section">
+          <h4>🔥 ไวรัลสกอร์ {entry.viralScore ? (<><span className={`sa-score ${scoreClass(entry.viralScore.score)}`}>{entry.viralScore.score}</span><span className="sa-muted"> / เกณฑ์ {client.settings?.viralThreshold ?? 60}</span></>) : null}</h4>
+          {entry.hookVariants && entry.hookVariants.length > 0 && (
+            <ul className="sa-issues">
+              {entry.hookVariants.map((h, i) => (
+                <li key={i}>
+                  {h.used ? "✅ " : ""}{h.text} <span className="sa-muted">({h.score})</span>
+                  {!h.used && onUseHook ? (
+                    <> <button className="sa-btn ghost sm" onClick={() => onUseHook(entry.id, i)}>ใช้ hook นี้</button></>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {entry.viralScore?.breakdown ? (
+            <ul className="sa-issues">
+              {entry.viralScore.breakdown.filter((b) => !b.pass).map((b, i) => (
+                <li key={i}>💡 {b.label}</li>
+              ))}
+            </ul>
+          ) : null}
         </section>
       )}
 

@@ -117,6 +117,16 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   }, [state, generatingVideo, generatingImage, refresh]);
 
+  const handleUseHook = useCallback(async (entryId, index) => {
+    if (!state?.activeClientId) return;
+    try {
+      await postJson("/api/social-agency/entry-hook", { clientId: state.activeClientId, entryId, index });
+      refresh();
+    } catch (err) {
+      console.warn("[social-agency] use hook failed:", err.message);
+    }
+  }, [state, refresh]);
+
   const activeClient = useMemo(
     () => state?.clients?.find((c) => c.id === state.activeClientId) || null,
     [state]
@@ -464,6 +474,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           onGenerateVideo={handleGenerateVideo}
           generatingVideo={generatingVideo}
           videoGenError={videoGenError}
+          onUseHook={handleUseHook}
           onOpenChat={onOpenChat}
         />
       )}
