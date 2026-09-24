@@ -6606,11 +6606,28 @@ function summarizeModelDownloads() {
 }
 
 function startOpenVinoModelDownload(modelId) {
-  if (downloadState.active) return;
+  if (downloadState.active) {
+    // Silently returning here let the route answer "download started" while
+    // nothing started.
+    const busy = new Error("A model download is already in progress.");
+    busy.statusCode = 409;
+    throw busy;
+  }
   const npuInfo = getOpenVinoNpuInfo();
-  if (!npuInfo.supported) throw new Error(npuInfo.reason || "OpenVINO NPU runtime is not available.");
+  if (!npuInfo.supported) {
+    // The runtime being absent is a precondition of the request, not a
+    // failure of the server — 500 here used to say the app is broken when
+    // it only said the setup script has not been run.
+    const unsupported = new Error(npuInfo.reason || "OpenVINO NPU runtime is not available.");
+    unsupported.statusCode = 409;
+    throw unsupported;
+  }
   const model = OPENVINO_NPU_MODELS.find((item) => item.id === modelId);
-  if (!model) throw new Error("Unknown OpenVINO model.");
+  if (!model) {
+    const unknown = new Error("Unknown OpenVINO model.");
+    unknown.statusCode = 400;
+    throw unknown;
+  }
 
   const destDir = path.join(OPENVINO_MODELS, model.folder);
   fs.mkdirSync(destDir, { recursive: true });

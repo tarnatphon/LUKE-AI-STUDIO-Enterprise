@@ -308,6 +308,7 @@ async function main() {
     const silentFours = [];
     const timeouts = [];
     const tally = {};
+    const requiredErrors = new Map();
 
     for (const route of routes) {
       if (CATCH_ALL.has(route.url)) continue;
@@ -338,6 +339,10 @@ async function main() {
       tally[status] = (tally[status] || 0) + 1;
 
       if (status === 500) fives.push(`${route.method} ${route.url}`);
+
+      if (route.method === "POST" && status === 400) {
+        requiredErrors.set(route.url, body);
+      }
 
       // A 404 has to be the application saying "no such record", not the
       // routing fallback saying "no such route".
@@ -371,6 +376,92 @@ async function main() {
     assert(
       !/ReferenceError|TypeError:|is not a function|Cannot read propert/.test(serverLog),
       "The server log carries no uncaught exception from any route."
+    );
+
+    // ── second pass: the validation branch the empty body never reached ────
+    //
+    // A body of {} proves the first check of every route — "this field is
+    // required" — and nothing after it. The check after that is where a
+    // missing null guard becomes a 500: the route takes the field, looks the
+    // entity up, and finds nothing. This pass names the field out of the
+    // route's own error message and hands it a value that exists nowhere,
+    // which has to land on a 4xx about the entity, not a 500 about the code.
+    //
+    // Content fields are excluded on purpose: a real prompt would route a
+    // generation, a real URL would start a download, a real image would start
+    // a render. A fake identifier cannot do any of those things.
+    const CONTENT_FIELDS = new Set([
+      "prompt","text","url","dataurl","image","content","payload","message",
+      "audio","video","base64","file","filedata","imageurl","sourceimage",
+    ]);
+
+    const probes = [];
+    for (const [url, body] of requiredErrors) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(body);
+      } catch {}
+      const message =
+        parsed && typeof parsed.error === "string"
+          ? parsed.error
+          : typeof body === "string"
+            ? body
+            : "";
+      const match = message.match(/([A-Za-z_][A-Za-z0-9_]*) is required/);
+      if (!match) continue;
+      const field = match[1].toLowerCase();
+      if (CONTENT_FIELDS.has(field)) continue;
+      probes.push({ url, field });
+    }
+
+    let probedSecondBranch = 0;
+    const secondPassFives = [];
+    const secondPassTimeouts = [];
+    const secondPassTally = {};
+
+    for (const probe of probes) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      let status = 0;
+      try {
+        const response = await fetch(`${baseUrl}${probe.url}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ [probe.field]: "no-such-entity-042" }),
+          signal: controller.signal,
+        });
+        status = response.status;
+        await response.text();
+      } catch {
+        secondPassTimeouts.push(`${probe.url} (${probe.field})`);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!status) continue;
+      probedSecondBranch += 1;
+      secondPassTally[status] = (secondPassTally[status] || 0) + 1;
+      if (status === 500) {
+        secondPassFives.push(`${probe.url} (${probe.field}) → ${status}`);
+      }
+    }
+
+    console.log(`  ${probes.length} routes named a missing field in their 400; ${probedSecondBranch} of them were probed with a value that exists nowhere`);
+    console.log(`  ${JSON.stringify(secondPassTally)}`);
+
+    assert(
+      probes.length > 30,
+      `The second pass really ran (${probes.length} probes — below 30 means the field names stopped being parsed).`
+    );
+    assert(
+      secondPassTimeouts.length === 0,
+      `Every probe answered inside its time limit (${secondPassTimeouts.length} timed out: ${secondPassTimeouts.join(", ")})`
+    );
+    // 501 and up may stand: "not available on this platform" is an answer.
+    // 500 is never one — it says the server is broken when only the world
+    // around it is not ready.
+    assert(
+      secondPassFives.length === 0,
+      `No route 500s on a precondition it cannot meet.${secondPassFives.length ? ` Offenders: ${secondPassFives.join(", ")}` : ""}`
     );
 
     // The sweep above is only a test if the server is still there at the end of
