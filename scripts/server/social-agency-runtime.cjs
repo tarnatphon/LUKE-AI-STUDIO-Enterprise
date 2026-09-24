@@ -1636,6 +1636,12 @@ class SocialAgencyRuntime {
     const existing = new Set((client.calendar || []).filter((e) => e.date && e.date.startsWith(monthStr)).map((e) => `${e.date} ${e.time}`));
     const products = client.products || [];
     if (!products.length) return [];
+    // P5c: least-used-first so every product gets featured before any repeat
+    const monthUsage = new Map();
+    for (const e of client.calendar || []) {
+      if (e.date && e.date.startsWith(monthStr) && e.sku) monthUsage.set(e.sku, (monthUsage.get(e.sku) || 0) + 1);
+    }
+    const ordered = [...products].sort((a, b) => (monthUsage.get(a.sku) || 0) - (monthUsage.get(b.sku) || 0));
     const perWeek = clampNumber(postsPerWeek, 1, 7, 5);
     const platformRotation = ["demo", "demo", "facebook", "instagram", "line"];
     const slots = [];
@@ -1647,7 +1653,7 @@ class SocialAgencyRuntime {
       if (isCurrentMonth && day < todayDay) return;
       const date = `${year}-${pad(month)}-${pad(day)}`;
       if (existing.has(`${date} ${time}`)) return;
-      const product = products[productIdx % products.length];
+      const product = ordered[productIdx % ordered.length];
       const angle = CONTENT_ANGLES[angleIdx % CONTENT_ANGLES.length];
       const platform = platformRotation[platformIdx % platformRotation.length];
       existing.add(`${date} ${time}`);
@@ -2235,7 +2241,7 @@ class SocialAgencyRuntime {
         },
         {
           role: "user",
-          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ 18:30 + สุดสัปดาห์ 1 ช่อง 11:00)\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nมุมคอนเทนต์ให้หมุนเวียน: ${CONTENT_ANGLES.join(" / ")}\nแพลตฟอร์มส่วนใหญ่ใช้ demo แล้วสลับ facebook/instagram/line บ้าง\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
+          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ 18:30 + สุดสัปดาห์ 1 ช่อง 11:00)\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nกระจายสินค้าให้ครบทุกตัวก่อนซ้ำ (ห้ามใช้สินค้าเดิมซ้ำถ้ายังมีตัวที่ไม่ได้ใช้)\nมุมคอนเทนต์ให้หมุนเวียน: ${CONTENT_ANGLES.join(" / ")}\nแพลตฟอร์มส่วนใหญ่ใช้ demo แล้วสลับ facebook/instagram/line บ้าง\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
         },
       ],
       { json: true, temperature: 0.5, maxTokens: 1400, timeoutMs: 240000 }

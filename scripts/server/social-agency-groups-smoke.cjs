@@ -849,6 +849,32 @@ async function main() {
     assert.ok(fs.existsSync(path.join(root, "app", "outputs", "sa-products", clientId, withImg.sku + ".jpg")));
   });
 
+  const nextMonth = (() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+  const fbClient = rt.getState().clients.find((c) => c.id === clientId);
+  const fb = rt._buildFallbackSlots(fbClient, nextMonth, 3);
+  check("fallback covers every product before repeat", () => {
+    const skus = fbClient.products.map((p) => p.sku);
+    assert.ok(fb.length >= skus.length, `slots ${fb.length} >= products ${skus.length}`);
+    const first = fb.slice(0, skus.length).map((s) => s.sku);
+    assert.deepStrictEqual([...first].sort(), [...skus].sort());
+    const counts = {};
+    for (const s of fb) counts[s.sku] = (counts[s.sku] || 0) + 1;
+    const vals = Object.values(counts);
+    assert.ok(Math.max(...vals) - Math.min(...vals) <= 1, "balanced: " + JSON.stringify(counts));
+  });
+
+  rt.createCalendarEntry(clientId, { entry: { date: `${nextMonth}-05`, time: "18:30", platform: "demo", sku, angle: "เปิดตัวสินค้า" } });
+  rt.createCalendarEntry(clientId, { entry: { date: `${nextMonth}-06`, time: "18:30", platform: "demo", sku, angle: "เปิดตัวสินค้า" } });
+  const fb2 = rt._buildFallbackSlots(rt.getState().clients.find((c) => c.id === clientId), nextMonth, 3);
+  check("fallback prioritizes least-used products", () => {
+    assert.ok(fb2.length > 0);
+    assert.notStrictEqual(fb2[0].sku, sku, "heavy product goes last");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

@@ -206,6 +206,15 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
   const slots = preview?.slots || [];
   const selectedCount = useMemo(() => [...selected.values()].filter(Boolean).length, [selected]);
   const toggle = (i) => setSelected((m) => new Map(m).set(i, !m.get(i)));
+  const productMix = useMemo(() => {
+    const m = {};
+    slots.forEach((s, i) => {
+      if (!selected.get(i)) return;
+      const k = s.productName || s.sku || "?";
+      m[k] = (m[k] || 0) + 1;
+    });
+    return Object.entries(m).map(([k, n]) => `${k}×${n}`).join(" ");
+  }, [slots, selected]);
   return (
     <Modal
       title={`ตัวอย่างแผนเดือน ${thaiMonthLabel(preview?.month)}`}
@@ -214,7 +223,7 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
       wide
       footer={
         <>
-          <span className="sa-muted">เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}</span>
+          <span className="sa-muted">เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}{productMix ? ` · สินค้า: ${productMix}` : ""}</span>
           <div style={{ flex: 1 }} />
           <button className="sa-btn ghost" onClick={onClose}>ยกเลิก</button>
           <button
