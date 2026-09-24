@@ -119,35 +119,6 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     }
   };
 
-  const fetchAndImportAll = async () => {
-    if (!clientId || urlBusy || !url.trim()) return;
-    setUrlBusy(true);
-    setError("");
-    setNote("");
-    try {
-      const data = await postJson(`/api/social-agency/products/import-url?clientId=${encodeURIComponent(clientId)}`, {
-        url: url.trim(),
-        maxPages: 5,
-      });
-      const found = data.products || [];
-      if (!found.length) {
-        setNote("ไม่เจอสินค้าในเว็บนี้ — ลองวางลิงก์หน้าสินค้าโดยตรง");
-        return;
-      }
-      const res = await postJson(`/api/social-agency/products/import?clientId=${encodeURIComponent(clientId)}`, {
-        products: found,
-      });
-      setUrlFound(null);
-      setUrlSel([]);
-      setNote(`นำเข้า ${res.count} รายการ ✓${res.skipped ? ` (ข้าม ${res.skipped})` : ""}`);
-      onChanged?.();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setUrlBusy(false);
-    }
-  };
-
   const scan = async () => {
     if (!clientId || scanBusy || !folder.trim()) return;
     setScanBusy(true);
@@ -315,6 +286,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             />
             <button className="sa-btn primary sm" disabled={urlBusy || !url.trim()} onClick={fetchUrl}>
               {urlBusy ? "กำลังดึง…" : "ดึงข้อมูล"}
+            </button>
+            <button className="sa-btn sm" disabled={urlBusy || !url.trim()} onClick={fetchAndImportAll} title="ดึงแล้วนำเข้าทุกรายการทันที ไม่ต้องติ๊กเลือก">
+              {urlBusy ? "กำลังนำเข้า…" : "⚡ ดึง+นำเข้าทั้งหมด"}
             </button>
           </div>
         </div>
