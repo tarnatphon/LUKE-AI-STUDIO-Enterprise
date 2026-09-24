@@ -306,6 +306,7 @@ async function main() {
 
     const fives = [];
     const silentFours = [];
+    const unexplainedServers = [];
     const timeouts = [];
     const tally = {};
     const requiredErrors = new Map();
@@ -355,6 +356,19 @@ async function main() {
           parsed && typeof parsed === "object" && typeof parsed.error === "string" && parsed.error.trim();
         if (!explained) silentFours.push(`${route.method} ${route.url}`);
       }
+
+      // 501 and up are allowed — "not available on this platform" is an
+      // answer, not a fault — but only when the app explains itself. A bare
+      // status code from this range is a fault wearing a permission slip.
+      if (status >= 501 && status !== 500) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(body);
+        } catch {}
+        const explained =
+          parsed && typeof parsed === "object" && typeof parsed.error === "string" && parsed.error.trim();
+        if (!explained) unexplainedServers.push(`${route.method} ${route.url} → ${status}`);
+      }
     }
 
     const swept = Object.values(tally).reduce((total, count) => total + count, 0);
@@ -371,6 +385,12 @@ async function main() {
       silentFours.length === 0,
       `Every 404 explains itself, so none of them is a route that does not exist.${
         silentFours.length ? ` Unexplained: ${silentFours.join(", ")}` : ""
+      }`
+    );
+    assert(
+      unexplainedServers.length === 0,
+      `Every 501-and-up that is not a 500 explains why it is unavailable.${
+        unexplainedServers.length ? ` Unexplained: ${unexplainedServers.join(", ")}` : ""
       }`
     );
     assert(
