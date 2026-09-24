@@ -4252,7 +4252,20 @@ function transcribeWavBuffer(buffer, options = {}) {
       return;
     }
     const model = resolveSpeechModel(options.model || speechSettings.model);
-    const language = String(options.language || speechSettings.language || "auto");
+    // language reaches the whisper command line as the value of -l, and it
+    // comes from the request (or settings saved by one). A value that starts
+    // with "-" would be read by the child as another option; control
+    // characters would corrupt the process's own error output. Constrain,
+    // don't fail: fall back to auto.
+    const languageRaw = String(
+      options.language || speechSettings.language || "auto"
+    ).trim();
+    const language =
+      languageRaw &&
+      !languageRaw.startsWith("-") &&
+      !/[\u0000-\u001f]/.test(languageRaw)
+        ? languageRaw
+        : "auto";
     const sourceFilename = safeOutputName(options.filename || "recording.wav") || "recording.wav";
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const tempBase = path.join(TRANSCRIPTIONS, `.speech-${stamp}-${sourceFilename.replace(/\.[^.]+$/, "")}`);
@@ -26636,8 +26649,17 @@ function getHardwareHash() {
 }
 
 async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
+  // useCase reaches the llmfit command line as the value of --use-case, and
+  // it comes from the query string. A value that starts with "-" would be
+  // read by the child as another option, not as a value. Constrain it to a
+  // plain word; anything else falls back to the default rather than failing
+  // the request.
+  const safeUseCase =
+    typeof useCase === "string" && /^[A-Za-z][A-Za-z0-9-]{0,31}$/.test(useCase)
+      ? useCase
+      : "chat";
   const hardwareHash = getHardwareHash();
-  const cacheKey = `${hardwareHash}:${useCase}:${limit}`;
+  const cacheKey = `${hardwareHash}:${safeUseCase}:${limit}`;
   
   const cached = cachedLlmfitResults.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp) < 3600000) { // 1 hour cache
@@ -26672,7 +26694,7 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
   try {
     const result = spawnSync(llmfitPath, [
       "recommend", "--json", "--limit", String(limit),
-      "--use-case", useCase, "--force-runtime", "llamacpp"
+      "--use-case", safeUseCase, "--force-runtime", "llamacpp"
     ], {
       encoding: "utf8",
       timeout: 8000,
