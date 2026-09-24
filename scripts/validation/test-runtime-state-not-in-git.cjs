@@ -109,9 +109,9 @@ function gitTrackedDirt() {
 /**
  * Every path git is tracking under a directory.
  *
- * The copies under releases/ are frozen snapshots of past builds, so this is
- * scoped to the live app folder: an anchored `app/runtime-state/` ignore rule
- * does not reach them, and they are meant to stay in git.
+ * Scoped to the live app folder. `releases/` used to be the deliberate
+ * exception — the frozen snapshots kept their state on purpose — and is
+ * untracked now, which is asserted separately below.
  */
 function gitTrackedUnder(directory) {
   const { spawnSync } = require("node:child_process");
@@ -266,10 +266,14 @@ async function main() {
       "the whole directory is ignored, so the app writing it cannot break a pull",
     );
 
-    // The frozen build snapshots are the deliberate exception.
+    // releases/ was the deliberate exception: the frozen snapshots carried
+    // their state in git on purpose. They are build output — the release
+    // scripts already pass --exclude "releases/" when packaging and nothing
+    // reads the folder — so 1,148 files and 42 MB of old builds came out.
+    // sync.sh keeps the local copies across an update.
     assert(
-      gitTrackedUnder("releases").some((entry) => entry.includes("app/runtime-state/")),
-      "the release snapshots under releases/ still carry their state, as intended",
+      gitTrackedUnder("releases").length === 0,
+      "nothing under releases/ is tracked, so no snapshot state rides along in git",
     );
 
     const shipped = JSON.parse(fs.readFileSync(policyFile, "utf8"));

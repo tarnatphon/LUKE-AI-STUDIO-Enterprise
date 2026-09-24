@@ -19,8 +19,14 @@ app/llm-backend/mac/
 app/speech-backend/mac/
 
 # Releases & zip archives
-releases/**/*.zip
-releases/**/*.tar.gz
+#
+# `releases/` is what the release scripts produce, and they already
+# --exclude "releases/" when packaging. Nothing reads it at runtime; every copy
+# under it was a frozen snapshot of an old build, five of them a stale
+# serve.cjs. Keeping 1,148 files and 42 MB of that in git made every clone and
+# every sync carry it. sync.sh copies the folder aside before updating and puts
+# back anything the update removed, so untracking it costs nothing locally.
+releases/
 backups/
 
 # Dependencies
@@ -66,8 +72,7 @@ runtime-logs/
 # first use, and all 119 validation suites pass with the folder empty, so
 # nothing is lost by keeping the whole directory out of git.
 #
-# This is anchored at the repository root: the copies under releases/ are
-# frozen snapshots of past builds and stay tracked.
+# This is anchored at the repository root.
 app/runtime-state/
 
 # macOS metadata and local workspace junk

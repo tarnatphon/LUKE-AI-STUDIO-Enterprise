@@ -49,6 +49,13 @@ PROTECTED=(
   "app/runtime-state/text-chat/model-feedback.json"
 )
 
+# Whole folders that are yours. `releases/` holds what the release scripts
+# produce — build output, not source — so it is untracked and ignored, and an
+# update that stops tracking it would delete every copy on this machine.
+PROTECTED_DIRS=(
+  "releases"
+)
+
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 if [[ -z "$BRANCH" || "$BRANCH" == "HEAD" ]]; then
   echo "  [sync] detached HEAD; check out your branch first." >&2
@@ -75,6 +82,14 @@ for entry in "${PROTECTED[@]}"; do
       exit 1
     fi
 
+    backed_up=$((backed_up + 1))
+  fi
+done
+
+for entry in "${PROTECTED_DIRS[@]}"; do
+  if [[ -d "$entry" ]]; then
+    mkdir -p "$BACKUP_DIR/$entry"
+    cp -Rp "$entry/." "$BACKUP_DIR/$entry/"
     backed_up=$((backed_up + 1))
   fi
 done
@@ -159,6 +174,20 @@ for entry in "${PROTECTED[@]}"; do
       cp -p "$BACKUP_DIR/$entry" "$entry"
       restored=$((restored + 1))
     fi
+  fi
+done
+
+for entry in "${PROTECTED_DIRS[@]}"; do
+  if [[ -d "$BACKUP_DIR/$entry" ]]; then
+    mkdir -p "$entry"
+    # Put back what the update removed, without overwriting what it brought.
+    while IFS= read -r -d '' relative; do
+      if [[ ! -e "$entry/$relative" ]]; then
+        mkdir -p "$entry/$(dirname "$relative")"
+        cp -p "$BACKUP_DIR/$entry/$relative" "$entry/$relative"
+        restored=$((restored + 1))
+      fi
+    done < <(cd "$BACKUP_DIR/$entry" && find . -type f -print0 | sed -z 's|^\./||')
   fi
 done
 
