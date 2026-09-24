@@ -1,5 +1,6 @@
 import { TEXT_MODEL_LIBRARY } from "../lib/text-model-library.mjs";
 import { getSliderStyle } from "../lib/slider-style.mjs";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
@@ -2153,7 +2154,8 @@ function ModelManager({
                       style={{ height: "36px", marginTop: "auto" }}
                       onClick={() => {
                         if (model.actionType === "open-page") {
-                          window.open(model.pageUrl, "_blank", "noopener,noreferrer");
+                          const targetUrl = safeExternalUrl(model.pageUrl);
+                          if (targetUrl) window.open(targetUrl, "_blank", "noopener,noreferrer");
                           return;
                         }
                         if (model.actionType === "connect-cloud") {
@@ -2171,7 +2173,7 @@ function ModelManager({
                       <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? "View Official Model" : installed ? "Downloaded" : downloading ? "Downloading" : needsProjector ? "Download Vision File" : "Download"}</span>
                     </button>
                     <a
-                      href={model.pageUrl || model.url}
+                      href={safeExternalUrl(model.pageUrl) || safeExternalUrl(model.url) || undefined}
                       target="_blank"
                       rel="noreferrer"
                       style={{

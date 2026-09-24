@@ -8,6 +8,7 @@ import WorkGithubPanel from "./WorkGithubPanel";
 import ProjectMemoryPanel, { createWorkCheckpoint, getProjectMemory } from "./ProjectMemoryPanel";
 import ModelArenaPanel from "./ModelArenaPanel";
 import { expandJsonAnswer, looksLikeInstructionEcho, splitAnswerBlocks, terminalCommandLines } from "../lib/work-answer-blocks.mjs";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
 import { isWorkReadyModel, recommendWorkModel } from "../lib/text-model-library.mjs";
 import {
   ZIP_MAX_BYTES,
@@ -3352,7 +3353,7 @@ function TextChat({
                             {message.webSources.map((source, sourceIndex) => (
                               <a
                                 key={`${source.url}-${sourceIndex}`}
-                                href={source.url}
+                                href={safeExternalUrl(source.url) || undefined}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{ color: "var(--md-sys-color-primary)", textDecoration: "none", overflowWrap: "anywhere" }}
@@ -3755,8 +3756,12 @@ function parseInlineMarkdown(text) {
     if (part.startsWith("[") && part.includes("](") && part.endsWith(")")) {
       const match = part.match(/\[(.*?)\]\((.*?)\)/);
       if (match) {
+        // Model output, not app code: a link in it is a value to check, not a
+        // command to obey. javascript: and friends become plain text.
+        const href = safeExternalUrl(match[2]);
+        if (!href) return <span key={idx}>{match[1]}</span>;
         return (
-          <a key={idx} href={match[2]} target="_blank" rel="noopener noreferrer" style={{ color: "var(--md-sys-color-primary)", textDecoration: "underline" }}>
+          <a key={idx} href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--md-sys-color-primary)", textDecoration: "underline" }}>
             {match[1]}
           </a>
         );

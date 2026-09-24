@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
   MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock,
@@ -235,7 +236,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
       )}
 
       {product?.sourceUrl && (
-        <a className="sa-source-link" href={product.sourceUrl} target="_blank" rel="noreferrer">
+        <a className="sa-source-link" href={safeExternalUrl(product.sourceUrl) || undefined} target="_blank" rel="noreferrer">
           <ExternalLink size={13} /> หลักฐานสินค้าที่ตรวจแล้ว
         </a>
       )}
