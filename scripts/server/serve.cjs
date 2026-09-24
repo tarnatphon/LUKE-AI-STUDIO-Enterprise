@@ -7107,8 +7107,18 @@ function startModelDownload(url, overrideFilename = null, targetDir = MODELS, ki
 
           if (destPath.toLowerCase().endsWith(".zip")) {
             try {
-              const { execSync } = require("child_process");
-              execSync(`unzip -o "${destPath}" -d "${path.dirname(destPath)}"`, { stdio: "ignore" });
+              const { spawnSync } = require("child_process");
+              // An argument array, never a shell. The old form interpolated
+              // destPath into a command string, and execSync with a string
+              // always goes through /bin/sh — so a filename carrying a quote or
+              // $(...) became a command. Nothing can reach it today only
+              // because every caller happens to check the extension first.
+              const unzipResult = spawnSync(
+                "unzip",
+                ["-o", destPath, "-d", path.dirname(destPath)],
+                { stdio: "ignore" }
+              );
+              if (unzipResult.error) throw unzipResult.error;
               fs.unlinkSync(destPath);
             } catch(err) {
               console.error("Failed to unzip", err);
