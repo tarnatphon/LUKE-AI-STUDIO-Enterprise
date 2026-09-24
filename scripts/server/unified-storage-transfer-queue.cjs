@@ -2,7 +2,26 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+function expandHome(value) {
+  const text =
+    String(value || "");
+
+  if (text === "~") {
+    return os.homedir();
+  }
+
+  if (text.startsWith("~/")) {
+    return path.join(
+      os.homedir(),
+      text.slice(2)
+    );
+  }
+
+  return path.resolve(text);
+}
 
 function createId(prefix) {
   return (
@@ -554,7 +573,24 @@ class UnifiedStorageTransferQueue {
     };
   }
 
-  async processJob(job) {
+  syncJobIntoState(state, job) {
+    const entry = (
+      state.jobs ||
+      []
+    ).find(
+      (item) =>
+        item.id === job.id
+    );
+
+    if (entry) {
+      Object.assign(
+        entry,
+        job
+      );
+    }
+  }
+
+  async processJob(job, state) {
     job.status =
       "checking";
 
@@ -566,9 +602,12 @@ class UnifiedStorageTransferQueue {
 
     job.error = null;
 
-    const state =
-      this.readState();
-
+    // `state` is the snapshot the loop picked the job out of, so `job` is one
+    // of its members by reference. A freshly-read snapshot would carry a
+    // different copy of the job: every status change would be written to one
+    // object while the other stayed "queued" on disk, and the loop would pick
+    // the same job again on every pass — a 100% CPU spin with the job stuck
+    // at attempts 0. Measured: four identical errors in four seconds.
     state.activeJobId =
       job.id;
 
@@ -763,9 +802,17 @@ class UnifiedStorageTransferQueue {
         job.verified =
           true;
       } else {
+        // The provider settings carry "~" paths the way the config files
+        // write them. This is the only place they reach a filesystem write —
+        // unexpanded, path.join turned them into a literal folder named "~"
+        // under the server's working directory, and the files landed there
+        // instead of under the user's home. The mount check above expands;
+        // the write had to as well.
         const rootPath =
-          provider.settings
-            ?.rootPath;
+          expandHome(
+            provider.settings
+              ?.rootPath
+          );
 
         if (!rootPath) {
           const error =
@@ -856,6 +903,11 @@ class UnifiedStorageTransferQueue {
       const latestState =
         this.readState();
 
+      this.syncJobIntoState(
+        latestState,
+        job
+      );
+
       latestState.activeJobId =
         null;
 
@@ -920,6 +972,11 @@ class UnifiedStorageTransferQueue {
         const latestState =
           this.readState();
 
+        this.syncJobIntoState(
+          latestState,
+          job
+        );
+
         latestState.activeJobId =
           null;
 
@@ -954,7 +1011,8 @@ class UnifiedStorageTransferQueue {
         );
 
         return this.processJob(
-          currentJob
+          currentJob,
+          afterWait
         );
       }
 
@@ -971,6 +1029,11 @@ class UnifiedStorageTransferQueue {
 
       const latestState =
         this.readState();
+
+      this.syncJobIntoState(
+        latestState,
+        job
+      );
 
       latestState.activeJobId =
         null;
@@ -1086,7 +1149,8 @@ class UnifiedStorageTransferQueue {
         }
 
         await this.processJob(
-          nextJob
+          nextJob,
+          state
         );
       }
     } finally {

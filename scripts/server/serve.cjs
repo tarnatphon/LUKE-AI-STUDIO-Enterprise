@@ -7397,6 +7397,54 @@ function readBody(req) {
   });
 }
 
+// Storage routes take absolute paths straight from the request body, and there
+// are 71 of them. Measured before this gate:
+//
+//   POST /api/storage/lifecycle/plan   {"rootPath":"/etc"}
+//     → 200, an inventory of 238 files and 1,437,305 bytes
+//   POST /api/storage/archive/request  {"sourcePath":"/etc/passwd"}
+//     → 200, the file read and its sha256 returned
+//
+// Nothing was gated at all. Until the CORS fix earlier any page the user
+// visited could have asked for that; now it takes the app's own origin, but the
+// rule this app runs on is that confinement comes first. One check here covers
+// every route, because every one of them reads its body through this function.
+const STORAGE_PATH_FIELDS = [
+  "rootPath",
+  "sourcePath",
+  "destinationPath",
+  "sourceArchivePath",
+  "path",
+  "defaultLocation",
+];
+
+function storageAllowedRoots() {
+  const roots = [ROOT, os.tmpdir()];
+  try {
+    const policy = (readRuntimeDependencyCatalog() || {}).storagePolicy || {};
+    const external = expandRuntimeHomePath(policy.externalVolumeRoot || "");
+    if (external) roots.push(external);
+  } catch (_) {}
+  return roots.filter(Boolean).map((entry) => path.resolve(entry));
+}
+
+function storagePathViolation(body) {
+  if (!body || typeof body !== "object") return null;
+  const roots = storageAllowedRoots();
+  for (const field of STORAGE_PATH_FIELDS) {
+    const value = body[field];
+    if (typeof value !== "string" || !value.trim()) continue;
+    // A relative value is resolved against the route's own base by the route.
+    if (!value.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value)) continue;
+    const resolved = path.resolve(value);
+    const inside = roots.some(
+      (root) => resolved === root || resolved.startsWith(root + path.sep)
+    );
+    if (!inside) return { field, value, roots };
+  }
+  return null;
+}
+
 async function readJsonBody(req, res) {
   try {
     return await readBody(req);
@@ -8431,11 +8479,11 @@ function readJsonRequestBody(req, limitBytes = 1048576) {
         return;
       }
 
+      let parsed;
+
       try {
-        resolve(
-          JSON.parse(
-            Buffer.concat(chunks).toString("utf8")
-          )
+        parsed = JSON.parse(
+          Buffer.concat(chunks).toString("utf8")
         );
       } catch {
         const error = new Error(
@@ -8444,7 +8492,28 @@ function readJsonRequestBody(req, limitBytes = 1048576) {
 
         error.statusCode = 400;
         reject(error);
+        return;
       }
+
+      // Kept out of the try above: a failure here is not invalid JSON, and
+      // reporting it as such would send anyone looking in the wrong direction.
+      if (
+        String(req.url || "").split("?")[0].startsWith("/api/storage/")
+      ) {
+        const violation = storagePathViolation(parsed);
+
+        if (violation) {
+          const error = new Error(
+            `${violation.field} has to be inside the app folder or the external drive.`
+          );
+
+          error.statusCode = 403;
+          reject(error);
+          return;
+        }
+      }
+
+      resolve(parsed);
     });
 
     req.on("error", reject);

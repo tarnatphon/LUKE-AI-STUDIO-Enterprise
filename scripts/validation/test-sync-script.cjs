@@ -72,16 +72,17 @@ function main() {
     git(user, ["config", "user.email", "user@example.invalid"]);
     git(user, ["config", "user.name", "user"]);
 
-    // One commit behind, which is the ordinary state of a machine that has been
-    // used since the last update.
-    git(user, ["reset", "--hard", "--quiet", "HEAD~1"]);
+    // The user stays on the origin's HEAD, and the simulated update below is
+    // what makes them one commit behind — the ordinary state of a machine that
+    // has been used since the last update.
     const behind = git(user, ["rev-parse", "--short", "HEAD"]);
 
-    // The clone carries the committed sync.sh, and the reset above would
-    // overwrite it, so this comes after. It has to test the file that is
-    // actually on disk, including edits that have not been committed yet —
-    // otherwise the suite keeps passing no matter what is done to the script it
-    // claims to be checking.
+    // The update being applied must not itself change sync.sh: git refuses to
+    // fast-forward over a locally modified file, and the copy below is what
+    // makes the script under test the one that runs — the file actually on
+    // disk, including edits that have not been committed yet. A reset to
+    // HEAD~1 instead would put a whole generation of sync.sh into the update
+    // range and fail for that reason, which tests git, not the script.
     fs.copyFileSync(path.join(root, "sync.sh"), path.join(user, "sync.sh"));
 
     // Chat history the way the app writes it. Untracked, like the real thing.
