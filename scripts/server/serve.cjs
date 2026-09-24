@@ -10167,11 +10167,28 @@ function writeJsonFileAtomic(filePath, value) {
     }
   );
 
+  const serialized =
+    JSON.stringify(value, null, 2) + "\n";
+
+  // Writing identical content is a no-op. A settings save that changed
+  // nothing must not rewrite the file: the app runs from a git checkout,
+  // and a rewrite of a tracked config is what turns an ordinary save into
+  // a dirty file that the next update then refuses to merge over.
+  try {
+    if (
+      fs.existsSync(filePath) &&
+      fs.readFileSync(filePath, "utf8") ===
+        serialized
+    ) {
+      return value;
+    }
+  } catch (_) {}
+
   const temporaryPath = `${filePath}.tmp`;
 
   fs.writeFileSync(
     temporaryPath,
-    JSON.stringify(value, null, 2) + "\n",
+    serialized,
     "utf8"
   );
 
@@ -10179,6 +10196,8 @@ function writeJsonFileAtomic(filePath, value) {
     temporaryPath,
     filePath
   );
+
+  return value;
 }
 
 function readTextModelCatalog() {
@@ -26909,12 +26928,71 @@ async function routeWorkTurnToCloud(req, res, body) {
     const runtimeDir = path.join(ROOT, "app", "runtimes", "image-to-video");
     const installedPath = path.join(runtimeDir, "installed.json");
     const statusPath = path.join(runtimeDir, "install-status.json");
-    let state = { state: fs.existsSync(installedPath) ? "ready" : "not-installed", installed: fs.existsSync(installedPath) };
-    try { if (fs.existsSync(statusPath)) state = { ...state, ...JSON.parse(fs.readFileSync(statusPath, "utf8")) }; } catch (_) {}
-    if (fs.existsSync(installedPath)) {
-      try { state.manifest = JSON.parse(fs.readFileSync(installedPath, "utf8")); state.installed = true; if (state.state !== "installing") state.state = "ready"; } catch (_) {}
+    const venvPythonPath =
+      process.platform === "win32"
+        ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
+        : path.join(runtimeDir, "venv", "bin", "python");
+
+    // The record files describe the install as it happened on whichever
+    // computer wrote them. A checkout that was installed elsewhere carries
+    // those records into every clone, so they can explain but never decide:
+    // the filesystem on this machine decides.
+    const runtimePresent = fs.existsSync(venvPythonPath);
+
+    let record = {};
+    try {
+      if (fs.existsSync(statusPath)) {
+        record =
+          JSON.parse(fs.readFileSync(statusPath, "utf8")) || {};
+      }
+    } catch (_) {}
+
+    if (record.state === "installing") {
+      return json(res, 200, {
+        ok: true,
+        state: "installing",
+        installed: false,
+        step: record.step || "",
+        message:
+          record.message ||
+          "Installation is running.",
+      });
     }
-    return json(res, 200, { ok: true, ...state });
+
+    if (runtimePresent) {
+      const state = {
+        state: "ready",
+        installed: true,
+        step: record.step || "Complete",
+        message:
+          record.message ||
+          "Image-to-Video is installed and ready.",
+      };
+      try {
+        if (fs.existsSync(installedPath)) {
+          state.manifest = JSON.parse(
+            fs.readFileSync(installedPath, "utf8")
+          );
+        }
+      } catch (_) {}
+      return json(res, 200, { ok: true, ...state });
+    }
+
+    return json(res, 200, {
+      ok: true,
+      state: "not-installed",
+      installed: false,
+      message:
+        "Image-to-Video is not installed on this computer.",
+      // The record files may still claim an install from another computer;
+      // saying so out loud keeps the answer explainable instead of silent.
+      ...(record.state
+        ? {
+            recordedState: record.state,
+            staleRecord: true,
+          }
+        : {}),
+    });
   }
 
   // POST /api/capabilities/image-to-video/install

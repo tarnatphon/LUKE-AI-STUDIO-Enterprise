@@ -37,6 +37,18 @@ node_modules_mac/
 venv/
 __pycache__/
 
+# The image-to-video installer's record of this machine's install.
+#
+# Both files were tracked, so two things that a checkout must never do
+# happened: every clone inherited a "ready" record pointing at another
+# computer's python, and an install on this machine dirtied two tracked
+# files that the next update then refused to merge over. The app writes
+# them during installation and reads them tolerantly (missing means
+# "not installed here"), so nothing is lost by keeping them out of git.
+# sync.sh carries a user's local copy through the transition.
+app/runtimes/image-to-video/installed.json
+app/runtimes/image-to-video/install-status.json
+
 # Outputs, caches & logs
 app/outputs/
 app/cache/

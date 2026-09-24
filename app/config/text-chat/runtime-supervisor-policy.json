@@ -3,5 +3,27 @@
     "terminateOnlyOwnedProcess": true,
     "allowShellCommand": false,
     "writePidToState": true
+  },
+  "enabled": true,
+  "supervision": {
+    "autoStart": false,
+    "autoRestart": true,
+    "healthCheckIntervalMs": 5000,
+    "healthCheckTimeoutMs": 3000,
+    "maximumConsecutiveFailures": 5,
+    "suspendDurationMs": 600000
+  },
+  "restart": {
+    "initialDelayMs": 1000,
+    "maximumDelayMs": 30000,
+    "backoffMultiplier": 2
+  },
+  "runtime": {
+    "healthUrl": "",
+    "workingDirectory": ".",
+    "command": "",
+    "arguments": [],
+    "environment": {},
+    "inheritEnvironment": true
   }
 }

@@ -16,6 +16,8 @@
  *   the script exits 0
  *   the user's chat history is byte-identical afterwards
  *   running it a second time reports "already up to date" and changes nothing
+ *   an update that stops tracking a protected file deletes it from the
+ *     working tree and the script puts the user's copy back
  *   run somewhere that is not a checkout, it says so and exits 1
  */
 
@@ -151,6 +153,122 @@ function main() {
     assert(
       fs.readFileSync(historyFile, "utf8") === history,
       "and still has not touched the chat history."
+    );
+
+    // ── Scenario 2: an update that stops tracking a protected file ─────────
+    //
+    // The image-to-video install record was tracked, so a local install
+    // modified it, and the update that moves it out of git would delete it
+    // from the working tree. The user's copy is theirs, not the machine's:
+    // the script has to carry it through, byte for byte.
+    //
+    // Built on the last commit that still tracked the files, so the scenario
+    // holds whether or not the real branch has made that move yet.
+
+    const recordFile = "app/runtimes/image-to-video/install-status.json";
+    const recordFile2 = "app/runtimes/image-to-video/installed.json";
+
+    const origin2 = path.join(temp, "origin2");
+    const user2 = path.join(temp, "user2");
+
+    execFileSync(
+      "git",
+      ["clone", "--quiet", "--branch", branch, "--single-branch", root, origin2],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    git(origin2, ["config", "user.email", "sync-test@example.invalid"]);
+    git(origin2, ["config", "user.name", "sync test"]);
+
+    execFileSync(
+      "git",
+      ["clone", "--quiet", "--branch", branch, "--single-branch", origin2, user2],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    git(user2, ["config", "user.email", "user@example.invalid"]);
+    git(user2, ["config", "user.name", "user"]);
+
+    // The user is one step behind, on the last commit that still tracked the
+    // records. The branch keeps its real name, so the script's fetch lands
+    // the way it does on a real single-branch clone.
+    const lastDeletion = git(user2, ["log", "--format=%H", "--diff-filter=D", "-n", "1", "--", recordFile]).split("\n").filter(Boolean);
+    const base = lastDeletion.length > 0
+      ? git(user2, ["rev-parse", `${lastDeletion[0]}^`])
+      : git(user2, ["rev-parse", "HEAD"]);
+
+    git(user2, ["reset", "--hard", "--quiet", base]);
+    git(origin2, ["reset", "--hard", "--quiet", base]);
+
+    // The app writes these during an install; simulate a machine that has
+    // installed the runtime since the last update.
+    const userRecord = JSON.stringify({
+      state: "ready",
+      step: "Complete",
+      message: "Image-to-Video is installed and ready.",
+      manifest: { capability: "image-to-video", installed: true, python: "/Volumes/ai/app/runtimes/image-to-video/venv/bin/python" },
+    }, null, 2);
+    const userRecord2 = JSON.stringify({
+      capability: "image-to-video",
+      installed: true,
+      python: "/Volumes/ai/app/runtimes/image-to-video/venv/bin/python",
+    }, null, 2);
+    fs.writeFileSync(path.join(user2, recordFile), userRecord);
+    fs.writeFileSync(path.join(user2, recordFile2), userRecord2);
+
+    fs.copyFileSync(path.join(root, "sync.sh"), path.join(user2, "sync.sh"));
+
+    // The update: stop tracking both records and ignore them.
+    git(origin2, ["rm", "--cached", "--quiet", recordFile, recordFile2]);
+    fs.appendFileSync(
+      path.join(origin2, ".gitignore"),
+      "\napp/runtimes/image-to-video/installed.json\napp/runtimes/image-to-video/install-status.json\n"
+    );
+    git(origin2, ["add", ".gitignore"]);
+    git(origin2, ["commit", "--quiet", "-m", "stop tracking the image-to-video install record"]);
+    const recordAhead = git(origin2, ["rev-parse", "--short", "HEAD"]);
+
+    const transition = run(user2, "bash", ["sync.sh"]);
+
+    console.log(
+      transition.stdout
+        .split("\n")
+        .filter((line) => line.includes("[sync]"))
+        .map((line) => `    ${line.trim()}`)
+        .join("\n")
+    );
+
+    assert(transition.status === 0, `The untrack transition exits 0 (got ${transition.status}).`);
+    assert(
+      git(user2, ["rev-parse", "--short", "HEAD"]) === recordAhead,
+      `The checkout fast-forwarded past the untrack (${recordAhead}).`
+    );
+    assert(
+      fs.readFileSync(path.join(user2, recordFile), "utf8") === userRecord,
+      "The user's install record is byte-identical afterwards."
+    );
+    assert(
+      fs.readFileSync(path.join(user2, recordFile2), "utf8") === userRecord2,
+      "The user's install manifest is byte-identical afterwards."
+    );
+    // The test's own script copy is the one file it is allowed to leave
+    // modified. Match on the path, because the helper trims the status
+    // output and would eat the line's leading space.
+    const dirt = git(user2, ["status", "--porcelain"])
+      .split("\n")
+      .filter(Boolean)
+      .filter((line) => !line.trimEnd().endsWith("sync.sh"));
+
+    assert(
+      dirt.length === 0,
+      dirt.length > 0
+        ? `the checkout is clean apart from the test's own script copy - it is not (${dirt.join(", ")})`
+        : "and the checkout is clean apart from the test's own script copy: the records are local, ignored, and accounted for."
+    );
+
+    const transitionAgain = run(user2, "bash", ["sync.sh"]);
+    assert(transitionAgain.status === 0, `Running the transition again exits 0 (got ${transitionAgain.status}).`);
+    assert(
+      fs.readFileSync(path.join(user2, recordFile), "utf8") === userRecord,
+      "and the record is still exactly the user's."
     );
 
     // Run somewhere that is not a checkout at all.

@@ -43,10 +43,15 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # Yours, not the machine's. These are never discarded: if the update would
-# remove or replace one, the copy taken below is put back afterwards.
+# remove or replace one, the copy taken below is put back afterwards. The
+# image-to-video record files are this machine's install record; they are
+# untracked now, and the copy taken below is what carries a local install
+# through the update that stops tracking them.
 PROTECTED=(
   "app/runtime-state/text-chat/conversations.json"
   "app/runtime-state/text-chat/model-feedback.json"
+  "app/runtimes/image-to-video/installed.json"
+  "app/runtimes/image-to-video/install-status.json"
 )
 
 # Whole folders that are yours. `releases/` holds what the release scripts
@@ -124,13 +129,30 @@ fi
 # copy from step 1 - leaving them modified would let them block step 4 just as
 # easily as any other file, and step 5 puts their contents back.
 
-discarded=0
+state_files=()
 while IFS= read -r -d '' file; do
   [[ -n "$file" ]] || continue
-  if [[ -n "$(git status --porcelain -- "$file" 2>/dev/null)" ]]; then
-    git checkout -- "$file" >/dev/null 2>&1 && discarded=$((discarded + 1))
-  fi
+  state_files+=("$file")
 done < <(git ls-files -z -- app/runtime-state 2>/dev/null)
+
+# A protected file that is still tracked - the middle of the untrack
+# transition - blocks the merge the same way any modified file would, so it
+# is discarded here too, on the strength of the checked copy from step 1.
+for entry in "${PROTECTED[@]}"; do
+  if git ls-files --error-unmatch -- "$entry" >/dev/null 2>&1; then
+    state_files+=("$entry")
+  fi
+done
+
+discarded=0
+if [[ "${#state_files[@]}" -gt 0 ]]; then
+  for file in "${state_files[@]}"; do
+    [[ -n "$file" ]] || continue
+    if [[ -n "$(git status --porcelain -- "$file" 2>/dev/null)" ]]; then
+      git checkout -- "$file" >/dev/null 2>&1 && discarded=$((discarded + 1))
+    fi
+  done
+fi
 
 if [[ "$discarded" -gt 0 ]]; then
   echo "  [sync] discarded local changes in $discarded state file(s) - the app rewrites these on boot"

@@ -25,16 +25,31 @@ function writeJsonAtomic(
     }
   );
 
+  const serialized =
+    JSON.stringify(
+      value,
+      null,
+      2
+    ) + "\n";
+
+  // Identical content is a no-op, so saving the policy unchanged never
+  // rewrites a tracked file and never dirties the checkout.
+  try {
+    if (
+      fs.existsSync(filePath) &&
+      fs.readFileSync(filePath, "utf8") ===
+        serialized
+    ) {
+      return;
+    }
+  } catch (_) {}
+
   const temporaryPath =
     `${filePath}.tmp-${process.pid}-${Date.now()}`;
 
   fs.writeFileSync(
     temporaryPath,
-    JSON.stringify(
-      value,
-      null,
-      2
-    ) + "\n",
+    serialized,
     "utf8"
   );
 
