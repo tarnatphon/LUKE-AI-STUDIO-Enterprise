@@ -2443,6 +2443,89 @@ class SocialAgencyRuntime {
     return entry;
   }
 
+  async _llmRepurposeCaption({ caption, from, to, product, angle, pillar, tone }) {
+    const raw = await this._llmChat(
+      [
+        { role: "system", content: `คุณเป็นแอดมินเพจโซเชียลไทย\n${this._toneGuide(tone)}\n${this._platformGuide(to)}\nกฎเหล็ก:\n- คงใจความและข้อเท็จจริงของต้นฉบับทุกประการ ปรับแค่ hook/ความยาว/แฮชแท็กให้เหมาะกับแพลตฟอร์มปลายทาง\n- ห้ามอ้างราคา จำนวนสต๊อก หรือข้อมูลที่ไม่มีในต้นฉบับ\n- ตอบกลับเฉพาะเนื้อโพสต์เท่านั้น ไม่มีคำอธิบาย` },
+        { role: "user", content: `โพสต์ต้นฉบับ (จาก ${from}):\n${caption}\n\nสินค้า: ${product?.name || ""}\nมุม: ${angle}${pillar ? ` (เสา: ${pillar})` : ""}\n\nดัดแปลงโพสต์นี้สำหรับแพลตฟอร์มปลายทาง` },
+      ],
+      { temperature: 0.8, maxTokens: 700, timeoutMs: 300000 }
+    );
+    const text = String(raw || "").trim().replace(/^["“]+|["”]+$/g, "");
+    if (!text || text.length < 20) throw new Error("โมเดลแตกแพลตฟอร์มไม่สำเร็จ");
+    return text;
+  }
+
+  // ── repurpose (P2): 1 entry -> per-platform children ──
+  async repurposeEntry(clientId, entryId, body = {}) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    const caption = String(entry.caption || "").trim();
+    if (caption.length < 20) throw new Error("ต้นฉบับยังไม่มีแคปชัน (รัน workflow ให้ได้แคปชันก่อน ค่อยแตกแพลตฟอร์ม)");
+    const product = client.products.find((p) => p.sku === entry.sku) || client.products[0];
+    if (!product) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า");
+    let targets = Array.isArray(body.platforms)
+      ? body.platforms.filter((p) => PLATFORMS.includes(p) && p !== entry.platform)
+      : PLATFORMS.filter((p) => p !== entry.platform);
+    targets = [...new Set(targets)].slice(0, 3);
+    if (!targets.length) throw new Error("ไม่มีแพลตฟอร์มปลายทางให้แตก");
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? String(body.date) : entry.date;
+    const taken = new Set((client.calendar || []).map((e) => `${e.date} ${e.time}`));
+    const parts = String(entry.time || "18:30").split(":");
+    let cursor = Number(parts[0]) * 60 + Number(parts[1]);
+    if (!Number.isFinite(cursor)) cursor = 18 * 60 + 30;
+    const now = new Date().toISOString();
+    const templateVersions = this.buildPlatformVersions({ caption, product, angle: entry.angle, tone: client.tone }).versions;
+    const created = [];
+    for (const platform of targets) {
+      let text = "";
+      let source = "template";
+      try {
+        text = await this._llmRepurposeCaption({ caption, from: entry.platform, to: platform, product, angle: entry.angle, pillar: entry.pillar, tone: client.tone });
+        source = "llm";
+      } catch (err) {
+        console.warn("[social-agency] repurpose fallback to template:", err.message);
+        text = templateVersions[platform] || caption;
+      }
+      cursor += 60;
+      let time = null;
+      for (let i = 0; i < 12; i++) {
+        const t = cursor + i * 30;
+        const hh = String(Math.floor(t / 60) % 24).padStart(2, "0");
+        const mm = String(t % 60).padStart(2, "0");
+        if (!taken.has(`${date} ${hh}:${mm}`)) { time = `${hh}:${mm}`; cursor = t; break; }
+      }
+      if (!time) continue;
+      taken.add(`${date} ${time}`);
+      const vs = scoreViralCaption(text, platform);
+      const record = {
+        id: newId("cal"),
+        date,
+        time,
+        platform,
+        sku: product.sku,
+        productName: product.name,
+        angle: entry.angle,
+        pillar: entry.pillar || "",
+        brief: entry.brief || "",
+        caption: String(text).slice(0, 4000),
+        captionManual: true,
+        captionSource: "repurpose-" + source,
+        repurposedFrom: entry.id,
+        hook: String(text).split("\n").map((s) => s.trim()).find(Boolean) || "",
+        viralScore: { score: vs.score, breakdown: vs.breakdown, gradedAt: now },
+        status: "planned",
+        createdAt: now,
+        updatedAt: now,
+      };
+      client.calendar.push(record);
+      created.push(record);
+    }
+    if (!created.length) throw new Error("หาช่วงเวลาว่างในวันนั้นไม่ได้");
+    entry.repurposedAt = now;
+    this._write(state);
+    return { created, count: created.length, from: entryId };
+  }
+
   approveEntry(clientId, entryId) {
     const { client, entry } = this._findEntry(clientId, entryId);
     if (entry.inFlight) throw new Error("รายการนี้กำลังรันอยู่");
@@ -3783,6 +3866,11 @@ class SocialAgencyRuntime {
       }
       if (match && method === "DELETE") {
         return json(res, 200, { ok: true, ...this.deletePillar(clientId, decodeURIComponent(match[1])) });
+      }
+      if (pathname === "/api/social-agency/repurpose" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        return json(res, 201, { ok: true, ...(await this.repurposeEntry(clientId || body.clientId, body.entryId, body)) });
       }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();

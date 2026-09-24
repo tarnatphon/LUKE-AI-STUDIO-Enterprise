@@ -709,6 +709,44 @@ async function main() {
     assert.ok(!rt.listPillars(clientId).some((p) => p.id === pId));
   });
 
+  const rsrc = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(9), time: "10:00", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+  rt.updateCalendarEntry(clientId, rsrc.id, { caption: "ใครกำลังมองหากระเป๋ากล้อง หยุดเลื่อนก่อน 10 วินาทีนะ 📷\nรุ่น CAM-009 ใส่เลนส์ได้ 3 ตัว ผ้ากันน้ำ ซิป YKK ทนๆ เลย\nทักแชทสอบถามได้ครับ มีแค่ 20 ใบ\n#กระเป๋ากล้อง #camerabag #ของมันต้องมี" });
+  const rep = await rt.repurposeEntry(clientId, rsrc.id, {});
+  check("repurpose creates linked children with instant scores", () => {
+    assert.strictEqual(rep.count, 3);
+    assert.deepStrictEqual(rep.created.map((e) => e.platform).sort(), ["demo", "instagram", "line"]);
+    for (const c of rep.created) {
+      assert.strictEqual(c.repurposedFrom, rsrc.id);
+      assert.strictEqual(c.captionManual, true);
+      assert.strictEqual(c.angle, rsrc.angle);
+      assert.ok(c.caption && c.caption.length >= 20, "child has caption");
+      assert.ok(c.viralScore && Number.isFinite(c.viralScore.score), "child scored");
+      assert.strictEqual(c.date, rsrc.date);
+    }
+    assert.strictEqual(new Set(rep.created.map((e) => e.time)).size, 3, "distinct times");
+  });
+
+  const bare = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(10), time: "10:00", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+  await assert.rejects(() => rt.repurposeEntry(clientId, bare.id, {}), /แคปชัน/);
+  check("repurpose rejects caption-less source", () => {
+    assert.ok(!rt.getState().clients.find((c) => c.id === clientId).calendar.some((e) => e.repurposedFrom === bare.id), "no children created");
+  });
+
+  const repRoute = await call("POST", "/api/social-agency/repurpose", { clientId, entryId: rsrc.id, platforms: ["line"] });
+  check("POST /repurpose filters platforms via route", () => {
+    assert.strictEqual(repRoute.statusCode, 201);
+    assert.strictEqual(repRoute.body.count, 1);
+    assert.strictEqual(repRoute.body.created[0].platform, "line");
+    assert.strictEqual(repRoute.body.created[0].captionSource, "repurpose-template");
+  });
+
+  const repDate = await call("POST", "/api/social-agency/repurpose", { clientId, entryId: rsrc.id, platforms: ["instagram", "demo"], date: bangkokToday(11) });
+  check("POST /repurpose honors date override", () => {
+    assert.strictEqual(repDate.statusCode, 201);
+    assert.strictEqual(repDate.body.count, 2);
+    assert.ok(repDate.body.created.every((e) => e.date === bangkokToday(11)), "children on override date");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

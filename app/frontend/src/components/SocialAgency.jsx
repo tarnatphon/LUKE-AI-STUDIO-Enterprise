@@ -127,6 +127,16 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   }, [state, refresh]);
 
+  const handleRepurpose = useCallback(async (entryId) => {
+    if (!state?.activeClientId) return;
+    try {
+      await postJson("/api/social-agency/repurpose", { clientId: state.activeClientId, entryId });
+      refresh();
+    } catch (err) {
+      console.warn("[social-agency] repurpose failed:", err.message);
+    }
+  }, [state, refresh]);
+
   const activeClient = useMemo(
     () => state?.clients?.find((c) => c.id === state.activeClientId) || null,
     [state]
@@ -475,6 +485,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           generatingVideo={generatingVideo}
           videoGenError={videoGenError}
           onUseHook={handleUseHook}
+          onRepurpose={handleRepurpose}
           onOpenChat={onOpenChat}
         />
       )}

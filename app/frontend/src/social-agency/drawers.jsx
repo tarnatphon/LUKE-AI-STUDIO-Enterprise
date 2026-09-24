@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
-  MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock,
+  MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock, Share2,
 } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
@@ -49,8 +49,9 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onRepurpose, busy }) {
   const [date, setDate] = useState(entry.date);
+  const [repurposing, setRepurposing] = useState(false);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
   const run = useMemo(
@@ -86,6 +87,15 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           {onOpenStyle && (
             <button className="sa-btn ghost" onClick={() => onOpenStyle(entry.id)}><Copy size={14} /> ฉบับต่อแพลตฟอร์ม</button>
           )}
+          {entry.caption && onRepurpose && (
+            <button
+              className="sa-btn ghost"
+              disabled={busy || repurposing}
+              onClick={async () => { setRepurposing(true); try { await onRepurpose(entry.id); } finally { setRepurposing(false); } }}
+            >
+              <Share2 size={14} /> {repurposing ? "กำลังแตก…" : "แตกทุกแพลตฟอร์ม"}
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           <button
             className="sa-icon-btn danger"
@@ -103,6 +113,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <span className={`sa-platform-chip ${PLATFORM_META[entry.platform]?.cls}`}>{PLATFORM_META[entry.platform]?.label}</span>
         <span className="sa-muted">{entry.angle}</span>
         {entry.pillar && <span className="sa-pill">{entry.pillar}</span>}
+        {entry.repurposedFrom && <span className="sa-muted">แตกจาก {String(entry.repurposedFrom).slice(-6)}</span>}
         {entry.late && <span className="sa-pill late">รันช้า</span>}
         {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>
