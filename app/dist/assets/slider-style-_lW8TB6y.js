@@ -1,1 +1,0 @@
-import{sn as e}from"./index-Bt2ah-t8.js";var t=e(`cloud-download`,[[`path`,{d:`M12 13v8l-4-4`,key:`1f5nwf`}],[`path`,{d:`m12 21 4-4`,key:`1lfcce`}],[`path`,{d:`M4.393 15.269A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.436 8.284`,key:`ui1hmy`}]]),n=(e,t,n)=>{let r=Number(e),i=Number(t),a=Number(n);return{"--value":`${a===i?0:(r-i)/(a-i)*100}%`}};export{t as n,n as t};
