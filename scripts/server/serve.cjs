@@ -1271,6 +1271,10 @@ if (!fs.existsSync(TTS_MODELS)) {
   fs.mkdirSync(TTS_MODELS, { recursive: true });
 }
 const TTS_OUTPUTS = path.join(ROOT, "app", "tts-outputs");
+const SA_PRODUCTS_DIR = path.join(ROOT, "app", "outputs", "sa-products");
+if (!fs.existsSync(SA_PRODUCTS_DIR)) {
+  fs.mkdirSync(SA_PRODUCTS_DIR, { recursive: true });
+}
 if (!fs.existsSync(TTS_OUTPUTS)) {
   fs.mkdirSync(TTS_OUTPUTS, { recursive: true });
 }
@@ -29105,6 +29109,21 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     fs.readFile(filePath, (err, data) => {
       if (err) return json(res, 500, { error: err.message });
       res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+      res.end(data);
+    });
+    return;
+  }
+
+  if (req.url.startsWith("/sa-products/") && req.method === "GET") {
+    const rel = decodeURIComponent(req.url.replace(/^\/sa-products\//, "").split("?")[0] || "");
+    const filePath = path.join(SA_PRODUCTS_DIR, rel);
+    if (!rel || !pathInside(filePath, SA_PRODUCTS_DIR) || !fs.existsSync(filePath)) {
+      return json(res, 404, { ok: false, error: "Product image not found" });
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    fs.readFile(filePath, (err, data) => {
+      if (err) return json(res, 500, { ok: false, error: err.message });
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Access-Control-Allow-Origin": "*" });
       res.end(data);
     });
     return;

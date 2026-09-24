@@ -790,6 +790,65 @@ async function main() {
     assert.ok(pf.suggestions.some((s) => s.includes("ขายตรง")), "suggests best pillar");
   });
 
+  const prod = rt.addProduct(clientId, { name: "สินค้าทดสอบ", category: "ทดสอบ", price: "199" });
+  check("product CRUD rejects duplicate sku", () => {
+    assert.ok(prod.sku);
+    assert.throws(() => rt.addProduct(clientId, { name: "ซ้ำ", sku: prod.sku }), /SKU/);
+    const upd = rt.updateProduct(clientId, prod.sku, { price: "259" });
+    assert.strictEqual(upd.price, "259");
+    const del = rt.deleteProduct(clientId, prod.sku);
+    assert.strictEqual(del.deleted, prod.sku);
+    assert.ok(!rt.listProducts(clientId).some((p) => p.sku === prod.sku));
+  });
+
+  check("web extract parses JSON-LD products", () => {
+    const html = `<html><head><title>ร้านทดสอบ</title><script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", name: "กระเป๋าผ้า", description: "ผ้าแคนวาส", image: "https://x.test/bag.jpg", offers: { price: "1290", priceCurrency: "THB" } })}</script></head><body><h1>ร้านทดสอบ</h1></body></html>`;
+    const found = SocialAgencyRuntime._extractProducts(html, "https://x.test/p1");
+    assert.strictEqual(found.length, 1);
+    assert.strictEqual(found[0].name, "กระเป๋าผ้า");
+    assert.strictEqual(found[0].price, "1290");
+  });
+
+  const http = require("http");
+  const srv = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    if (req.url === "/product-p2") res.end(`<html><head><title>P2</title></head><body><h1>หมวก</h1><p>฿199</p></body></html>`);
+    else res.end(`<html><head><title>ร้าน</title></head><body><h1>เสื้อยืด</h1><p>฿350</p><a href="/product-p2">หมวก</a></body></html>`);
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const siteBase = `http://127.0.0.1:${srv.address().port}`;
+  let imp;
+  try {
+    imp = await rt.importUrl(clientId, { url: siteBase + "/", maxPages: 3 });
+  } finally {
+    srv.close();
+  }
+  check("import-url extracts + discovers same-site", () => {
+    assert.ok(imp.products.some((p) => p.name === "เสื้อยืด"), JSON.stringify(imp.products));
+    assert.ok(imp.products.some((p) => p.name === "หมวก"), "discovered p2");
+    assert.strictEqual(imp.fetched, 2);
+  });
+
+  const scanDir = fs.mkdtempSync(path.join(os.tmpdir(), "sa-scan-"));
+  fs.writeFileSync(path.join(scanDir, "กระเป๋าผ้า-1290.jpg"), "fake-bytes");
+  fs.writeFileSync(path.join(scanDir, "ราคาสินค้า.csv"), "ชื่อ,ราคา,หมวด\nเสื้อยืด,350,เสื้อผ้า\nหมวก,199,เครื่องประดับ\n");
+  const scan = await rt.scanFolder(clientId, { path: scanDir });
+  check("scan-folder finds images + csv rows", () => {
+    assert.strictEqual(scan.images.length, 1);
+    assert.strictEqual(scan.images[0].name, "กระเป๋าผ้า");
+    assert.strictEqual(scan.images[0].price, "1290");
+    assert.strictEqual(scan.rows.length, 2);
+    assert.strictEqual(scan.rows[0].name, "เสื้อยืด");
+  });
+
+  const impRes = rt.importProducts(clientId, { products: [...scan.images, ...scan.rows] });
+  check("import batch adds products + copies image", () => {
+    assert.strictEqual(impRes.count, 3);
+    const withImg = rt.listProducts(clientId).find((p) => p.name === "กระเป๋าผ้า");
+    assert.ok(withImg.image.startsWith("/sa-products/"), withImg.image);
+    assert.ok(fs.existsSync(path.join(root, "app", "outputs", "sa-products", clientId, withImg.sku + ".jpg")));
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

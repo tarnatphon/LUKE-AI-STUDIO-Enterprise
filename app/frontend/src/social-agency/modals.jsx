@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Sparkles, Plus, CalendarPlus, AlertTriangle } from "lucide-react";
+import { X, Sparkles, Plus, CalendarPlus, AlertTriangle, Dices } from "lucide-react";
 import { PLATFORM_META, TONES, ANGLES, thaiMonthLabel, dayNumber, weekdayTh } from "./lib.js";
 
 export function Modal({ title, icon, onClose, children, footer, wide }) {
@@ -160,9 +160,20 @@ export function NewEntryModal({ date, products, pillars = [], onClose, onCreate 
       </div>
       <label className="sa-field">
         <span>สินค้า</span>
-        <select value={form.sku} onChange={set("sku")}>
-          {products.map((p) => <option key={p.sku} value={p.sku}>{p.name} ({p.sku})</option>)}
-        </select>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={form.sku} onChange={set("sku")} style={{ flex: 1 }}>
+            {products.map((p) => <option key={p.sku} value={p.sku}>{p.name} ({p.sku})</option>)}
+          </select>
+          <button
+            type="button"
+            className="sa-btn ghost sm"
+            title="สุ่มสินค้า"
+            disabled={products.length < 2}
+            onClick={() => setForm((f) => ({ ...f, sku: products[Math.floor(Math.random() * products.length)].sku }))}
+          >
+            <Dices size={14} /> สุ่ม
+          </button>
+        </div>
       </label>
       <label className="sa-field">
         <span>แพลตฟอร์ม</span>

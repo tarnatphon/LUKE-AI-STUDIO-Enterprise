@@ -8,11 +8,13 @@ import RunsTab from "../social-agency/RunsTab.jsx";
 import OverviewTab from "../social-agency/OverviewTab.jsx";
 import StyleTab from "../social-agency/StyleTab.jsx";
 import InsightsTab from "../social-agency/InsightsTab.jsx";
+import ProductsTab from "../social-agency/ProductsTab.jsx";
 import { EntryDrawer, ConnectorsDrawer } from "../social-agency/drawers.jsx";
 import { AddClientModal, ConfirmModal } from "../social-agency/modals.jsx";
 
 const TABS = [
   { id: "overview", label: "ภาพรวม" },
+  { id: "products", label: "สินค้า" },
   { id: "calendar", label: "ปฏิทิน" },
   { id: "workflow", label: "Workflow" },
   { id: "runs", label: "อนุมัติ & การรัน" },
@@ -396,6 +398,13 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               activeClient={activeClient}
               refreshKey={refreshSeq}
               onOpenEntry={(id) => setDrawerEntryId(id)}
+            />
+          )}
+          {tab === "products" && (
+            <ProductsTab
+              activeClient={activeClient}
+              refreshKey={refreshSeq}
+              onChanged={refresh}
             />
           )}
           {tab === "calendar" && (

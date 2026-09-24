@@ -51,6 +51,7 @@ const NODE_DEFS = [
 const MAX_RUNS_PER_CLIENT = 40;
 const MAX_FEWSHOTS_PER_CLIENT = 20;
 const MAX_PILLARS_PER_CLIENT = 8;
+const MAX_PRODUCTS_PER_CLIENT = 200;
 const PLATFORM_VERSION_RULES = {
   demo: { maxChars: 2200, maxHashtags: 5 },
   facebook: { maxChars: 2000, maxHashtags: 4 },
@@ -363,6 +364,141 @@ function pickPillar(pillars, counts, { pillar, angle, seed = "" } = {}) {
     ? angle
     : chosen.angles[hashSeed("angle:" + seed) % chosen.angles.length];
   return { pillar: chosen.name, angle: useAngle };
+}
+
+// ── P5: product import helpers (pure) ──
+function extractProductsFromHtml(html, pageUrl) {
+  const src = String(html || "");
+  const out = [];
+  const seen = new Set();
+  const push = (p) => {
+    const name = String(p.name || "").trim().slice(0, 120);
+    if (!name || seen.has(name.toLowerCase())) return;
+    seen.add(name.toLowerCase());
+    out.push({
+      name,
+      description: String(p.description || "").trim().slice(0, 500),
+      price: p.price !== undefined && p.price !== null && p.price !== "" ? String(p.price).slice(0, 32) : "",
+      currency: String(p.currency || "").slice(0, 8),
+      image: String(p.image || "").slice(0, 500),
+      sourceUrl: String(p.sourceUrl || pageUrl || "").slice(0, 500),
+    });
+  };
+  // 1. JSON-LD Product blocks
+  const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  const items = [];
+  while ((m = ldRe.exec(src)) && items.length < 20) {
+    try {
+      const data = JSON.parse(m[1]);
+      const flat = Array.isArray(data) ? data : [data];
+      for (const d of flat) {
+        if (!d || typeof d !== "object") continue;
+        if (d["@graph"]) items.push(...(Array.isArray(d["@graph"]) ? d["@graph"] : [d["@graph"]]));
+        else items.push(d);
+      }
+    } catch { /* ignore malformed blocks */ }
+  }
+  for (const d of items.slice(0, 20)) {
+    if (!d || typeof d !== "object") continue;
+    if (!/product/i.test(String(d["@type"] || ""))) continue;
+    const offers = Array.isArray(d.offers) ? d.offers[0] : d.offers || {};
+    const img = Array.isArray(d.image) ? d.image[0] : d.image;
+    push({ name: d.name, description: d.description, price: offers.price, currency: offers.priceCurrency, image: typeof img === "string" ? img : img?.url, sourceUrl: pageUrl });
+  }
+  // 2. meta fallback (single product guess)
+  if (!out.length) {
+    const meta = (prop) => {
+      const r = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i");
+      const mm = src.match(r);
+      return mm ? mm[1].trim() : "";
+    };
+    const title = (src.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || "";
+    const h1 = (src.match(/<h1[^>]*>([^<]+)<\/h1>/i) || [])[1] || "";
+    const name = meta("og:title") || h1.trim() || title.trim();
+    const priceM = src.match(/(?:฿|THB|บาท)\s?([\d,]+(?:\.\d{1,2})?)|([\d,]+(?:\.\d{1,2})?)\s?(?:฿|บาท)/i);
+    if (name) push({ name, description: meta("og:description") || meta("description"), price: priceM ? (priceM[1] || priceM[2]) : "", currency: "THB", image: meta("og:image"), sourceUrl: pageUrl });
+  }
+  return out;
+}
+
+function discoverProductLinks(html, pageUrl) {
+  const links = [];
+  const seen = new Set();
+  let origin = "";
+  try { origin = new URL(pageUrl).origin; } catch { return links; }
+  const re = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]{2,80})<\/a>/gi;
+  let m;
+  while ((m = re.exec(String(html || ""))) && links.length < 12) {
+    let abs = "";
+    try { abs = new URL(m[1], pageUrl).href; } catch { continue; }
+    if (!abs.startsWith(origin)) continue;
+    if (abs === pageUrl) continue;
+    if (!/\/(product|products|shop|item|items|goods|collection|p|sku|pd)[\/_-]|สินค้า|product-/i.test(abs)) continue;
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    links.push({ url: abs, hint: m[2].trim().slice(0, 80) });
+  }
+  return links;
+}
+
+function productNameFromFile(filename) {
+  const base = String(filename || "").replace(/\.[^.]+$/, "");
+  const clean = base.replace(/[_]+/g, " ").replace(/[-]{2,}/g, " ").replace(/\s+/g, " ").trim();
+  const pm = clean.match(/^(.*?)[- ](\d{2,7}(?:\.\d{1,2})?)$/);
+  if (pm && pm[1].trim()) return { name: pm[1].trim().slice(0, 120), price: pm[2] };
+  return { name: clean.slice(0, 120) || base.slice(0, 120), price: "" };
+}
+
+function splitCsvLine(line, sep) {
+  const cells = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else q = false;
+      } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === sep) { cells.push(cur.trim()); cur = ""; }
+    else cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function parseCsvText(text) {
+  const lines = String(text || "").split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) return [];
+  const head = lines[0];
+  const sep = (head.match(/;/g) || []).length > (head.match(/,/g) || []).length ? ";" : ",";
+  return lines.map((l) => splitCsvLine(l, sep));
+}
+
+function tableToProducts(table) {
+  if (!table || table.length < 2) return [];
+  const norm = (s) => String(s || "").trim().toLowerCase();
+  const map = { name: 0, price: 1, category: 2, detail: 3, sku: 4 };
+  let hasHeader = false;
+  (table[0] || []).forEach((c, i) => {
+    const h = norm(c);
+    if (/ชื่อ|สินค้า|name|product|title/.test(h)) { map.name = i; hasHeader = true; }
+    else if (/ราคา|price|amount/.test(h)) { map.price = i; hasHeader = true; }
+    else if (/หมวด|ประเภท|category|group/.test(h)) { map.category = i; hasHeader = true; }
+    else if (/รายละเอียด|detail|desc/.test(h)) { map.detail = i; hasHeader = true; }
+    else if (/sku|รหัส|code/.test(h)) { map.sku = i; hasHeader = true; }
+  });
+  const rows = hasHeader ? table.slice(1) : table;
+  const out = [];
+  for (const cells of rows.slice(0, 100)) {
+    const v = (i) => String(cells[i] ?? "").trim();
+    const name = v(map.name).slice(0, 120);
+    if (!name) continue;
+    out.push({ name, price: v(map.price).slice(0, 32), category: v(map.category).slice(0, 60), detail: v(map.detail).slice(0, 500), sku: v(map.sku).slice(0, 32) });
+  }
+  return out;
 }
 
 // THE built-in sample post template (Thai product-launch post).
@@ -1663,6 +1799,214 @@ class SocialAgencyRuntime {
       bottom: byEng.slice(-3).reverse(),
       suggestions: suggestions.slice(0, 3),
     };
+  }
+
+  // ── products (P5): CRUD + website/folder imports ──
+  listProducts(clientId) {
+    const { client } = this._resolveClient(clientId);
+    return [...(client.products || [])];
+  }
+
+  _newSku(client) {
+    for (let i = 0; i < 20; i++) {
+      const sku = `P-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+      if (!(client.products || []).some((p) => p.sku === sku)) return sku;
+    }
+    return `P-${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  addProduct(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const name = String(body.name || "").trim().slice(0, 120);
+    if (!name) throw new Error("ต้องกรอกชื่อสินค้า");
+    if ((client.products || []).length >= MAX_PRODUCTS_PER_CLIENT) throw new Error(`มีสินค้าได้สูงสุด ${MAX_PRODUCTS_PER_CLIENT} รายการต่อลูกค้า`);
+    let sku = String(body.sku || "").trim().slice(0, 32);
+    if (sku && !/^[A-Za-z0-9][A-Za-z0-9-_]{0,31}$/.test(sku)) throw new Error("SKU ใช้ได้แค่ตัวอักษร ตัวเลข - _");
+    if (sku && (client.products || []).some((p) => p.sku === sku)) throw new Error("มี SKU นี้อยู่แล้ว");
+    if (!sku) sku = this._newSku(client);
+    const product = {
+      sku,
+      name,
+      category: String(body.category || "").trim().slice(0, 60) || "สินค้า",
+      price: String(body.price || "").trim().slice(0, 32),
+      minimumOrder: String(body.minimumOrder || "").trim().slice(0, 60),
+      productionTime: String(body.productionTime || "").trim().slice(0, 60),
+      decoration: String(body.decoration || "").trim().slice(0, 120),
+      detail: String(body.detail || body.description || "").trim().slice(0, 500),
+      status: "verified-source",
+      sourceUrl: String(body.sourceUrl || "").trim().slice(0, 500),
+      image: String(body.image || "").trim().slice(0, 500),
+      createdAt: new Date().toISOString(),
+    };
+    client.products = [...(client.products || []), product];
+    this._write(state);
+    return product;
+  }
+
+  updateProduct(clientId, sku, body = {}) {
+    const { state, client } = this._resolveClient(clientId);
+    const product = (client.products || []).find((p) => p.sku === sku);
+    if (!product) throw new Error("ไม่พบสินค้านี้");
+    for (const [k, max] of [["name", 120], ["category", 60], ["price", 32], ["minimumOrder", 60], ["productionTime", 60], ["decoration", 120], ["detail", 500], ["sourceUrl", 500]]) {
+      if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
+    }
+    if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
+    this._write(state);
+    return product;
+  }
+
+  deleteProduct(clientId, sku) {
+    const { state, client } = this._resolveClient(clientId);
+    const before = (client.products || []).length;
+    client.products = (client.products || []).filter((p) => p.sku !== sku);
+    if (client.products.length === before) throw new Error("ไม่พบสินค้านี้");
+    const orphans = (client.calendar || []).filter((e) => e.sku === sku).length;
+    this._write(state);
+    return { deleted: sku, orphanEntries: orphans };
+  }
+
+  async _fetchHtml(url, timeoutMs) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) LUKE-AI-STUDIO/1.0" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return text.slice(0, 1500000);
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async importUrl(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const url = String(body.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) throw new Error("ลิงก์ต้องขึ้นต้นด้วย http(s)://");
+    const maxPages = clampNumber(body.maxPages, 1, 6, 5);
+    const html = await this._fetchHtml(url, 12000);
+    const products = extractProductsFromHtml(html, url);
+    let fetched = 1;
+    let failed = 0;
+    const links = discoverProductLinks(html, url).slice(0, maxPages - 1);
+    const extra = await Promise.allSettled(links.map((l) => this._fetchHtml(l.url, 8000)));
+    extra.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        fetched += 1;
+        for (const p of extractProductsFromHtml(r.value, links[i].url)) {
+          if (!products.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) products.push(p);
+        }
+      } else failed += 1;
+    });
+    try {
+      if (!client.website) {
+        client.website = new URL(url).origin;
+        this._write(state);
+      }
+    } catch { /* keep going */ }
+    return { origin: new URL(url).origin, products: products.slice(0, 20), fetched, failed };
+  }
+
+  async scanFolder(clientId, body = {}) {
+    this._resolveClient(clientId || body.clientId);
+    const raw = String(body.path || "").trim();
+    if (!raw) throw new Error("ต้องระบุ path โฟลเดอร์");
+    const dir = path.resolve(raw);
+    let stat = null;
+    try { stat = fs.statSync(dir); } catch { stat = null; }
+    if (!stat || !stat.isDirectory()) throw new Error("ไม่พบโฟลเดอร์นี้ (ตรวจสอบ path แล้วลองใหม่)");
+    const images = [];
+    const rows = [];
+    const errors = [];
+    const xlsxFiles = [];
+    let files = 0;
+    const imgExt = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+    const visit = (d, depth) => {
+      let names = [];
+      try { names = fs.readdirSync(d); } catch { return; }
+      for (const n of names) {
+        if (files >= 500) return;
+        if (n.startsWith(".")) continue;
+        const full = path.join(d, n);
+        let st = null;
+        try { st = fs.statSync(full); } catch { continue; }
+        if (st.isDirectory()) { if (depth < 1) visit(full, depth + 1); continue; }
+        files += 1;
+        const ext = path.extname(n).toLowerCase();
+        if (imgExt.has(ext) && st.size > 0 && st.size <= 30 * 1024 * 1024) {
+          const { name, price } = productNameFromFile(n);
+          images.push({ kind: "image", file: full, name: name || n, price, size: st.size });
+        } else if (ext === ".csv") {
+          try {
+            const table = parseCsvText(fs.readFileSync(full, "utf-8").slice(0, 500000));
+            for (const p of tableToProducts(table)) rows.push({ ...p, kind: "row", file: full });
+          } catch (err) { errors.push(`${n}: ${err.message}`); }
+        } else if (ext === ".xlsx" || ext === ".xls") {
+          xlsxFiles.push(full);
+        }
+      }
+    };
+    visit(dir, 0);
+    for (const f of xlsxFiles.slice(0, 5)) {
+      try {
+        let readXlsx = null;
+        try { readXlsx = require("read-excel-file/node"); }
+        catch { throw new Error("อ่าน xlsx ไม่ได้ — รัน npm install ใน scripts/server ก่อน (หรือใช้ .csv แทนได้เลย)"); }
+        const table = await readXlsx(f);
+        for (const p of tableToProducts(table)) rows.push({ ...p, kind: "row", file: f });
+      } catch (err) { errors.push(`${path.basename(f)}: ${err.message}`); }
+    }
+    return { path: dir, files, images: images.slice(0, 100), rows: rows.slice(0, 100), errors: errors.slice(0, 10) };
+  }
+
+  importProducts(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const items = Array.isArray(body.products) ? body.products.slice(0, 50) : [];
+    if (!items.length) throw new Error("ไม่มีสินค้าที่จะนำเข้า");
+    const imgDir = path.join(this.root, "app", "outputs", "sa-products", client.id);
+    const added = [];
+    let skipped = 0;
+    for (const item of items) {
+      const name = String(item?.name || "").trim().slice(0, 120);
+      if (!name) { skipped += 1; continue; }
+      if ((client.products || []).length >= MAX_PRODUCTS_PER_CLIENT) { skipped += 1; continue; }
+      let sku = String(item.sku || "").trim().slice(0, 32);
+      if (sku && !/^[A-Za-z0-9][A-Za-z0-9-_]{0,31}$/.test(sku)) sku = "";
+      if (sku && (client.products || []).some((p) => p.sku === sku)) { skipped += 1; continue; }
+      if (!sku) sku = this._newSku(client);
+      const product = {
+        sku,
+        name,
+        category: String(item.category || "").trim().slice(0, 60) || "สินค้า",
+        price: String(item.price || "").trim().slice(0, 32),
+        minimumOrder: "",
+        productionTime: "",
+        decoration: "",
+        detail: String(item.detail || item.description || "").trim().slice(0, 500),
+        status: "imported",
+        sourceUrl: String(item.sourceUrl || "").trim().slice(0, 500),
+        image: "",
+        createdAt: new Date().toISOString(),
+      };
+      const file = String(item.file || "");
+      if (item.kind === "image" && file) {
+        try {
+          const st = fs.statSync(file);
+          const ext = path.extname(file).toLowerCase();
+          if (st.isFile() && st.size > 0 && st.size <= 30 * 1024 * 1024 && [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) {
+            fs.mkdirSync(imgDir, { recursive: true });
+            const outExt = ext === ".jpeg" ? ".jpg" : ext;
+            fs.copyFileSync(file, path.join(imgDir, `${sku}${outExt}`));
+            product.image = `/sa-products/${client.id}/${sku}${outExt}`;
+          }
+        } catch { /* image optional */ }
+      } else if (item.image && /^https?:\/\//i.test(String(item.image))) {
+        product.image = String(item.image).slice(0, 500);
+      }
+      client.products = [...(client.products || []), product];
+      added.push(sku);
+    }
+    this._write(state);
+    return { added, count: added.length, skipped };
   }
 
   // ── local LLM bridge (injected by serve.cjs — same llama-server as Chat) ──
@@ -3938,6 +4282,41 @@ class SocialAgencyRuntime {
         if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
         return json(res, 201, { ok: true, ...(await this.repurposeEntry(clientId || body.clientId, body.entryId, body)) });
       }
+      if (pathname === "/api/social-agency/products" && method === "GET") {
+        return json(res, 200, { ok: true, products: this.listProducts(clientId) });
+      }
+      if (pathname === "/api/social-agency/products" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, product: this.addProduct(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/import-url" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...(await this.importUrl(clientId || body.clientId, body)) });
+        } catch (error) {
+          return fail(error, 502);
+        }
+      }
+      if (pathname === "/api/social-agency/products/scan-folder" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...(await this.scanFolder(clientId || body.clientId, body)) });
+        } catch (error) {
+          return fail(error, 400);
+        }
+      }
+      if (pathname === "/api/social-agency/products/import" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, ...this.importProducts(clientId || body.clientId, body) });
+      }
+      match = pathname.match(/^\/api\/social-agency\/products\/([^/]+)$/);
+      if (match && method === "PATCH") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, product: this.updateProduct(clientId || body.clientId, decodeURIComponent(match[1]), body) });
+      }
+      if (match && method === "DELETE") {
+        return json(res, 200, { ok: true, ...this.deleteProduct(clientId, decodeURIComponent(match[1])) });
+      }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, entry: this.createCalendarEntry(clientId || body.clientId, body) });
@@ -4109,6 +4488,7 @@ SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
 SocialAgencyRuntime._scoreViral = scoreViralCaption;
 SocialAgencyRuntime._templateHooks = buildTemplateHooks;
 SocialAgencyRuntime._pickPillar = pickPillar;
+SocialAgencyRuntime._extractProducts = extractProductsFromHtml;
 SocialAgencyRuntime._templateCaption = buildTemplateCaption;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };
