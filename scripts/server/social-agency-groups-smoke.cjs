@@ -666,6 +666,49 @@ async function main() {
     assert.strictEqual(ue.captionManual, true);
   });
 
+  const pillars0 = rt.listPillars(clientId);
+  check("pillar defaults backfilled", () => {
+    assert.strictEqual(pillars0.length, 3);
+    assert.deepStrictEqual(pillars0.map((p) => p.name), ["ขายตรง", "ให้ความรู้", "สร้างความเชื่อใจ"]);
+    assert.deepStrictEqual(pillars0.map((p) => p.weight), [2, 2, 1]);
+  });
+
+  const p1 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(7), time: "10:00", platform: "facebook", sku, angle: "เคล็ดลับการใช้งาน" } });
+  check("create assigns pillar containing the angle", () => {
+    assert.strictEqual(p1.pillar, "ให้ความรู้");
+    assert.strictEqual(p1.angle, "เคล็ดลับการใช้งาน");
+  });
+
+  const p2 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(8), time: "10:00", platform: "facebook", sku, pillar: "ขายตรง", angle: "เคล็ดลับการใช้งาน" } });
+  check("create corrects angle outside the chosen pillar", () => {
+    assert.strictEqual(p2.pillar, "ขายตรง");
+    assert.ok(["เปิดตัวสินค้า", "โปรโมชัน/ข้อเสนอ OEM"].includes(p2.angle), "angle coerced: " + p2.angle);
+  });
+
+  check("weighted least-used pillar pick", () => {
+    const r = SocialAgencyRuntime._pickPillar(pillars0, { "ขายตรง": 10, "ให้ความรู้": 0, "สร้างความเชื่อใจ": 0 }, { seed: "x" });
+    assert.notStrictEqual(r.pillar, "ขายตรง");
+    const r2 = SocialAgencyRuntime._pickPillar(pillars0, {}, { angle: "เรื่องจากลูกค้า", seed: "x" });
+    assert.strictEqual(r2.pillar, "สร้างความเชื่อใจ");
+    assert.strictEqual(r2.angle, "เรื่องจากลูกค้า");
+  });
+
+  const pAdd = await call("POST", "/api/social-agency/pillars", { clientId, name: "รีวิวลูกค้า", angles: ["เรื่องจากลูกค้า", "มุมผี"], weight: 3 });
+  assert.strictEqual(pAdd.statusCode, 201);
+  const pId = pAdd.body.pillar.id;
+  const pList = await call("GET", `/api/social-agency/pillars?clientId=${clientId}`);
+  const pPatch = await call("PATCH", `/api/social-agency/pillars/${pId}?clientId=${clientId}`, { weight: 5 });
+  const pDel = await call("DELETE", `/api/social-agency/pillars/${pId}?clientId=${clientId}`, {});
+  check("pillar CRUD routes + junk angles sanitized", () => {
+    assert.deepStrictEqual(pAdd.body.pillar.angles, ["เรื่องจากลูกค้า"]);
+    assert.strictEqual(pAdd.body.pillar.weight, 3);
+    assert.ok(pList.body.pillars.some((p) => p.id === pId));
+    assert.strictEqual(pPatch.statusCode, 200);
+    assert.strictEqual(pPatch.body.pillar.weight, 5);
+    assert.strictEqual(pDel.statusCode, 200);
+    assert.ok(!rt.listPillars(clientId).some((p) => p.id === pId));
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

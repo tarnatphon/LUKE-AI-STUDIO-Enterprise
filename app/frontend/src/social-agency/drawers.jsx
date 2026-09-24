@@ -102,6 +102,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <StatusPill status={entry.status} />
         <span className={`sa-platform-chip ${PLATFORM_META[entry.platform]?.cls}`}>{PLATFORM_META[entry.platform]?.label}</span>
         <span className="sa-muted">{entry.angle}</span>
+        {entry.pillar && <span className="sa-pill">{entry.pillar}</span>}
         {entry.late && <span className="sa-pill late">รันช้า</span>}
         {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>

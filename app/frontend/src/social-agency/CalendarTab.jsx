@@ -20,7 +20,7 @@ function Chip({ entry, onOpen, onDragStart }) {
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => onOpen(entry.id)}
-      title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName}`}
+      title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}`}
     >
       <span className="sa-chip-time">{entry.time}</span>
       <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
@@ -48,7 +48,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
       if (statusFilter !== "all" && entry.status !== statusFilter) return false;
       if (platformFilter !== "all" && entry.platform !== platformFilter) return false;
       if (needle) {
-        const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.id, entry.sku]
+        const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.pillar, entry.id, entry.sku]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -203,6 +203,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         <NewEntryModal
           date={newEntryDate}
           products={activeClient?.products || []}
+          pillars={activeClient?.pillars || []}
           onClose={() => setNewEntryDate(null)}
           onCreate={async (form) => {
             await onCreateEntry({ ...form, clientId: activeClient.id });

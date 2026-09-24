@@ -10,6 +10,10 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
   const [shotsError, setShotsError] = useState("");
   const [form, setForm] = useState({ platform: "facebook", angle: "", caption: "", note: "" });
   const [saving, setSaving] = useState(false);
+  const [pillars, setPillars] = useState([]);
+  const [pillarsError, setPillarsError] = useState("");
+  const [pform, setPform] = useState({ name: "", angles: [], weight: 1 });
+  const [psaving, setPsaving] = useState(false);
 
   const [entryId, setEntryId] = useState(initialEntryId || "");
   const [captionOverride, setCaptionOverride] = useState("");
@@ -37,6 +41,23 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
       })
       .catch((err) => {
         if (!cancelled) setShotsError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, refreshKey]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    api(`/api/social-agency/pillars?clientId=${encodeURIComponent(clientId)}`)
+      .then((data) => {
+        if (cancelled) return;
+        setPillars(data.pillars || []);
+        setPillarsError("");
+      })
+      .catch((err) => {
+        if (!cancelled) setPillarsError(err.message);
       });
     return () => {
       cancelled = true;
@@ -72,6 +93,47 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
     }
   };
 
+  const togglePAngle = (a) => setPform((f) => ({ ...f, angles: f.angles.includes(a) ? f.angles.filter((x) => x !== a) : [...f.angles, a] }));
+
+  const addPillar = async () => {
+    if (!clientId || psaving) return;
+    setPsaving(true);
+    setPillarsError("");
+    try {
+      const data = await postJson(`/api/social-agency/pillars?clientId=${encodeURIComponent(clientId)}`, {
+        name: pform.name.trim(),
+        angles: pform.angles,
+        weight: pform.weight,
+      });
+      setPillars((list) => [...list, data.pillar]);
+      setPform({ name: "", angles: [], weight: 1 });
+    } catch (err) {
+      setPillarsError(err.message);
+    } finally {
+      setPsaving(false);
+    }
+  };
+
+  const removePillar = async (id) => {
+    try {
+      await api(`/api/social-agency/pillars/${encodeURIComponent(id)}?clientId=${encodeURIComponent(clientId)}`, { method: "DELETE" });
+      setPillars((list) => list.filter((p) => p.id !== id));
+    } catch (err) {
+      setPillarsError(err.message);
+    }
+  };
+
+  const bumpWeight = async (p, d) => {
+    const w = Math.min(5, Math.max(1, (p.weight || 1) + d));
+    if (w === p.weight) return;
+    try {
+      const data = await postJson(`/api/social-agency/pillars/${encodeURIComponent(p.id)}?clientId=${encodeURIComponent(clientId)}`, { weight: w }, "PATCH");
+      setPillars((list) => list.map((x) => (x.id === p.id ? data.pillar : x)));
+    } catch (err) {
+      setPillarsError(err.message);
+    }
+  };
+
   const generate = async () => {
     if (!clientId || previewBusy) return;
     setPreviewBusy(true);
@@ -102,6 +164,59 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
 
   return (
     <div className="sa-style">
+      <section className="sa-style-card">
+        <header>
+          <Sparkles size={15} />
+          <b>เสาหลักคอนเทนต์ (Pillars)</b>
+          <span className="sa-muted">{pillars.length}/8 · กระจายมุมโพสต์อัตโนมัติตามน้ำหนัก</span>
+        </header>
+        {pillarsError && <p className="sa-error-banner">{pillarsError}</p>}
+        <div className="sa-style-form">
+          <div className="sa-style-row">
+            <input
+              value={pform.name}
+              onChange={(e) => setPform({ ...pform, name: e.target.value })}
+              placeholder="ชื่อเสาใหม่ (เช่น รีวิวลูกค้า)"
+            />
+            <select value={pform.weight} onChange={(e) => setPform({ ...pform, weight: Number(e.target.value) })} aria-label="น้ำหนัก">
+              {[1, 2, 3, 4, 5].map((w) => (
+                <option key={w} value={w}>น้ำหนัก {w}</option>
+              ))}
+            </select>
+          </div>
+          <div className="sa-style-row">
+            {ANGLES.map((a) => (
+              <label key={a} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="checkbox" checked={pform.angles.includes(a)} onChange={() => togglePAngle(a)} /> {a}
+              </label>
+            ))}
+          </div>
+          <div>
+            <button className="sa-btn primary sm" disabled={psaving || !pform.name.trim() || !pform.angles.length} onClick={addPillar}>
+              <Plus size={13} /> {psaving ? "กำลังบันทึก…" : "เพิ่มเสาหลัก"}
+            </button>
+          </div>
+        </div>
+        <ul className="sa-style-shots">
+          {pillars.map((p) => (
+            <li key={p.id} className="sa-style-shot">
+              <div className="sa-style-shot-head">
+                <b>{p.name}</b>
+                <span className="sa-muted">{(p.angles || []).join(" · ")}</span>
+                <span style={{ flex: 1 }} />
+                <button className="sa-icon-btn sm" title="ลดน้ำหนัก" onClick={() => bumpWeight(p, -1)}>−</button>
+                <span className="sa-muted">×{p.weight}</span>
+                <button className="sa-icon-btn sm" title="เพิ่มน้ำหนัก" onClick={() => bumpWeight(p, 1)}>+</button>
+                <button className="sa-icon-btn sm danger" title="ลบเสาหลัก" onClick={() => removePillar(p.id)}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {pillars.length === 0 && <p className="sa-muted">ยังไม่มีเสาหลัก — เพิ่ม 3-4 เสาเพื่อให้ปฏิทินกระจายมุมอัตโนมัติ</p>}
+      </section>
+
       <section className="sa-style-card">
         <header>
           <Sparkles size={15} />

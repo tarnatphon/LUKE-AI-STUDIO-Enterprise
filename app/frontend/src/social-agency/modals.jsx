@@ -107,13 +107,14 @@ export function AddClientModal({ onClose, onCreate }) {
   );
 }
 
-export function NewEntryModal({ date, products, onClose, onCreate }) {
+export function NewEntryModal({ date, products, pillars = [], onClose, onCreate }) {
   const [form, setForm] = useState({
     date,
     time: "18:30",
     platform: "demo",
     sku: products[0]?.sku || "",
     angle: ANGLES[0],
+    pillar: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -173,6 +174,13 @@ export function NewEntryModal({ date, products, onClose, onCreate }) {
         <span>มุมคอนเทนต์</span>
         <select value={form.angle} onChange={set("angle")}>
           {ANGLES.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </label>
+      <label className="sa-field">
+        <span>เสาหลัก (ว่าง = อัตโนมัติ)</span>
+        <select value={form.pillar} onChange={set("pillar")}>
+          <option value="">— เลือกอัตโนมัติตามน้ำหนัก —</option>
+          {pillars.map((p) => <option key={p.id} value={p.name}>{p.name} (×{p.weight})</option>)}
         </select>
       </label>
       {error && <p className="sa-form-error">{error}</p>}

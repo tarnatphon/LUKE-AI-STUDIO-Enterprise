@@ -50,6 +50,7 @@ const NODE_DEFS = [
 ];
 const MAX_RUNS_PER_CLIENT = 40;
 const MAX_FEWSHOTS_PER_CLIENT = 20;
+const MAX_PILLARS_PER_CLIENT = 8;
 const PLATFORM_VERSION_RULES = {
   demo: { maxChars: 2200, maxHashtags: 5 },
   facebook: { maxChars: 2000, maxHashtags: 4 },
@@ -313,6 +314,55 @@ function defaultSettings() {
     notify: false,
     weeklySummaryLine: false,
   };
+}
+
+// ── P3: per-client content pillars ──
+function defaultPillars() {
+  const now = new Date().toISOString();
+  return [
+    { id: "pl-sell", name: "ขายตรง", angles: ["เปิดตัวสินค้า", "โปรโมชัน/ข้อเสนอ OEM"], weight: 2, createdAt: now },
+    { id: "pl-teach", name: "ให้ความรู้", angles: ["เคล็ดลับการใช้งาน"], weight: 2, createdAt: now },
+    { id: "pl-trust", name: "สร้างความเชื่อใจ", angles: ["เบื้องหลังการผลิต", "เรื่องจากลูกค้า"], weight: 1, createdAt: now },
+  ];
+}
+
+function sanitizePillar(raw) {
+  const name = String(raw?.name || "").trim().slice(0, 40);
+  const angles = (Array.isArray(raw?.angles) ? raw.angles : []).filter((a) => CONTENT_ANGLES.includes(a));
+  return {
+    id: String(raw?.id || ""),
+    name,
+    angles: angles.length ? [...new Set(angles)] : [...CONTENT_ANGLES],
+    weight: clampNumber(raw?.weight, 1, 5, 1),
+    createdAt: raw?.createdAt || null,
+  };
+}
+
+// Pure core: least-used pillar (usage/weight), angle-aware. Shared by
+// createCalendarEntry + applyAutoPlan; exposed as _pickPillar for tests.
+function pickPillar(pillars, counts, { pillar, angle, seed = "" } = {}) {
+  const list = (pillars || []).map(sanitizePillar).filter((p) => p.name);
+  const pool = list.length ? list : defaultPillars();
+  const want = String(pillar || "").trim().toLowerCase();
+  let cands = want ? pool.filter((p) => p.name.toLowerCase() === want || p.id === pillar) : [...pool];
+  if (!cands.length) cands = [...pool];
+  if (CONTENT_ANGLES.includes(angle)) {
+    const hit = cands.filter((p) => p.angles.includes(angle));
+    if (hit.length) cands = hit;
+  }
+  let best = null;
+  let bestKey = null;
+  for (const p of cands) {
+    const usage = (counts[p.name] || 0) / p.weight;
+    const tie = hashSeed(seed + ":" + p.name) / 4294967296;
+    const key = usage + tie * 1e-6;
+    if (bestKey === null || key < bestKey) { best = p; bestKey = key; }
+  }
+  const chosen = best || pool[0];
+  const useAngle = CONTENT_ANGLES.includes(angle) && chosen.angles.includes(angle)
+    ? angle
+    : chosen.angles[hashSeed("angle:" + seed) % chosen.angles.length];
+  return { pillar: chosen.name, angle: useAngle };
 }
 
 // THE built-in sample post template (Thai product-launch post).
@@ -878,6 +928,10 @@ class SocialAgencyRuntime {
       if (!Array.isArray(client.workflowRuns)) client.workflowRuns = [];
       if (!Array.isArray(client.researcherRoles) || !client.researcherRoles.length) client.researcherRoles = defaultResearcherRoles();
       if (!Array.isArray(client.fewShots)) client.fewShots = [];
+      if (!Array.isArray(client.pillars) || !client.pillars.length) client.pillars = defaultPillars();
+      else client.pillars = client.pillars.map(sanitizePillar).filter((p) => p.name);
+      if (!client.pillars.length) client.pillars = defaultPillars();
+      for (const p of client.pillars) if (!p.id) p.id = newId("pl");
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
@@ -1252,6 +1306,75 @@ class SocialAgencyRuntime {
     return { deleted: shotId };
   }
 
+  // ── content pillars (P3) ──
+  listPillars(clientId) {
+    const { client } = this._resolveClient(clientId);
+    return [...(client.pillars || [])];
+  }
+
+  addPillar(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const name = String(body.name || "").trim().slice(0, 40);
+    if (!name) throw new Error("ต้องตั้งชื่อเสาหลัก");
+    if ((client.pillars || []).some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new Error("มีเสาหลักชื่อนี้อยู่แล้ว");
+    if ((client.pillars || []).length >= MAX_PILLARS_PER_CLIENT) throw new Error(`มีเสาหลักได้สูงสุด ${MAX_PILLARS_PER_CLIENT} เสาต่อลูกค้า`);
+    const pillar = {
+      ...sanitizePillar({ name, angles: body.angles, weight: body.weight }),
+      id: newId("pl"),
+      createdAt: new Date().toISOString(),
+    };
+    client.pillars = [...(client.pillars || []), pillar];
+    this._write(state);
+    return pillar;
+  }
+
+  updatePillar(clientId, pillarId, body = {}) {
+    const { state, client } = this._resolveClient(clientId);
+    const pillar = (client.pillars || []).find((p) => p.id === pillarId);
+    if (!pillar) throw new Error("ไม่พบเสาหลักนี้");
+    if (body.name !== undefined) {
+      const name = String(body.name || "").trim().slice(0, 40);
+      if (!name) throw new Error("ชื่อเสาหลักห้ามว่าง");
+      if ((client.pillars || []).some((p) => p.id !== pillarId && p.name.toLowerCase() === name.toLowerCase())) throw new Error("มีเสาหลักชื่อนี้อยู่แล้ว");
+      const oldName = pillar.name;
+      pillar.name = name;
+      for (const e of client.calendar || []) if (e.pillar === oldName) e.pillar = name;
+    }
+    if (body.angles !== undefined) {
+      const angles = (Array.isArray(body.angles) ? body.angles : []).filter((a) => CONTENT_ANGLES.includes(a));
+      if (!angles.length) throw new Error("เสาหลักต้องมีมุมคอนเทนต์อย่างน้อย 1 มุม");
+      pillar.angles = [...new Set(angles)];
+    }
+    if (body.weight !== undefined) pillar.weight = clampNumber(body.weight, 1, 5, pillar.weight);
+    this._write(state);
+    return pillar;
+  }
+
+  deletePillar(clientId, pillarId) {
+    const { state, client } = this._resolveClient(clientId);
+    const pillar = (client.pillars || []).find((p) => p.id === pillarId);
+    if (!pillar) throw new Error("ไม่พบเสาหลักนี้");
+    client.pillars = (client.pillars || []).filter((p) => p.id !== pillarId);
+    if (!client.pillars.length) client.pillars = defaultPillars();
+    for (const e of client.calendar || []) {
+      if (e.pillar === pillar.name) {
+        const r = this._resolvePillarAngle(client, { angle: e.angle, seed: e.id });
+        e.pillar = r.pillar;
+        e.angle = r.angle;
+      }
+    }
+    this._write(state);
+    return { deleted: pillarId };
+  }
+
+  _resolvePillarAngle(client, { pillar, angle, seed = "" } = {}) {
+    const counts = {};
+    for (const e of client.calendar || []) {
+      if (e.pillar) counts[e.pillar] = (counts[e.pillar] || 0) + 1;
+    }
+    return pickPillar(client.pillars, counts, { pillar, angle, seed });
+  }
+
   _fewShotExamples(client, platform, limit = 3) {
     const shots = (client?.fewShots || []).filter((s) => s && s.caption);
     return [...shots]
@@ -1292,7 +1415,7 @@ class SocialAgencyRuntime {
       platform,
       sku: product.sku,
       productName: product.name,
-      angle: CONTENT_ANGLES.includes(entry.angle) ? entry.angle : CONTENT_ANGLES[0],
+      ...this._resolvePillarAngle(client, { pillar: entry.pillar, angle: entry.angle, seed: `${date} ${time}` }),
       status: "planned",
       createdAt: now,
       updatedAt: now,
@@ -1329,6 +1452,11 @@ class SocialAgencyRuntime {
       }
     }
     if (patch.angle !== undefined && CONTENT_ANGLES.includes(patch.angle)) entry.angle = patch.angle;
+    if (patch.pillar !== undefined) {
+      const pillars = client.pillars || [];
+      const hit = pillars.find((p) => p.name === String(patch.pillar)) || pillars.find((p) => p.id === patch.pillar);
+      if (hit) entry.pillar = hit.name;
+    }
     if (patch.brief !== undefined) entry.brief = String(patch.brief);
     if (patch.caption !== undefined) {
       entry.caption = String(patch.caption); // manual override (deliberate bad-draft test path)
@@ -1458,7 +1586,7 @@ class SocialAgencyRuntime {
         platform: PLATFORMS.includes(slot.platform) ? slot.platform : "demo",
         sku: product.sku,
         productName: product.name,
-        angle: CONTENT_ANGLES.includes(slot.angle) ? slot.angle : CONTENT_ANGLES[0],
+        ...this._resolvePillarAngle(client, { angle: slot.angle, seed: `${date} ${time}` }),
         status: "planned",
         createdAt: now,
         updatedAt: now,
@@ -1566,19 +1694,19 @@ class SocialAgencyRuntime {
       return { role: name, notes: `มุม${angle}ควรมีคำแนะนำด้าน${name}ประกอบด้วย${hint}` };
     });
   }
-  _composeBrief(client, product, angle, platform, researchNotes) {
+  _composeBrief(client, product, angle, platform, researchNotes, pillar = "") {
     const notes = (researchNotes || []).map((n) => `- ${n.role}: ${n.notes}`).join("\n");
     return [
       `ลูกค้า: ${client.name} (${client.industry}) · โทน: ${client.tone}`,
       `สินค้า: ${product?.name || ""} · หมวด: ${product?.category || ""}`,
       `ขั้นต่ำ: ${product?.minimumOrder || "-"} · เวลาผลิต: ${product?.productionTime || "-"}`,
-      `มุมคอนเทนต์: ${angle} · แพลตฟอร์ม: ${platform}`,
+      `มุมคอนเทนต์: ${angle}${pillar ? ` (เสา: ${pillar})` : ""} · แพลตฟอร์ม: ${platform}`,
       `ข้อมูลที่อ้างได้ (verified): ชื่อสินค้า หมวด ขั้นต่ำ เวลาผลิต${product?.sourceUrl ? " และลิงก์แหล่งที่มา" : ""} เท่านั้น`,
       `โน้ตวิจัย:\n${notes || "(ไม่มี)"}`,
     ].join("\n");
   }
 
-  async _llmCreateCaption({ client, product, angle, platform, brief }) {
+  async _llmCreateCaption({ client, product, angle, platform, brief, pillar }) {
     const system = [
       "คุณเป็นแอดมินเพจโซเชียลมีเดียไทยตัวจริงที่เขียนโพสต์ให้แบรนด์ทุกวัน เขียนภาษาไทยแบบคนพูดจริง",
       this._toneGuide(client.tone),
@@ -1598,7 +1726,7 @@ class SocialAgencyRuntime {
       );
     }
     const systemPrompt = system.join("\n");
-    const user = `Brief:\n${brief}\n\nเขียนโพสต์ 1 ชิ้นสำหรับมุม "${angle}" ของสินค้านี้`;
+    const user = `Brief:\n${brief}\n\nเขียนโพสต์ 1 ชิ้นสำหรับมุม "${angle}" ของสินค้านี้${pillar ? ` (เสาหลัก: ${pillar})` : ""}`;
     const raw = await this._llmChat(
       [
         { role: "system", content: systemPrompt },
@@ -2065,7 +2193,7 @@ class SocialAgencyRuntime {
     // 3. brief
     await this._nodeStep(clientId, runId, "brief", async () => {
       const { client, entry, product } = fresh();
-      const brief = entry.brief && String(entry.brief).trim() ? entry.brief : this._composeBrief(client, product, entry.angle, entry.platform, researchNotes);
+      const brief = entry.brief && String(entry.brief).trim() ? entry.brief : this._composeBrief(client, product, entry.angle, entry.platform, researchNotes, entry.pillar);
       return {
         output: `Brief ${brief.length} ตัวอักษร${entry.brief ? " (ใช้ฉบับที่แก้เอง)" : " (สร้างอัตโนมัติ)"}`,
         detail: brief,
@@ -2083,7 +2211,7 @@ class SocialAgencyRuntime {
         source = "manual";
       } else {
         try {
-          caption = await this._llmCreateCaption({ client, product, angle: entry.angle, platform: entry.platform, brief: entry.brief });
+          caption = await this._llmCreateCaption({ client, product, angle: entry.angle, platform: entry.platform, brief: entry.brief, pillar: entry.pillar });
         } catch (err) {
           console.warn("[social-agency] create fallback to template:", err.message);
           caption = buildTemplateCaption(product, { angle: entry.angle, platform: entry.platform, tone: client.tone, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.caption) });
@@ -3641,6 +3769,21 @@ class SocialAgencyRuntime {
       if (match && method === "DELETE") {
         return json(res, 200, { ok: true, ...this.deleteFewShot(clientId, decodeURIComponent(match[1])) });
       }
+      if (pathname === "/api/social-agency/pillars" && method === "GET") {
+        return json(res, 200, { ok: true, pillars: this.listPillars(clientId) });
+      }
+      if (pathname === "/api/social-agency/pillars" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, pillar: this.addPillar(clientId || body.clientId, body) });
+      }
+      match = pathname.match(/^\/api\/social-agency\/pillars\/([^/]+)$/);
+      if (match && method === "PATCH") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, pillar: this.updatePillar(clientId || body.clientId, decodeURIComponent(match[1]), body) });
+      }
+      if (match && method === "DELETE") {
+        return json(res, 200, { ok: true, ...this.deletePillar(clientId, decodeURIComponent(match[1])) });
+      }
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, entry: this.createCalendarEntry(clientId || body.clientId, body) });
@@ -3808,6 +3951,7 @@ class SocialAgencyRuntime {
 SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
 SocialAgencyRuntime._scoreViral = scoreViralCaption;
 SocialAgencyRuntime._templateHooks = buildTemplateHooks;
+SocialAgencyRuntime._pickPillar = pickPillar;
 SocialAgencyRuntime._templateCaption = buildTemplateCaption;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };
