@@ -1125,6 +1125,34 @@ async function main() {
     assert.ok(/ไม่มีข้อมูล/.test(rRes2.failed[0].error), `unexpected error: ${rRes2.failed[0].error}`);
   });
 
+  // ── P5s: probe reports exactly what the fetcher sees ──
+  const spUrl = "https://shop.example/cat/ผลิตภัณฑ์/กระเป๋า-spb-088.html";
+  const spRow = rt.addProduct(clientId, { name: "กระเป๋า SPB-088", sourceUrl: spUrl });
+  rt._fetchDetailed = async () => ({
+    status: 200,
+    finalUrl: spUrl,
+    text: `<html><head><title>กระเป๋า SPB-088</title><meta property="og:description" content="คำอธิบายยาว ๆ สำหรับทดสอบ probe ของหน้าใบสินค้าจริง"></head>
+      <body><main><img src="https://img.example/big.jpg" width="600" height="600" alt="p"></main></body></html>`,
+  });
+  const probe = await rt.probeProductFetch(clientId, { sku: spRow.sku });
+  check("probe reports status, tags and what enrich would write", () => {
+    assert.strictEqual(probe.httpStatus, 200);
+    assert.ok(probe.linkLooksLikeLeaf);
+    assert.ok(probe.ogDescription.startsWith("คำอธิบายยาว"));
+    assert.ok(probe.candidates.length >= 1);
+    assert.strictEqual(probe.imageGuess, "https://img.example/big.jpg");
+    assert.ok(/คำอธิบายยาว/.test(probe.wouldWrite), `wouldWrite: ${probe.wouldWrite}`);
+    assert.ok(probe.verdict.startsWith("ดึงได้ปกติ"), `verdict: ${probe.verdict}`);
+    assert.ok(probe.htmlFile.endsWith(".html"));
+  });
+  rt._fetchDetailed = async () => { throw new Error("HTTP 403"); };
+  const probeBlocked = await rt.probeProductFetch(clientId, { sku: spRow.sku });
+  check("probe explains a blocked fetch", () => {
+    assert.strictEqual(probeBlocked.httpStatus, undefined);
+    assert.ok(/403/.test(probeBlocked.fetchError));
+    assert.ok(/เปิดหน้าไม่ได้จากเครื่องนี้/.test(probeBlocked.verdict));
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

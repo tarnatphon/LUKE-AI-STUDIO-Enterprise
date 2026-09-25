@@ -2136,7 +2136,11 @@ class SocialAgencyRuntime {
     const failed = [];
     results.forEach((r, i) => {
       const p = batch[i];
-      if (r.status !== "fulfilled") { failed.push({ sku: p.sku, error: "เปิดหน้าไม่ได้" }); return; }
+      if (r.status !== "fulfilled") {
+        const reason = String((r.reason && r.reason.message) || r.reason || "ไม่ทราบสาเหตุ");
+        failed.push({ sku: p.sku, error: `เปิดหน้าไม่ได้ (${reason})` });
+        return;
+      }
       const found = extractProductsFromHtml(r.value, p.sourceUrl);
       const pageHits = found.filter((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl));
       const self = pageHits[0] || found.find((x) => x.description) || found[0] || null;
@@ -2159,6 +2163,121 @@ class SocialAgencyRuntime {
     });
     if (enriched.length) this._write(state);
     return { enriched, enrichedCount: enriched.length, failed, remaining: candidates.length - batch.length };
+  }
+
+  // fetch that keeps the HTTP status + final URL (for diagnosis)
+  async _fetchDetailed(url, timeoutMs = 15000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        redirect: "follow",
+        headers: {
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "th,en;q=0.8",
+        },
+      });
+      const text = (await res.text()).slice(0, 2000000);
+      return { status: res.status, finalUrl: res.url || String(url), text };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  _saveProbeHtml(sku, html) {
+    try {
+      const dir = path.join(this.stateDir, "probes");
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `probe-${String(sku || "x").replace(/[^\w.-]/g, "_")}.html`);
+      fs.writeFileSync(file, String(html || ""), "utf8");
+      return file;
+    } catch {
+      return "";
+    }
+  }
+
+  // one-stop diagnosis of why a row cannot be enriched
+  async probeProductFetch(clientId, body = {}) {
+    const { client } = this._resolveClient(clientId || body.clientId);
+    const sku = String(body.sku || "").trim();
+    const products = client.products || [];
+    const row = products.find((p) => p.sku === sku) || products.find((p) => !String(p.detail || "").trim()) || products[0];
+    if (!row) throw new Error("ไม่พบสินค้าในลูกค้ารายนี้");
+    const url = String(row.sourceUrl || "");
+    const out = {
+      sku: row.sku,
+      name: row.name,
+      sourceUrl: url,
+      detailBefore: String(row.detail || "").slice(0, 160),
+      linkLooksLikeLeaf: /\/ผลิตภัณฑ์\/|\/product\//i.test(normUrl(url)),
+    };
+    if (!/^https?:\/\//i.test(url)) {
+      out.verdict = "แถวนี้ไม่มีลิงก์ http จึงดึงไม่ได้ (กด 'แก้ลิงก์สินค้า' ก่อน)";
+      return out;
+    }
+    let fetched = null;
+    const t0 = Date.now();
+    try {
+      fetched = await this._fetchDetailed(url);
+    } catch (err) {
+      out.ms = Date.now() - t0;
+      out.fetchError = String((err && err.message) || err);
+      out.verdict = "เปิดหน้าไม่ได้จากเครื่องนี้ (network/SSL/ถูกบล็อก)";
+      return out;
+    }
+    const html = fetched.text;
+    out.ms = Date.now() - t0;
+    out.httpStatus = fetched.status;
+    out.finalUrl = fetched.finalUrl;
+    out.bytes = html.length;
+    out.htmlFile = this._saveProbeHtml(row.sku, html);
+    const meta = (prop) => {
+      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"));
+      return m ? m[1].trim().slice(0, 200) : "";
+    };
+    out.ogTitle = meta("og:title");
+    out.ogDescription = meta("og:description");
+    out.metaDescription = meta("description");
+    out.ogImage = meta("og:image");
+    out.title = String((html.match(/<title[^>]*>([^<]*)/i) || [])[1] || "").trim().slice(0, 160);
+    const types = [];
+    const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let lm;
+    while ((lm = ldRe.exec(html))) {
+      try {
+        const data = JSON.parse(lm[1]);
+        for (const d of Array.isArray(data) ? data : [data]) {
+          if (!d || typeof d !== "object") continue;
+          for (const g of (d["@graph"] ? (Array.isArray(d["@graph"]) ? d["@graph"] : [d["@graph"]]) : [d])) {
+            if (g && typeof g === "object") types.push(String(g["@type"] || "?"));
+          }
+        }
+      } catch {
+        types.push("(ld parse-error)");
+      }
+    }
+    out.jsonLdTypes = types.slice(0, 12);
+    const cands = extractProductsFromHtml(html, url);
+    out.candidates = cands.slice(0, 8).map((x) => ({
+      name: String(x.name).slice(0, 70),
+      descLen: String(x.description || "").length,
+      price: String(x.price || ""),
+      hasImage: Boolean(x.image),
+      samePage: normUrl(x.sourceUrl) === normUrl(url),
+    }));
+    const para = firstParagraphText(html);
+    out.paragraph = { len: para.length, preview: para.slice(0, 160) };
+    out.imageGuess = firstContentImage(html).slice(0, 140);
+    out.anchorCount = discoverProductLinks(html, url).length;
+    const pageHit = cands.find((x) => normUrl(x.sourceUrl) === normUrl(url));
+    const usable = String((pageHit && pageHit.description) || (cands.find((x) => x.description) || {}).description || para || "").trim();
+    out.wouldWrite = usable ? `${usable.length} chars: ${usable.slice(0, 160)}` : "(nothing)";
+    if (out.httpStatus && out.httpStatus >= 400) out.verdict = `เว็บตอบ ${out.httpStatus} (ถูกบล็อก/หน้าหาย)`;
+    else if (usable) out.verdict = "ดึงได้ปกติ - ถ้าแถวยังว่างแสดงว่ายังไม่กดปุ่ม/ยังไม่ได้ restart";
+    else out.verdict = "เปิดหน้าสำเร็จแต่ไม่เจอคำอธิบายใน HTML (ดู htmlFile เพื่อเลือกตัวดึงใหม่)";
+    return out;
   }
 
   async fixProductsUrls(clientId, body = {}) {
@@ -4647,6 +4766,14 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products/delete-batch" && method === "POST") {
         const body = await readBody();
         return json(res, 200, { ok: true, ...this.deleteProductsBatch(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/probe" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, probe: await this.probeProductFetch(clientId || body.clientId, body) });
+        } catch (error) {
+          return fail(error, 400);
+        }
       }
       if (pathname === "/api/social-agency/products/fix-links" && method === "POST") {
         const body = await readBody();
