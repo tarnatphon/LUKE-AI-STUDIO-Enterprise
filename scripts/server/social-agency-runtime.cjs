@@ -2125,26 +2125,59 @@ class SocialAgencyRuntime {
     const limit = clampNumber(body.limit, 1, 20, 10);
     const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
     const overwrite = body.overwrite === true;
-    const candidates = (client.products || []).filter((p) =>
-      (overwrite || !String(p.detail || "").trim()) &&
-      /^https?:\/\//i.test(String(p.sourceUrl || "")) &&
-      (!onlySkus || onlySkus.has(p.sku))
-    );
+    const cooldownMs = clampNumber(body.cooldownMinutes, 0, 240, 5) * 60000;
+    const nowMs = Date.now();
+    const codesIn = (s) => (String(s || "").toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || []);
+    const recentlyChecked = (p) => cooldownMs > 0 && Number(p.detailCheckedAt || 0) > nowMs - cooldownMs;
+    // least-recently-checked first: a capped batch keeps advancing instead of re-reading row #1
+    const candidates = (client.products || [])
+      .filter((p) =>
+        (overwrite || !String(p.detail || "").trim()) &&
+        /^https?:\/\//i.test(String(p.sourceUrl || "")) &&
+        !recentlyChecked(p) &&
+        (!onlySkus || onlySkus.has(p.sku)))
+      .slice()
+      .sort((a, b) => Number(a.detailCheckedAt || 0) - Number(b.detailCheckedAt || 0));
     const batch = candidates.slice(0, limit);
     const results = await Promise.allSettled(batch.map((p) => this._fetchHtml(p.sourceUrl, 8000)));
     const enriched = [];
+    const unchanged = [];
+    const mismatch = [];
     const failed = [];
     results.forEach((r, i) => {
       const p = batch[i];
+      p.detailCheckedAt = Date.now();
       if (r.status !== "fulfilled") {
         const reason = String((r.reason && r.reason.message) || r.reason || "ไม่ทราบสาเหตุ");
         failed.push({ sku: p.sku, error: `เปิดหน้าไม่ได้ (${reason})` });
         return;
       }
+      const own = codesIn(p.name);
+      const fits = (text) => {
+        if (!own.length) return true;
+        const codes = codesIn(text);
+        return !codes.length || codes.some((c) => own.includes(c));
+      };
       const found = extractProductsFromHtml(r.value, p.sourceUrl);
       const pageHits = found.filter((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl));
-      const self = pageHits[0] || found.find((x) => x.description) || found[0] || null;
-      const detail = String((self && self.description) || "").trim() || firstParagraphText(r.value);
+      const bodyText = firstParagraphText(r.value);
+      const self = [
+        pageHits.find((x) => x.description && fits(x.description)),
+        ...pageHits,
+        found.find((x) => x.description && fits(x.description)),
+        found.find((x) => x.description),
+      ].find(Boolean) || found[0] || null;
+      let detail = String((self && self.description) || "").trim();
+      if (detail && !fits(detail)) {
+        // the shop's own <title>/meta description sometimes belongs to another product
+        if (bodyText && fits(bodyText)) {
+          mismatch.push({ sku: p.sku, meta: codesIn(detail).join(","), used: "เนื้อหาในหน้า" });
+          detail = bodyText;
+        } else {
+          mismatch.push({ sku: p.sku, meta: codesIn(detail).join(","), used: "(ยังไม่มีข้อความที่ตรงโค้ด)" });
+        }
+      }
+      if (!detail && bodyText) detail = bodyText;
       const price = self ? self.price : "";
       const image = String((self && self.image) || "").trim() || firstContentImage(r.value);
       if (!detail && !price && !image) {
@@ -2156,13 +2189,22 @@ class SocialAgencyRuntime {
       if (!String(p.price || "").trim() && price) p.price = String(price).slice(0, 32);
       if (!String(p.image || "").trim() && /^https?:\/\//i.test(String(image || ""))) p.image = String(image).slice(0, 500);
       if (JSON.stringify([p.detail, p.price, p.image]) === before) {
-        failed.push({ sku: p.sku, error: "หน้านั้นยังไม่มีคำอธิบายให้เติม" });
+        unchanged.push(p.sku);
         return;
       }
       enriched.push(p.sku);
     });
-    if (enriched.length) this._write(state);
-    return { enriched, enrichedCount: enriched.length, failed, remaining: candidates.length - batch.length };
+    if (batch.length) this._write(state); // persist detailCheckedAt so the next round continues
+    return {
+      enriched,
+      enrichedCount: enriched.length,
+      unchanged,
+      unchangedCount: unchanged.length,
+      mismatch,
+      failed,
+      checked: batch.length,
+      remaining: candidates.length - batch.length,
+    };
   }
 
   // fetch that keeps the HTTP status + final URL (for diagnosis)

@@ -188,6 +188,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       let remaining = target;
       let rounds = 0;
       let firstReason = "";
+      let unchanged = 0;
+      let mismatched = [];
       do {
         rounds += 1;
         const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, {
@@ -195,13 +197,15 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           ...(overwrite ? { overwrite: true } : {}),
         });
         total += data.enrichedCount || 0;
+        unchanged += data.unchangedCount || 0;
+        if (Array.isArray(data.mismatch)) mismatched = mismatched.concat(data.mismatch);
         failed += (data.failed || []).length;
         if (!firstReason && data.failed && data.failed[0] && data.failed[0].error) firstReason = data.failed[0].error;
         remaining = typeof data.remaining === "number" ? data.remaining : 0;
         setNote(`กำลังเติมคำอธิบาย… ได้แล้ว ${total} รายการ${remaining ? ` · เหลืออีก ${remaining}` : ""}`);
         onChanged?.();
       } while (remaining > 0 && rounds < 25);
-      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${failed ? ` · ไม่ได้ ${failed} รายการ${firstReason ? ` (${firstReason})` : ""}` : ""}`);
+      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${unchanged ? ` · เท่าเดิม ${unchanged}` : ""}${mismatched.length ? ` · ข้อความในเว็บไม่ตรงโค้ดสินค้า ${mismatched.length} แถว (${mismatched.map((m) => `${m.sku}: meta ${m.meta} → ${m.used}`).join("; ")})` : ""}${failed ? ` · ไม่ได้ ${failed} รายการ${firstReason ? ` (${firstReason})` : ""}` : ""}`);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -1153,6 +1153,34 @@ async function main() {
     assert.ok(/เปิดหน้าไม่ได้จากเครื่องนี้/.test(probeBlocked.verdict));
   });
 
+  // ── P5t: a capped pass must reach the tail rows, and stop early when done ──
+  const tCodes = [1, 2, 3].map((i) => rt.addProduct(clientId, { name: `กระเป๋าทดสอบ SPB-07${i}`, sourceUrl: `https://shop.example/t/spb-07${i}.html` }));
+  const tSkus = tCodes.map((x) => x.sku);
+  rt._fetchHtml = async () => `<html><head><title>หน้าทดสอบ</title><meta property="og:description" content="คำอธิบายจากหน้าทดสอบ สำหรับ P5t smoke"></head><body><main><p>ย่อหน้าเนื้อหาสินค้าที่มีความยาวพอจะผ่านเกณฑ์ตัวดึงข้อมูลของระบบ</p></main></body></html>`;
+  const t1 = await rt.enrichProducts(clientId, { limit: 2, cooldownMinutes: 5, skus: tSkus });
+  const t2 = await rt.enrichProducts(clientId, { limit: 2, cooldownMinutes: 5, skus: tSkus });
+  const t3 = await rt.enrichProducts(clientId, { limit: 2, cooldownMinutes: 5, skus: tSkus });
+  check("capped enrich pass advances then stops (no starved tail)", () => {
+    assert.strictEqual(t1.checked, 2);
+    assert.strictEqual(t2.checked, 1, `round 2 should pick the remaining row, got ${t2.checked}`);
+    assert.strictEqual(t2.enrichedCount, 1);
+    assert.strictEqual(t3.checked, 0, "cooldown must stop the loop instead of re-reading the same rows");
+    const rows = tSkus.map((s) => rt.getState().clients.find((c) => c.id === clientId).products.find((p) => p.sku === s));
+    assert.ok(rows.every((r) => /คำอธิบายจากหน้าทดสอบ/.test(String(r.detail))), JSON.stringify(rows.map((r) => r.detail)));
+  });
+  rt._fetchHtml = async () => `<html><head><title>x</title>
+    <meta property="og:description" content="โรงงานผลิตกระเป๋าใส่แผ่นซีดี CDB-009 สำหรับลูกค้าทุกกลุ่ม รับทำและออกแบบตามออเดอร์">
+  </head><body><main><h1>กระเป๋าทดสอบ SPB-090</h1><p>กระเป๋าใส่อุปกรณ์กีฬา SPB-090 ผลิตตามสั่ง กันน้ำ บุโฟม เหมาะกับทีมกีฬาและงานอีเวนต์</p></main></body></html>`;
+  const mRow = rt.addProduct(clientId, { name: "กระเป๋าทดสอบ SPB-090", sourceUrl: "https://shop.example/t/spb-090.html" });
+  const mRes = await rt.enrichProducts(clientId, { limit: 5, cooldownMinutes: 0, skus: [mRow.sku] });
+  check("mismatched shop SEO text is replaced by on-page text and flagged", () => {
+    const row = rt.getState().clients.find((c) => c.id === clientId).products.find((p) => p.sku === mRow.sku);
+    assert.ok(/SPB-090/.test(String(row.detail)), `detail: ${row.detail}`);
+    assert.ok(!/CDB-009/.test(String(row.detail)), "must not keep the wrong product's description");
+    assert.strictEqual(mRes.mismatch.length, 1);
+    assert.strictEqual(mRes.mismatch[0].sku, mRow.sku);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
