@@ -939,6 +939,38 @@ async function main() {
     assert.strictEqual(deepRes.fetched, 7, "1 top + 2 subs + 4 leaves, fetched=" + deepRes.fetched);
   });
 
+  // ── P5g: nav/chrome links don't crowd out product cards ──
+  let navDecoys = "";
+  for (let i = 1; i <= 12; i++) navDecoys += `<a href="/สินค้า/cat${i}.html">หมวด ${i}</a>`;
+  const navTop = `<html><head><title>หมวดซีดี</title></head><body>` +
+    `<header><a href="/สินค้า/catH.html">หมวด H</a></header>` +
+    `<nav class="menu">${navDecoys}</nav>` +
+    `<aside><a href="/สินค้า/catA.html">หมวด A</a></aside>` +
+    `<main><a href="/สินค้า/cdb-001.html"><img src="http://x/y.jpg" alt="กระเป๋าใส่แผ่นซีดี CDB-001"></a>` +
+    `<a href="/สินค้า/cdb-002.html"><span>กระเป๋าใส่แผ่นซีดี CDB-002</span></a></main>` +
+    `<footer><a href="/สินค้า/catF.html">หมวด F</a></footer></body></html>`;
+  const navSrv = http.createServer((req, res) => {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    if (String(req.url || "").startsWith("/navtop")) res.end(navTop);
+    else {
+      const code = (String(req.url || "").match(/cdb-\d+/i) || ["CDB-000"])[0].toUpperCase();
+      res.end(`<html><head><title>กระเป๋า ${code}</title><meta property="og:title" content="กระเป๋า ${code}"></head><body></body></html>`);
+    }
+  });
+  await new Promise((resolve) => navSrv.listen(0, "127.0.0.1", resolve));
+  const navBase = `http://127.0.0.1:${navSrv.address().port}`;
+  let navRes = null;
+  try {
+    navRes = await rt.importUrl(clientId, { url: `${navBase}/navtop.html`, maxPages: 5 });
+  } finally { navSrv.close(); }
+  check("nav links don't crowd out product cards", () => {
+    const names = navRes.products.map((p) => p.name);
+    assert.ok(names.some((n) => n.includes("CDB-001")), "leaf 1: " + JSON.stringify(names));
+    assert.ok(names.some((n) => n.includes("CDB-002")), "leaf 2: " + JSON.stringify(names));
+    assert.ok(!names.some((n) => n.includes("หมวด ")), "chrome decoys excluded: " + JSON.stringify(names));
+    assert.strictEqual(navRes.fetched, 3, "1 page + 2 leaves, fetched=" + navRes.fetched);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

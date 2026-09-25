@@ -433,7 +433,7 @@ function extractProductsFromHtml(html, pageUrl, opts = {}) {
 // merge a crawled candidate into the import list (same page = enrich, else add, never dupe)
 function mergeProductCandidate(products, p) {
   if (!p || !p.name) return;
-  const same = products.find((x) => x.sourceUrl && p.sourceUrl && x.sourceUrl === p.sourceUrl);
+  const same = products.find((x) => x.sourceUrl && p.sourceUrl && normUrl(x.sourceUrl) === normUrl(p.sourceUrl));
   if (same) {
     for (const k of ["description", "price", "currency", "image"]) {
       if (!same[k] && p[k]) same[k] = p[k];
@@ -446,6 +446,25 @@ function mergeProductCandidate(products, p) {
   if (!products.some((x) => String(x.name).toLowerCase() === String(p.name).toLowerCase())) products.push(p);
 }
 
+function stripPageChrome(html) {
+  return String(html || "")
+    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, " ")
+    .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, " ");
+}
+
+function normUrl(u) {
+  const s = String(u || "").split("#")[0];
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
+function scoreLinkUrl(u) {
+  const d = normUrl(u);
+  if (/\/ผลิตภัณฑ์\/|\/product\/|\/products\/|\/shop\/|\/item\/|\/p\/|\/pd\/|product-/i.test(d)) return 0;
+  return 1;
+}
+
 function discoverProductLinks(html, pageUrl) {
   const links = [];
   const seen = new Set();
@@ -453,28 +472,31 @@ function discoverProductLinks(html, pageUrl) {
   try { origin = new URL(pageUrl).origin; } catch { return links; }
   const re = /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  const src = String(html || "");
-  while ((m = re.exec(src)) && links.length < 12) {
+  const src = stripPageChrome(html);
+  while ((m = re.exec(src)) && links.length < 40) {
     let abs = "";
     try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
     if (!abs.startsWith(origin)) continue;
-    if (abs.split("#")[0] === String(pageUrl).split("#")[0]) continue;
+    if (normUrl(abs) === normUrl(pageUrl)) continue;
     let decoded = abs;
     try { decoded = decodeURIComponent(abs); } catch { /* keep raw */ }
     if (!/\/(product|products|shop|item|items|goods|collection|p|sku|pd)[\/_-]|สินค้า|ผลิตภัณฑ์|product-/i.test(decoded)) continue;
-    if (seen.has(abs)) continue;
+    const key = normUrl(abs);
+    if (seen.has(key)) continue;
     let hint = m[3].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
     if (hint.length < 2) {
       const alt = m[3].match(/<img\b[^>]*alt=(["'])(.*?)\1/i);
       hint = alt ? alt[2].replace(/\s+/g, " ").trim() : "";
     }
     if (hint.length < 2) continue;
-    seen.add(abs);
+    seen.add(key);
     let img = "";
     const im = m[3].match(/<img\b[^>]*src=(["'])(.*?)\1/i);
     if (im) { try { img = new URL(im[2], pageUrl).href; } catch { img = ""; } }
     links.push({ url: abs, hint: hint.slice(0, 80), image: img.slice(0, 500) });
   }
+  // rank leaf/detail pages before category listings (better crawl budget + order)
+  links.sort((a, b) => scoreLinkUrl(a.url) - scoreLinkUrl(b.url));
   return links;
 }
 
@@ -1930,7 +1952,7 @@ class SocialAgencyRuntime {
     const products = extractProductsFromHtml(html, url);
     let fetched = 1;
     let failed = 0;
-    const seenUrls = new Set([url]);
+    const seenUrls = new Set([normUrl(url)]);
     // level 1: direct product links
     const links = discoverProductLinks(html, url).slice(0, maxPages - 1);
     const extra = await Promise.allSettled(links.map((l) => this._fetchHtml(l.url, 8000)));
@@ -1938,15 +1960,15 @@ class SocialAgencyRuntime {
     extra.forEach((r, i) => {
       if (r.status !== "fulfilled") { failed += 1; return; }
       fetched += 1;
-      seenUrls.add(links[i].url);
+      seenUrls.add(normUrl(links[i].url));
       const found = deep
         ? extractProductsFromHtml(r.value, links[i].url, { anchorsOnly: true })
         : extractProductsFromHtml(r.value, links[i].url);
       for (const p of found) mergeProductCandidate(products, p);
       if (deep) {
         for (const l of discoverProductLinks(r.value, links[i].url)) {
-          if (seenUrls.has(l.url)) continue;
-          seenUrls.add(l.url);
+          if (seenUrls.has(normUrl(l.url))) continue;
+          seenUrls.add(normUrl(l.url));
           if (fetched + failed + level2.length < maxPages) level2.push(l.url);
         }
       }
