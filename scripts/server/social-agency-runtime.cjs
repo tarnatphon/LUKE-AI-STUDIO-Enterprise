@@ -430,6 +430,33 @@ function extractProductsFromHtml(html, pageUrl, opts = {}) {
   return out;
 }
 
+function slugKeyOf(s) {
+  let d = String(s || "");
+  try { d = decodeURIComponent(d); } catch { /* keep raw */ }
+  return d.toLowerCase().replace(/\.html?$/i, "").replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// leaf product links on a listing page: anchor text + href (for link repair)
+function extractLeafLinks(html, pageUrl) {
+  const links = [];
+  let origin = "";
+  try { origin = new URL(pageUrl).origin; } catch { return links; }
+  const re = /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  const src = stripPageChrome(html);
+  while ((m = re.exec(src)) && links.length < 60) {
+    let abs = "";
+    try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
+    if (!abs.startsWith(origin)) continue;
+    if (normUrl(abs) === normUrl(pageUrl)) continue;
+    if (!/\.html?(?:$|\?)/i.test(abs)) continue;
+    const text = m[3].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (text.length < 2) continue;
+    links.push({ url: abs, text: text.slice(0, 160) });
+  }
+  return links;
+}
+
 // merge a crawled candidate into the import list (same page = enrich, else add, never dupe)
 function mergeProductCandidate(products, p) {
   if (!p || !p.name) return;
@@ -2056,6 +2083,75 @@ class SocialAgencyRuntime {
     });
     if (enriched.length) this._write(state);
     return { enriched, enrichedCount: enriched.length, failed, remaining: candidates.length - batch.length };
+  }
+
+  async fixProductsUrls(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const products = client.products || [];
+    const onlySkus = Array.isArray(body.skus) && body.skus.length ? new Set(body.skus.map(String)) : null;
+    const targets = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || "")) && (!onlySkus || onlySkus.has(p.sku)));
+    if (!targets.length) return { fixed: 0, unfound: [], pages: 0, remaining: 0 };
+    const byPage = new Map();
+    for (const p of targets) {
+      const k = normUrl(p.sourceUrl);
+      if (!byPage.has(k)) byPage.set(k, []);
+      byPage.get(k).push(p);
+    }
+    const maxPages = clampNumber(body.maxPages, 1, 10, 10);
+    const pageKeys = [...byPage.keys()].slice(0, maxPages);
+    let fixed = 0;
+    let pages = 0;
+    const unfound = [];
+    const errors = [];
+    for (const key of pageKeys) {
+      const group = byPage.get(key);
+      const pageUrl = group[0].sourceUrl;
+      let links = null;
+      try {
+        links = extractLeafLinks(await this._fetchHtml(pageUrl, 8000), pageUrl);
+        pages += 1;
+      } catch {
+        for (const p of group) unfound.push(p.sku);
+        errors.push({ page: pageUrl, error: "เปิดหน้าไม่ได้" });
+        continue;
+      }
+      const textMap = new Map();
+      for (const l of links) {
+        const k = slugKeyOf(l.text);
+        if (!textMap.has(k)) textMap.set(k, l.url);
+      }
+      for (const p of group) {
+        const nameSlug = slugKeyOf(p.name);
+        let best = "";
+        if (nameSlug && textMap.has(nameSlug)) best = textMap.get(nameSlug);
+        if (!best) {
+          let score = 0;
+          for (const l of links) {
+            const ls = slugKeyOf(l.text);
+            if (!ls || !nameSlug) continue;
+            const hit = (ls.includes(nameSlug) ? 2 : 0) + (nameSlug.includes(ls) ? 1 : 0);
+            if (hit >= 2 && hit > score) { score = hit; best = l.url; }
+          }
+        }
+        if (!best) {
+          const pm = slugKeyOf(p.name).match(/([a-z0-9]+-\d{2,6})(?:\s|$)/);
+          const code = pm ? pm[1] : "";
+          if (code) {
+            for (const l of links) {
+              if (slugKeyOf(l.url).includes(code)) { best = l.url; break; }
+            }
+          }
+        }
+        if (best && normUrl(best) !== normUrl(p.sourceUrl)) {
+          p.sourceUrl = best.slice(0, 500);
+          fixed += 1;
+        } else if (!best) {
+          unfound.push(p.sku);
+        }
+      }
+    }
+    if (fixed) this._write(state);
+    return { fixed, unfound, pages, remaining: Math.max(0, byPage.size - pageKeys.length), errors };
   }
 
   async scanFolder(clientId, body = {}) {
@@ -4468,6 +4564,14 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products/delete-batch" && method === "POST") {
         const body = await readBody();
         return json(res, 200, { ok: true, ...this.deleteProductsBatch(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/fix-links" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...await this.fixProductsUrls(clientId || body.clientId, body) });
+        } catch (error) {
+          return fail(error, 502);
+        }
       }
       match = pathname.match(/^\/api\/social-agency\/products\/([^/]+)$/);
       if (match && method === "PATCH") {

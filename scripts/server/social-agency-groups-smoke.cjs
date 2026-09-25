@@ -1035,6 +1035,27 @@ async function main() {
     assert.ok(!ids.includes(be1.id) && ids.includes(be2.id));
   });
 
+  // ── P5m: product link repair (fix wrong category-page sourceUrls) ──
+  const fx1 = rt.addProduct(clientId, { name: "กระเป๋าใส่อุปกรณ์กีฬา SPB-002", sourceUrl: "https://shop.example/cat/spb.html" });
+  const fx2 = rt.addProduct(clientId, { name: "สินค้าไม่มีในหน้า", sourceUrl: "https://shop.example/cat/other.html" });
+  rt._fetchHtml = async () => `<html><body><nav><a href="/cat/other.html">เมนู</a></nav><main>
+    <a href="/cat/spb-002.html">กระเป๋าใส่อุปกรณ์กีฬา SPB-002</a>
+    <a href="/cat/spb-003.html">กระเป๋าใส่อุปกรณ์กีฬา SPB-003</a>
+  </main></body></html>`;
+  const fxRes = await rt.fixProductsUrls(clientId, {});
+  check("product links fixed from listing page", () => {
+    const cFx = rt.getState().clients.find((c) => c.id === clientId);
+    const pFx = cFx.products.find((p) => p.sku === fx1.sku);
+    assert.strictEqual(pFx.sourceUrl, "https://shop.example/cat/spb-002.html");
+    assert.ok(fxRes.fixed >= 1 && fxRes.unfound.includes(fx2.sku));
+  });
+  const fxRoute = await call("POST", "/api/social-agency/products/fix-links?clientId=" + clientId, { skus: [fx1.sku] });
+  check("product fix-links route", () => {
+    assert.strictEqual(fxRoute.statusCode, 200);
+    assert.strictEqual(fxRoute.body.ok, true);
+    assert.strictEqual(fxRoute.body.fixed, 0); // already correct -> no change
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Plus, Trash2, Globe, FolderOpen } from "lucide-react";
+import { Package, Plus, Trash2, Globe, FolderOpen, Link2 } from "lucide-react";
 import { api, postJson } from "./lib.js";
 
 export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
@@ -20,6 +20,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [scanSel, setScanSel] = useState([]);
   const [delSel, setDelSel] = useState([]);
   const [enrichBusy, setEnrichBusy] = useState(false);
+  const [fixBusy, setFixBusy] = useState(false);
+  const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -208,6 +210,22 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     }
   };
 
+  const fixLinks = async () => {
+    if (!clientId || fixBusy || !urlCount) return;
+    setFixBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const data = await postJson(`/api/social-agency/products/fix-links?clientId=${encodeURIComponent(clientId)}`, {});
+      setNote(`แก้ลิงก์แล้ว ${data.fixed} รายการ ✓${data.unfound?.length ? ` · หาไม่เจอ ${data.unfound.length}` : ""}${data.remaining ? ` · เหลืออีก ${data.remaining} หน้า — กดซ้ำได้` : ""}`);
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setFixBusy(false);
+    }
+  };
+
   const importSelected = async (kind) => {
     const pool = kind === "url" ? urlFound?.products || [] : [...(scanFound?.images || []), ...(scanFound?.rows || [])];
     const sel = kind === "url" ? urlSel : scanSel;
@@ -258,6 +276,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           {missingCount > 0 && (
             <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้ารายตัวของสินค้าที่ยังไม่มีคำอธิบาย แล้วดึงมาเติม (ครั้งละ 10)">
               {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
+            </button>
+          )}
+          {urlCount > 0 && (
+            <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวด ไม่ใช่หน้าสินค้า จะแก้ให้ตรงอัตโนมัติ (ครั้งละ 10 หน้า)">
+              {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
             </button>
           )}
         </header>
