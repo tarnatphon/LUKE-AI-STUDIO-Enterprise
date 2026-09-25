@@ -227,13 +227,13 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     await postJson("/api/social-agency/calendar?clientId=" + encodeURIComponent(activeClient.id), { entry: form });
   });
 
-  const autoPlan = async (month, postsPerWeek, opts = {}) => {
-    const data = await postJson("/api/social-agency/auto-plan", { clientId: activeClient.id, month, postsPerWeek, ...opts });
+  const autoPlan = async (month, postsPerWeek) => {
+    const data = await postJson("/api/social-agency/auto-plan", { clientId: activeClient.id, month, postsPerWeek });
     return data.preview;
   };
 
-  const applyPlan = withBusy(async (clientId, month, slots, opts = {}) => {
-    await postJson("/api/social-agency/auto-plan/apply", { clientId, month, slots, ...opts });
+  const applyPlan = withBusy(async (clientId, month, slots) => {
+    await postJson("/api/social-agency/auto-plan/apply", { clientId, month, slots });
   });
 
   const saveConnectors = async (form) => {

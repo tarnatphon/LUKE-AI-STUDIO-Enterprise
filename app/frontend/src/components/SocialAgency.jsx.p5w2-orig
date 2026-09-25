@@ -223,6 +223,10 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     await postJson(`/api/social-agency/calendar/delete-batch?clientId=${encodeURIComponent(activeClient.id)}`, { ids });
   });
 
+  const deleteEntriesBatch = withBusy(async (ids) => {
+    await postJson(`/api/social-agency/calendar/delete-batch?clientId=${encodeURIComponent(activeClient.id)}`, { ids });
+  });
+
   const createEntry = withBusy(async (form) => {
     await postJson("/api/social-agency/calendar?clientId=" + encodeURIComponent(activeClient.id), { entry: form });
   });

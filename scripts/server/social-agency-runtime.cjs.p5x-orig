@@ -2471,8 +2471,7 @@ class SocialAgencyRuntime {
       .slice()
       .sort((a, b) => Number(a.detailCheckedAt || 0) - Number(b.detailCheckedAt || 0));
     const batch = candidates.slice(0, limit);
-    const fetchTimeoutMs = clampNumber(body.timeoutMs, 3000, 90000, 20000);
-    const results = await Promise.allSettled(batch.map((q) => this._fetchHtml(q.sourceUrl, fetchTimeoutMs)));
+    const results = await Promise.allSettled(batch.map((p) => this._fetchHtml(p.sourceUrl, 8000)));
     const enriched = [];
     const unchanged = [];
     const mismatch = [];

@@ -1256,55 +1256,6 @@ async function main() {
     assert.ok(!/limitstart|limit=/.test(vAfter.sourceUrl), vAfter.sourceUrl);
   });
 
-  // ── P5w: one product per day, no repeats, drawn from a catalogue page ──
-  const wId = rt.createClient({ name: "ทดสอบวางแผนรายวัน", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋ารุ่นเริ่ม WXA-001" }).id;
-  for (let i = 2; i <= 34; i += 1) rt.addProduct(wId, { name: `กระเป๋ารุ่นทดสอบ WXA-${String(i).padStart(3, "0")}` });
-  const wPlan = await rt.autoPlanPreview(wId, { month: "2026-11", onePerDay: true });
-  const wApply = rt.applyAutoPlan(wId, { month: "2026-11", slots: wPlan.slots, enforceUniqueProducts: true });
-  const wAgain = await rt.autoPlanPreview(wId, { month: "2026-11", onePerDay: true });
-  check("one-per-day plan gives each day its own product and never repeats one", () => {
-    assert.strictEqual(wPlan.mode, "one-per-day");
-    assert.strictEqual(wPlan.daysInMonth, 30);
-    assert.strictEqual(wPlan.slots.length, 30, `30 days should be covered, got ${wPlan.slots.length}`);
-    assert.strictEqual(new Set(wPlan.slots.map((x) => x.sku)).size, 30, "a product must not repeat in the month");
-    assert.strictEqual(new Set(wPlan.slots.map((x) => x.date)).size, 30, "one post per day");
-    assert.ok(wPlan.slots.every((x) => x.date.startsWith("2026-11")));
-    assert.strictEqual(wPlan.shortBy, 0);
-    assert.strictEqual(wApply.count, 30);
-    assert.strictEqual(wAgain.slots.length, 0, "the planned month must not be refilled with repeats");
-  });
-  const fewId = rt.createClient({ name: "ทดสอบสินค้าไม่พอ", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋าเดียว WXB-001" }).id;
-  const wFew = await rt.autoPlanPreview(fewId, { month: "2026-12", onePerDay: true });
-  check("a short product pool is reported instead of repeating products", () => {
-    assert.strictEqual(wFew.slots.length, 1);
-    assert.strictEqual(wFew.shortBy, 30, `31 open days - 1 product, got ${wFew.shortBy}`);
-  });
-  const catPage = (from, to, nextStart) => `<html><head><title>รายการสินค้าและผลิตภัณฑ์กระเป๋า</title></head><body><main>${
-    Array.from({ length: to - from + 1 }, (_, k) => {
-      const n = String(from + k).padStart(3, "0");
-      return `<a href="/cat/ผลิตภัณฑ์/กระเป๋ารุ่น-wxa-${n}.html">กระเป๋ารุ่นใหม่ WXA-${n}</a>`;
-    }).join("")}${nextStart === null ? "" : `<a href="/cat/รายการสินค้า.html?limitstart=${nextStart}&limit=10">ถัดไป</a>`}
-    <a href="/cat/ติดต่อเรา.html">ติดต่อเรา</a>
-    <a href="/product/download/file_id-5.html">สเปค WXA-999</a></main></body></html>`;
-  rt._fetchHtml = async (u) => {
-    const off = Number((String(u).match(/limitstart=(\d+)/) || [0, "0"])[1]);
-    if (off >= 20) return catPage(21, 40, null);
-    return catPage(off + 1, off + 10, off + 10);
-  };
-  const wSample = await rt.sampleCatalogProducts(fewId, { url: "https://shop.example/cat/รายการสินค้า.html", days: 31, autoImport: true, seed: "w1" });
-  const wSamplePlan = await rt.autoPlanPreview(fewId, { month: "2026-12", onePerDay: true });
-  check("catalogue sampler walks pagination, skips menu/file links and imports ≤31", () => {
-    assert.strictEqual(wSample.found, 40, JSON.stringify(wSample.pageLog));
-    assert.strictEqual(wSample.pickedCount, 31, "never more than the days in a month");
-    assert.strictEqual(new Set(wSample.picked.map((x) => x.name)).size, 31, "picked products must be distinct");
-    assert.ok(wSample.picked.every((x) => !/download|file_id|ติดต่อเรา/.test(x.sourceUrl)), "junk links must not be sampled");
-    assert.strictEqual(wSample.pages, 3, `pagination: expected 3 pages, got ${wSample.pages}`);
-    assert.strictEqual(wSample.importedCount, 31);
-    assert.strictEqual(wSample.shortBy, 0);
-    assert.strictEqual(wSamplePlan.slots.length, 31, `after sampling, all 31 days must be fillable: ${wSamplePlan.slots.length}`);
-    assert.strictEqual(new Set(wSamplePlan.slots.map((x) => x.sku)).size, 31);
-  });
-
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

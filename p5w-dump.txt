@@ -1,0 +1,299 @@
+อ่าน 39 ขั้นตอนจาก /tmp/apply-p5w.py
+สถานะไฟล์: SocialAgency.jsx=มี, CalendarTab.jsx=มี, ProductsTab.jsx=มี, modals.jsx=มี, social-agency-groups-smoke.cjs=มี, social-agency-runtime.cjs=มี
+
+=== runtime9 · scripts/server/social-agency-runtime.cjs · เนื้อหาไม่ตรงกับ P5w ตัวจริง ===
+ขอบเขตที่ตรวจ (บล็อกก่อนหน้า/ถัดไปที่ locate ได้): บรรทัด 2232-5251 จากทั้งหมด 5251
+แสดงบรรทัด 4927-5096:
+4927| 
+4928|       // clients
+4929|       if (pathname === "/api/social-agency/clients" && method === "GET") {
+4930|         return json(res, 200, { ok: true, clients: this.listClients() });
+4931|       }
+4932|       if (pathname === "/api/social-agency/clients" && method === "POST") {
+4933|         const body = await readBody();
+4934|         const client = this.createClient(body);
+4935|         return json(res, 201, { ok: true, client, state: this.getState() });
+4936|       }
+4937|       let match = pathname.match(/^\/api\/social-agency\/clients\/([^/]+)$/);
+4938|       if (match) {
+4939|         const id = decodeURIComponent(match[1]);
+4940|         if (method === "PATCH") {
+4941|           const body = await readBody();
+4942|           return json(res, 200, { ok: true, client: this.updateClient(id, body) });
+4943|         }
+4944|         if (method === "DELETE") {
+4945|           return json(res, 200, { ok: true, ...this.deleteClient(id), state: this.getState() });
+4946|         }
+4947|       }
+4948|       match = pathname.match(/^\/api\/social-agency\/clients\/([^/]+)\/activate$/);
+4949|       if (match && method === "POST") {
+4950|         const state = this.activateClient(decodeURIComponent(match[1]));
+4951|         return json(res, 200, { ok: true, activeClientId: state.activeClientId, state: this.getState() });
+4952|       }
+4953| 
+4954|       // calendar
+4955|       if (pathname === "/api/social-agency/calendar" && method === "GET") {
+4956|         const filters = {
+4957|           status: parsed.searchParams.get("status") || undefined,
+4958|           platform: parsed.searchParams.get("platform") || undefined,
+4959|           q: parsed.searchParams.get("q") || undefined,
+4960|           from: parsed.searchParams.get("from") || undefined,
+4961|           to: parsed.searchParams.get("to") || undefined,
+4962|         };
+4963|         return json(res, 200, { ok: true, entries: this.listCalendar(clientId, filters) });
+4964|       }
+4965|       // overview dashboard (group 3)
+4966|       if (pathname === "/api/social-agency/overview" && method === "GET") {
+4967|         return json(res, 200, { ok: true, overview: this.getOverview(clientId) });
+4968|       }
+4969|       // platform versions + few-shot (group 4)
+4970|       if (pathname === "/api/social-agency/platform-versions" && method === "POST") {
+4971|         const body = await readBody();
+4972|         return json(res, 200, { ok: true, preview: this.previewPlatformVersions(clientId || body.clientId, body) });
+4973|       }
+4974|       if (pathname === "/api/social-agency/few-shots" && method === "GET") {
+4975|         return json(res, 200, { ok: true, fewShots: this.listFewShots(clientId) });
+4976|       }
+4977|       if (pathname === "/api/social-agency/few-shots" && method === "POST") {
+4978|         const body = await readBody();
+4979|         return json(res, 201, { ok: true, fewShot: this.addFewShot(clientId || body.clientId, body) });
+4980|       }
+4981|       match = pathname.match(/^\/api\/social-agency\/few-shots\/([^/]+)$/);
+4982|       if (match && method === "DELETE") {
+4983|         return json(res, 200, { ok: true, ...this.deleteFewShot(clientId, decodeURIComponent(match[1])) });
+4984|       }
+4985|       if (pathname === "/api/social-agency/pillars" && method === "GET") {
+4986|         return json(res, 200, { ok: true, pillars: this.listPillars(clientId) });
+4987|       }
+4988|       if (pathname === "/api/social-agency/pillars" && method === "POST") {
+4989|         const body = await readBody();
+4990|         return json(res, 201, { ok: true, pillar: this.addPillar(clientId || body.clientId, body) });
+4991|       }
+4992|       match = pathname.match(/^\/api\/social-agency\/pillars\/([^/]+)$/);
+4993|       if (match && method === "PATCH") {
+4994|         const body = await readBody();
+4995|         return json(res, 200, { ok: true, pillar: this.updatePillar(clientId || body.clientId, decodeURIComponent(match[1]), body) });
+4996|       }
+4997|       if (match && method === "DELETE") {
+4998|         return json(res, 200, { ok: true, ...this.deletePillar(clientId, decodeURIComponent(match[1])) });
+4999|       }
+5000|       if (pathname === "/api/social-agency/repurpose" && method === "POST") {
+5001|         const body = await readBody();
+5002|         if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+5003|         return json(res, 201, { ok: true, ...(await this.repurposeEntry(clientId || body.clientId, body.entryId, body)) });
+5004|       }
+5005|       if (pathname === "/api/social-agency/products" && method === "GET") {
+5006|         return json(res, 200, { ok: true, products: this.listProducts(clientId) });
+5007|       }
+5008|       if (pathname === "/api/social-agency/products" && method === "POST") {
+5009|         const body = await readBody();
+5010|         return json(res, 201, { ok: true, product: this.addProduct(clientId || body.clientId, body) });
+5011|       }
+5012|       if (pathname === "/api/social-agency/products/import-url" && method === "POST") {
+5013|         const body = await readBody();
+5014|         try {
+5015|           return json(res, 200, { ok: true, ...(await this.importUrl(clientId || body.clientId, body)) });
+5016|         } catch (error) {
+5017|           return fail(error, 502);
+5018|         }
+5019|       }
+5020|       if (pathname === "/api/social-agency/products/scan-folder" && method === "POST") {
+5021|         const body = await readBody();
+5022|         try {
+5023|           return json(res, 200, { ok: true, ...(await this.scanFolder(clientId || body.clientId, body)) });
+5024|         } catch (error) {
+5025|           return fail(error, 400);
+5026|         }
+5027|       }
+5028|       if (pathname === "/api/social-agency/products/import" && method === "POST") {
+5029|         const body = await readBody();
+5030|         return json(res, 201, { ok: true, ...this.importProducts(clientId || body.clientId, body) });
+5031|       }
+5032|       if (pathname === "/api/social-agency/products/enrich" && method === "POST") {
+5033|         const body = await readBody();
+5034|         return json(res, 200, { ok: true, ...await this.enrichProducts(clientId || body.clientId, body) });
+5035|       }
+5036|       if (pathname === "/api/social-agency/products/delete-batch" && method === "POST") {
+5037|         const body = await readBody();
+5038|         return json(res, 200, { ok: true, ...this.deleteProductsBatch(clientId || body.clientId, body) });
+5039|       }
+5040|       if (pathname === "/api/social-agency/backup/restore-file" && method === "POST") {
+5041|         const body = await readBody();
+5042|         try {
+5043|           return json(res, 200, { ok: true, ...this.restoreBackupFile(clientId || body.clientId || undefined, body.file) });
+5044|         } catch (error) {
+5045|           return fail(error, 400);
+5046|         }
+5047|       }
+5048|       if (pathname === "/api/social-agency/products/probe" && method === "POST") {
+5049|         const body = await readBody();
+5050|         try {
+5051|           return json(res, 200, { ok: true, probe: await this.probeProductFetch(clientId || body.clientId, body) });
+5052|         } catch (error) {
+5053|           return fail(error, 400);
+5054|         }
+5055|       }
+5056|       if (pathname === "/api/social-agency/products/fix-links" && method === "POST") {
+5057|         const body = await readBody();
+5058|         try {
+5059|           return json(res, 200, { ok: true, ...await this.fixProductsUrls(clientId || body.clientId, body) });
+5060|         } catch (error) {
+5061|           return fail(error, 502);
+5062|         }
+5063|       }
+5064|       match = pathname.match(/^\/api\/social-agency\/products\/([^/]+)$/);
+5065|       if (match && method === "PATCH") {
+5066|         const body = await readBody();
+5067|         return json(res, 200, { ok: true, product: this.updateProduct(clientId || body.clientId, decodeURIComponent(match[1]), body) });
+5068|       }
+5069|       if (match && method === "DELETE") {
+5070|         return json(res, 200, { ok: true, ...this.deleteProduct(clientId, decodeURIComponent(match[1])) });
+5071|       }
+5072|       if (pathname === "/api/social-agency/calendar" && method === "POST") {
+5073|         const body = await readBody();
+5074|         return json(res, 201, { ok: true, entry: this.createCalendarEntry(clientId || body.clientId, body) });
+5075|       }
+5076|       if (pathname === "/api/social-agency/calendar/delete-batch" && method === "POST") {
+5077|         const body = await readBody();
+5078|         return json(res, 200, { ok: true, ...this.deleteCalendarEntriesBatch(clientId || body.clientId, body) });
+5079|       }
+5080|       match = pathname.match(/^\/api\/social-agency\/calendar\/([^/]+)$/);
+5081|       if (match) {
+5082|         const entryId = decodeURIComponent(match[1]);
+5083|         if (method === "PATCH") {
+5084|           const body = await readBody();
+5085|           return json(res, 200, { ok: true, entry: this.updateCalendarEntry(clientId, entryId, body) });
+5086|         }
+5087|         if (method === "DELETE") {
+5088|           return json(res, 200, { ok: true, ...this.deleteCalendarEntry(clientId, entryId) });
+5089|         }
+5090|       }
+5091| 
+5092|       // auto-plan
+5093|       if (pathname === "/api/social-agency/auto-plan" && method === "POST") {
+5094|         const body = await readBody();
+5095|         const preview = await this.autoPlanPreview(clientId || body.clientId, body);
+5096|         return json(res, 200, { ok: true, preview });
+
+=== calendar2 · app/frontend/src/social-agency/CalendarTab.jsx · เนื้อหาไม่ตรงกับ P5w ตัวจริง ===
+ขอบเขตที่ตรวจ (บล็อกก่อนหน้า/ถัดไปที่ locate ได้): บรรทัด 1-125 จากทั้งหมด 285
+แสดงบรรทัด 17-92:
+  17|       draggable={!entry.inFlight && !selectMode}
+  18|       onDragStart={(e) => {
+  19|         e.dataTransfer.setData("text/sa-entry", entry.id);
+  20|         e.dataTransfer.effectAllowed = "move";
+  21|       }}
+  22|       onClick={() => (selectMode && onToggle ? onToggle(entry.id) : onOpen(entry.id))}
+  23|       title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}`}
+  24|     >
+  25|       <span className="sa-chip-time">{entry.time}</span>
+  26|       <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
+  27|       <span className="sa-chip-status">{meta.label}</span>
+  28|       {!selectMode && onDelete && (
+  29|         <span
+  30|           className="sa-chip-del"
+  31|           role="button"
+  32|           aria-label="ลบรายการนี้"
+  33|           title="ลบรายการนี้"
+  34|           onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+  35|         >
+  36|           ×
+  37|         </span>
+  38|       )}
+  39|     </button>
+  40|   );
+  41| }
+  42| 
+  43| export default function CalendarTab({ state, activeClient, busy, onOpenEntry, onRunNow, onReschedule, onDeleteEntry, onCreateEntry, onAutoPlan, onApplyPlan, onDeleteEntriesBatch }) {
+  44|   const [month, setMonth] = useState(currentMonth());
+  45|   const [newEntryDate, setNewEntryDate] = useState(null);
+  46|   const [planPreview, setPlanPreview] = useState(null);
+  47|   const [planBusy, setPlanBusy] = useState(false);
+  48|   const [dragOver, setDragOver] = useState(null);
+  49|   const [error, setError] = useState("");
+  50|   const [statusFilter, setStatusFilter] = useState("all");
+  51|   const [platformFilter, setPlatformFilter] = useState("all");
+  52|   const [query, setQuery] = useState("");
+  53|   const today = bangkokToday();
+  54|   const weeks = useMemo(() => monthMatrix(month), [month]);
+  55|   const monthEntries = useMemo(() => entriesOfMonth(activeClient?.calendar || [], month), [activeClient, month]);
+  56|   const filteredEntries = useMemo(() => {
+  57|     const needle = query.trim().toLowerCase();
+  58|     return monthEntries.filter((entry) => {
+  59|       if (statusFilter !== "all" && entry.status !== statusFilter) return false;
+  60|       if (platformFilter !== "all" && entry.platform !== platformFilter) return false;
+  61|       if (needle) {
+  62|         const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.pillar, entry.id, entry.sku]
+  63|           .filter(Boolean)
+  64|           .join(" ")
+  65|           .toLowerCase();
+  66|         if (!hay.includes(needle)) return false;
+  67|       }
+  68|       return true;
+  69|     });
+  70|   }, [monthEntries, statusFilter, platformFilter, query]);
+  71|   const byDate = useMemo(() => {
+  72|     const map = new Map();
+  73|     for (const entry of filteredEntries) {
+  74|       const list = map.get(entry.date) || [];
+  75|       list.push(entry);
+  76|       map.set(entry.date, list);
+  77|     }
+  78|     for (const list of map.values()) list.sort((a, b) => a.time.localeCompare(b.time));
+  79|     return map;
+  80|   }, [filteredEntries]);
+  81|   const filtering = statusFilter !== "all" || platformFilter !== "all" || query.trim() !== "";
+  82| 
+  83|   const deleteVisible = () => {
+  84|     const ids = filteredEntries.map((e) => e.id);
+  85|     if (!ids.length || busy) return;
+  86|     if (!window.confirm(`ลบ ${ids.length} รายการที่เห็นอยู่ตอนนี้หรือไม่?\n(ใช้ฟิลเตอร์กรองก่อนได้ · ข้ามรายการที่กำลังรัน)`)) return;
+  87|     onDeleteEntriesBatch(ids);
+  88|   };
+  89| 
+  90|   const [selectMode, setSelectMode] = useState(false);
+  91|   const [sel, setSel] = useState(() => new Set());
+  92| 
+
+=== modal5 · app/frontend/src/social-agency/modals.jsx · เนื้อหาไม่ตรงกับ P5w ตัวจริง ===
+ขอบเขตที่ตรวจ (บล็อกก่อนหน้า/ถัดไปที่ locate ได้): บรรทัด 193-250 จากทั้งหมด 280
+แสดงบรรทัด 201-222:
+ 201| 
+ 202| export function AutoPlanModal({ preview, onClose, onApply }) {
+ 203|   const [selected, setSelected] = useState(() => new Map((preview?.slots || []).map((s, i) => [i, true])));
+ 204|   const [busy, setBusy] = useState(false);
+ 205|   const [error, setError] = useState("");
+ 206|   const slots = preview?.slots || [];
+ 207|   const selectedCount = useMemo(() => [...selected.values()].filter(Boolean).length, [selected]);
+ 208|   const toggle = (i) => setSelected((m) => new Map(m).set(i, !m.get(i)));
+ 209|   const productMix = useMemo(() => {
+ 210|     const m = {};
+ 211|     slots.forEach((s, i) => {
+ 212|       if (!selected.get(i)) return;
+ 213|       const k = s.productName || s.sku || "?";
+ 214|       m[k] = (m[k] || 0) + 1;
+ 215|     });
+ 216|     return Object.entries(m).map(([k, n]) => `${k}×${n}`).join(" ");
+ 217|   }, [slots, selected]);
+ 218|   return (
+ 219|     <Modal
+ 220|       title={`ตัวอย่างแผนเดือน ${thaiMonthLabel(preview?.month)}`}
+ 221|       icon={<Sparkles size={17} />}
+ 222|       onClose={onClose}
+
+=== modal6 · app/frontend/src/social-agency/modals.jsx · เนื้อหาไม่ตรงกับ P5w ตัวจริง ===
+ขอบเขตที่ตรวจ (บล็อกก่อนหน้า/ถัดไปที่ locate ได้): บรรทัด 193-250 จากทั้งหมด 280
+แสดงบรรทัด 222-234:
+ 222|       onClose={onClose}
+ 223|       wide
+ 224|       footer={
+ 225|         <>
+ 226|           <span className="sa-muted">เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}{productMix ? ` · สินค้า: ${productMix}` : ""}</span>
+ 227|           <div style={{ flex: 1 }} />
+ 228|           <button className="sa-btn ghost" onClick={onClose}>ยกเลิก</button>
+ 229|           <button
+ 230|             className="sa-btn primary"
+ 231|             disabled={busy || selectedCount === 0}
+ 232|             onClick={async () => {
+ 233|               setBusy(true);
+ 234|               setError("");

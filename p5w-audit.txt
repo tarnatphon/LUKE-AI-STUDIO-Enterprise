@@ -1,0 +1,14 @@
+
+=== scripts/server/social-agency-runtime.cjs ===  (5470 บรรทัด)
+
+=== app/frontend/src/components/SocialAgency.jsx ===  (539 บรรทัด)
+
+=== app/frontend/src/social-agency/CalendarTab.jsx ===  (290 บรรทัด)
+
+=== app/frontend/src/social-agency/modals.jsx ===  (289 บรรทัด)
+
+=== app/frontend/src/social-agency/ProductsTab.jsx ===  (543 บรรทัด)
+
+=== ชื่อที่ต้องมีครั้งเดียว แต่พบมากกว่านั้น ===
+
+✓ ไม่มีสิ่งผิดปกติ: ทุก method/const ที่ต้องมีอยู่ครบและอยู่ครั้งเดียว

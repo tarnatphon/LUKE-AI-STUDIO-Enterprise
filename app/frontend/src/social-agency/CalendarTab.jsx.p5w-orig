@@ -45,7 +45,6 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [newEntryDate, setNewEntryDate] = useState(null);
   const [planPreview, setPlanPreview] = useState(null);
   const [planBusy, setPlanBusy] = useState(false);
-  const [onePerDay, setOnePerDay] = useState(true); // P5w: 1 สินค้า/วัน ไม่ซ้ำทั้งเดือน
   const [dragOver, setDragOver] = useState(null);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -113,7 +112,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     setPlanBusy(true);
     setError("");
     try {
-      const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5, onePerDay ? { onePerDay: true } : {});
+      const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5);
       setPlanPreview(preview);
     } catch (err) {
       setError(err.message);
@@ -142,10 +141,6 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         </div>
         <div className="sa-toolbar-right">
           <span className="sa-tz"><Clock size={12} /> Asia/Bangkok</span>
-          <label className="sa-check" title="วันละ 1 สินค้า และไม่มีสินค้าซ้ำกันภายในเดือน">
-            <input type="checkbox" checked={onePerDay} onChange={(e) => setOnePerDay(e.target.checked)} />
-            <span>1 สินค้า/วัน (ไม่ซ้ำ)</span>
-          </label>
           <button className="sa-btn primary" disabled={planBusy || busy || !(activeClient?.products || []).length} onClick={startAutoPlan}>
             <Sparkles size={14} /> {planBusy ? "กำลังวางแผน…" : "วางแผนอัตโนมัติทั้งเดือน"}
           </button>
@@ -281,7 +276,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         <AutoPlanModal
           preview={planPreview}
           onClose={() => setPlanPreview(null)}
-          onApply={(m, slots) => onApplyPlan(activeClient.id, m, slots, planPreview?.mode === "one-per-day" ? { enforceUniqueProducts: true } : {})}
+          onApply={(m, slots) => onApplyPlan(activeClient.id, m, slots)}
         />
       )}
     </div>

@@ -206,7 +206,6 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
   const slots = preview?.slots || [];
   const selectedCount = useMemo(() => [...selected.values()].filter(Boolean).length, [selected]);
   const toggle = (i) => setSelected((m) => new Map(m).set(i, !m.get(i)));
-  const onePerDay = preview?.mode === "one-per-day";
   const productMix = useMemo(() => {
     const m = {};
     slots.forEach((s, i) => {
@@ -224,9 +223,7 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
       wide
       footer={
         <>
-          <span className="sa-muted">
-            เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {onePerDay ? `วันละ 1 สินค้า ครอบคลุม ${slots.length}/${preview?.openDays ?? slots.length} วันที่ว่าง` : preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}{productMix ? ` · สินค้า: ${productMix}` : ""}
-          </span>
+          <span className="sa-muted">เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}{productMix ? ` · สินค้า: ${productMix}` : ""}</span>
           <div style={{ flex: 1 }} />
           <button className="sa-btn ghost" onClick={onClose}>ยกเลิก</button>
           <button
@@ -250,12 +247,6 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
         </>
       }
     >
-      {onePerDay && preview?.shortBy > 0 ? (
-        <p className="sa-probe-note warn">
-          สินค้าในคลังมีไม่พอสำหรับ {preview.openDays} วันที่เหลือ — ขาดอีก {preview.shortBy} สินค้า ระบบจะไม่ใส่สินค้าซ้ำวันเดิม
-          ให้ไปกด “สุ่ม 1 สินค้า/วัน” ในแท็บ สินค้า เพื่ออ่านสินค้าเพิ่มจากหน้าแคตตาล็อก
-        </p>
-      ) : null}
       {slots.length === 0 ? (
         <p className="sa-muted">เดือนนี้ไม่มีช่องว่างเหลือ หรือยังไม่มีสินค้าให้วางแผน</p>
       ) : (

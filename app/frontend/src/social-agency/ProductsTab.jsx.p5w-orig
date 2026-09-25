@@ -23,7 +23,6 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [urlBusy, setUrlBusy] = useState(false);
   const [urlFound, setUrlFound] = useState(null);
   const [urlSel, setUrlSel] = useState([]);
-  const [sampleBusy, setSampleBusy] = useState(false); // P5w: สุ่มสินค้าจากหน้าแคตตาล็อกสำหรับ 1 โพสต์/วัน
   const [deep, setDeep] = useState(false);
   const [folder, setFolder] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
@@ -105,36 +104,6 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       setUrlFound(null);
     } finally {
       setUrlBusy(false);
-    }
-  };
-
-  const sampleFromCatalog = async () => {
-    if (!clientId || sampleBusy || urlBusy || !url.trim()) return;
-    setSampleBusy(true);
-    setError("");
-    setNote("");
-    try {
-      const data = await postJson(`/api/social-agency/products/sample-catalog?clientId=${encodeURIComponent(clientId)}`, {
-        url: url.trim(),
-        days: 31,
-        maxPages: 4,
-        autoImport: true,
-      });
-      setUrlFound(null);
-      setUrlSel([]);
-      const bits = [`สุ่มเข้าคลัง ${data.importedCount} รายการจาก ${data.found} ที่เจอ (${data.pages} หน้า)`];
-      if (data.alreadyInCatalog) bits.push(`มีอยู่แล้ว ${data.alreadyInCatalog}`);
-      if (data.importSkipped) bits.push(`ข้าม ${data.importSkipped}`);
-      if (data.errors) bits.push(`อ่านหน้าไม่สำเร็จ ${data.errors}`);
-      bits.push(data.shortBy
-        ? `คลังมี ${data.productPool} สินค้า — ยังขาดอีก ${data.shortBy} ตัวถึงจะครบวันละ 1 ชิ้นทั้งเดือน`
-        : `คลังมี ${data.productPool} สินค้า เพียงพอสำหรับวันละ 1 ชิ้น ✓`);
-      setNote(`${bits.join(" · ")} — กด “วางแผนอัตโนมัติทั้งเดือน” ที่แท็บ ปฏิทิน ต่อได้เลย`);
-      onChanged?.();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSampleBusy(false);
     }
   };
 
@@ -449,12 +418,6 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             <button className="sa-btn sm" disabled={urlBusy || !url.trim()} onClick={fetchAndImportAll} title="ดึงแล้วนำเข้าทุกรายการทันที ไม่ต้องติ๊กเลือก">
               {urlBusy ? "กำลังนำเข้า…" : "⚡ ดึง+นำเข้าทั้งหมด"}
             </button>
-          </div>
-          <div className="sa-style-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
-            <button className="sa-btn ghost sm" onClick={sampleFromCatalog} title="อ่านหน้าถัดไปของลิงก์ด้านบน แล้วสุ่มสินค้าเข้าคลังไม่เกิน 31 รายการ ไม่ซ้ำกัน (ไม่ต้องติ๊กเลือก)">
-              <Wand2 size={14} /> {sampleBusy ? "กำลังสุ่ม…" : "🎲 สุ่ม 1 สินค้า/วัน ไม่ซ้ำทั้งเดือน (≤31)"}
-            </button>
-            <span className="sa-muted">ใช้หน้าเดียวกับลิงก์ด้านบน · อ่านหน้าถัดไปอัตโนมัติ · เพิ่มเฉพาะรายการที่ยังไม่มีในคลัง</span>
           </div>
         </div>
         {urlFound && (

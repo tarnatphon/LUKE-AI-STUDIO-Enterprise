@@ -593,9 +593,6 @@ function discoverProductLinks(html, pageUrl) {
     try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
     if (!abs.startsWith(origin)) continue;
     if (normUrl(abs) === normUrl(pageUrl)) continue;
-    // P5w: a "next page / 2 / 3" anchor points at the same listing, not at a product
-    const pathOf = (x) => String(x).split("#")[0].split("?")[0];
-    if (pathOf(abs) === pathOf(pageUrl) && /[?&](limitstart|limitstartnum|limit|page|start|offset)=/i.test(abs)) continue;
     if (isJunkLeafUrl(abs)) continue;
     let decoded = abs;
     try { decoded = decodeURIComponent(abs); } catch { /* keep raw */ }
@@ -707,32 +704,6 @@ function hashSeed(str) {
 }
 function pickBySeed(pool, seed, salt) {
   return pool[hashSeed(salt + ":" + seed) % pool.length];
-}
-
-// P5w: reproducible shuffle - a "1 product a day" month is random but stable per seed
-function seededShuffle(list, seed) {
-  const arr = [...(list || [])];
-  let state = hashSeed(String(seed || "sa")) || 1;
-  const rnd = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rnd() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// same-origin pagination links (?limitstart=21&limit=21 style) on a catalogue page
-function discoverPaginationLinks(html, pageUrl) {
-  let origin = "";
-  try { origin = new URL(pageUrl).origin; } catch { return []; }
-  const out = [];
-  for (const m of String(html || "").matchAll(/href=(["'])([^"'\s>]*[?&]limitstart=\d+[^"'\s>]*)\1/gi)) {
-    let abs = "";
-    try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
-    if (!abs.startsWith(origin)) continue;
-    out.push(abs);
-  }
-  return [...new Set(out)];
 }
 
 const CAPTION_LEADS = {
@@ -1172,19 +1143,6 @@ class SocialAgencyRuntime {
     }
     this._lastReadError = lastError;
     return null;
-  }
-
-  // keep the unreadable bytes for forensics - never delete them
-  _quarantineUnreadable() {
-    try {
-      if (!fs.existsSync(this.filePath)) return "";
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const dst = `${this.filePath}.corrupt-${stamp}`;
-      if (!fs.existsSync(dst)) fs.copyFileSync(this.filePath, dst);
-      return dst;
-    } catch {
-      return "";
-    }
   }
 
   _recoverFromSnapshots() {
@@ -1952,72 +1910,6 @@ class SocialAgencyRuntime {
   }
 
   // ── auto-plan ──
-  // P5w: "one product a day, no repeats inside the month"
-  _buildDailySlots(client, monthStr, opts = {}) {
-    const { year, month, daysInMonth } = currentMonthWeeks(monthStr);
-    const pad = (n) => String(n).padStart(2, "0");
-    const todayStr = bangkokDateStr();
-    const isCurrentMonth = todayStr.startsWith(`${year}-${pad(month)}`);
-    const fromDay = isCurrentMonth ? Number(todayStr.slice(8, 10)) : 1;
-    const monthEntries = (client.calendar || []).filter((e) => e.date && e.date.startsWith(monthStr));
-    const takenDates = new Set(monthEntries.map((e) => e.date));
-    const usedSku = new Set(monthEntries.filter((e) => e.sku).map((e) => e.sku));
-    const seed = String(opts.seed || `${monthStr}:${client.id}`);
-    const pool = seededShuffle((client.products || []).filter((p) => !usedSku.has(p.sku)), seed);
-    const time = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : "18:30";
-    const platforms = ["facebook", "instagram", "line", "demo"];
-    const slots = [];
-    const dayKey = (day) => `${year}-${pad(month)}-${pad(day)}`;
-    let openDays = 0;
-    for (let day = fromDay; day <= daysInMonth; day += 1) if (!takenDates.has(dayKey(day))) openDays += 1;
-    for (let day = fromDay; day <= daysInMonth && slots.length < pool.length; day += 1) {
-      const date = dayKey(day);
-      if (takenDates.has(date)) continue; // strictly one post per day
-      const product = pool[slots.length];
-      slots.push({
-        date,
-        time,
-        sku: product.sku,
-        productName: product.name,
-        angle: CONTENT_ANGLES[(day - 1) % CONTENT_ANGLES.length],
-        platform: platforms[(day - 1) % platforms.length],
-      });
-    }
-    return {
-      slots,
-      daysInMonth,
-      fromDay,
-      openDays,
-      poolSize: pool.length,
-      shortBy: Math.max(0, openDays - pool.length),
-      seed,
-    };
-  }
-
-  // two days must never carry the same product - even when the LLM picked them
-  _dedupeSlotProducts(client, slots) {
-    const taken = new Set();
-    const out = [];
-    let replaced = 0;
-    let dropped = 0;
-    for (const s of slots || []) {
-      if (s.sku && taken.has(s.sku)) {
-        const alt = (client.products || []).find((p) => !taken.has(p.sku));
-        if (alt) {
-          taken.add(alt.sku);
-          out.push({ ...s, sku: alt.sku, productName: alt.name });
-          replaced += 1;
-        } else {
-          dropped += 1;
-        }
-        continue;
-      }
-      if (s.sku) taken.add(s.sku);
-      out.push(s);
-    }
-    return { slots: out, replaced, dropped };
-  }
-
   _buildFallbackSlots(client, monthStr, postsPerWeek) {
     const { year, month, daysInMonth, weeks } = currentMonthWeeks(monthStr);
     const pad = (n) => String(n).padStart(2, "0");
@@ -2069,24 +1961,6 @@ class SocialAgencyRuntime {
     if (!(client.products || []).length) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า เพิ่มสินค้าก่อนวางแผนอัตโนมัติ");
     const month = /^\d{4}-\d{2}$/.test(String(body?.month || "")) ? String(body.month) : bangkokMonthStr();
     const postsPerWeek = clampNumber(body?.postsPerWeek, 1, 7, client.settings?.postsPerWeek || 5);
-    if (body?.onePerDay === true) {
-      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed });
-      return {
-        clientId: client.id,
-        clientName: client.name,
-        month,
-        mode: "one-per-day",
-        postsPerWeek: null,
-        source: "template",
-        daysInMonth: daily.daysInMonth,
-        fromDay: daily.fromDay,
-        openDays: daily.openDays,
-        productPool: daily.poolSize,
-        shortBy: daily.shortBy,
-        seed: daily.seed,
-        slots: daily.slots,
-      };
-    }
     const fallback = this._buildFallbackSlots(client, month, postsPerWeek);
     let slots = fallback;
     let source = "template";
@@ -2116,16 +1990,14 @@ class SocialAgencyRuntime {
         console.warn("[social-agency] auto-plan LLM fallback:", err.message);
       }
     }
-    const uniq = this._dedupeSlotProducts(client, slots).slots;
-    const capped = uniq.slice(0, 22);
+    slots = slots.slice(0, 22);
     return {
       clientId: client.id,
       clientName: client.name,
       month,
       postsPerWeek,
       source,
-      uniqueProducts: new Set(capped.map((x) => x.sku)).size,
-      slots: capped,
+      slots,
     };
   }
 
@@ -2137,18 +2009,13 @@ class SocialAgencyRuntime {
     const existing = new Set((client.calendar || []).map((e) => `${e.date} ${e.time}`));
     const now = new Date().toISOString();
     const created = [];
-    let skippedDup = 0;
-    const enforceUnique = body?.enforceUniqueProducts === true;
-    const plannedSku = new Set();
-    for (const slot of incoming.slice(0, 31)) {
+    for (const slot of incoming.slice(0, 30)) {
       const date = String(slot?.date || "");
       const time = String(slot?.time || "18:30");
       if (!date.startsWith(month) || !/^\d{2}:\d{2}$/.test(time)) continue;
       if (existing.has(`${date} ${time}`)) continue;
       const product = client.products.find((p) => p.sku === slot.sku) || client.products[0];
       if (!product) continue;
-      if (enforceUnique && plannedSku.has(product.sku)) { skippedDup += 1; continue; }
-      plannedSku.add(product.sku);
       const entry = {
         id: newId("cal"),
         date,
@@ -2166,7 +2033,7 @@ class SocialAgencyRuntime {
       created.push(entry);
     }
     this._write(state);
-    return { created, count: created.length, skippedDuplicateProduct: skippedDup };
+    return { created, count: created.length };
   }
 
   // ── performance loop (P4): engagement -> pillar/angle ranking ──
@@ -2366,87 +2233,6 @@ class SocialAgencyRuntime {
     return { origin: new URL(url).origin, products: products.slice(0, 20), fetched, failed };
   }
 
-  // ── P5w: read a catalogue page and draw a random pool (<= 31) for a one-post-a-day month ──
-  async sampleCatalogProducts(clientId, body = {}) {
-    const { client } = this._resolveClient(clientId || body.clientId);
-    const startUrl = String(body.url || client.website || "").trim();
-    if (!/^https?:\/\//i.test(startUrl)) throw new Error("ต้องใส่ลิงก์หน้าแคตตาล็อกให้ถูกต้อง (http/https)");
-    const days = clampNumber(body.days, 1, 31, 31);
-    const maxPages = clampNumber(body.maxPages, 1, 8, 4);
-    const seed = String(body.seed || crypto.randomUUID().slice(0, 8));
-    const queue = [startUrl];
-    const seenPages = new Set();
-    const pageLog = [];
-    const pool = [];
-    let pages = 0;
-    let errors = 0;
-    while (queue.length && pages < maxPages) {
-      const pageUrl = queue.shift();
-      if (seenPages.has(normUrl(pageUrl))) continue;
-      seenPages.add(normUrl(pageUrl));
-      let html = "";
-      try {
-        html = await this._fetchHtml(pageUrl, 12000);
-      } catch (err) {
-        errors += 1;
-        pageLog.push({ page: pageUrl, error: String((err && err.message) || err) });
-        continue;
-      }
-      pages += 1;
-      const before = pool.length;
-      for (const c of extractProductsFromHtml(html, pageUrl, { anchorsOnly: true })) {
-        if (!c || !c.name) continue;
-        if (junkLinkReason(c.sourceUrl)) continue; // menu links / spec-sheet files
-        if (/[?&](limitstart|limit|page|start|offset)=/i.test(String(c.sourceUrl || ""))) continue;
-        mergeProductCandidate(pool, c);
-      }
-      pageLog.push({ page: pageUrl, added: pool.length - before, total: pool.length });
-      if (pool.length >= days) continue; // pagination is only worth reading while we are short
-      for (const next of discoverPaginationLinks(html, pageUrl)) {
-        if (seenPages.has(normUrl(next))) continue;
-        if (!queue.includes(next)) queue.push(next);
-      }
-    }
-    const picked = seededShuffle(pool, seed).slice(0, days);
-    const existing = new Set((client.products || []).map((p) => String(p.name).trim().toLowerCase()));
-    const fresh = picked.filter((p) => !existing.has(String(p.name).trim().toLowerCase()));
-    let imported = null;
-    if (body.autoImport === true && fresh.length) {
-      imported = this.importProducts(client.id, {
-        products: fresh.map((p) => ({
-          name: p.name,
-          detail: p.description || "",
-          price: p.price || "",
-          category: p.category || "สินค้า",
-          sourceUrl: cleanProductPageUrl(p.sourceUrl || ""),
-          image: p.image || "",
-        })),
-      });
-    }
-    const productPool = (this._resolveClient(client.id).client.products || []).length;
-    return {
-      seed,
-      pages,
-      errors,
-      found: pool.length,
-      picked: picked.map((p) => ({
-        name: p.name,
-        sourceUrl: p.sourceUrl || "",
-        price: p.price || "",
-        hasImage: Boolean(p.image),
-        description: String(p.description || "").slice(0, 120),
-      })),
-      pickedCount: picked.length,
-      alreadyInCatalog: picked.length - fresh.length,
-      importedCount: imported ? imported.count : 0,
-      importSkipped: imported ? imported.skipped : 0,
-      productPool,
-      days,
-      shortBy: Math.max(0, days - productPool),
-      pageLog,
-    };
-  }
-
   async enrichProducts(clientId, body = {}) {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const limit = clampNumber(body.limit, 1, 20, 10);
@@ -2471,8 +2257,7 @@ class SocialAgencyRuntime {
       .slice()
       .sort((a, b) => Number(a.detailCheckedAt || 0) - Number(b.detailCheckedAt || 0));
     const batch = candidates.slice(0, limit);
-    const fetchTimeoutMs = clampNumber(body.timeoutMs, 3000, 90000, 20000);
-    const results = await Promise.allSettled(batch.map((q) => this._fetchHtml(q.sourceUrl, fetchTimeoutMs)));
+    const results = await Promise.allSettled(batch.map((p) => this._fetchHtml(p.sourceUrl, 8000)));
     const enriched = [];
     const unchanged = [];
     const mismatch = [];
@@ -5259,10 +5044,6 @@ class SocialAgencyRuntime {
         } catch (error) {
           return fail(error, 400);
         }
-      }
-      if (pathname === "/api/social-agency/products/sample-catalog" && method === "POST") {
-        const body = await readBody();
-        return json(res, 200, { ok: true, ...(await this.sampleCatalogProducts(clientId || body.clientId, body)) });
       }
       if (pathname === "/api/social-agency/products/probe" && method === "POST") {
         const body = await readBody();
