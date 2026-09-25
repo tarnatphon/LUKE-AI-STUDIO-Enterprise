@@ -2066,8 +2066,9 @@ class SocialAgencyRuntime {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const limit = clampNumber(body.limit, 1, 20, 10);
     const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
+    const overwrite = body.overwrite === true;
     const candidates = (client.products || []).filter((p) =>
-      !String(p.detail || "").trim() &&
+      (overwrite || !String(p.detail || "").trim()) &&
       /^https?:\/\//i.test(String(p.sourceUrl || "")) &&
       (!onlySkus || onlySkus.has(p.sku))
     );

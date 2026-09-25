@@ -176,21 +176,39 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
 
   const missingCount = products.filter((p) => !String(p.detail || "").trim() && /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
 
-  const enrichMissing = async () => {
-    if (!clientId || enrichBusy || !missingCount) return;
+  const runEnrich = async (overwrite) => {
+    const target = overwrite ? urlCount : missingCount;
+    if (!clientId || enrichBusy || !target) return;
     setEnrichBusy(true);
     setError("");
     setNote("");
     try {
-      const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, { limit: 10 });
-      setNote(`เติมคำอธิบายแล้ว ${data.enrichedCount} รายการ ✓${data.remaining ? ` (เหลืออีก ${data.remaining} — กดซ้ำได้)` : ""}${(data.failed || []).length ? ` · ไม่ได้ ${(data.failed || []).length}` : ""}`);
-      onChanged?.();
+      let total = 0;
+      let failed = 0;
+      let remaining = target;
+      let rounds = 0;
+      do {
+        rounds += 1;
+        const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, {
+          limit: 10,
+          ...(overwrite ? { overwrite: true } : {}),
+        });
+        total += data.enrichedCount || 0;
+        failed += (data.failed || []).length;
+        remaining = typeof data.remaining === "number" ? data.remaining : 0;
+        setNote(`กำลังเติมคำอธิบาย… ได้แล้ว ${total} รายการ${remaining ? ` · เหลืออีก ${remaining}` : ""}`);
+        onChanged?.();
+      } while (remaining > 0 && rounds < 25);
+      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${failed ? ` · ไม่ได้ ${failed} รายการ (เปิดหน้าไม่สำเร็จ หรือหน้านั้นไม่มีคำอธิบาย)` : ""}`);
     } catch (err) {
       setError(err.message);
     } finally {
       setEnrichBusy(false);
     }
   };
+
+  const enrichMissing = () => runEnrich(false);
+  const enrichAllOverwrite = () => runEnrich(true);
 
   const deleteSelectedProducts = async () => {
     if (!delSel.length || saving) return;
@@ -274,8 +292,13 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             </button>
           )}
           {missingCount > 0 && (
-            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้ารายตัวของสินค้าที่ยังไม่มีคำอธิบาย แล้วดึงมาเติม (ครั้งละ 10)">
+            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้าใบสินค้าทีละ 10 แถว แล้วดึงคำอธิบายมาเติม — กดครั้งเดียวระบบทำต่อเองจนครบ">
               {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
+            </button>
+          )}
+          {urlCount > 0 && missingCount < urlCount && (
+            <button className="sa-btn ghost sm" disabled={enrichBusy || saving} onClick={enrichAllOverwrite} title="ดึงใหม่ทุกแถวแล้วเขียนทับคำอธิบายเดิม (ใช้ตอนลิงก์เพิ่งถูกแก้ / คำอธิบายเดิมเป็นของคนละสินค้า)">
+              {enrichBusy ? "กำลังเติม…" : "เติมทับทุกแถว"}
             </button>
           )}
           {urlCount > 0 && (

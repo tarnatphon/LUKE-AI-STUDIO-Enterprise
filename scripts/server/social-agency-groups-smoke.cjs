@@ -1086,6 +1086,20 @@ async function main() {
     assert.ok(!/download|file_id/i.test(longSaved.sourceUrl), "download junk must be skipped");
   });
 
+  // ── P5q: enrich overwrite mode refreshes rows that already have text ──
+  rt._fetchHtml = async () => `<html><head><meta property="og:title" content="กระเป๋า SPB-099"><meta property="og:description" content="คำอธิบายใหม่จากหน้าใบสินค้า"></head><body><h1>กระเป๋า SPB-099</h1></body></html>`;
+  const qRow = rt.addProduct(clientId, { name: "กระเป๋า SPB-099", sourceUrl: "https://shop.example/cat/กระเป๋า-spb-099.html" });
+  rt.updateProduct(clientId, qRow.sku, { detail: "ของเดิมที่ดึงมาผิด" });
+  const pickDetail = () => rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === qRow.sku).detail;
+  await rt.enrichProducts(clientId, { limit: 10, skus: [qRow.sku] });
+  const afterDefault = pickDetail();
+  await rt.enrichProducts(clientId, { limit: 10, skus: [qRow.sku], overwrite: true });
+  const afterOverwrite = pickDetail();
+  check("enrich overwrite refreshes rows that already have text", () => {
+    assert.strictEqual(afterDefault, "ของเดิมที่ดึงมาผิด");
+    assert.ok(/คำอธิบายใหม่/.test(afterOverwrite), `unexpected: ${afterOverwrite}`);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
