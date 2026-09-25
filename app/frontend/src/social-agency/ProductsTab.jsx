@@ -29,7 +29,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     setError("");
   }, [clientId]);
 
-  const toggleSel = (setter) => (i) =>
+  const toggleSel = (setter) => (i) => () =>
     setter((s) => (s.includes(i) ? s.filter((x) => x !== i) : [...s, i]));
 
   const addManual = async () => {
