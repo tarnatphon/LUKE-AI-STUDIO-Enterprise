@@ -333,6 +333,10 @@
 .sa-chip.needs-review .sa-chip-status { color: var(--sa-warn); }
 .sa-chip.missed { border-style: dashed; opacity: 0.85; }
 .sa-chip.running { animation: sa-pulse 1.2s ease-in-out infinite; }
+.sa-chip-del { margin-left: auto; padding: 0 4px; border-radius: 6px; color: var(--sa-muted); font-size: 0.85rem; line-height: 1.2; cursor: pointer; flex: none; }
+.sa-chip-del:hover { color: var(--sa-error); background: color-mix(in srgb, var(--sa-error) 15%, transparent); }
+.sa-chip.selected { outline: 2px solid var(--sa-primary); outline-offset: 1px; }
+.sa-calendar.selecting .sa-chip { cursor: pointer; }
 @keyframes sa-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 /* ── workflow canvas (n8n style) ───────────────────────────────────────── */

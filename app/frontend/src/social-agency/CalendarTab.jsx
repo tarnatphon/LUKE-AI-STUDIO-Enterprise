@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2, ListChecks } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
   bangkokToday, currentMonth, entriesOfMonth,
@@ -8,23 +8,34 @@ import { NewEntryModal, AutoPlanModal } from "./modals.jsx";
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
-function Chip({ entry, onOpen, onDragStart }) {
+function Chip({ entry, onOpen, onDragStart, onDelete, onToggle, selectMode, selected }) {
   const meta = STATUS_META[entry.status] || { label: entry.status, cls: "" };
   const platform = PLATFORM_META[entry.platform] || PLATFORM_META.demo;
   return (
     <button
-      className={`sa-chip ${meta.cls} ${entry.inFlight ? "running" : ""}`}
-      draggable={!entry.inFlight}
+      className={`sa-chip ${meta.cls} ${entry.inFlight ? "running" : ""}${selected ? " selected" : ""}`}
+      draggable={!entry.inFlight && !selectMode}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/sa-entry", entry.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => onOpen(entry.id)}
+      onClick={() => (selectMode && onToggle ? onToggle(entry.id) : onOpen(entry.id))}
       title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}`}
     >
       <span className="sa-chip-time">{entry.time}</span>
       <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
       <span className="sa-chip-status">{meta.label}</span>
+      {!selectMode && onDelete && (
+        <span
+          className="sa-chip-del"
+          role="button"
+          aria-label="ลบรายการนี้"
+          title="ลบรายการนี้"
+          onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+        >
+          ×
+        </span>
+      )}
     </button>
   );
 }
@@ -76,6 +87,27 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     onDeleteEntriesBatch(ids);
   };
 
+  const [selectMode, setSelectMode] = useState(false);
+  const [sel, setSel] = useState(() => new Set());
+
+  const toggleChipSel = (id) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedCal = () => {
+    const ids = [...sel];
+    if (!ids.length || busy) return;
+    if (!window.confirm(`ลบ ${ids.length} รายการที่เลือกหรือไม่?`)) return;
+    setSel(new Set());
+    setSelectMode(false);
+    onDeleteEntriesBatch?.(ids);
+  };
+
   const startAutoPlan = async () => {
     setPlanBusy(true);
     setError("");
@@ -90,7 +122,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   };
 
   return (
-    <div className="sa-calendar">
+    <div className={`sa-calendar${selectMode ? " selecting" : ""}`}>
       <div className="sa-calendar-toolbar">
         <div className="sa-month-nav">
           <button className="sa-icon-btn" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="เดือนก่อน"><ChevronLeft size={16} /></button>
@@ -160,6 +192,21 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         >
           <Trash2 size={13} /> ลบที่เห็น ({filteredEntries.length})
         </button>
+        {selectMode ? (
+          <>
+            <button className="sa-btn ghost sm danger" disabled={busy || !sel.size} onClick={deleteSelectedCal}>
+              <Trash2 size={13} /> ลบที่เลือก ({sel.size})
+            </button>
+            <button className="sa-btn ghost sm" onClick={() => { setSel(new Set()); setSelectMode(false); }}>
+              ยกเลิก
+            </button>
+            <span className="sa-muted">จิ้มชิพเพื่อเลือก ({sel.size})</span>
+          </>
+        ) : (
+          <button className="sa-btn ghost sm" onClick={() => setSelectMode(true)} title="เข้าโหมดเลือกหลายรายการเพื่อลบ">
+            <ListChecks size={13} /> เลือกลบ
+          </button>
+        )}
       </div>
 
       <div className="sa-grid">
@@ -203,7 +250,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
                     </div>
                     <div className="sa-day-chips">
                       {entries.map((entry) => (
-                        <Chip key={entry.id} entry={entry} onOpen={onOpenEntry} />
+                        <Chip key={entry.id} entry={entry} onOpen={onOpenEntry} onDelete={onDeleteEntry} onToggle={toggleChipSel} selectMode={selectMode} selected={sel.has(entry.id)} />
                       ))}
                     </div>
                   </>
