@@ -18,6 +18,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [scanBusy, setScanBusy] = useState(false);
   const [scanFound, setScanFound] = useState(null);
   const [scanSel, setScanSel] = useState([]);
+  const [enrichBusy, setEnrichBusy] = useState(false);
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -170,6 +171,24 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     }
   };
 
+  const missingCount = products.filter((p) => !String(p.detail || "").trim() && /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
+
+  const enrichMissing = async () => {
+    if (!clientId || enrichBusy || !missingCount) return;
+    setEnrichBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, { limit: 10 });
+      setNote(`เติมคำอธิบายแล้ว ${data.enrichedCount} รายการ ✓${data.remaining ? ` (เหลืออีก ${data.remaining} — กดซ้ำได้)` : ""}${(data.failed || []).length ? ` · ไม่ได้ ${(data.failed || []).length}` : ""}`);
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnrichBusy(false);
+    }
+  };
+
   const importSelected = async (kind) => {
     const pool = kind === "url" ? urlFound?.products || [] : [...(scanFound?.images || []), ...(scanFound?.rows || [])];
     const sel = kind === "url" ? urlSel : scanSel;
@@ -209,6 +228,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           <Package size={15} />
           <b>สินค้าของ {activeClient.name}</b>
           <span className="sa-muted">{products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว</span>
+          {missingCount > 0 && (
+            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้ารายตัวของสินค้าที่ยังไม่มีคำอธิบาย แล้วดึงมาเติม (ครั้งละ 10)">
+              {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
+            </button>
+          )}
         </header>
         <ul className="sa-style-shots">
           {products.map((p) => (

@@ -1993,6 +1993,37 @@ class SocialAgencyRuntime {
     return { origin: new URL(url).origin, products: products.slice(0, 20), fetched, failed };
   }
 
+  async enrichProducts(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const limit = clampNumber(body.limit, 1, 20, 10);
+    const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
+    const candidates = (client.products || []).filter((p) =>
+      !String(p.detail || "").trim() &&
+      /^https?:\/\//i.test(String(p.sourceUrl || "")) &&
+      (!onlySkus || onlySkus.has(p.sku))
+    );
+    const batch = candidates.slice(0, limit);
+    const results = await Promise.allSettled(batch.map((p) => this._fetchHtml(p.sourceUrl, 8000)));
+    const enriched = [];
+    const failed = [];
+    results.forEach((r, i) => {
+      const p = batch[i];
+      if (r.status !== "fulfilled") { failed.push({ sku: p.sku, error: "เปิดหน้าไม่ได้" }); return; }
+      const found = extractProductsFromHtml(r.value, p.sourceUrl);
+      const self = found.find((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl)) || found[0];
+      if (!self || (!self.description && !self.price && !self.image)) {
+        failed.push({ sku: p.sku, error: "ไม่เจอข้อมูลในหน้านี้" });
+        return;
+      }
+      if (self.description) p.detail = String(self.description).slice(0, 500);
+      if (!String(p.price || "").trim() && self.price) p.price = String(self.price).slice(0, 32);
+      if (!String(p.image || "").trim() && /^https?:\/\//i.test(String(self.image || ""))) p.image = String(self.image).slice(0, 500);
+      enriched.push(p.sku);
+    });
+    if (enriched.length) this._write(state);
+    return { enriched, enrichedCount: enriched.length, failed, remaining: candidates.length - batch.length };
+  }
+
   async scanFolder(clientId, body = {}) {
     this._resolveClient(clientId || body.clientId);
     const raw = String(body.path || "").trim();
@@ -4395,6 +4426,10 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products/import" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, ...this.importProducts(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/enrich" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...await this.enrichProducts(clientId || body.clientId, body) });
       }
       match = pathname.match(/^\/api\/social-agency\/products\/([^/]+)$/);
       if (match && method === "PATCH") {

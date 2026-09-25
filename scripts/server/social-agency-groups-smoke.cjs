@@ -971,6 +971,43 @@ async function main() {
     assert.strictEqual(navRes.fetched, 3, "1 page + 2 leaves, fetched=" + navRes.fetched);
   });
 
+  // ── P5h: enrich fills missing details from source pages ──
+  const enrichSrv = http.createServer((req, res) => {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    const u = String(req.url || "");
+    if (u.includes("jsonld")) {
+      res.end(`<html><head><title>J</title><script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", name: "กระเป๋า JSON", description: "รายละเอียด JSON", image: "https://x.test/j.jpg", offers: { price: "990", priceCurrency: "THB" } })}</script></head><body></body></html>`);
+    } else if (u.includes("meta")) {
+      res.end(`<html><head><title>M</title><meta property="og:title" content="กระเป๋า M"><meta property="og:description" content="รายละเอียด M"><meta property="og:image" content="https://x.test/m.jpg"></head><body><h1>กระเป๋า M</h1><p>฿199</p></body></html>`);
+    } else {
+      res.writeHead(404); res.end("nope");
+    }
+  });
+  await new Promise((resolve) => enrichSrv.listen(0, "127.0.0.1", resolve));
+  const enrichBase = `http://127.0.0.1:${enrichSrv.address().port}`;
+  const ep1 = rt.addProduct(clientId, { name: "E1", sourceUrl: `${enrichBase}/jsonld.html` });
+  const ep2 = rt.addProduct(clientId, { name: "E2", sourceUrl: `${enrichBase}/meta.html` });
+  const ep3 = rt.addProduct(clientId, { name: "E3", sourceUrl: `${enrichBase}/missing.html` });
+  const ep4 = rt.addProduct(clientId, { name: "E4" });
+  let enrichRes = null;
+  try {
+    enrichRes = await rt.enrichProducts(clientId, { limit: 10, skus: [ep1.sku, ep2.sku, ep3.sku, ep4.sku] });
+  } finally { enrichSrv.close(); }
+  check("enrich fills missing details", () => {
+    assert.strictEqual(enrichRes.enrichedCount, 2, JSON.stringify(enrichRes));
+    assert.strictEqual(enrichRes.failed.length, 1);
+    assert.strictEqual(enrichRes.remaining, 0);
+    const after = rt.getState().clients.find((c) => c.id === clientId).products;
+    const g = (sku) => after.find((p) => p.sku === sku);
+    assert.strictEqual(g(ep1.sku).detail, "รายละเอียด JSON");
+    assert.strictEqual(g(ep1.sku).price, "990");
+    assert.strictEqual(g(ep1.sku).image, "https://x.test/j.jpg");
+    assert.strictEqual(g(ep2.sku).detail, "รายละเอียด M");
+    assert.strictEqual(g(ep2.sku).price, "199");
+    assert.strictEqual(g(ep2.sku).name, "E2", "name untouched");
+    assert.strictEqual(g(ep4.sku).detail, "", "no-source product skipped");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
