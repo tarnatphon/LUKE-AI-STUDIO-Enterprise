@@ -2125,21 +2125,28 @@ class SocialAgencyRuntime {
         let best = "";
         if (nameSlug && textMap.has(nameSlug)) best = textMap.get(nameSlug);
         if (!best) {
-          let score = 0;
-          for (const l of links) {
-            const ls = slugKeyOf(l.text);
-            if (!ls || !nameSlug) continue;
-            const hit = (ls.includes(nameSlug) ? 2 : 0) + (nameSlug.includes(ls) ? 1 : 0);
-            if (hit >= 2 && hit > score) { score = hit; best = l.url; }
+          // fallback: product code (SPB-002 style) in the name vs the href slug (hyphen or space)
+          const raw = String(p.name || "").toLowerCase();
+          const codes = [...new Set([
+            ...(raw.match(/[a-z0-9]+-[\d]{2,6}/g) || []),
+            ...(slugKeyOf(p.name).match(/[a-z0-9]+ \d{2,6}/g) || []),
+          ])].filter((c) => c.length >= 5);
+          for (const code of codes) {
+            let hit = "";
+            let hitLen = 0;
+            for (const l of links) {
+              const ls = slugKeyOf(l.url);
+              if (!ls.includes(code)) continue;
+              const leaf = ls.slice(ls.lastIndexOf(code));
+              if (!hit || leaf.length < hitLen) { hit = l.url; hitLen = leaf.length; }
+            }
+            if (hit) { best = hit; break; }
           }
         }
-        if (!best) {
-          const pm = slugKeyOf(p.name).match(/([a-z0-9]+-\d{2,6})(?:\s|$)/);
-          const code = pm ? pm[1] : "";
-          if (code) {
-            for (const l of links) {
-              if (slugKeyOf(l.url).includes(code)) { best = l.url; break; }
-            }
+        if (!best && nameSlug) {
+          for (const l of links) {
+            const lt = slugKeyOf(l.text);
+            if (lt && lt.length >= 8 && nameSlug.includes(lt)) { best = l.url; break; }
           }
         }
         if (best && normUrl(best) !== normUrl(p.sourceUrl)) {

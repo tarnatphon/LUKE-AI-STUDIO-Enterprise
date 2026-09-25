@@ -1056,6 +1056,20 @@ async function main() {
     assert.strictEqual(fxRoute.body.fixed, 0); // already correct -> no change
   });
 
+  // ── P5n: code-token fallback (SEO-suffixed names still match their leaf link) ──
+  rt._fetchHtml = async () => `<html><body><main>
+    <a href="/cat/spb-002.html">กระเป๋าใส่อุปกรณ์กีฬา SPB-002</a>
+    <a href="/cat/อะไรก็ได้อื่น-spb-004-รีวิวสินค้า.pdf">SPB-004 รีวิว</a>
+    <a href="/cat/กระเป๋าใส่อุปกรณ์กีฬา-spb-004.html">กระเป๋า SPB-004</a>
+  </main></body></html>`;
+  const seo1 = rt.addProduct(clientId, { name: "โรงงานผลิตกระเป๋าใส่อุปกรณ์กีฬา SPB-004 - Thai Modern Bags Co., Ltd.", sourceUrl: "https://shop.example/cat/spb.html" });
+  const nRes = await rt.fixProductsUrls(clientId, { skus: [seo1.sku] });
+  check("product code fallback fixes SEO-titled rows", () => {
+    const pSeo = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === seo1.sku);
+    assert.ok(/-spb-004\.html$/.test(pSeo.sourceUrl));
+    assert.strictEqual(nRes.fixed, 1);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
