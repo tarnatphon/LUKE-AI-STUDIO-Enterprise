@@ -1100,6 +1100,31 @@ async function main() {
     assert.ok(/คำอธิบายใหม่/.test(afterOverwrite), `unexpected: ${afterOverwrite}`);
   });
 
+  // ── P5r: leaf-page enrich wins over same-name anchor + honest failure reason ──
+  const rLeafUrl = "https://shop.example/cat/spb/กระเป๋า-spb-077.html";
+  rt._fetchHtml = async () => `<html><head><title>กระเป๋า SPB-077</title>
+    <meta property="og:title" content="กระเป๋า SPB-077">
+    <meta property="og:description" content="คำอธิบายจาก og ของหน้าใบสินค้า ใช้ทดสอบการ merge ข้อมูล">
+  </head><body>
+    <main><a href="${rLeafUrl}"><img src="https://img.example/a.jpg" alt="กระเป๋า SPB-077">กระเป๋า SPB-077</a></main>
+  </body></html>`;
+  const rRow = rt.addProduct(clientId, { name: "กระเป๋า SPB-077", sourceUrl: rLeafUrl });
+  const rRes = await rt.enrichProducts(clientId, { limit: 10, skus: [rRow.sku], overwrite: true });
+  check("leaf page enrich merges anchor + page description", () => {
+    const row = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === rRow.sku);
+    assert.strictEqual(rRes.enrichedCount, 1);
+    assert.ok(/คำอธิบายจาก og/.test(String(row.detail)), `unexpected detail: ${row.detail}`);
+    assert.strictEqual(row.image, "https://img.example/a.jpg");
+  });
+  rt._fetchHtml = async () => `<html><body><main><p>สั้นเกิน</p></main></body></html>`;
+  const rRow2 = rt.addProduct(clientId, { name: "สินค้าหน้าเปล่า SPB-078", sourceUrl: "https://shop.example/cat/spb.html" });
+  const rRes2 = await rt.enrichProducts(clientId, { limit: 10, skus: [rRow2.sku] });
+  check("empty leaf page reports a reason instead of fake success", () => {
+    assert.strictEqual(rRes2.enrichedCount, 0);
+    assert.strictEqual(rRes2.failed.length, 1);
+    assert.ok(/ไม่มีข้อมูล/.test(rRes2.failed[0].error), `unexpected error: ${rRes2.failed[0].error}`);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

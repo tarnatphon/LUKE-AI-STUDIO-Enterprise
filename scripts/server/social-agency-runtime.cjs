@@ -367,6 +367,52 @@ function pickPillar(pillars, counts, { pillar, angle, seed = "" } = {}) {
 }
 
 // ── P5: product import helpers (pure) ──
+// first meaningful paragraph - used when a page has no og:/JSON-LD description
+function firstParagraphText(html, minLen = 60) {
+  const src = stripPageChrome(html);
+  const re = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let m;
+  let guard = 0;
+  while ((m = re.exec(src)) && guard < 40) {
+    guard += 1;
+    const text = String(m[1])
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&#3[94];/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text.length >= minLen && !/(cookie|privacy policy|นโยบายความเป็นส่วนตัว|ติดต่อเรา)/i.test(text)) return text.slice(0, 500);
+  }
+  return "";
+}
+
+// best product image on the page (largest declared size, skips logos/icons)
+function firstContentImage(html) {
+  const src = stripPageChrome(html);
+  const scoped = src.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i);
+  const body = scoped ? scoped[2] : src;
+  const re = /<img\b[^>]*>/gi;
+  let m;
+  let best = "";
+  let bestArea = -1;
+  let guard = 0;
+  while ((m = re.exec(body)) && guard < 60) {
+    guard += 1;
+    const tag = m[0];
+    const srcM = tag.match(/src=(["'])(.*?)\1/i);
+    if (!srcM) continue;
+    const url = String(srcM[2]).trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    if (/logo|icon|sprite|banner|placeholder|avatar|\.(?:svg|gif)(?:$|\?)/i.test(url)) continue;
+    const w = Number((tag.match(/\bwidth=(["']?)(\d+)/i) || [])[2] || 0);
+    const h = Number((tag.match(/\bheight=(["']?)(\d+)/i) || [])[2] || 0);
+    const area = w > 0 && h > 0 ? w * h : 1;
+    if (area > bestArea) { bestArea = area; best = url; }
+  }
+  return best.slice(0, 500);
+}
+
 function extractProductsFromHtml(html, pageUrl, opts = {}) {
   const anchorsOnly = Boolean(opts && opts.anchorsOnly);
   const src = String(html || "");
@@ -374,8 +420,20 @@ function extractProductsFromHtml(html, pageUrl, opts = {}) {
   const seen = new Set();
   const push = (p) => {
     const name = String(p.name || "").trim().slice(0, 120);
-    if (!name || seen.has(name.toLowerCase())) return;
-    seen.add(name.toLowerCase());
+    if (!name) return;
+    const key = name.toLowerCase();
+    const prev = out.find((x) => String(x.name).toLowerCase() === key);
+    if (prev) {
+      // same product seen twice (listing anchor + page meta): merge, never drop the richer one
+      if (!prev.description && p.description) prev.description = String(p.description).trim().slice(0, 500);
+      if (!prev.price && p.price !== undefined && p.price !== null && p.price !== "") prev.price = String(p.price).slice(0, 32);
+      if (!prev.image && p.image) prev.image = String(p.image).slice(0, 500);
+      if (p.sourceUrl && normUrl(p.sourceUrl) === normUrl(pageUrl) && normUrl(prev.sourceUrl) !== normUrl(pageUrl)) {
+        prev.sourceUrl = String(p.sourceUrl).slice(0, 1200);
+      }
+      return;
+    }
+    seen.add(key);
     out.push({
       name,
       description: String(p.description || "").trim().slice(0, 500),
@@ -2080,14 +2138,23 @@ class SocialAgencyRuntime {
       const p = batch[i];
       if (r.status !== "fulfilled") { failed.push({ sku: p.sku, error: "เปิดหน้าไม่ได้" }); return; }
       const found = extractProductsFromHtml(r.value, p.sourceUrl);
-      const self = found.find((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl)) || found[0];
-      if (!self || (!self.description && !self.price && !self.image)) {
-        failed.push({ sku: p.sku, error: "ไม่เจอข้อมูลในหน้านี้" });
+      const pageHits = found.filter((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl));
+      const self = pageHits[0] || found.find((x) => x.description) || found[0] || null;
+      const detail = String((self && self.description) || "").trim() || firstParagraphText(r.value);
+      const price = self ? self.price : "";
+      const image = String((self && self.image) || "").trim() || firstContentImage(r.value);
+      if (!detail && !price && !image) {
+        failed.push({ sku: p.sku, error: "หน้านี้ไม่มีข้อมูลให้ดึง (ลิงก์อาจไม่ใช่หน้าสินค้า)" });
         return;
       }
-      if (self.description) p.detail = String(self.description).slice(0, 500);
-      if (!String(p.price || "").trim() && self.price) p.price = String(self.price).slice(0, 32);
-      if (!String(p.image || "").trim() && /^https?:\/\//i.test(String(self.image || ""))) p.image = String(self.image).slice(0, 500);
+      const before = JSON.stringify([p.detail, p.price, p.image]);
+      if (detail) p.detail = String(detail).slice(0, 500);
+      if (!String(p.price || "").trim() && price) p.price = String(price).slice(0, 32);
+      if (!String(p.image || "").trim() && /^https?:\/\//i.test(String(image || ""))) p.image = String(image).slice(0, 500);
+      if (JSON.stringify([p.detail, p.price, p.image]) === before) {
+        failed.push({ sku: p.sku, error: "หน้านั้นยังไม่มีคำอธิบายให้เติม" });
+        return;
+      }
       enriched.push(p.sku);
     });
     if (enriched.length) this._write(state);

@@ -187,6 +187,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       let failed = 0;
       let remaining = target;
       let rounds = 0;
+      let firstReason = "";
       do {
         rounds += 1;
         const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, {
@@ -195,11 +196,12 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         });
         total += data.enrichedCount || 0;
         failed += (data.failed || []).length;
+        if (!firstReason && data.failed && data.failed[0] && data.failed[0].error) firstReason = data.failed[0].error;
         remaining = typeof data.remaining === "number" ? data.remaining : 0;
         setNote(`กำลังเติมคำอธิบาย… ได้แล้ว ${total} รายการ${remaining ? ` · เหลืออีก ${remaining}` : ""}`);
         onChanged?.();
       } while (remaining > 0 && rounds < 25);
-      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${failed ? ` · ไม่ได้ ${failed} รายการ (เปิดหน้าไม่สำเร็จ หรือหน้านั้นไม่มีคำอธิบาย)` : ""}`);
+      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${failed ? ` · ไม่ได้ ${failed} รายการ${firstReason ? ` (${firstReason})` : ""}` : ""}`);
     } catch (err) {
       setError(err.message);
     } finally {
