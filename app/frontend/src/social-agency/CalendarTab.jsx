@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2 } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
   bangkokToday, currentMonth, entriesOfMonth,
@@ -29,7 +29,7 @@ function Chip({ entry, onOpen, onDragStart }) {
   );
 }
 
-export default function CalendarTab({ state, activeClient, busy, onOpenEntry, onRunNow, onReschedule, onDeleteEntry, onCreateEntry, onAutoPlan, onApplyPlan }) {
+export default function CalendarTab({ state, activeClient, busy, onOpenEntry, onRunNow, onReschedule, onDeleteEntry, onCreateEntry, onAutoPlan, onApplyPlan, onDeleteEntriesBatch }) {
   const [month, setMonth] = useState(currentMonth());
   const [newEntryDate, setNewEntryDate] = useState(null);
   const [planPreview, setPlanPreview] = useState(null);
@@ -68,6 +68,13 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     return map;
   }, [filteredEntries]);
   const filtering = statusFilter !== "all" || platformFilter !== "all" || query.trim() !== "";
+
+  const deleteVisible = () => {
+    const ids = filteredEntries.map((e) => e.id);
+    if (!ids.length || busy) return;
+    if (!window.confirm(`ลบ ${ids.length} รายการที่เห็นอยู่ตอนนี้หรือไม่?\n(ใช้ฟิลเตอร์กรองก่อนได้ · ข้ามรายการที่กำลังรัน)`)) return;
+    onDeleteEntriesBatch(ids);
+  };
 
   const startAutoPlan = async () => {
     setPlanBusy(true);
@@ -145,6 +152,14 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
             </button>
           </span>
         )}
+        <button
+          className="sa-btn ghost sm danger"
+          disabled={busy || !filteredEntries.length}
+          onClick={deleteVisible}
+          title="ลบรายการที่เห็นอยู่ตอนนี้ทั้งหมด (ใช้ฟิลเตอร์กรองก่อนได้)"
+        >
+          <Trash2 size={13} /> ลบที่เห็น ({filteredEntries.length})
+        </button>
       </div>
 
       <div className="sa-grid">

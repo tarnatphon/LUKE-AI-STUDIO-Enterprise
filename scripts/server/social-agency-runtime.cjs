@@ -1684,6 +1684,26 @@ class SocialAgencyRuntime {
     return { deleted: entryId };
   }
 
+  deleteCalendarEntriesBatch(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map((s) => String(s)))].slice(0, 500);
+    if (!ids.length) throw new Error("ไม่ได้เลือกรายการที่จะลบ");
+    const byId = new Map((client.calendar || []).map((e) => [e.id, e]));
+    const deleted = [];
+    const skipped = [];
+    const notFound = [];
+    for (const id of ids) {
+      const e = byId.get(id);
+      if (!e) { notFound.push(id); continue; }
+      if (e.inFlight) { skipped.push(id); continue; }
+      deleted.push(id);
+    }
+    const gone = new Set(deleted);
+    client.calendar = (client.calendar || []).filter((e) => !gone.has(e.id));
+    this._write(state);
+    return { deleted, skipped, notFound };
+  }
+
   // ── auto-plan ──
   _buildFallbackSlots(client, monthStr, postsPerWeek) {
     const { year, month, daysInMonth, weeks } = currentMonthWeeks(monthStr);
@@ -1927,6 +1947,20 @@ class SocialAgencyRuntime {
     const orphans = (client.calendar || []).filter((e) => e.sku === sku).length;
     this._write(state);
     return { deleted: sku, orphanEntries: orphans };
+  }
+
+  deleteProductsBatch(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const skus = [...new Set((Array.isArray(body.skus) ? body.skus : []).map((s) => String(s)))].slice(0, 200);
+    if (!skus.length) throw new Error("ไม่ได้เลือกสินค้าที่จะลบ");
+    const have = new Set((client.products || []).map((p) => p.sku));
+    const deleted = skus.filter((s) => have.has(s));
+    const notFound = skus.filter((s) => !have.has(s));
+    const gone = new Set(deleted);
+    client.products = (client.products || []).filter((p) => !gone.has(p.sku));
+    const orphans = (client.calendar || []).filter((e) => gone.has(e.sku)).length;
+    this._write(state);
+    return { deleted, notFound, orphans };
   }
 
   async _fetchHtml(url, timeoutMs) {
@@ -4431,6 +4465,10 @@ class SocialAgencyRuntime {
         const body = await readBody();
         return json(res, 200, { ok: true, ...await this.enrichProducts(clientId || body.clientId, body) });
       }
+      if (pathname === "/api/social-agency/products/delete-batch" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...this.deleteProductsBatch(clientId || body.clientId, body) });
+      }
       match = pathname.match(/^\/api\/social-agency\/products\/([^/]+)$/);
       if (match && method === "PATCH") {
         const body = await readBody();
@@ -4442,6 +4480,10 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/calendar" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, entry: this.createCalendarEntry(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/calendar/delete-batch" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...this.deleteCalendarEntriesBatch(clientId || body.clientId, body) });
       }
       match = pathname.match(/^\/api\/social-agency\/calendar\/([^/]+)$/);
       if (match) {

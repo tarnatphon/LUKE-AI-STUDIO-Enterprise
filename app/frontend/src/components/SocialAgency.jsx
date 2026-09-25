@@ -219,6 +219,10 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     setDrawerEntryId(null);
   });
 
+  const deleteEntriesBatch = withBusy(async (ids) => {
+    await postJson(`/api/social-agency/calendar/delete-batch?clientId=${encodeURIComponent(activeClient.id)}`, { ids });
+  });
+
   const createEntry = withBusy(async (form) => {
     await postJson("/api/social-agency/calendar?clientId=" + encodeURIComponent(activeClient.id), { entry: form });
   });
@@ -415,6 +419,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               onOpenEntry={(id) => setDrawerEntryId(id)}
               onRunNow={runNow}
               onReschedule={reschedule}
+              onDeleteEntriesBatch={deleteEntriesBatch}
               onDeleteEntry={(id) =>
                 setConfirm({
                   message: "ลบรายการนี้ออกจากปฏิทินหรือไม่?",

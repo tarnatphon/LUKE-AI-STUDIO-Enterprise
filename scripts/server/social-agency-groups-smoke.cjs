@@ -1008,6 +1008,33 @@ async function main() {
     assert.strictEqual(g(ep4.sku).detail, "", "no-source product skipped");
   });
 
+  // ── P5i: bulk delete (products + calendar) ──
+  const bdA = rt.addProduct(clientId, { name: "BD-A" });
+  const bdB = rt.addProduct(clientId, { name: "BD-B" });
+  const bdC = rt.addProduct(clientId, { name: "BD-C" });
+  rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(20), time: "18:30", platform: "demo", sku: bdA.sku, angle: "เปิดตัวสินค้า" } });
+  const bdDel = rt.deleteProductsBatch(clientId, { skus: [bdA.sku, bdC.sku, "NOPE"] });
+  check("products bulk delete", () => {
+    assert.deepStrictEqual([...bdDel.deleted].sort(), [bdA.sku, bdC.sku].sort());
+    assert.deepStrictEqual(bdDel.notFound, ["NOPE"]);
+    assert.strictEqual(bdDel.orphans, 1);
+    const skus = rt.getState().clients.find((c) => c.id === clientId).products.map((p) => p.sku);
+    assert.ok(!skus.includes(bdA.sku) && !skus.includes(bdC.sku) && skus.includes(bdB.sku));
+  });
+  const be1 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(21), time: "18:30", platform: "demo", sku: bdB.sku, angle: "เปิดตัวสินค้า" } });
+  const be2 = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(22), time: "18:30", platform: "demo", sku: bdB.sku, angle: "เปิดตัวสินค้า" } });
+  const stW = rt.getState();
+  stW.clients.find((c) => c.id === clientId).calendar.find((e) => e.id === be2.id).inFlight = true;
+  rt._write(stW);
+  const beDel = rt.deleteCalendarEntriesBatch(clientId, { ids: [be1.id, be2.id, "NOPE"] });
+  check("calendar bulk delete skips in-flight", () => {
+    assert.deepStrictEqual(beDel.deleted, [be1.id]);
+    assert.deepStrictEqual(beDel.skipped, [be2.id]);
+    assert.deepStrictEqual(beDel.notFound, ["NOPE"]);
+    const ids = rt.getState().clients.find((c) => c.id === clientId).calendar.map((e) => e.id);
+    assert.ok(!ids.includes(be1.id) && ids.includes(be2.id));
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

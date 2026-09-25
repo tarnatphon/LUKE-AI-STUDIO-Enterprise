@@ -18,6 +18,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [scanBusy, setScanBusy] = useState(false);
   const [scanFound, setScanFound] = useState(null);
   const [scanSel, setScanSel] = useState([]);
+  const [delSel, setDelSel] = useState([]);
   const [enrichBusy, setEnrichBusy] = useState(false);
 
   useEffect(() => {
@@ -189,6 +190,24 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     }
   };
 
+  const deleteSelectedProducts = async () => {
+    if (!delSel.length || saving) return;
+    if (!window.confirm(`ลบสินค้า ${delSel.length} รายการที่เลือก?\nโพสต์ที่อ้าง SKU เหล่านี้จะยังอยู่ (กลายเป็น orphan)`)) return;
+    setSaving(true);
+    setError("");
+    setNote("");
+    try {
+      const data = await postJson(`/api/social-agency/products/delete-batch?clientId=${encodeURIComponent(clientId)}`, { skus: delSel });
+      setDelSel([]);
+      setNote(`ลบแล้ว ${data.deleted.length} รายการ ✓${data.orphans ? ` (มี ${data.orphans} โพสต์ที่อ้าง SKU เหล่านี้)` : ""}${(data.notFound || []).length ? ` · ไม่พบ ${(data.notFound || []).length}` : ""}`);
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const importSelected = async (kind) => {
     const pool = kind === "url" ? urlFound?.products || [] : [...(scanFound?.images || []), ...(scanFound?.rows || [])];
     const sel = kind === "url" ? urlSel : scanSel;
@@ -228,6 +247,14 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           <Package size={15} />
           <b>สินค้าของ {activeClient.name}</b>
           <span className="sa-muted">{products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว</span>
+          <label className="sa-check" title="เลือกทั้งหมด / ไม่เลือกเลย">
+            <input type="checkbox" checked={products.length > 0 && delSel.length === products.length} onChange={(e) => setDelSel(e.target.checked ? products.map((p) => p.sku) : [])} /> เลือกทั้งหมด
+          </label>
+          {delSel.length > 0 && (
+            <button className="sa-btn sm danger" disabled={saving} onClick={deleteSelectedProducts}>
+              <Trash2 size={13} /> ลบที่เลือก ({delSel.length})
+            </button>
+          )}
           {missingCount > 0 && (
             <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้ารายตัวของสินค้าที่ยังไม่มีคำอธิบาย แล้วดึงมาเติม (ครั้งละ 10)">
               {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
@@ -238,6 +265,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           {products.map((p) => (
             <li key={p.sku} className="sa-style-shot">
               <div className="sa-style-shot-head">
+                <input type="checkbox" checked={delSel.includes(p.sku)} onChange={(e) => setDelSel(e.target.checked ? [...delSel.filter((s) => s !== p.sku), p.sku] : delSel.filter((s) => s !== p.sku))} aria-label={`เลือก ${p.name}`} />
                 {p.image && <img src={p.image} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />}
                 <b>{p.name}</b>
                 <span className="sa-muted">{p.sku} · {p.category}{p.price ? ` · ${p.price}` : ""}</span>
