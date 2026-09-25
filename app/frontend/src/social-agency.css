@@ -574,7 +574,8 @@
 .sa-autoplan-product { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sa-autoplan-angle { color: var(--sa-muted); font-size: 0.7rem; }
 .sa-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; cursor: pointer; }
-.sa-check input { width: 15px; height: 15px; min-height: 0; }
+.sa-check input { width: 14px; height: 14px; min-height: 0; accent-color: var(--sa-primary); cursor: pointer; }
+.sa-style-shot-head input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--sa-primary); cursor: pointer; flex: none; margin: 0; }
 
 /* ── group 3: overview dashboard + calendar filters ─────────────────────── */
 .sa-ov { display: flex; flex-direction: column; gap: 14px; }
