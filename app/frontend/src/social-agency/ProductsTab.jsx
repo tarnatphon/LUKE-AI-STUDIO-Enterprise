@@ -254,7 +254,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     setNote("");
     try {
       const data = await postJson(`/api/social-agency/products/fix-links?clientId=${encodeURIComponent(clientId)}`, {});
-      setNote(`แก้ลิงก์แล้ว ${data.fixed} รายการ ✓${data.relinkedByCodeCount ? ` (กู้ตามโค้ดสินค้า ${data.relinkedByCodeCount} แถว แล้วกด "เติมคำอธิบายที่ขาด" ต่อ)` : ""}${data.unfound?.length ? ` · หาไม่เจอ ${data.unfound.length}` : ""}${data.remaining ? ` · เหลืออีก ${data.remaining} หน้า — กดซ้ำได้` : ""}`);
+      setNote(`แก้ลิงก์แล้ว ${data.fixed} รายการ ✓${data.cleaned ? ` · ล้าง ?limitstart/หน้าเลขที่ทิ้ง ${data.cleaned} ลิงก์` : ""}${data.relinkedByCodeCount ? ` (กู้ตามโค้ดสินค้า ${data.relinkedByCodeCount} แถว แล้วกด "เติมคำอธิบายที่ขาด" ต่อ)` : ""}${data.unfound?.length ? ` · หาไม่เจอ ${data.unfound.length}` : ""}${data.remaining ? ` · เหลืออีก ${data.remaining} หน้า — กดซ้ำได้` : ""}`);
       onChanged?.();
     } catch (err) {
       setError(err.message);

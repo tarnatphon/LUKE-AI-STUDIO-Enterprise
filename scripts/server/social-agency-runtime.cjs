@@ -509,6 +509,20 @@ function junkLinkReason(url) {
   return "";
 }
 
+// P5v: pagination noise copied from a category page must not end up in a published post
+const PAGINATION_PARAM_RE = /^(limitstart|limitstartnum|limit|page|pagesize|starttime|start|offset|direction|order|dir)$/i;
+
+function cleanProductPageUrl(url) {
+  const raw = String(url || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return raw.slice(0, 1200);
+  let u = null;
+  try { u = new URL(raw); } catch { return raw.slice(0, 1200); }
+  u.hash = "";
+  const keep = [...u.searchParams.entries()].filter(([k]) => !PAGINATION_PARAM_RE.test(k));
+  u.search = keep.length ? new URLSearchParams(keep).toString() : "";
+  return u.toString().slice(0, 1200);
+}
+
 // leaf product links on a listing page: anchor text + href (for link repair)
 function extractLeafLinks(html, pageUrl) {
   const links = [];
@@ -1116,9 +1130,80 @@ class SocialAgencyRuntime {
     }
   }
 
+  _readRawTolerant() {
+    let lastError = "";
+    for (let i = 0; i < 3; i++) {
+      try {
+        const text = fs.readFileSync(this.filePath, "utf8");
+        if (!text || !text.trim()) { lastError = "ไฟล์ว่าง (เขียนไม่เสร็จ?)"; continue; }
+        return JSON.parse(text);
+      } catch (err) {
+        lastError = String((err && err.message) || err);
+      }
+    }
+    this._lastReadError = lastError;
+    return null;
+  }
+
+  _recoverFromSnapshots() {
+    for (const item of this.listBackups()) {
+      let snap = null;
+      try {
+        snap = JSON.parse(fs.readFileSync(path.join(this.backupDir, item.file), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!snap || !Array.isArray(snap.clients) || !snap.clients.length) continue;
+      const state = this._buildFreshState();
+      state.clients = JSON.parse(JSON.stringify(snap.clients));
+      if (!state.clients.some((c) => c && c.id === state.activeClientId)) {
+        state.activeClientId = state.clients[0]?.id || null;
+      }
+      this._ensureClientShapes(state);
+      this._quarantineUnreadable();
+      this._restoredFrom = item.file;
+      this._write(state);
+      return state;
+    }
+    return null;
+  }
+
+  _autoSnapshot() {
+    if (process.env.LUKE_SA_AUTOBACKUP === "off") return;
+    if (this._writingSnapshot) return;
+    const everyMs = Number(process.env.LUKE_SA_AUTOBACKUP_EVERY_MS || 600000) || 600000;
+    const now = Date.now();
+    if (this._lastSnapshotAt && now - this._lastSnapshotAt < everyMs) return;
+    this._lastSnapshotAt = now;
+    this._writingSnapshot = true;
+    try {
+      this.saveBackupSnapshot();
+    } catch { /* best effort - never break the write */ } finally {
+      this._writingSnapshot = false;
+    }
+  }
+
+  restoreBackupFile(clientId, file) {
+    const name = String(file || "").trim();
+    if (!/^[\w.\-]+\.json$/.test(name) || name.includes("..")) throw new Error("ชื่อไฟล์สำรองไม่ถูกต้อง");
+    let snap = null;
+    try {
+      snap = JSON.parse(fs.readFileSync(path.join(this.backupDir, name), "utf8"));
+    } catch {
+      throw new Error("อ่านไฟล์สำรองไม่สำเร็จ (ไม่พบไฟล์ หรือข้อมูลในไฟล์เสีย)");
+    }
+    return { file: name, ...this.restoreBackup(clientId, snap) };
+  }
+
   _read() {
-    const raw = this._readRaw();
+    const raw = this._readRawTolerant();
     if (!raw) {
+      if (fs.existsSync(this.filePath)) {
+        // state file exists but could not be read -> recover from snapshot, never seed over live data
+        const recovered = this._recoverFromSnapshots();
+        if (recovered) return recovered;
+        this._quarantineUnreadable();
+      }
       const state = this._buildFreshState();
       this._write(state);
       return state;
@@ -1145,6 +1230,7 @@ class SocialAgencyRuntime {
     const tmp = `${this.filePath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), "utf8");
     fs.renameSync(tmp, this.filePath);
+    this._autoSnapshot();
   }
 
   _buildFreshState() {
@@ -1231,6 +1317,23 @@ class SocialAgencyRuntime {
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
+      for (const p of client.products) {
+        const clean = cleanProductPageUrl(p.sourceUrl); // idempotent; persisted on the next write
+        if (clean !== p.sourceUrl) p.sourceUrl = clean;
+      }
+      for (const d of client.drafts) {
+        if (d.sourceUrl) {
+          const clean = cleanProductPageUrl(d.sourceUrl);
+          if (clean !== d.sourceUrl) d.sourceUrl = clean;
+        }
+        for (const k of Object.keys(d)) {
+          if (typeof d[k] !== "string" || !/limitstart=|[?&]limit=|[?&]page=/i.test(d[k])) continue;
+          d[k] = d[k].replace(/https?:\/\/[^\s<>"']+/g, (u) => {
+            const tail = (u.match(/[.,;:)\]>]+$/) || [""])[0];
+            return cleanProductPageUrl(u.slice(0, u.length - tail.length)) + tail;
+          });
+        }
+      }
     }
     if (!Array.isArray(state.runLog)) state.runLog = [];
     if (!state.clients.find((c) => c.id === state.activeClientId)) state.activeClientId = state.clients[0]?.id || null;
@@ -2020,7 +2123,7 @@ class SocialAgencyRuntime {
       decoration: String(body.decoration || "").trim().slice(0, 120),
       detail: String(body.detail || body.description || "").trim().slice(0, 500),
       status: "verified-source",
-      sourceUrl: String(body.sourceUrl || "").trim().slice(0, 1200),
+      sourceUrl: cleanProductPageUrl(body.sourceUrl),
       image: String(body.image || "").trim().slice(0, 500),
       createdAt: new Date().toISOString(),
     };
@@ -2035,6 +2138,7 @@ class SocialAgencyRuntime {
     if (!product) throw new Error("ไม่พบสินค้านี้");
     for (const [k, max] of [["name", 120], ["category", 60], ["price", 32], ["minimumOrder", 60], ["productionTime", 60], ["decoration", 120], ["detail", 500], ["sourceUrl", 1200]]) {
       if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
+      if (body.sourceUrl !== undefined) product.sourceUrl = cleanProductPageUrl(product.sourceUrl);
     }
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
     this._write(state);
@@ -2351,8 +2455,13 @@ class SocialAgencyRuntime {
     const products = client.products || [];
     const onlySkus = Array.isArray(body.skus) && body.skus.length ? new Set(body.skus.map(String)) : null;
     const targets = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || "")) && (!onlySkus || onlySkus.has(p.sku)));
-    const empty = { fixed: 0, unfound: [], pages: 0, remaining: 0, relinkedByCode: [], relinkedByCodeCount: 0, crawlPages: 0 };
+    const empty = { fixed: 0, unfound: [], pages: 0, remaining: 0, relinkedByCode: [], relinkedByCodeCount: 0, crawlPages: 0, cleaned: 0 };
     if (!products.length) return empty;
+    let cleaned = 0;
+    for (const p of products) {
+      const clean = cleanProductPageUrl(p.sourceUrl);
+      if (clean !== p.sourceUrl) { p.sourceUrl = clean; cleaned += 1; }
+    }
     const byPage = new Map();
     for (const p of targets) {
       const k = normUrl(p.sourceUrl);
@@ -2412,7 +2521,7 @@ class SocialAgencyRuntime {
           }
         }
         if (best && normUrl(best) !== normUrl(p.sourceUrl)) {
-          p.sourceUrl = best.slice(0, 1200);
+          p.sourceUrl = cleanProductPageUrl(best);
           fixed += 1;
         } else if (!best) {
           unfound.push(p.sku);
@@ -2491,7 +2600,7 @@ class SocialAgencyRuntime {
           const codes = String(p.name || "").toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || [];
           const hit = codes.map((c) => index.get(c)).find(Boolean) || "";
           if (!hit || normUrl(hit) === normUrl(p.sourceUrl)) continue;
-          p.sourceUrl = hit.slice(0, 1200);
+          p.sourceUrl = cleanProductPageUrl(hit);
           p.detailCheckedAt = 0;
           if (String(p.detail || "").trim()) p.detail = ""; // that text came from the wrong page
           relinkedByCode.push(p.sku);
@@ -2501,9 +2610,10 @@ class SocialAgencyRuntime {
         }
       }
     }
-    if (fixed) this._write(state);
+    if (fixed || cleaned) this._write(state);
     return {
       fixed,
+      cleaned,
       unfound,
       pages,
       remaining: Math.max(0, byPage.size - pageKeys.length),
@@ -2593,7 +2703,7 @@ class SocialAgencyRuntime {
         decoration: "",
         detail: String(item.detail || item.description || "").trim().slice(0, 500),
         status: "imported",
-        sourceUrl: String(item.sourceUrl || "").trim().slice(0, 1200),
+        sourceUrl: cleanProductPageUrl(item.sourceUrl),
         image: "",
         createdAt: new Date().toISOString(),
       };
@@ -4926,6 +5036,14 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products/delete-batch" && method === "POST") {
         const body = await readBody();
         return json(res, 200, { ok: true, ...this.deleteProductsBatch(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/backup/restore-file" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...this.restoreBackupFile(clientId || body.clientId || undefined, body.file) });
+        } catch (error) {
+          return fail(error, 400);
+        }
       }
       if (pathname === "/api/social-agency/products/probe" && method === "POST") {
         const body = await readBody();

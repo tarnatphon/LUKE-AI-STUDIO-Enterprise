@@ -1216,6 +1216,46 @@ async function main() {
     assert.strictEqual(String(row.detail || "").trim(), "");
   });
 
+  // ── P5o: corrupt-state protection + restore by file name ──
+  const oRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sa-corrupt-"));
+  const oRt = new SocialAgencyRuntime({ root: oRoot });
+  const oClient = oRt.getState().activeClientId;
+  const oProd = oRt.addProduct(oClient, { name: "OF-CHECK" });
+  oRt.saveBackupSnapshot(oClient);
+  fs.writeFileSync(oRt.filePath, "{ this is not json", "utf8");
+  const oRt2 = new SocialAgencyRuntime({ root: oRoot });
+  const oState = oRt2.getState();
+  check("corrupt state file recovers from snapshot", () => {
+    const c = oState.clients.find((x) => x.id === oClient);
+    assert.ok(c && c.products.some((p) => p.sku === oProd.sku), "product must survive via snapshot recovery");
+    const quarantined = fs.readdirSync(oRt2.stateDir).filter((f) => f.includes(".corrupt-"));
+    assert.strictEqual(quarantined.length, 1, "unreadable original must be kept as .corrupt-*");
+    assert.ok(oRt2.listBackups().length >= 1);
+  });
+  const oCall = makeHttp(oRt2);
+  const oRoute = await oCall("POST", `/api/social-agency/backup/restore-file?clientId=${oClient}`, { file: oRt2.listBackups()[0].file });
+  check("POST /backup/restore-file", () => {
+    assert.strictEqual(oRoute.statusCode, 200);
+    assert.deepStrictEqual(oRoute.body.restored, [oClient]);
+    assert.throws(() => oRt2.restoreBackupFile(oClient, "../../etc/passwd"), /ชื่อไฟล์สำรอง/);
+  });
+
+  // ── P5v: pagination noise must never reach a published link ──
+  const vRow = rt.addProduct(clientId, { name: "กระเป๋าทดสอบ VVX-031", sourceUrl: "https://shop.example/cat/ผลิตภัณฑ์/กระเป๋า-vvx-031.html?limitstart=21&limit=21&utm=keep" });
+  check("pagination params stripped from a product link, other params kept", () => {
+    assert.ok(!/limitstart|limit=/.test(vRow.sourceUrl), vRow.sourceUrl);
+    assert.ok(/utm=keep/.test(vRow.sourceUrl), `must keep non-pagination params: ${vRow.sourceUrl}`);
+  });
+  const vRaw = JSON.parse(fs.readFileSync(rt.filePath, "utf8"));
+  const vNode = vRaw.clients.find((c) => c.id === clientId).products.find((x) => x.sku === vRow.sku);
+  vNode.sourceUrl = "https://shop.example/cat/ผลิตภัณฑ์/กระเป๋า-vvx-031.html?limitstart=9&limit=9";
+  vNode.category = "ทดสอบ"; // force a real change so the file rewrite is meaningful
+  fs.writeFileSync(rt.filePath, JSON.stringify(vRaw), "utf8");
+  const vAfter = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === vRow.sku);
+  check("links already saved with pagination noise are cleaned on load", () => {
+    assert.ok(!/limitstart|limit=/.test(vAfter.sourceUrl), vAfter.sourceUrl);
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
