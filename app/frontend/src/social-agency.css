@@ -630,7 +630,7 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
   border-radius: var(--sa-radius); padding: 12px 14px;
   display: flex; flex-direction: column; gap: 10px; min-width: 0;
 }
-.sa-style-card > header { display: flex; align-items: center; gap: 8px; }
+.sa-style-card > header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 6px; }
 .sa-style-card > header b { margin-right: auto; }
 .sa-style-form { display: flex; flex-direction: column; gap: 8px; }
 .sa-style-row { display: flex; gap: 8px; flex-wrap: wrap; }

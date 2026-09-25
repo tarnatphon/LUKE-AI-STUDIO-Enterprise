@@ -251,7 +251,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             <input type="checkbox" checked={products.length > 0 && delSel.length === products.length} onChange={(e) => setDelSel(e.target.checked ? products.map((p) => p.sku) : [])} /> เลือกทั้งหมด
           </label>
           {delSel.length > 0 && (
-            <button className="sa-btn sm danger" disabled={saving} onClick={deleteSelectedProducts}>
+            <button className="sa-btn ghost sm danger" disabled={saving} onClick={deleteSelectedProducts}>
               <Trash2 size={13} /> ลบที่เลือก ({delSel.length})
             </button>
           )}
