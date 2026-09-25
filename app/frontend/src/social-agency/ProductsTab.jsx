@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { Package, Plus, Trash2, Globe, FolderOpen, Link2 } from "lucide-react";
 import { api, postJson } from "./lib.js";
 
+// same rule the server uses: spec-sheet / asset links are not product pages
+const JUNK_LINK_RE = /\/(?:product\/)?download\/|file_id[-=]|\.(?:pdf|docx?|pptx?|xlsx?|zip|rar|jpg|jpeg|png|webp)(?:$|\?)/i;
+const linkIsProductPage = (u) => {
+  const raw = String(u || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return false;
+  let d = raw;
+  try { d = decodeURIComponent(raw); } catch { /* keep raw */ }
+  return !JUNK_LINK_RE.test(d);
+};
+
 export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const clientId = activeClient?.id;
   const products = activeClient?.products || [];
@@ -22,6 +32,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [enrichBusy, setEnrichBusy] = useState(false);
   const [fixBusy, setFixBusy] = useState(false);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
+  const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -174,7 +185,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     }
   };
 
-  const missingCount = products.filter((p) => !String(p.detail || "").trim() && /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
+  const missingCount = products.filter((p) => !String(p.detail || "").trim() && linkIsProductPage(p.sourceUrl)).length;
 
   const runEnrich = async (overwrite) => {
     const target = overwrite ? urlCount : missingCount;
@@ -190,6 +201,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       let firstReason = "";
       let unchanged = 0;
       let mismatched = [];
+      let badLink = 0;
       do {
         rounds += 1;
         const data = await postJson(`/api/social-agency/products/enrich?clientId=${encodeURIComponent(clientId)}`, {
@@ -199,13 +211,14 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         total += data.enrichedCount || 0;
         unchanged += data.unchangedCount || 0;
         if (Array.isArray(data.mismatch)) mismatched = mismatched.concat(data.mismatch);
+        badLink += data.skippedLinkCount || 0;
         failed += (data.failed || []).length;
         if (!firstReason && data.failed && data.failed[0] && data.failed[0].error) firstReason = data.failed[0].error;
         remaining = typeof data.remaining === "number" ? data.remaining : 0;
         setNote(`กำลังเติมคำอธิบาย… ได้แล้ว ${total} รายการ${remaining ? ` · เหลืออีก ${remaining}` : ""}`);
         onChanged?.();
       } while (remaining > 0 && rounds < 25);
-      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${unchanged ? ` · เท่าเดิม ${unchanged}` : ""}${mismatched.length ? ` · ข้อความในเว็บไม่ตรงโค้ดสินค้า ${mismatched.length} แถว (${mismatched.map((m) => `${m.sku}: meta ${m.meta} → ${m.used}`).join("; ")})` : ""}${failed ? ` · ไม่ได้ ${failed} รายการ${firstReason ? ` (${firstReason})` : ""}` : ""}`);
+      setNote(`เติมคำอธิบายแล้ว ${total} รายการ ✓${unchanged ? ` · เท่าเดิม ${unchanged}` : ""}${mismatched.length ? ` · ข้อความในเว็บไม่ตรงโค้ดสินค้า ${mismatched.length} แถว (${mismatched.map((m) => `${m.sku}: meta ${m.meta} → ${m.used}`).join("; ")})` : ""}${badLink ? ` · อีก ${badLink} แถวลิงก์ไม่ใช่หน้าสินค้า (กด "แก้ลิงก์สินค้า" ก่อน)` : ""}${failed ? ` · ไม่ได้ ${failed} รายการ${firstReason ? ` (${firstReason})` : ""}` : ""}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -241,7 +254,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     setNote("");
     try {
       const data = await postJson(`/api/social-agency/products/fix-links?clientId=${encodeURIComponent(clientId)}`, {});
-      setNote(`แก้ลิงก์แล้ว ${data.fixed} รายการ ✓${data.unfound?.length ? ` · หาไม่เจอ ${data.unfound.length}` : ""}${data.remaining ? ` · เหลืออีก ${data.remaining} หน้า — กดซ้ำได้` : ""}`);
+      setNote(`แก้ลิงก์แล้ว ${data.fixed} รายการ ✓${data.relinkedByCodeCount ? ` (กู้ตามโค้ดสินค้า ${data.relinkedByCodeCount} แถว แล้วกด "เติมคำอธิบายที่ขาด" ต่อ)` : ""}${data.unfound?.length ? ` · หาไม่เจอ ${data.unfound.length}` : ""}${data.remaining ? ` · เหลืออีก ${data.remaining} หน้า — กดซ้ำได้` : ""}`);
       onChanged?.();
     } catch (err) {
       setError(err.message);
@@ -288,7 +301,12 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         <header>
           <Package size={15} />
           <b>สินค้าของ {activeClient.name}</b>
-          <span className="sa-muted">{products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว</span>
+          <span className="sa-muted">
+            {products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว
+            {badLinkCount > 0 && (
+              <> · <b style={{ color: "#c2410c" }}>{badLinkCount} แถวลิงก์ไม่ใช่หน้าสินค้า</b> (ต้องกด "แก้ลิงก์สินค้า" ก่อนถึงเติมคำอธิบายได้)</>
+            )}
+          </span>
           <label className="sa-check" title="เลือกทั้งหมด / ไม่เลือกเลย">
             <input type="checkbox" checked={products.length > 0 && delSel.length === products.length} onChange={(e) => setDelSel(e.target.checked ? products.map((p) => p.sku) : [])} /> เลือกทั้งหมด
           </label>
@@ -298,7 +316,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             </button>
           )}
           {missingCount > 0 && (
-            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้าใบสินค้าทีละ 10 แถว แล้วดึงคำอธิบายมาเติม — กดครั้งเดียวระบบทำต่อเองจนครบ">
+            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้าใบสินค้าทีละ 10 แถว แล้วดึงคำอธิบายมาเติม — กดครั้งเดียวระบบทำต่อเองจนครบ (แถวที่ลิงก์เป็นหน้าไฟล์/หน้าหมวดจะถูกข้ามพร้อมเหตุผล)">
               {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
             </button>
           )}
@@ -308,7 +326,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             </button>
           )}
           {urlCount > 0 && (
-            <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวด ไม่ใช่หน้าสินค้า จะแก้ให้ตรงอัตโนมัติ (ครั้งละ 10 หน้า)">
+            <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวดหรือหน้าดาวน์โหลดไฟล์ จะหาลิงก์ใบสินค้าที่ถูกต้องให้เองจากโค้ดสินค้า (ครั้งละ 10 หน้า + คลานหน้าหมวดไม่เกิน 4 หน้า)">
               {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
             </button>
           )}

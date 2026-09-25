@@ -500,6 +500,15 @@ function isJunkLeafUrl(u) {
   return /\/(?:product\/)?download\/|file_id[-=]|\.(?:pdf|docx?|pptx?|xlsx?|zip|rar|jpg|jpeg|png|webp)(?:$|\?)/i.test(d);
 }
 
+// P5u: say *why* a row cannot be enriched, instead of fetching a page that has no product
+function junkLinkReason(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "ยังไม่มีลิงก์หน้าสินค้า";
+  if (!/^https?:\/\//i.test(raw)) return "ลิงก์ไม่ใช่ http(s) จึงดึงไม่ได้";
+  if (isJunkLeafUrl(raw)) return "ลิงก์ชี้ไปหน้าไฟล์/เอกสาร (เช่น ดาวน์โหลดสเปค) ไม่ใช่หน้าสินค้า";
+  return "";
+}
+
 // leaf product links on a listing page: anchor text + href (for link repair)
 function extractLeafLinks(html, pageUrl) {
   const links = [];
@@ -2130,12 +2139,17 @@ class SocialAgencyRuntime {
     const codesIn = (s) => (String(s || "").toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || []);
     const recentlyChecked = (p) => cooldownMs > 0 && Number(p.detailCheckedAt || 0) > nowMs - cooldownMs;
     // least-recently-checked first: a capped batch keeps advancing instead of re-reading row #1
-    const candidates = (client.products || [])
-      .filter((p) =>
-        (overwrite || !String(p.detail || "").trim()) &&
-        /^https?:\/\//i.test(String(p.sourceUrl || "")) &&
-        !recentlyChecked(p) &&
-        (!onlySkus || onlySkus.has(p.sku)))
+    const skippedLink = [];
+    const fetchable = [];
+    for (const p of client.products || []) {
+      if (!(overwrite || !String(p.detail || "").trim())) continue;
+      if (onlySkus && !onlySkus.has(p.sku)) continue;
+      const why = junkLinkReason(p.sourceUrl);
+      if (why) { skippedLink.push({ sku: p.sku, reason: why }); continue; }
+      if (recentlyChecked(p)) continue;
+      fetchable.push(p);
+    }
+    const candidates = fetchable
       .slice()
       .sort((a, b) => Number(a.detailCheckedAt || 0) - Number(b.detailCheckedAt || 0));
     const batch = candidates.slice(0, limit);
@@ -2161,13 +2175,15 @@ class SocialAgencyRuntime {
       const found = extractProductsFromHtml(r.value, p.sourceUrl);
       const pageHits = found.filter((x) => normUrl(x.sourceUrl) === normUrl(p.sourceUrl));
       const bodyText = firstParagraphText(r.value);
+      // P5u: only this page's own candidate is usable - never a sibling product's text
       const self = [
         pageHits.find((x) => x.description && fits(x.description)),
         ...pageHits,
-        found.find((x) => x.description && fits(x.description)),
-        found.find((x) => x.description),
-      ].find(Boolean) || found[0] || null;
-      let detail = String((self && self.description) || "").trim();
+      ].find(Boolean) || null;
+      const ownText = String((self && self.description) || "").trim();
+      // a page that yields many products but has no description of its own is a category/menu page
+      const looksLikeListing = found.length >= 4 && !ownText;
+      let detail = ownText;
       if (detail && !fits(detail)) {
         // the shop's own <title>/meta description sometimes belongs to another product
         if (bodyText && fits(bodyText)) {
@@ -2177,11 +2193,16 @@ class SocialAgencyRuntime {
           mismatch.push({ sku: p.sku, meta: codesIn(detail).join(","), used: "(ยังไม่มีข้อความที่ตรงโค้ด)" });
         }
       }
-      if (!detail && bodyText) detail = bodyText;
+      if (!detail && bodyText && !looksLikeListing) detail = bodyText;
       const price = self ? self.price : "";
       const image = String((self && self.image) || "").trim() || firstContentImage(r.value);
       if (!detail && !price && !image) {
-        failed.push({ sku: p.sku, error: "หน้านี้ไม่มีข้อมูลให้ดึง (ลิงก์อาจไม่ใช่หน้าสินค้า)" });
+        failed.push({
+          sku: p.sku,
+          error: looksLikeListing
+            ? `ลิงก์ชี้ไปหน้าหมวด (เจอ ${found.length} สินค้าในหน้าเดียว) - กด "แก้ลิงก์สินค้า" ให้ชี้มาที่หน้าสินค้านี้เอง`
+            : "หน้านี้ไม่มีข้อมูลให้ดึง (ลิงก์อาจไม่ใช่หน้าสินค้า)",
+        });
         return;
       }
       const before = JSON.stringify([p.detail, p.price, p.image]);
@@ -2202,6 +2223,8 @@ class SocialAgencyRuntime {
       unchangedCount: unchanged.length,
       mismatch,
       failed,
+      skippedLink,
+      skippedLinkCount: skippedLink.length,
       checked: batch.length,
       remaining: candidates.length - batch.length,
     };
@@ -2253,10 +2276,11 @@ class SocialAgencyRuntime {
       name: row.name,
       sourceUrl: url,
       detailBefore: String(row.detail || "").slice(0, 160),
-      linkLooksLikeLeaf: /\/ผลิตภัณฑ์\/|\/product\//i.test(normUrl(url)),
+      linkLooksLikeLeaf: !isJunkLeafUrl(url) && /\/ผลิตภัณฑ์\/|\/product\/|\/shop\/|\/item\/|\/p\//i.test(normUrl(url)),
     };
-    if (!/^https?:\/\//i.test(url)) {
-      out.verdict = "แถวนี้ไม่มีลิงก์ http จึงดึงไม่ได้ (กด 'แก้ลิงก์สินค้า' ก่อน)";
+    const junkReason = junkLinkReason(url);
+    if (junkReason) {
+      out.verdict = `${junkReason} — กด "แก้ลิงก์สินค้า" เพื่อให้ระบบหาลิงก์ใบสินค้าที่ถูกต้องให้ (หรือวาง URL เอง)`;
       return out;
     }
     let fetched = null;
@@ -2327,7 +2351,8 @@ class SocialAgencyRuntime {
     const products = client.products || [];
     const onlySkus = Array.isArray(body.skus) && body.skus.length ? new Set(body.skus.map(String)) : null;
     const targets = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || "")) && (!onlySkus || onlySkus.has(p.sku)));
-    if (!targets.length) return { fixed: 0, unfound: [], pages: 0, remaining: 0 };
+    const empty = { fixed: 0, unfound: [], pages: 0, remaining: 0, relinkedByCode: [], relinkedByCodeCount: 0, crawlPages: 0 };
+    if (!products.length) return empty;
     const byPage = new Map();
     for (const p of targets) {
       const k = normUrl(p.sourceUrl);
@@ -2394,9 +2419,102 @@ class SocialAgencyRuntime {
         }
       }
     }
+    // P5u: rows whose link is not a product page (download/asset link, or no link at all)
+    // get relinked by product code, crawling the category pages derived from the healthy rows.
+    // Only same-origin links are ever accepted, and only junk links are rewritten.
+    const relinkedByCode = [];
+    const crawlErrors = [];
+    let crawlPages = 0;
+    const originOf = (u) => { try { return new URL(String(u || "").trim()).origin; } catch { return ""; } };
+    const needByOrigin = new Map();
+    for (const p of products) {
+      if (onlySkus && !onlySkus.has(p.sku)) continue;
+      if (!junkLinkReason(p.sourceUrl)) continue;
+      const org = originOf(p.sourceUrl) || originOf(client.website);
+      if (!org) continue;
+      if (!needByOrigin.has(org)) needByOrigin.set(org, []);
+      needByOrigin.get(org).push(p);
+    }
+    if (needByOrigin.size) {
+      const joinPath = (origin, segs, file) => `${origin}/${[...segs, file].filter(Boolean).join("/")}`;
+      const seedsByOrigin = new Map();
+      const addSeed = (org, u) => {
+        if (!org || !u) return;
+        if (!needByOrigin.has(org)) return;
+        const list = seedsByOrigin.get(org) || [];
+        if (!list.some((x) => normUrl(x) === normUrl(u))) list.push(u);
+        seedsByOrigin.set(org, list.slice(0, 6));
+      };
+      for (const p of products) {
+        const su = String(p.sourceUrl || "");
+        if (!/^https?:\/\//i.test(su) || isJunkLeafUrl(su)) continue;
+        try {
+          const u = new URL(su);
+          const segs = u.pathname.split("/").filter(Boolean);
+          if (segs.length >= 2) {
+            addSeed(u.origin, joinPath(u.origin, segs.slice(0, -2), `${segs[segs.length - 2]}.html`));
+            addSeed(u.origin, joinPath(u.origin, segs.slice(0, -1), ""));
+          }
+        } catch { /* ignore unusable link */ }
+      }
+      for (const org of needByOrigin.keys()) if (originOf(client.website) === org) addSeed(org, String(client.website).trim());
+      const maxCrawl = clampNumber(body.maxCrawlPages, 1, 8, 4);
+      const donePages = new Set(pageKeys);
+      const codeIndex = new Map(); // origin -> Map(code -> leaf url)
+      for (const [org, list] of seedsByOrigin) {
+        const index = codeIndex.get(org) || new Map();
+        codeIndex.set(org, index);
+        for (const seed of list) {
+          if (crawlPages >= maxCrawl) break;
+          if (donePages.has(normUrl(seed))) continue;
+          donePages.add(normUrl(seed));
+          let html = "";
+          try {
+            html = await this._fetchHtml(seed, 8000);
+          } catch (err) {
+            crawlErrors.push({ page: seed, error: String((err && err.message) || err) });
+            continue;
+          }
+          crawlPages += 1;
+          for (const l of extractLeafLinks(html, seed)) {
+            if (originOf(l.url) !== org) continue; // never link a row to another domain
+            for (const c of normUrl(l.url).toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || []) {
+              if (!index.has(c)) index.set(c, l.url);
+            }
+          }
+        }
+      }
+      for (const [org, list] of needByOrigin) {
+        const index = codeIndex.get(org);
+        if (!index) continue;
+        for (const p of list) {
+          const codes = String(p.name || "").toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || [];
+          const hit = codes.map((c) => index.get(c)).find(Boolean) || "";
+          if (!hit || normUrl(hit) === normUrl(p.sourceUrl)) continue;
+          p.sourceUrl = hit.slice(0, 1200);
+          p.detailCheckedAt = 0;
+          if (String(p.detail || "").trim()) p.detail = ""; // that text came from the wrong page
+          relinkedByCode.push(p.sku);
+          fixed += 1;
+          const at = unfound.indexOf(p.sku);
+          if (at >= 0) unfound.splice(at, 1);
+        }
+      }
+    }
     if (fixed) this._write(state);
-    return { fixed, unfound, pages, remaining: Math.max(0, byPage.size - pageKeys.length), errors };
+    return {
+      fixed,
+      unfound,
+      pages,
+      remaining: Math.max(0, byPage.size - pageKeys.length),
+      errors,
+      relinkedByCode,
+      relinkedByCodeCount: relinkedByCode.length,
+      crawlPages,
+      crawlErrors,
+    };
   }
+
 
   async scanFolder(clientId, body = {}) {
     this._resolveClient(clientId || body.clientId);

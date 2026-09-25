@@ -1181,6 +1181,41 @@ async function main() {
     assert.strictEqual(mRes.mismatch[0].sku, mRow.sku);
   });
 
+  // ── P5u: junk links are refused with a real reason, then relinked by product code ──
+  const uListing = `<html><head><title>หมวดสินค้า</title></head><body><main>
+    <a href="/cat/ผลิตภัณฑ์/กระเป๋า-uux-021.html">กระเป๋าอเนกประสงค์ UUX-021</a>
+    <a href="/cat/ผลิตภัณฑ์/กระเป๋า-uux-022.html">กระเป๋าอเนกประสงค์ UUX-022</a>
+    <a href="/cat/ผลิตภัณฑ์/กระเป๋า-uux-023.html">กระเป๋าอเนกประสงค์ UUX-023</a>
+    <a href="/cat/ผลิตภัณฑ์/กระเป๋า-uux-024.html">กระเป๋าอเนกประสงค์ UUX-024</a></main></body></html>`;
+  const uGood = rt.addProduct(clientId, { name: "กระเป๋าอเนกประสงค์ UUX-020", sourceUrl: "https://shop.example/cat/ผลิตภัณฑ์/กระเป๋า-uux-020.html" });
+  const uJunk = rt.addProduct(clientId, { name: "กระเป๋าอเนกประสงค์ UUX-021", sourceUrl: "https://shop.example/product/download/file_id-77.html", detail: "ข้อความโรงงานทั่วไปที่ไม่ใช่ของรุ่นนี้" });
+  let uFetches = 0;
+  rt._fetchHtml = async () => { uFetches += 1; return uListing; };
+  const uSkip = await rt.enrichProducts(clientId, { limit: 10, overwrite: true, cooldownMinutes: 0, skus: [uJunk.sku] });
+  check("asset/download link is skipped with a reason and never fetched", () => {
+    assert.strictEqual(uSkip.skippedLinkCount, 1, JSON.stringify(uSkip));
+    assert.match(uSkip.skippedLink[0].reason, /ไม่ใช่หน้าสินค้า/);
+    assert.strictEqual(uFetches, 0, "a junk link must not be fetched at all");
+    assert.strictEqual(uSkip.enrichedCount, 0);
+  });
+  rt._fetchHtml = async (u) => (/download/i.test(u) ? "<html><body><p>ไฟล์สเปคสำหรับดาวน์โหลด</p></body></html>" : uListing);
+  const uFix = await rt.fixProductsUrls(clientId, { skus: [uJunk.sku, uGood.sku] });
+  check("fix-links relinks the broken row by product code (same origin) and drops the wrong text", () => {
+    assert.ok(uFix.relinkedByCode.includes(uJunk.sku), JSON.stringify(uFix.relinkedByCode));
+    const row = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === uJunk.sku);
+    assert.match(decodeURIComponent(row.sourceUrl), /-uux-021\.html$/);
+    assert.ok(row.sourceUrl.startsWith("https://shop.example/"), "must never link a row to another domain");
+    assert.strictEqual(String(row.detail || "").trim(), "", "text taken from the wrong page must be cleared");
+  });
+  const uCat = rt.addProduct(clientId, { name: "กระเป๋าทดสอบหน้าหมวด UUX-099", sourceUrl: "https://shop.example/cat/รายการสินค้า.html" });
+  const uList = await rt.enrichProducts(clientId, { limit: 10, cooldownMinutes: 0, skus: [uCat.sku] });
+  check("a category page is refused instead of copying a sibling product's text", () => {
+    assert.strictEqual(uList.enrichedCount, 0);
+    assert.ok(uList.failed.some((f) => f.sku === uCat.sku && /หน้าหมวด/.test(f.error)), JSON.stringify(uList.failed));
+    const row = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === uCat.sku);
+    assert.strictEqual(String(row.detail || "").trim(), "");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 
