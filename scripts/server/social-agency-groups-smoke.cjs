@@ -1070,6 +1070,22 @@ async function main() {
     assert.strictEqual(nRes.fixed, 1);
   });
 
+  // ── P5p: long percent-encoded Thai URLs survive; download links are ignored ──
+  const longLeaf = "/รายการสินค้าและผลิตภัณฑ์กระเป๋า/กระเป๋าใส่อุปกรณ์กีฬา/ผลิตภัณฑ์/" + encodeURIComponent("กระเป๋าใส่อุปกรณ์กีฬา-spb-010") + ".html";
+  rt._fetchHtml = async () => `<html><body><main>
+    <a href="/product/download/file_id-9.html">กระเป๋าใส่อุปกรณ์กีฬา SPB-010</a>
+    <a href="${longLeaf}">กระเป๋าใส่อุปกรณ์กีฬา SPB-010</a>
+  </main></body></html>`;
+  const longRow = rt.addProduct(clientId, { name: "กระเป๋าใส่อุปกรณ์กีฬา SPB-010", sourceUrl: "https://shop.example/cat/spb.html" });
+  const longRes = await rt.fixProductsUrls(clientId, { skus: [longRow.sku] });
+  const longSaved = rt.getState().clients.find((c) => c.id === clientId).products.find((x) => x.sku === longRow.sku);
+  check("long thai leaf url kept intact, download link skipped", () => {
+    assert.strictEqual(longRes.fixed, 1);
+    assert.ok(longSaved.sourceUrl.length > 500, `expected >500 chars, got ${longSaved.sourceUrl.length}`);
+    assert.ok(/-spb-010\.html$/.test(longSaved.sourceUrl), "tail must survive");
+    assert.ok(!/download|file_id/i.test(longSaved.sourceUrl), "download junk must be skipped");
+  });
+
   console.log(`\nPASS: ${passed} checks (root: ${root})`);
 }
 

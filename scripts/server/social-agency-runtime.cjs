@@ -382,7 +382,7 @@ function extractProductsFromHtml(html, pageUrl, opts = {}) {
       price: p.price !== undefined && p.price !== null && p.price !== "" ? String(p.price).slice(0, 32) : "",
       currency: String(p.currency || "").slice(0, 8),
       image: String(p.image || "").slice(0, 500),
-      sourceUrl: String(p.sourceUrl || pageUrl || "").slice(0, 500),
+      sourceUrl: String(p.sourceUrl || pageUrl || "").slice(0, 1200),
     });
   };
   // 1. JSON-LD Product blocks
@@ -436,6 +436,12 @@ function slugKeyOf(s) {
   return d.toLowerCase().replace(/\.html?$/i, "").replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// spec-sheet / asset links that are not product pages
+function isJunkLeafUrl(u) {
+  const d = normUrl(u);
+  return /\/(?:product\/)?download\/|file_id[-=]|\.(?:pdf|docx?|pptx?|xlsx?|zip|rar|jpg|jpeg|png|webp)(?:$|\?)/i.test(d);
+}
+
 // leaf product links on a listing page: anchor text + href (for link repair)
 function extractLeafLinks(html, pageUrl) {
   const links = [];
@@ -450,6 +456,7 @@ function extractLeafLinks(html, pageUrl) {
     if (!abs.startsWith(origin)) continue;
     if (normUrl(abs) === normUrl(pageUrl)) continue;
     if (!/\.html?(?:$|\?)/i.test(abs)) continue;
+    if (isJunkLeafUrl(abs)) continue;
     const text = m[3].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
     if (text.length < 2) continue;
     links.push({ url: abs, text: text.slice(0, 160) });
@@ -505,6 +512,7 @@ function discoverProductLinks(html, pageUrl) {
     try { abs = new URL(m[2], pageUrl).href; } catch { continue; }
     if (!abs.startsWith(origin)) continue;
     if (normUrl(abs) === normUrl(pageUrl)) continue;
+    if (isJunkLeafUrl(abs)) continue;
     let decoded = abs;
     try { decoded = decodeURIComponent(abs); } catch { /* keep raw */ }
     if (!/\/(product|products|shop|item|items|goods|collection|p|sku|pd)[\/_-]|สินค้า|ผลิตภัณฑ์|product-/i.test(decoded)) continue;
@@ -1945,7 +1953,7 @@ class SocialAgencyRuntime {
       decoration: String(body.decoration || "").trim().slice(0, 120),
       detail: String(body.detail || body.description || "").trim().slice(0, 500),
       status: "verified-source",
-      sourceUrl: String(body.sourceUrl || "").trim().slice(0, 500),
+      sourceUrl: String(body.sourceUrl || "").trim().slice(0, 1200),
       image: String(body.image || "").trim().slice(0, 500),
       createdAt: new Date().toISOString(),
     };
@@ -1958,7 +1966,7 @@ class SocialAgencyRuntime {
     const { state, client } = this._resolveClient(clientId);
     const product = (client.products || []).find((p) => p.sku === sku);
     if (!product) throw new Error("ไม่พบสินค้านี้");
-    for (const [k, max] of [["name", 120], ["category", 60], ["price", 32], ["minimumOrder", 60], ["productionTime", 60], ["decoration", 120], ["detail", 500], ["sourceUrl", 500]]) {
+    for (const [k, max] of [["name", 120], ["category", 60], ["price", 32], ["minimumOrder", 60], ["productionTime", 60], ["decoration", 120], ["detail", 500], ["sourceUrl", 1200]]) {
       if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
     }
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
@@ -2150,7 +2158,7 @@ class SocialAgencyRuntime {
           }
         }
         if (best && normUrl(best) !== normUrl(p.sourceUrl)) {
-          p.sourceUrl = best.slice(0, 500);
+          p.sourceUrl = best.slice(0, 1200);
           fixed += 1;
         } else if (!best) {
           unfound.push(p.sku);
@@ -2238,7 +2246,7 @@ class SocialAgencyRuntime {
         decoration: "",
         detail: String(item.detail || item.description || "").trim().slice(0, 500),
         status: "imported",
-        sourceUrl: String(item.sourceUrl || "").trim().slice(0, 500),
+        sourceUrl: String(item.sourceUrl || "").trim().slice(0, 1200),
         image: "",
         createdAt: new Date().toISOString(),
       };
