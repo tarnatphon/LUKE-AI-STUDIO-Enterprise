@@ -107,7 +107,6 @@ class WorkspaceErrorBoundary extends Component {
       <div className="workspace-load-error" role="alert" aria-live="assertive">
         <strong>Workspace could not be loaded.</strong>
         <span>Your current data is still stored locally. Retry the app or return Home.</span>
-        <span className="load-error-detail" style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap", display: "block", marginTop: 8 }}>{String(this.state.error?.message || this.state.error || "")}</span>
         <div className="workspace-load-error-actions">
           <button type="button" className="m3-btn m3-btn-filled" onClick={() => window.location.reload()}>
             Retry

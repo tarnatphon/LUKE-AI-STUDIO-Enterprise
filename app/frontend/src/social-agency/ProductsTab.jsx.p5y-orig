@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2 } from "lucide-react";
+import { Package, Plus, Trash2, Globe, FolderOpen, Link2 } from "lucide-react";
 import { api, postJson } from "./lib.js";
 
 // same rule the server uses: spec-sheet / asset links are not product pages

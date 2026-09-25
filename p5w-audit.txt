@@ -1,5 +1,5 @@
 
-=== scripts/server/social-agency-runtime.cjs ===  (5470 บรรทัด)
+=== scripts/server/social-agency-runtime.cjs ===  (5537 บรรทัด)
 
 === app/frontend/src/components/SocialAgency.jsx ===  (539 บรรทัด)
 

@@ -2407,69 +2407,6 @@ class SocialAgencyRuntime {
         if (!queue.includes(next)) queue.push(next);
       }
     }
-    // P5z: a Joomla/HikaShop catalog page usually lists *categories*, not SKUs. Open a few of
-    // them (seeded, so one seed = one sample) and take the real product leaves out of each.
-    // A candidate whose page has no deeper link was already a product page, so shops that list
-    // products directly keep their pool untouched.
-    const descend = body.descend !== false;
-    const maxDescend = clampNumber(body.maxDescend, 1, 24, 8);
-    const pathDepth = (u) => { try { return new URL(String(u || "")).pathname.split("/").filter(Boolean).length; } catch { return 0; } };
-    let categoriesOpened = 0;
-    if (descend && pool.length) {
-      const wanted = Math.max(days, 12);
-      const leafPool = [];
-      const opened = new Set();
-      let leavesFound = 0;
-      for (const cat of seededShuffle(pool, `${seed}:cat`)) {
-        if (categoriesOpened >= maxDescend) break;
-        const catUrl = String(cat.sourceUrl || "");
-        const catName = String(cat.name || "").slice(0, 60);
-        // link text that already carries a product code means this row is a product page, not a category
-        if (/\b[A-Za-z]{2,5}-\d{2,4}\b/.test(catName)) continue;
-        if (!/^https?:\/\//i.test(catUrl) || seenPages.has(normUrl(catUrl))) continue;
-        seenPages.add(normUrl(catUrl));
-        let html = "";
-        try {
-          html = await this._fetchHtml(catUrl, 12000);
-          categoriesOpened += 1;
-        } catch (err) {
-          errors += 1;
-          pageLog.push({ page: catUrl, error: String((err && err.message) || err) });
-          continue;
-        }
-        const leaves = extractLeafLinks(html, catUrl)
-          .filter((l) => !/[?&](limitstart|limit|page|start|offset)=/i.test(String(l.url || "")))
-          .filter((l) => pathDepth(l.url) > pathDepth(catUrl)); // deeper = a real product page
-        let added = 0;
-        for (const l of leaves) {
-          const url = cleanProductPageUrl(l.url);
-          if (junkLinkReason(url)) continue;
-          const text = String(l.text || "").replace(/\s+/g, " ").trim().slice(0, 120);
-          const code = (decodeURIComponent(String(l.url || "")).toUpperCase().match(/[A-Z]{2,5}-\d{2,4}/g) || [])[0] || "";
-          const before = leafPool.length;
-          mergeProductCandidate(leafPool, {
-            name: (text || catName || url).slice(0, 120),
-            sku: code,
-            category: catName || "สินค้า",
-            sourceUrl: url,
-            description: "",
-            price: "",
-            image: "",
-          });
-          if (leafPool.length > before) added += 1;
-        }
-        if (!added) continue; // that page was a product itself: leave the row alone
-        opened.add(normUrl(catUrl));
-        leavesFound += added;
-        pageLog.push({ page: catUrl, category: catName, leaves: added, total: leafPool.length });
-        if (leafPool.length >= wanted && opened.size >= 2) break;
-      }
-      if (leavesFound) {
-        const keep = leafPool.length >= days ? [] : pool.filter((c) => !opened.has(normUrl(String(c.sourceUrl || ""))));
-        pool.length = 0;
-        for (const c of [...leafPool, ...keep]) mergeProductCandidate(pool, c);
-      }
-    }
     const picked = seededShuffle(pool, seed).slice(0, days);
     const existing = new Set((client.products || []).map((p) => String(p.name).trim().toLowerCase()));
     const fresh = picked.filter((p) => !existing.has(String(p.name).trim().toLowerCase()));
@@ -2478,7 +2415,6 @@ class SocialAgencyRuntime {
       imported = this.importProducts(client.id, {
         products: fresh.map((p) => ({
           name: p.name,
-          sku: String(p.sku || "").slice(0, 32),
           detail: p.description || "",
           price: p.price || "",
           category: p.category || "สินค้า",
@@ -2495,15 +2431,12 @@ class SocialAgencyRuntime {
       found: pool.length,
       picked: picked.map((p) => ({
         name: p.name,
-        sku: p.sku || "",
         sourceUrl: p.sourceUrl || "",
         price: p.price || "",
         hasImage: Boolean(p.image),
         description: String(p.description || "").slice(0, 120),
       })),
       pickedCount: picked.length,
-      categoriesOpened,
-      pickedWithSku: picked.filter((p) => p.sku).length,
       alreadyInCatalog: picked.length - fresh.length,
       importedCount: imported ? imported.count : 0,
       importSkipped: imported ? imported.skipped : 0,
