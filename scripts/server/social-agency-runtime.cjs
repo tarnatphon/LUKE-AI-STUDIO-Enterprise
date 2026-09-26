@@ -1210,13 +1210,34 @@ class SocialAgencyRuntime {
     return null;
   }
 
-  _autoSnapshot() {
+  // P6a: cheap content fingerprint so a real change always survives the throttle
+  _snapshotFingerprint(state) {
+    try {
+      const clients = ((state || {}).clients) || [];
+      let h = 2166136261;
+      const mix = (s) => {
+        for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+      };
+      for (const c of clients) {
+        mix(c.id);
+        for (const p of c.products || []) mix(p.sku);
+        for (const e of c.calendar || []) mix(`${e.date} ${e.time} ${e.sku} ${e.status}`);
+      }
+      return clients.length + ":" + h.toString(16);
+    } catch {
+      return "";
+    }
+  }
+
+  _autoSnapshot(state) {
     if (process.env.LUKE_SA_AUTOBACKUP === "off") return;
     if (this._writingSnapshot) return;
     const everyMs = Number(process.env.LUKE_SA_AUTOBACKUP_EVERY_MS || 600000) || 600000;
     const now = Date.now();
-    if (this._lastSnapshotAt && now - this._lastSnapshotAt < everyMs) return;
+    const fingerprint = this._snapshotFingerprint(state);
+    if (this._lastSnapshotAt && now - this._lastSnapshotAt < everyMs && fingerprint === this._lastSnapshotFingerprint) return;
     this._lastSnapshotAt = now;
+    this._lastSnapshotFingerprint = fingerprint;
     this._writingSnapshot = true;
     try {
       this.saveBackupSnapshot();
@@ -1240,12 +1261,11 @@ class SocialAgencyRuntime {
   _read() {
     const raw = this._readRawTolerant();
     if (!raw) {
-      if (fs.existsSync(this.filePath)) {
-        // state file exists but could not be read -> recover from snapshot, never seed over live data
-        const recovered = this._recoverFromSnapshots();
-        if (recovered) return recovered;
-        this._quarantineUnreadable();
-      }
+      // P6a: missing file is an emergency too - consult backups/ before seeding,
+      // so a deleted/renamed state file can never be replaced by demo data.
+      // _recoverFromSnapshots() keeps the unreadable original as .corrupt-* itself.
+      const recovered = this._recoverFromSnapshots();
+      if (recovered) return recovered;
       const state = this._buildFreshState();
       this._write(state);
       return state;
@@ -1272,7 +1292,7 @@ class SocialAgencyRuntime {
     const tmp = `${this.filePath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), "utf8");
     fs.renameSync(tmp, this.filePath);
-    this._autoSnapshot();
+    this._autoSnapshot(state);
   }
 
   _buildFreshState() {
