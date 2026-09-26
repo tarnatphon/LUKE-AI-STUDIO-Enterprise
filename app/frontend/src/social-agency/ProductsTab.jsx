@@ -145,6 +145,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [imgEditSku, setImgEditSku] = useState(null);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
   const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
+  const noImgCount = products.filter((p) => !String(p.image || "").trim()).length;
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -447,6 +448,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           <b>สินค้าของ {activeClient.name}</b>
           <span className="sa-muted">
             {products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว
+            {noImgCount > 0 && (
+              <> · <b style={{ color: "var(--sa-primary, #4f46e5)" }}>{noImgCount} รายการยังไม่มีรูป</b> — คลิกกรอบรูปเพื่ออัปโหลด หรือวางลิงก์รูปได้เลย</>
+            )}
             {badLinkCount > 0 && (
               <> · <b style={{ color: "#c2410c" }}>{badLinkCount} แถวลิงก์ไม่ใช่หน้าสินค้า</b> (ต้องกด "แก้ลิงก์สินค้า" ก่อนถึงเติมคำอธิบายได้)</>
             )}
