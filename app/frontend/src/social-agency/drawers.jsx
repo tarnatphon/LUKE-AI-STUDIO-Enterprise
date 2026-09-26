@@ -388,6 +388,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       dryRun: connectors?.settings?.dryRun !== false,
       notify: Boolean(connectors?.settings?.notify),
       weeklySummaryLine: Boolean(connectors?.settings?.weeklySummaryLine),
+      useProductRef: connectors?.settings?.useProductRef !== false,
     },
   }));
   const [tests, setTests] = useState({});
@@ -517,6 +518,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <label className="sa-field"><span>เขตเวลา</span><input value="Asia/Bangkok" disabled /></label>
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
         <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
+        <ConnectorToggle checked={form.settings.useProductRef} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, useProductRef: v } }))} label="ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น Reference ตอนสร้างภาพปฏิทิน" />
       </section>
     </Drawer>
   );

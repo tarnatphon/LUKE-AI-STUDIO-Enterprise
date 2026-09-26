@@ -80,6 +80,23 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
       setBusy(false);
     }
   };
+  const fetchFromWeb = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { skus: [product.sku] });
+      const r = (data.results || [])[0];
+      if (data.saved > 0 && r) {
+        onSaved(r.sourceUrl ? `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓ (${r.sourceUrl.slice(0, 70)}${r.sourceUrl.length > 70 ? "…" : ""})` : `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓`);
+      } else {
+        setErr(r?.reason || "ไม่พบรูปบนหน้าเว็บของสินค้านี้");
+      }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const pickFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -96,6 +113,9 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
         <Upload size={13} /> {busy ? "กำลังบันทึก…" : "อัปโหลดรูป"}
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={pickFile} disabled={busy} />
       </label>
+      <button className="sa-btn sm" disabled={busy} onClick={fetchFromWeb} title="เปิดหน้าเว็บของสินค้านี้ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง">
+        <Globe size={13} /> {busy ? "กำลังดึง…" : "ดึงรูปจากเว็บ (ตาม SKU)"}
+      </button>
       <input
         placeholder="หรือวางลิงก์รูป https://…"
         value={urlInput}
@@ -107,7 +127,7 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
       {product.image ? <button className="sa-btn ghost sm danger" disabled={busy} onClick={() => patch("")}>ลบรูป</button> : null}
       <button className="sa-btn ghost sm" disabled={busy} onClick={onClose}>ปิด</button>
       {err && <p className="sa-form-error">{err}</p>}
-      <p className="sa-form-hint">รูปที่อัปโหลดจะถูกย่อเหลือไม่เกิน 640px และเก็บในเครื่อง (app/outputs/sa-products) — ใช้กับเวิร์กโฟลว์อัตโนมัติได้ทันที</p>
+      <p className="sa-form-hint">รูปสินค้า (อัปโหลดเองหรือดึงจากเว็บ) จะถูกใช้เป็น <b>Reference</b> อัตโนมัติตอนสร้างภาพสำหรับปฏิทิน — เพื่อให้ภาพที่ได้ตรงกับตัวสินค้าจริง</p>
     </div>
   );
 }
@@ -143,9 +163,32 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [enrichBusy, setEnrichBusy] = useState(false);
   const [fixBusy, setFixBusy] = useState(false);
   const [imgEditSku, setImgEditSku] = useState(null);
+  const [imgFetchBusy, setImgFetchBusy] = useState(false);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
   const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
   const noImgCount = products.filter((p) => !String(p.image || "").trim()).length;
+  const fetchableImgCount = products.filter((p) => !String(p.image || "").startsWith("/sa-products/") && linkIsProductPage(p.sourceUrl)).length;
+
+  const fetchMissingImages = async () => {
+    if (!clientId || imgFetchBusy) return;
+    setImgFetchBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { missingOnly: true });
+      const fails = (data.results || []).filter((r) => r.status !== "saved");
+      setNote(
+        `ดึงรูปสินค้าจากเว็บได้ ${data.saved}/${data.checked} รายการ ✓` +
+        (fails.length ? ` · ไม่สำเร็จ ${fails.length} รายการ (เช่น ${fails[0].sku}: ${String(fails[0].reason || "").slice(0, 70)})` : "") +
+        " — รูปเหล่านี้จะถูกใช้เป็น Reference อัตโนมัติตอนสร้างภาพปฏิทิน"
+      );
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImgFetchBusy(false);
+    }
+  };
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -471,6 +514,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           {urlCount > 0 && missingCount < urlCount && (
             <button className="sa-btn ghost sm" disabled={enrichBusy || saving} onClick={enrichAllOverwrite} title="ดึงใหม่ทุกแถวแล้วเขียนทับคำอธิบายเดิม (ใช้ตอนลิงก์เพิ่งถูกแก้ / คำอธิบายเดิมเป็นของคนละสินค้า)">
               {enrichBusy ? "กำลังเติม…" : "เติมทับทุกแถว"}
+            </button>
+          )}
+          {fetchableImgCount > 0 && (
+            <button className="sa-btn ghost sm" disabled={imgFetchBusy || saving} onClick={fetchMissingImages} title="เปิดหน้าเว็บของสินค้าแต่ละรายการ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง — รูปจะถูกใช้เป็น Reference ตอนสร้างภาพปฏิทิน">
+              <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
             </button>
           )}
           {urlCount > 0 && (
