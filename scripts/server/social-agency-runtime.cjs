@@ -314,8 +314,17 @@ function defaultSettings() {
     dryRun: true,
     notify: false,
     weeklySummaryLine: false,
+    useProductRef: true, // ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น reference ตอนสร้างภาพปฏิทิน
   };
 }
+
+// Prompt boost appended when the real product photo is attached as a reference.
+const PRODUCT_REF_BOOST =
+  "Use the attached reference image as the exact real product in Appearance Lock mode: " +
+  "same product shape, materials, colors, proportions, pockets, straps, stitching and hardware as the reference photo. " +
+  "Do not redesign the product, do not change its colors or details. Keep the scene/staging around it creative.";
+const PRODUCT_REF_NEGATIVE =
+  "different product, redesigned product, changed colors, wrong material, extra pockets, wrong straps, wrong hardware, ignoring reference image";
 
 // ── P3: per-client content pillars ──
 function defaultPillars() {
@@ -388,7 +397,7 @@ function firstParagraphText(html, minLen = 60) {
 }
 
 // best product image on the page (largest declared size, skips logos/icons)
-function firstContentImage(html) {
+function firstContentImage(html, pageUrl) {
   const src = stripPageChrome(html);
   const scoped = src.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i);
   const body = scoped ? scoped[2] : src;
@@ -400,11 +409,15 @@ function firstContentImage(html) {
   while ((m = re.exec(body)) && guard < 60) {
     guard += 1;
     const tag = m[0];
-    const srcM = tag.match(/src=(["'])(.*?)\1/i);
+    const srcM = tag.match(/src=(["'])(.*?)\1/i) || tag.match(/data-src=(["'])(.*?)\1/i);
     if (!srcM) continue;
-    const url = String(srcM[2]).trim();
-    if (!/^https?:\/\//i.test(url)) continue;
-    if (/logo|icon|sprite|banner|placeholder|avatar|\.(?:svg|gif)(?:$|\?)/i.test(url)) continue;
+    let url = String(srcM[2]).trim();
+    // resolve relative image paths against the page URL (e.g. /images/cam-009.jpg)
+    if (!/^https?:\/\//i.test(url)) {
+      if (!pageUrl || url.startsWith("data:")) continue;
+      try { url = new URL(url, pageUrl).href; } catch { continue; }
+    }
+    if (/logo|icon|sprite|banner|placeholder|avatar|\.svg(?:$|\?)/i.test(url)) continue;
     const w = Number((tag.match(/\bwidth=(["']?)(\d+)/i) || [])[2] || 0);
     const h = Number((tag.match(/\bheight=(["']?)(\d+)/i) || [])[2] || 0);
     const area = w > 0 && h > 0 ? w * h : 1;
@@ -1306,6 +1319,7 @@ class SocialAgencyRuntime {
       connectors: defaultConnectorMeta(),
       settings: defaultSettings(),
     }));
+    this._applySeedImages(clients);
     const { entries, reviewRun } = buildSampleCalendar(clients[0]);
     clients[0].calendar = entries;
     clients[0].workflowRuns = [reviewRun];
@@ -1316,6 +1330,33 @@ class SocialAgencyRuntime {
       runLog: [],
       createdAt: now,
     };
+  }
+
+  // Copy committed demo product photos (app/config/social-agency-seeds/<clientId>/<sku>.<ext>)
+  // into app/outputs/sa-products/ so a fresh install shows real thumbnails and
+  // every calendar image generation has a product reference from the start.
+  _applySeedImages(clients) {
+    try {
+      const seedDir = path.join(this.root, "app", "config", "social-agency-seeds");
+      if (!fs.existsSync(seedDir)) return;
+      for (const client of clients) {
+        const dir = path.join(seedDir, client.id);
+        if (!fs.existsSync(dir)) continue;
+        for (const p of client.products || []) {
+          for (const ext of [".jpg", ".jpeg", ".png", ".webp"]) {
+            const src = path.join(dir, `${p.sku}${ext}`);
+            if (!fs.existsSync(src)) continue;
+            const outDir = path.join(this.root, "app", "outputs", "sa-products", client.id);
+            fs.mkdirSync(outDir, { recursive: true });
+            const outExt = ext === ".jpeg" ? ".jpg" : ext;
+            fs.copyFileSync(src, path.join(outDir, `${p.sku}${outExt}`));
+            p.image = `/sa-products/${client.id}/${p.sku}${outExt}`;
+            p.imageSource = "seed";
+            break;
+          }
+        }
+      }
+    } catch { /* seed images are cosmetic — never block startup */ }
   }
 
   // v1 single-client state becomes client #1 VERBATIM, then samples 2-5 are added.
@@ -2293,9 +2334,193 @@ class SocialAgencyRuntime {
       if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
       if (body.sourceUrl !== undefined) product.sourceUrl = cleanProductPageUrl(product.sourceUrl);
     }
+    if (body.image !== undefined) product.image = this._applyProductImage(client, product, body.image);
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
     this._write(state);
     return product;
+  }
+
+  // Accepts "" (clear), an http(s) URL, an existing /sa-products/ path, or a
+  // data:image/...;base64 upload. Uploads are stored under
+  // app/outputs/sa-products/<clientId>/<sku>.<ext> and served from /sa-products/.
+  _applyProductImage(client, product, raw) {
+    const img = String(raw ?? "").trim();
+    if (!img) {
+      this._unlinkProductImages(client.id, product.sku);
+      return "";
+    }
+    if (/^https?:\/\//i.test(img)) return img.slice(0, 500);
+    if (img.startsWith("/sa-products/")) return img.slice(0, 500);
+    const m = img.match(/^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!m) throw new Error("รูปต้องเป็นลิงก์ http(s), พาธ /sa-products/ หรือไฟล์รูป (data URL)");
+    const buf = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
+    if (!buf.length || buf.length > 5 * 1024 * 1024) throw new Error("ไฟล์รูปใหญ่เกินไป (สูงสุด 5MB)");
+    const magic =
+      (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ? "png" :
+      (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ? "jpg" :
+      (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) ? "gif" :
+      (buf.slice(0, 4).toString("latin1") === "RIFF" && buf.slice(8, 12).toString("latin1") === "WEBP") ? "webp" : "";
+    if (!magic) throw new Error("ไฟล์ไม่ใช่รูป PNG/JPEG/WebP/GIF ที่ถูกต้อง");
+    const ext = magic === "png" ? "png" : magic === "jpg" ? "jpg" : magic; // jpeg→jpg
+    const dir = path.join(this.root, "app", "outputs", "sa-products", client.id);
+    fs.mkdirSync(dir, { recursive: true });
+    this._unlinkProductImages(client.id, product.sku, `.${ext}`);
+    fs.writeFileSync(path.join(dir, `${product.sku}.${ext}`), buf);
+    return `/sa-products/${client.id}/${product.sku}.${ext}`;
+  }
+
+  // Remove any stored image files for a sku (optionally keep `keepExt`).
+  _unlinkProductImages(clientId, sku, keepExt = null) {
+    try {
+      const dir = path.join(this.root, "app", "outputs", "sa-products", clientId);
+      if (!fs.existsSync(dir)) return;
+      for (const e of [".jpg", ".jpeg", ".png", ".webp", ".gif"]) {
+        if (e === keepExt) continue;
+        try { fs.unlinkSync(path.join(dir, `${sku}${e}`)); } catch { /* not there */ }
+      }
+    } catch { /* best effort */ }
+  }
+
+  // ── pull the real product photo from the product's own web page (by SKU) ──
+  // Downloads the best image on the source page (og:image / JSON-LD / content
+  // <img>, relative URLs resolved) into app/outputs/sa-products/<clientId>/ so
+  // it can be used offline as the generation reference for calendar images.
+  async fetchProductImages(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
+    const missingOnly = body.missingOnly !== false; // default: only rows without a local image
+    const limit = clampNumber(body.limit, 1, 40, 12);
+    const concurrency = clampNumber(body.concurrency, 1, 6, 3); // parallel page fetches
+    const timeoutMs = clampNumber(body.timeoutMs, 3000, 60000, 20000);
+    const rows = (client.products || []).filter((p) => {
+      if (onlySkus && !onlySkus.has(p.sku)) return false;
+      if (missingOnly && !onlySkus) {
+        const img = String(p.image || "").trim();
+        if (img.startsWith("/sa-products/")) return false; // already have a local copy
+      }
+      return true;
+    }).slice(0, limit);
+    if (!rows.length) return { checked: 0, saved: 0, results: [] };
+
+    const results = new Array(rows.length);
+    let saved = 0;
+    const fetchOne = async (p) => {
+      const item = { sku: p.sku, name: p.name, status: "failed", reason: "", image: p.image || "" };
+      const why = junkLinkReason(p.sourceUrl);
+      if (why) {
+        item.reason = `${why} — กด "แก้ลิงก์สินค้า" ก่อน`;
+        return item;
+      }
+      try {
+        const html = await this._fetchHtml(p.sourceUrl, timeoutMs);
+        const candidates = this._productImageCandidates(html, p.sourceUrl);
+        if (!candidates.length) {
+          item.reason = "หน้าเว็บนี้ไม่พบรูปสินค้า (ไม่มี og:image / รูปเนื้อหา)";
+          return item;
+        }
+        let downloaded = null;
+        let usedUrl = "";
+        for (const url of candidates) {
+          try {
+            downloaded = await this._downloadImage(url, timeoutMs);
+            if (downloaded) { usedUrl = url; break; }
+          } catch { /* try next candidate */ }
+        }
+        if (!downloaded) {
+          item.reason = `ดาวน์โหลดรูปไม่สำเร็จจาก ${candidates.length} ลิงก์ (${candidates[0].slice(0, 80)}…)`;
+          return item;
+        }
+        const dataUrl = `data:image/${downloaded.ext};base64,${downloaded.b64}`;
+        p.image = this._applyProductImage(client, p, dataUrl);
+        p.imageSource = "web";
+        p.imageSourceUrl = usedUrl.slice(0, 500);
+        item.status = "saved";
+        item.image = p.image;
+        item.sourceUrl = usedUrl.slice(0, 200);
+        saved += 1;
+        return item;
+      } catch (err) {
+        item.reason = String((err && err.message) || err);
+        return item;
+      }
+    };
+    const workers = Math.max(1, Math.min(concurrency, rows.length));
+    await Promise.all(Array.from({ length: workers }, async (_, w) => {
+      for (let i = w; i < rows.length; i += workers) results[i] = await fetchOne(rows[i]);
+    }));
+    if (saved) this._write(state);
+    return { checked: rows.length, saved, results: results.filter(Boolean) };
+  }
+
+  // Candidate image URLs for a product page, best-first (deduped, absolute).
+  _productImageCandidates(html, pageUrl) {
+    const out = [];
+    const push = (u) => {
+      let url = String(u || "").trim();
+      if (!url || url.startsWith("data:")) return;
+      if (!/^https?:\/\//i.test(url)) {
+        try { url = new URL(url, pageUrl).href; } catch { return; }
+      }
+      if (/logo|icon|sprite|banner|placeholder|avatar|\.svg(?:$|\?)/i.test(url)) return;
+      if (!out.includes(url)) out.push(url);
+    };
+    const src = String(html || "");
+    // 1. og:image / twitter:image (usually the curated product shot)
+    for (const m of src.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image(?::src)?)["'][^>]*>/gi)) {
+      const c = m[0].match(/content=["']([^"']+)["']/i);
+      if (c) push(c[1]);
+    }
+    // 2. JSON-LD image
+    for (const m of src.matchAll(/"image"\s*:\s*"([^"]+)"/gi)) push(m[1]);
+    // 3. largest content <img>
+    push(firstContentImage(src, pageUrl));
+    return out.slice(0, 6);
+  }
+
+  // Download an image with size/type guards. Returns { ext, b64 } or null.
+  async _downloadImage(url, timeoutMs = 20000) {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) LUKE-AI-STUDIO/1.0", accept: "image/*" },
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const type = String(res.headers.get("content-type") || "").toLowerCase();
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > 8 * 1024 * 1024) throw new Error(buf.length ? "รูปใหญ่เกิน 8MB" : "ไฟล์ว่าง");
+    const magic =
+      (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ? "png" :
+      (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ? "jpg" :
+      (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) ? "gif" :
+      (buf.slice(0, 4).toString("latin1") === "RIFF" && buf.slice(8, 12).toString("latin1") === "WEBP") ? "webp" : "";
+    if (!magic && !type.startsWith("image/")) throw new Error("ไม่ใช่ไฟล์รูป");
+    const ext = magic || (type.includes("png") ? "png" : type.includes("webp") ? "webp" : type.includes("gif") ? "gif" : "jpg");
+    return { ext, b64: buf.toString("base64") };
+  }
+
+  // Serve a local image file as a thumbnail (folder-scan preview lists).
+  // Same local-trust model as scan-folder: extension + size caps only.
+  _serveImagePreview(res, filePathStr) {
+    const p = String(filePathStr || "");
+    const ext = path.extname(p).toLowerCase();
+    const mime = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" }[ext];
+    let st = null;
+    try { st = fs.statSync(p); } catch { /* missing */ }
+    if (!mime || !st || !st.isFile() || st.size <= 0 || st.size > 10 * 1024 * 1024) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "ไม่พบรูปพรีวิว" }));
+      return true;
+    }
+    fs.readFile(p, (err, data) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" });
+      res.end(data);
+    });
+    return true;
   }
 
   deleteProduct(clientId, sku) {
@@ -2303,6 +2528,7 @@ class SocialAgencyRuntime {
     const before = (client.products || []).length;
     client.products = (client.products || []).filter((p) => p.sku !== sku);
     if (client.products.length === before) throw new Error("ไม่พบสินค้านี้");
+    this._unlinkProductImages(client.id, sku); // drop stored thumbnail, if any
     const orphans = (client.calendar || []).filter((e) => e.sku === sku).length;
     this._write(state);
     return { deleted: sku, orphanEntries: orphans };
@@ -2317,6 +2543,7 @@ class SocialAgencyRuntime {
     const notFound = skus.filter((s) => !have.has(s));
     const gone = new Set(deleted);
     client.products = (client.products || []).filter((p) => !gone.has(p.sku));
+    for (const sku of gone) this._unlinkProductImages(client.id, sku); // drop stored thumbnails
     const orphans = (client.calendar || []).filter((e) => gone.has(e.sku)).length;
     this._write(state);
     return { deleted, notFound, orphans };
@@ -2507,6 +2734,23 @@ class SocialAgencyRuntime {
         })),
       });
     }
+    // Pull the real product photo for every newly imported SKU right away, so
+    // "สุ่ม 1 สินค้า/วัน" delivers products that already carry a local
+    // reference image for calendar generation — no second button needed.
+    let imageFetch = null;
+    if (body.autoImport === true && imported && Array.isArray(imported.added) && imported.added.length) {
+      try {
+        imageFetch = await this.fetchProductImages(client.id, {
+          skus: imported.added,
+          missingOnly: false,
+          limit: imported.added.length,
+          timeoutMs: 15000,
+          concurrency: 4,
+        });
+      } catch (err) {
+        imageFetch = { checked: imported.added.length, saved: 0, results: [], error: String((err && err.message) || err) };
+      }
+    }
     const productPool = (this._resolveClient(client.id).client.products || []).length;
     return {
       seed,
@@ -2527,6 +2771,11 @@ class SocialAgencyRuntime {
       alreadyInCatalog: picked.length - fresh.length,
       importedCount: imported ? imported.count : 0,
       importSkipped: imported ? imported.skipped : 0,
+      imagesFetched: imageFetch ? imageFetch.saved || 0 : 0,
+      imagesFailed: imageFetch ? Math.max(0, (imageFetch.checked || 0) - (imageFetch.saved || 0)) : 0,
+      imageFailReason: imageFetch && Array.isArray(imageFetch.results)
+        ? String((imageFetch.results.find((r) => r && r.status !== "saved") || {}).reason || "").slice(0, 120)
+        : "",
       productPool,
       days,
       shortBy: Math.max(0, days - productPool),
@@ -2601,7 +2850,7 @@ class SocialAgencyRuntime {
       }
       if (!detail && bodyText && !looksLikeListing) detail = bodyText;
       const price = self ? self.price : "";
-      const image = String((self && self.image) || "").trim() || firstContentImage(r.value);
+      const image = String((self && self.image) || "").trim() || firstContentImage(r.value, p.sourceUrl);
       if (!detail && !price && !image) {
         failed.push({
           sku: p.sku,
@@ -2741,7 +2990,7 @@ class SocialAgencyRuntime {
     }));
     const para = firstParagraphText(html);
     out.paragraph = { len: para.length, preview: para.slice(0, 160) };
-    out.imageGuess = firstContentImage(html).slice(0, 140);
+    out.imageGuess = firstContentImage(html, url).slice(0, 140);
     out.anchorCount = discoverProductLinks(html, url).length;
     const pageHit = cands.find((x) => normUrl(x.sourceUrl) === normUrl(url));
     const usable = String((pageHit && pageHit.description) || (cands.find((x) => x.description) || {}).description || para || "").trim();
@@ -3021,8 +3270,12 @@ class SocialAgencyRuntime {
             product.image = `/sa-products/${client.id}/${sku}${outExt}`;
           }
         } catch { /* image optional */ }
-      } else if (item.image && /^https?:\/\//i.test(String(item.image))) {
-        product.image = String(item.image).slice(0, 500);
+      } else if (item.image) {
+        let img = String(item.image).trim();
+        if (!/^https?:\/\//i.test(img) && /^https?:\/\//i.test(String(item.sourceUrl || ""))) {
+          try { img = new URL(img, item.sourceUrl).href; } catch { /* keep as-is */ }
+        }
+        if (/^https?:\/\//i.test(img)) product.image = img.slice(0, 500);
       }
       client.products = [...(client.products || []), product];
       added.push(sku);
@@ -4153,6 +4406,7 @@ class SocialAgencyRuntime {
       if (typeof s.dryRun === "boolean") merged.dryRun = s.dryRun;
       if (typeof s.notify === "boolean") merged.notify = s.notify && process.platform === "darwin";
       if (typeof s.weeklySummaryLine === "boolean") merged.weeklySummaryLine = s.weeklySummaryLine;
+      if (typeof s.useProductRef === "boolean") merged.useProductRef = s.useProductRef;
       client.settings = merged;
     }
     this._write(state);
@@ -4300,13 +4554,19 @@ class SocialAgencyRuntime {
   async _generateEntryImage(clientId, entryId) {
     const first = this._findEntry(clientId, entryId);
     const prompt = this._ensureEntryImagePrompt(first.client, first.entry);
+    // Attach the product's real photo (fetched from the web by SKU) as a
+    // reference so calendar images show the actual product.
+    const ref = first.client.settings?.useProductRef === false
+      ? null
+      : await this._productReferenceDataUrl(first.client, first.entry);
+    const fullPrompt = ref ? `${prompt}\n\nReference guidance: ${PRODUCT_REF_BOOST}` : prompt;
     this._write(first.state);
     let res;
     try {
       res = await fetch(`${this.imageBackend}/v1/images/generations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(this._imageGenBody(prompt)),
+        body: JSON.stringify(this._imageGenBody(fullPrompt, ref)),
         signal: AbortSignal.timeout(10 * 60 * 1000),
       });
     } catch (err) {
@@ -4362,7 +4622,31 @@ class SocialAgencyRuntime {
     return { steps: 20, cfg_scale: 7.0, width: 512, height: 512 };
   }
 
-  _imageGenBody(prompt) {
+  // Resolve a product's stored image (by entry SKU) to a data URL usable as a
+  // generation reference: local /sa-products/ file, or a downloaded web URL.
+  async _productReferenceDataUrl(client, entry) {
+    try {
+      const product = (client.products || []).find((p) => p.sku === entry.sku);
+      const img = String(product?.image || "").trim();
+      if (!img) return null;
+      if (img.startsWith("/sa-products/")) {
+        const rel = img.replace(/^\/sa-products\//, "");
+        const filePath = path.join(this.root, "app", "outputs", "sa-products", rel);
+        const ext = path.extname(filePath).toLowerCase().replace(".", "") || "jpg";
+        const buf = fs.readFileSync(filePath);
+        return { dataUrl: `data:image/${ext};base64,${buf.toString("base64")}`, product };
+      }
+      if (/^https?:\/\//i.test(img)) {
+        const dl = await this._downloadImage(img, 20000);
+        if (dl) return { dataUrl: `data:image/${dl.ext};base64,${dl.b64}`, product };
+      }
+      return null;
+    } catch {
+      return null; // never break generation over a missing reference
+    }
+  }
+
+  _imageGenBody(prompt, ref = null) {
     const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
     const preset = this._modelPreset(d.model);
     const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
@@ -4370,7 +4654,7 @@ class SocialAgencyRuntime {
     const height = Math.round(num(d.height, preset.height));
     return {
       prompt: String(prompt || ""),
-      negative_prompt: "",
+      negative_prompt: ref ? PRODUCT_REF_NEGATIVE : "",
       n: 1,
       size: `${width}x${height}`,
       response_format: "b64_json",
@@ -4378,8 +4662,27 @@ class SocialAgencyRuntime {
       cfg_scale: num(d.cfgScale, preset.cfg_scale),
       seed: Math.floor(Math.random() * 1000000000),
       sample_method: d.sampler || "euler_a",
-      reference_images: [],
-      reference_settings: {},
+      reference_images: ref
+        ? [{
+            id: "product-ref",
+            name: ref.product ? ref.product.name : "สินค้า",
+            role: "Appearance",
+            weight: 1.35,
+            startAt: 0,
+            endAt: 100,
+            influence: "exact product appearance",
+            pinned: true,
+            notes: "รูปสินค้าจริงจากเว็บไซต์ (ตาม SKU)",
+            preserveFace: true,
+            preserveHair: true,
+            preserveClothing: true,
+            preserveBody: true,
+            src: ref.dataUrl,
+          }]
+        : [],
+      reference_settings: ref
+        ? { mode: "Appearance Lock", strength: 1.35, similarityBoost: 1, faceLock: true, hairLock: true, clothingLock: true, bodyLock: true, denoiseGuidance: 0.38 }
+        : {},
     };
   }
 
@@ -5310,6 +5613,17 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, product: this.addProduct(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/preview-image" && method === "GET") {
+        return this._serveImagePreview(res, parsed.searchParams.get("path") || "");
+      }
+      if (pathname === "/api/social-agency/products/fetch-image" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...(await this.fetchProductImages(clientId || body.clientId, body)) });
+        } catch (error) {
+          return fail(error, 502);
+        }
       }
       if (pathname === "/api/social-agency/products/import-url" && method === "POST") {
         const body = await readBody();

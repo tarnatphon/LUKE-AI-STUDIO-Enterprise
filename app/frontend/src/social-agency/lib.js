@@ -37,7 +37,7 @@ export const PLATFORM_META = {
 
 export const TONES = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
 export const ANGLES = ["เปิดตัวสินค้า", "เบื้องหลังการผลิต", "เคล็ดลับการใช้งาน", "เรื่องจากลูกค้า", "โปรโมชัน/ข้อเสนอ OEM"];
-export const NODE_KEYS = ["schedule", "research", "brief", "create", "check", "autofix", "gate", "publish", "result"];
+export const NODE_KEYS = ["schedule", "research", "brief", "create", "check", "autofix", "score", "gate", "publish", "result"];
 export const NODE_LABELS = {
   schedule: "ตั้งเวลา",
   research: "วิจัย",
@@ -45,6 +45,7 @@ export const NODE_LABELS = {
   create: "เขียนคอนเทนต์",
   check: "AI Check",
   autofix: "แก้อัตโนมัติ",
+  score: "คะแนนไวรัล",
   gate: "ประตูอนุมัติ",
   publish: "เผยแพร่",
   result: "ผลลัพธ์",

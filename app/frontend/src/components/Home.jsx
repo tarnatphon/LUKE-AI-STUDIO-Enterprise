@@ -1,10 +1,11 @@
 import React from "react";
-import { MessageSquare, Image, Film, Mic, Volume2, Boxes, ArrowRight, CheckCircle2, HardDrive, Sparkles } from "lucide-react";
+import { MessageSquare, Image, Film, Mic, Volume2, Boxes, ArrowRight, CheckCircle2, HardDrive, Sparkles, Workflow } from "lucide-react";
 
 const tasks = [
   { id: "chat", icon: MessageSquare, title: "Chat with AI", description: "Ask questions, write, summarize, and continue previous conversations." },
   { id: "generator", icon: Image, title: "Create an image", description: "Generate images or use references without technical setup." },
   { id: "image-video", icon: Film, title: "Animate an image", description: "Turn a still image into a short video automatically." },
+  { id: "ai-workflow", icon: Workflow, title: "Luke AI Workflow", description: "Chain chat, image, voice, and text steps into one automated pipeline." },
   { id: "speech", icon: Mic, title: "Transcribe audio", description: "Convert speech and recordings into editable text." },
   { id: "tts", icon: Volume2, title: "Create voice", description: "Turn text into natural speech using local voices." },
   { id: "models", icon: Boxes, title: "AI Library", description: "Download and manage Text, Vision, Image, and Video models." },

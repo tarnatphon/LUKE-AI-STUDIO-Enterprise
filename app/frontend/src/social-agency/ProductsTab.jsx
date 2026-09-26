@@ -1,6 +1,136 @@
 import { useEffect, useState } from "react";
-import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2 } from "lucide-react";
+import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload } from "lucide-react";
 import { api, postJson } from "./lib.js";
+
+// ── product image helpers ───────────────────────────────────────────────────
+// Downscale an uploaded photo to a compact data URL (640px JPEG) so it fits
+// the 1MB JSON body limit and stores as a lightweight thumbnail.
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("อ่านไฟล์ไม่สำเร็จ"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function fileToProductImage(file) {
+  if (!file) throw new Error("ไม่พบไฟล์");
+  if (file.size > 25 * 1024 * 1024) throw new Error("ไฟล์ใหญ่เกินไป (สูงสุด 25MB)");
+  const type = String(file.type || "").toLowerCase();
+  if (!/^image\/(png|jpe?g|webp|gif)$/.test(type)) throw new Error("รับเฉพาะไฟล์รูป PNG/JPEG/WebP/GIF");
+  if (type === "image/gif" && file.size <= 900 * 1024) return readAsDataUrl(file); // keep small GIFs intact
+  const dataUrl = await readAsDataUrl(file);
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error("ไฟล์รูปไม่ถูกต้อง"));
+    i.src = dataUrl;
+  });
+  const maxDim = 640;
+  const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+  if (scale >= 1 && file.size <= 400 * 1024 && type === "image/png") return dataUrl; // small PNG: keep as-is
+  const w = Math.max(1, Math.round((img.width || maxDim) * scale));
+  const h = Math.max(1, Math.round((img.height || maxDim) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+  const out = canvas.toDataURL("image/jpeg", 0.85);
+  return out.length > 1024 * 1024 ? canvas.toDataURL("image/jpeg", 0.7) : out;
+}
+
+// Thumbnail with graceful fallback: missing → dashed placeholder (click to add),
+// unloadable (404 / blocked / offline) → broken placeholder hinting a fix.
+function ProductThumb({ src, onPick, small = false, title }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [src]);
+  const cls = `sa-prod-thumb${small ? " sm" : ""}${!src || broken ? " placeholder" : ""}${broken ? " broken" : ""}`;
+  const inner = src && !broken
+    ? <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} />
+    : broken ? <ImageOff size={small ? 13 : 16} /> : <ImagePlus size={small ? 13 : 16} />;
+  if (!onPick) return <span className={cls} title={title || (broken ? "รูปโหลดไม่ได้" : "ไม่มีรูป")}>{inner}</span>;
+  return (
+    <button
+      type="button"
+      className={cls}
+      onClick={onPick}
+      title={title || (broken ? "รูปโหลดไม่ได้ — คลิกเพื่อแก้ (อัปโหลดใหม่ หรือใช้ลิงก์อื่น)" : src ? "คลิกเพื่อเปลี่ยนรูปสินค้า" : "เพิ่มรูปสินค้า")}
+      aria-label={broken ? "แก้รูปสินค้า" : "รูปสินค้า"}
+    >
+      {inner}
+    </button>
+  );
+}
+
+// Inline editor: upload a file (auto-downscaled) / paste a URL / remove.
+function ProductImageEditor({ product, clientId, onClose, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [urlInput, setUrlInput] = useState(/^https?:/i.test(product.image || "") ? product.image : "");
+  const patch = async (image) => {
+    setBusy(true);
+    setErr("");
+    try {
+      await postJson(`/api/social-agency/products/${encodeURIComponent(product.sku)}?clientId=${encodeURIComponent(clientId)}`, { image });
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fetchFromWeb = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { skus: [product.sku] });
+      const r = (data.results || [])[0];
+      if (data.saved > 0 && r) {
+        onSaved(r.sourceUrl ? `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓ (${r.sourceUrl.slice(0, 70)}${r.sourceUrl.length > 70 ? "…" : ""})` : `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓`);
+      } else {
+        setErr(r?.reason || "ไม่พบรูปบนหน้าเว็บของสินค้านี้");
+      }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      await patch(await fileToProductImage(file));
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  };
+  return (
+    <div className="sa-prod-img-editor">
+      <label className={`sa-btn primary sm${busy ? " disabled" : ""}`}>
+        <Upload size={13} /> {busy ? "กำลังบันทึก…" : "อัปโหลดรูป"}
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={pickFile} disabled={busy} />
+      </label>
+      <button className="sa-btn sm" disabled={busy} onClick={fetchFromWeb} title="เปิดหน้าเว็บของสินค้านี้ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง">
+        <Globe size={13} /> {busy ? "กำลังดึง…" : "ดึงรูปจากเว็บ (ตาม SKU)"}
+      </button>
+      <input
+        placeholder="หรือวางลิงก์รูป https://…"
+        value={urlInput}
+        onChange={(e) => setUrlInput(e.target.value)}
+        disabled={busy}
+        onKeyDown={(e) => { if (e.key === "Enter" && /^https?:\/\//i.test(urlInput.trim())) patch(urlInput.trim()); }}
+      />
+      <button className="sa-btn sm" disabled={busy || !/^https?:\/\//i.test(urlInput.trim())} onClick={() => patch(urlInput.trim())}>ใช้ลิงก์นี้</button>
+      {product.image ? <button className="sa-btn ghost sm danger" disabled={busy} onClick={() => patch("")}>ลบรูป</button> : null}
+      <button className="sa-btn ghost sm" disabled={busy} onClick={onClose}>ปิด</button>
+      {err && <p className="sa-form-error">{err}</p>}
+      <p className="sa-form-hint">รูปสินค้า (อัปโหลดเองหรือดึงจากเว็บ) จะถูกใช้เป็น <b>Reference</b> อัตโนมัติตอนสร้างภาพสำหรับปฏิทิน — เพื่อให้ภาพที่ได้ตรงกับตัวสินค้าจริง</p>
+    </div>
+  );
+}
 
 // same rule the server uses: spec-sheet / asset links are not product pages
 const JUNK_LINK_RE = /\/(?:product\/)?download\/|file_id[-=]|\.(?:pdf|docx?|pptx?|xlsx?|zip|rar|jpg|jpeg|png|webp)(?:$|\?)/i;
@@ -15,7 +145,7 @@ const linkIsProductPage = (u) => {
 export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const clientId = activeClient?.id;
   const products = activeClient?.products || [];
-  const [form, setForm] = useState({ name: "", sku: "", category: "", price: "", sourceUrl: "" });
+  const [form, setForm] = useState({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -32,8 +162,33 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [delSel, setDelSel] = useState([]);
   const [enrichBusy, setEnrichBusy] = useState(false);
   const [fixBusy, setFixBusy] = useState(false);
+  const [imgEditSku, setImgEditSku] = useState(null);
+  const [imgFetchBusy, setImgFetchBusy] = useState(false);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
   const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
+  const noImgCount = products.filter((p) => !String(p.image || "").trim()).length;
+  const fetchableImgCount = products.filter((p) => !String(p.image || "").startsWith("/sa-products/") && linkIsProductPage(p.sourceUrl)).length;
+
+  const fetchMissingImages = async () => {
+    if (!clientId || imgFetchBusy) return;
+    setImgFetchBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { missingOnly: true });
+      const fails = (data.results || []).filter((r) => r.status !== "saved");
+      setNote(
+        `ดึงรูปสินค้าจากเว็บได้ ${data.saved}/${data.checked} รายการ ✓` +
+        (fails.length ? ` · ไม่สำเร็จ ${fails.length} รายการ (เช่น ${fails[0].sku}: ${String(fails[0].reason || "").slice(0, 70)})` : "") +
+        " — รูปเหล่านี้จะถูกใช้เป็น Reference อัตโนมัติตอนสร้างภาพปฏิทิน"
+      );
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImgFetchBusy(false);
+    }
+  };
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -43,6 +198,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     setScanSel([]);
     setNote("");
     setError("");
+    setImgEditSku(null);
   }, [clientId]);
 
   const toggleSel = (setter) => (i) => () =>
@@ -60,8 +216,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         category: form.category.trim() || undefined,
         price: form.price.trim() || undefined,
         sourceUrl: form.sourceUrl.trim() || undefined,
+        image: /^https?:\/\//i.test(form.image.trim()) ? form.image.trim() : undefined,
       });
-      setForm({ name: "", sku: "", category: "", price: "", sourceUrl: "" });
+      setForm({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "" });
       setNote("เพิ่มสินค้าแล้ว ✓");
       onChanged?.();
     } catch (err) {
@@ -123,6 +280,10 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       setUrlFound(null);
       setUrlSel([]);
       const bits = [`สุ่มเข้าคลัง ${data.importedCount} รายการจาก ${data.found} ที่เจอ (${data.pages} หน้า)`];
+      if (data.importedCount > 0) {
+        if (data.imagesFetched != null) bits.push(`ดึงรูปสินค้าจากเว็บมาแล้ว ${data.imagesFetched}/${data.importedCount} รายการ`);
+        if (data.imagesFailed) bits.push(`รูปไม่สำเร็จ ${data.imagesFailed}${data.imageFailReason ? ` (เช่น ${String(data.imageFailReason).slice(0, 60)})` : ""}`);
+      }
       if (data.alreadyInCatalog) bits.push(`มีอยู่แล้ว ${data.alreadyInCatalog}`);
       if (data.importSkipped) bits.push(`ข้าม ${data.importSkipped}`);
       if (data.errors) bits.push(`อ่านหน้าไม่สำเร็จ ${data.errors}`);
@@ -334,6 +495,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           <b>สินค้าของ {activeClient.name}</b>
           <span className="sa-muted">
             {products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว
+            {noImgCount > 0 && (
+              <> · <b style={{ color: "var(--sa-primary, #4f46e5)" }}>{noImgCount} รายการยังไม่มีรูป</b> — คลิกกรอบรูปเพื่ออัปโหลด หรือวางลิงก์รูปได้เลย</>
+            )}
             {badLinkCount > 0 && (
               <> · <b style={{ color: "#c2410c" }}>{badLinkCount} แถวลิงก์ไม่ใช่หน้าสินค้า</b> (ต้องกด "แก้ลิงก์สินค้า" ก่อนถึงเติมคำอธิบายได้)</>
             )}
@@ -356,6 +520,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
               {enrichBusy ? "กำลังเติม…" : "เติมทับทุกแถว"}
             </button>
           )}
+          {fetchableImgCount > 0 && (
+            <button className="sa-btn ghost sm" disabled={imgFetchBusy || saving} onClick={fetchMissingImages} title="เปิดหน้าเว็บของสินค้าแต่ละรายการ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง — รูปจะถูกใช้เป็น Reference ตอนสร้างภาพปฏิทิน">
+              <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
+            </button>
+          )}
           {urlCount > 0 && (
             <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวดหรือหน้าดาวน์โหลดไฟล์ จะหาลิงก์ใบสินค้าที่ถูกต้องให้เองจากโค้ดสินค้า (ครั้งละ 10 หน้า + คลานหน้าหมวดไม่เกิน 4 หน้า)">
               {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
@@ -367,7 +536,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             <li key={p.sku} className="sa-style-shot">
               <div className="sa-style-shot-head">
                 <input type="checkbox" checked={delSel.includes(p.sku)} onChange={(e) => setDelSel(e.target.checked ? [...delSel.filter((s) => s !== p.sku), p.sku] : delSel.filter((s) => s !== p.sku))} aria-label={`เลือก ${p.name}`} />
-                {p.image && <img src={p.image} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />}
+                <ProductThumb src={p.image} onPick={() => setImgEditSku(imgEditSku === p.sku ? null : p.sku)} />
                 <b>{p.name}</b>
                 <span className="sa-muted">{p.sku} · {p.category}{p.price ? ` · ${p.price}` : ""}</span>
                 {p.sourceUrl && <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="sa-muted">ลิงก์</a>}
@@ -376,6 +545,14 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                   <Trash2 size={13} />
                 </button>
               </div>
+              {imgEditSku === p.sku && (
+                <ProductImageEditor
+                  product={p}
+                  clientId={clientId}
+                  onClose={() => setImgEditSku(null)}
+                  onSaved={() => { setImgEditSku(null); setNote(`บันทึกรูปสินค้า ${p.sku} แล้ว ✓`); onChanged?.(); }}
+                />
+              )}
               {p.detail && <p>{p.detail}</p>}
             </li>
           ))}
@@ -418,6 +595,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
             placeholder="ลิงก์อ้างอิง (ถ้ามี)"
           />
+          <input
+            value={form.image}
+            onChange={(e) => setForm({ ...form, image: e.target.value })}
+            placeholder="ลิงก์รูปสินค้า https://… (ถ้ามี — เพิ่มภายหลังได้)"
+          />
           <div>
             <button className="sa-btn primary sm" disabled={saving || !form.name.trim()} onClick={addManual}>
               <Plus size={13} /> {saving ? "กำลังบันทึก…" : "เพิ่มสินค้า"}
@@ -451,8 +633,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             </button>
           </div>
           <div className="sa-style-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
-            <button className="sa-btn ghost sm" onClick={sampleFromCatalog} title="อ่านหน้าถัดไปของลิงก์ด้านบน แล้วสุ่มสินค้าเข้าคลังไม่เกิน 31 รายการ ไม่ซ้ำกัน (ไม่ต้องติ๊กเลือก)">
-              <Wand2 size={14} /> {sampleBusy ? "กำลังสุ่ม…" : "🎲 สุ่ม 1 สินค้า/วัน ไม่ซ้ำทั้งเดือน (≤31)"}
+            <button className="sa-btn ghost sm" onClick={sampleFromCatalog} title="อ่านหน้าถัดไปของลิงก์ด้านบน สุ่มสินค้าเข้าคลังไม่เกิน 31 รายการ ไม่ซ้ำกัน แล้วดึงรูปสินค้าจริงจากหน้าเว็บของแต่ละ SKU มาเก็บในเครื่องอัตโนมัติ (ไม่ต้องติ๊กเลือก)">
+              <Wand2 size={14} /> {sampleBusy ? "กำลังสุ่ม + ดึงรูป…" : "🎲 สุ่ม 1 สินค้า/วัน + ดึงรูปจากเว็บ (≤31)"}
             </button>
             <span className="sa-muted">ใช้หน้าเดียวกับลิงก์ด้านบน · อ่านหน้าถัดไปอัตโนมัติ · เพิ่มเฉพาะรายการที่ยังไม่มีในคลัง</span>
           </div>
@@ -468,6 +650,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                 <li key={i} className="sa-style-shot">
                   <div className="sa-style-shot-head">
                     <input type="checkbox" checked={urlSel.includes(i)} onChange={toggleSel(setUrlSel)(i)} />
+                    <ProductThumb small src={p.image} title={p.image ? "รูปจากเว็บต้นทาง" : "หน้านี้ไม่มีรูป"} />
                     <b>{p.name}</b>
                     <span className="sa-muted">{p.price ? `${p.price} ${p.currency || ""} · ` : ""}{p.sourceUrl}</span>
                   </div>
@@ -519,6 +702,13 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                 <li key={i} className="sa-style-shot">
                   <div className="sa-style-shot-head">
                     <input type="checkbox" checked={scanSel.includes(i)} onChange={toggleSel(setScanSel)(i)} />
+                    {p.kind === "image" && (
+                      <ProductThumb
+                        small
+                        src={`/api/social-agency/products/preview-image?path=${encodeURIComponent(p.file)}`}
+                        title={`พรีวิวจาก ${String(p.file).split("/").pop()}`}
+                      />
+                    )}
                     <b>{p.name}</b>
                     <span className="sa-muted">
                       {p.kind === "image"

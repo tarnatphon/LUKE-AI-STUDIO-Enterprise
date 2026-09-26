@@ -16,6 +16,8 @@ const workspaceLoaders = {
   "image-video": () => import("./components/ImageToVideo"),
   assets: () => import("./components/AssetLibrary"),
   "social-agency": () => import("./components/SocialAgency"),
+  // LUKE_AI_WORKFLOW_BUILDER_V1
+  "ai-workflow": () => import("./components/WorkflowBuilder"),
 };
 
 const workspacePrefetches = new Map();
@@ -52,6 +54,8 @@ const PersistentTextChat = lazy(() => import("./components/PersistentTextChat"))
 // LUKE_AI_ASSET_LIBRARY_UI_V1
 const AssetLibrary = lazy(workspaceLoaders.assets);
 const SocialAgency = lazy(workspaceLoaders["social-agency"]);
+// LUKE_AI_WORKFLOW_BUILDER_V1
+const WorkflowBuilder = lazy(workspaceLoaders["ai-workflow"]);
 
 const WorkspaceFallback = () => (
   <div className="workspace-loading" role="status" aria-live="polite">
@@ -1132,6 +1136,13 @@ function App() {
             onCreateVideo={() => setActiveTab("image-video")}
             onOpenChat={() => setActiveTab("chat")}
           />
+        </WorkspacePanel>
+        )}
+
+        {/* LUKE_AI_WORKFLOW_BUILDER_V1 */}
+        {visitedTabs.has("ai-workflow") && (
+        <WorkspacePanel tab="ai-workflow" activeTab={activeTab} onReturnHome={recoverFailedWorkspace} overflow="auto">
+          <WorkflowBuilder />
         </WorkspacePanel>
         )}
 
