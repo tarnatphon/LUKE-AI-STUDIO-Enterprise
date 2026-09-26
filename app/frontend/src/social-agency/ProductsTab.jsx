@@ -280,6 +280,10 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       setUrlFound(null);
       setUrlSel([]);
       const bits = [`สุ่มเข้าคลัง ${data.importedCount} รายการจาก ${data.found} ที่เจอ (${data.pages} หน้า)`];
+      if (data.importedCount > 0) {
+        if (data.imagesFetched != null) bits.push(`ดึงรูปสินค้าจากเว็บมาแล้ว ${data.imagesFetched}/${data.importedCount} รายการ`);
+        if (data.imagesFailed) bits.push(`รูปไม่สำเร็จ ${data.imagesFailed}${data.imageFailReason ? ` (เช่น ${String(data.imageFailReason).slice(0, 60)})` : ""}`);
+      }
       if (data.alreadyInCatalog) bits.push(`มีอยู่แล้ว ${data.alreadyInCatalog}`);
       if (data.importSkipped) bits.push(`ข้าม ${data.importSkipped}`);
       if (data.errors) bits.push(`อ่านหน้าไม่สำเร็จ ${data.errors}`);
@@ -629,8 +633,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             </button>
           </div>
           <div className="sa-style-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
-            <button className="sa-btn ghost sm" onClick={sampleFromCatalog} title="อ่านหน้าถัดไปของลิงก์ด้านบน แล้วสุ่มสินค้าเข้าคลังไม่เกิน 31 รายการ ไม่ซ้ำกัน (ไม่ต้องติ๊กเลือก)">
-              <Wand2 size={14} /> {sampleBusy ? "กำลังสุ่ม…" : "🎲 สุ่ม 1 สินค้า/วัน ไม่ซ้ำทั้งเดือน (≤31)"}
+            <button className="sa-btn ghost sm" onClick={sampleFromCatalog} title="อ่านหน้าถัดไปของลิงก์ด้านบน สุ่มสินค้าเข้าคลังไม่เกิน 31 รายการ ไม่ซ้ำกัน แล้วดึงรูปสินค้าจริงจากหน้าเว็บของแต่ละ SKU มาเก็บในเครื่องอัตโนมัติ (ไม่ต้องติ๊กเลือก)">
+              <Wand2 size={14} /> {sampleBusy ? "กำลังสุ่ม + ดึงรูป…" : "🎲 สุ่ม 1 สินค้า/วัน + ดึงรูปจากเว็บ (≤31)"}
             </button>
             <span className="sa-muted">ใช้หน้าเดียวกับลิงก์ด้านบน · อ่านหน้าถัดไปอัตโนมัติ · เพิ่มเฉพาะรายการที่ยังไม่มีในคลัง</span>
           </div>

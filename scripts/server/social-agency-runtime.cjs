@@ -2389,7 +2389,8 @@ class SocialAgencyRuntime {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
     const missingOnly = body.missingOnly !== false; // default: only rows without a local image
-    const limit = clampNumber(body.limit, 1, 15, 8);
+    const limit = clampNumber(body.limit, 1, 40, 12);
+    const concurrency = clampNumber(body.concurrency, 1, 6, 3); // parallel page fetches
     const timeoutMs = clampNumber(body.timeoutMs, 3000, 60000, 20000);
     const rows = (client.products || []).filter((p) => {
       if (onlySkus && !onlySkus.has(p.sku)) return false;
@@ -2401,23 +2402,21 @@ class SocialAgencyRuntime {
     }).slice(0, limit);
     if (!rows.length) return { checked: 0, saved: 0, results: [] };
 
-    const results = [];
+    const results = new Array(rows.length);
     let saved = 0;
-    for (const p of rows) {
+    const fetchOne = async (p) => {
       const item = { sku: p.sku, name: p.name, status: "failed", reason: "", image: p.image || "" };
       const why = junkLinkReason(p.sourceUrl);
       if (why) {
         item.reason = `${why} — กด "แก้ลิงก์สินค้า" ก่อน`;
-        results.push(item);
-        continue;
+        return item;
       }
       try {
         const html = await this._fetchHtml(p.sourceUrl, timeoutMs);
         const candidates = this._productImageCandidates(html, p.sourceUrl);
         if (!candidates.length) {
           item.reason = "หน้าเว็บนี้ไม่พบรูปสินค้า (ไม่มี og:image / รูปเนื้อหา)";
-          results.push(item);
-          continue;
+          return item;
         }
         let downloaded = null;
         let usedUrl = "";
@@ -2429,8 +2428,7 @@ class SocialAgencyRuntime {
         }
         if (!downloaded) {
           item.reason = `ดาวน์โหลดรูปไม่สำเร็จจาก ${candidates.length} ลิงก์ (${candidates[0].slice(0, 80)}…)`;
-          results.push(item);
-          continue;
+          return item;
         }
         const dataUrl = `data:image/${downloaded.ext};base64,${downloaded.b64}`;
         p.image = this._applyProductImage(client, p, dataUrl);
@@ -2440,14 +2438,18 @@ class SocialAgencyRuntime {
         item.image = p.image;
         item.sourceUrl = usedUrl.slice(0, 200);
         saved += 1;
-        results.push(item);
+        return item;
       } catch (err) {
         item.reason = String((err && err.message) || err);
-        results.push(item);
+        return item;
       }
-    }
+    };
+    const workers = Math.max(1, Math.min(concurrency, rows.length));
+    await Promise.all(Array.from({ length: workers }, async (_, w) => {
+      for (let i = w; i < rows.length; i += workers) results[i] = await fetchOne(rows[i]);
+    }));
     if (saved) this._write(state);
-    return { checked: rows.length, saved, results };
+    return { checked: rows.length, saved, results: results.filter(Boolean) };
   }
 
   // Candidate image URLs for a product page, best-first (deduped, absolute).
@@ -2732,6 +2734,23 @@ class SocialAgencyRuntime {
         })),
       });
     }
+    // Pull the real product photo for every newly imported SKU right away, so
+    // "สุ่ม 1 สินค้า/วัน" delivers products that already carry a local
+    // reference image for calendar generation — no second button needed.
+    let imageFetch = null;
+    if (body.autoImport === true && imported && Array.isArray(imported.added) && imported.added.length) {
+      try {
+        imageFetch = await this.fetchProductImages(client.id, {
+          skus: imported.added,
+          missingOnly: false,
+          limit: imported.added.length,
+          timeoutMs: 15000,
+          concurrency: 4,
+        });
+      } catch (err) {
+        imageFetch = { checked: imported.added.length, saved: 0, results: [], error: String((err && err.message) || err) };
+      }
+    }
     const productPool = (this._resolveClient(client.id).client.products || []).length;
     return {
       seed,
@@ -2752,6 +2771,11 @@ class SocialAgencyRuntime {
       alreadyInCatalog: picked.length - fresh.length,
       importedCount: imported ? imported.count : 0,
       importSkipped: imported ? imported.skipped : 0,
+      imagesFetched: imageFetch ? imageFetch.saved || 0 : 0,
+      imagesFailed: imageFetch ? Math.max(0, (imageFetch.checked || 0) - (imageFetch.saved || 0)) : 0,
+      imageFailReason: imageFetch && Array.isArray(imageFetch.results)
+        ? String((imageFetch.results.find((r) => r && r.status !== "saved") || {}).reason || "").slice(0, 120)
+        : "",
       productPool,
       days,
       shortBy: Math.max(0, days - productPool),
@@ -3246,8 +3270,12 @@ class SocialAgencyRuntime {
             product.image = `/sa-products/${client.id}/${sku}${outExt}`;
           }
         } catch { /* image optional */ }
-      } else if (item.image && /^https?:\/\//i.test(String(item.image))) {
-        product.image = String(item.image).slice(0, 500);
+      } else if (item.image) {
+        let img = String(item.image).trim();
+        if (!/^https?:\/\//i.test(img) && /^https?:\/\//i.test(String(item.sourceUrl || ""))) {
+          try { img = new URL(img, item.sourceUrl).href; } catch { /* keep as-is */ }
+        }
+        if (/^https?:\/\//i.test(img)) product.image = img.slice(0, 500);
       }
       client.products = [...(client.products || []), product];
       added.push(sku);
