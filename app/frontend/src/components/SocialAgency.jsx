@@ -441,6 +441,10 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               onSelectEntry={setWorkflowEntryId}
               onOpenEntry={(id) => setDrawerEntryId(id)}
               onSaveRoles={saveRoles}
+              busy={busy}
+              onRunNow={runNow}
+              onApprove={approve}
+              onReject={reject}
             />
           )}
           {tab === "runs" && (

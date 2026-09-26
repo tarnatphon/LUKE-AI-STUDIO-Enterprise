@@ -24,6 +24,8 @@ function lukeArchiveChatMarkdown(req, res, projectRoot) {
 
 // LUKE_SOCIAL_AGENCY_RUNTIME_IMPORT_V1
 const { SocialAgencyRuntime } = require("./social-agency-runtime.cjs");
+// LUKE_AI_WORKFLOW_BUILDER_V1
+const { AiWorkflowRuntime } = require("./ai-workflow-runtime.cjs");
 
 // LUKE_AI_I2V_MAINTENANCE_IMPORT_V1
 const {
@@ -1136,6 +1138,15 @@ function getSocialAgencyRuntime() {
     // inside the request handler and is not visible at module scope.
   }
   return socialAgencyRuntime;
+}
+
+// LUKE_AI_WORKFLOW_BUILDER_V1 — lazy singleton for the visual AI workflow builder
+let aiWorkflowRuntime = null;
+function getAiWorkflowRuntime() {
+  if (!aiWorkflowRuntime) {
+    aiWorkflowRuntime = new AiWorkflowRuntime({ root: ROOT });
+  }
+  return aiWorkflowRuntime;
 }
 
 // Bridge between the Social Agency workflow engine and the SAME local llama-server
@@ -29241,6 +29252,12 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       console.error(`  [api] Failed to delete model ${safeFilename}:`, err);
       return json(res, err.statusCode || 500, { error: err.message });
     }
+  }
+
+  // LUKE_AI_WORKFLOW_BUILDER_V1 — /api/ai-workflow/* (workflows CRUD + run history)
+  if (req.url.startsWith("/api/ai-workflow")) {
+    const handled = await getAiWorkflowRuntime().handleApiRequest(req, res, { readJsonRequestBody, json });
+    if (handled !== false) return;
   }
 
   if (req.url.startsWith("/api/social-agency")) {

@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState } from "react";
-import { Archive, BriefcaseBusiness, Image, Megaphone, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film } from "lucide-react";
+import { Archive, BriefcaseBusiness, Image, Megaphone, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film, Workflow } from "lucide-react";
 import ChatProjects from "./ChatProjects";
 
 function formatSidebarDate(value) {
@@ -132,6 +132,12 @@ function Sidebar({
           <div className={`nav-item ${activeTab === "social-agency" ? "active" : ""}`} {...navigationProps("social-agency")}>
             <Megaphone size={20} />
             <span>Luke Social Agency</span>
+          </div>
+
+          {/* LUKE_AI_WORKFLOW_BUILDER_V1 */}
+          <div className={`nav-item ${activeTab === "ai-workflow" ? "active" : ""}`} {...navigationProps("ai-workflow")}>
+            <Workflow size={20} />
+            <span>Luke AI Workflow</span>
           </div>
 
           <div className="nav-item-wrapper" style={{ display: "flex", flexDirection: "column" }}>

@@ -70,6 +70,7 @@ To avoid exhausting system RAM or VRAM, text and image engines are mutually excl
 *   **Text Chat Workspace:** Uses a portable `llama.cpp` server backend. Model weights (.gguf) are stored in `app/llm-models/`. A small Qwen2.5 Coder starter model can be downloaded directly from the Text Chat panel.
 *   **Speech Worker (Whisper):** Runs a localized `whisper-cli` process to convert your vocal input to text.
 *   **Audio Output (Kokoro TTS):** Utilizes `kokoro-js` locally on the server side to read responses in natural voices.
+*   **Luke AI Workflow:** A visual pipeline builder that chains the engines above — LLM chat, image generation, TTS, speech-to-text, text transforms, and conditions — into repeatable multi-step workflows that run locally. Workflows and run history are stored in `app/runtime-state/ai-workflow/` (see `docs/beta7/ai-workflow-builder-v1-spec.md`).
 
 ---
 
