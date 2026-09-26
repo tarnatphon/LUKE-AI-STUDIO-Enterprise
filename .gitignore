@@ -105,3 +105,8 @@ SuperTrader/
 
 app/dist/
 app/runtime-state/social-agency/backups/
+
+# LUKE live runtime state & build output — never track (see P6a)
+app/update-state/
+app/runtime-state/
+app/dist/
