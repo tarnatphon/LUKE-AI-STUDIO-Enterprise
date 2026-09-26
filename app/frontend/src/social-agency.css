@@ -66,6 +66,7 @@
 }
 .sa-btn:hover { background: var(--sa-card-high); }
 .sa-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sa-btn.disabled { opacity: 0.5; pointer-events: none; }
 .sa-btn.primary { background: var(--sa-primary); border-color: var(--sa-primary); color: var(--sa-on-primary); }
 .sa-btn.primary:hover { filter: brightness(1.08); }
 .sa-btn.success { background: var(--sa-success); border-color: var(--sa-success); color: #fff; }
@@ -368,6 +369,29 @@
 .sa-wf-filter-chip:hover { color: var(--sa-text); }
 .sa-wf-filter-chip.active { background: var(--sa-primary); border-color: var(--sa-primary); color: var(--sa-on-primary); }
 .sa-panel-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── product thumbnails & image editor (Products tab) ───────────────────── */
+.sa-prod-thumb {
+  width: 40px; height: 40px; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--sa-outline);
+  background: var(--sa-card-1);
+  padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; flex: 0 0 auto; color: var(--sa-muted);
+}
+.sa-prod-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sa-prod-thumb.placeholder { border-style: dashed; }
+.sa-prod-thumb.placeholder:hover { color: var(--sa-primary); border-color: var(--sa-primary); }
+.sa-prod-thumb.placeholder.broken { color: var(--sa-error); border-color: color-mix(in srgb, var(--sa-error) 45%, transparent); }
+.sa-prod-thumb.sm { width: 30px; height: 30px; border-radius: 5px; }
+.sa-prod-img-editor {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin: 8px 0 4px; padding: 9px 10px;
+  border: 1px dashed var(--sa-outline); border-radius: 9px;
+  background: var(--sa-card-1);
+}
+.sa-prod-img-editor input { flex: 1; min-width: 170px; }
+.sa-prod-img-editor .sa-form-error { flex-basis: 100%; margin: 0; }
+.sa-prod-img-editor .sa-form-hint { flex-basis: 100%; margin: 0; }
 .sa-canvas-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .sa-canvas-empty p { padding: 0 30px; margin: 0; }
 

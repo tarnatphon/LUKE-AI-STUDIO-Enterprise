@@ -2293,9 +2293,76 @@ class SocialAgencyRuntime {
       if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
       if (body.sourceUrl !== undefined) product.sourceUrl = cleanProductPageUrl(product.sourceUrl);
     }
+    if (body.image !== undefined) product.image = this._applyProductImage(client, product, body.image);
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
     this._write(state);
     return product;
+  }
+
+  // Accepts "" (clear), an http(s) URL, an existing /sa-products/ path, or a
+  // data:image/...;base64 upload. Uploads are stored under
+  // app/outputs/sa-products/<clientId>/<sku>.<ext> and served from /sa-products/.
+  _applyProductImage(client, product, raw) {
+    const img = String(raw ?? "").trim();
+    if (!img) {
+      this._unlinkProductImages(client.id, product.sku);
+      return "";
+    }
+    if (/^https?:\/\//i.test(img)) return img.slice(0, 500);
+    if (img.startsWith("/sa-products/")) return img.slice(0, 500);
+    const m = img.match(/^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!m) throw new Error("รูปต้องเป็นลิงก์ http(s), พาธ /sa-products/ หรือไฟล์รูป (data URL)");
+    const buf = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
+    if (!buf.length || buf.length > 5 * 1024 * 1024) throw new Error("ไฟล์รูปใหญ่เกินไป (สูงสุด 5MB)");
+    const magic =
+      (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ? "png" :
+      (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ? "jpg" :
+      (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) ? "gif" :
+      (buf.slice(0, 4).toString("latin1") === "RIFF" && buf.slice(8, 12).toString("latin1") === "WEBP") ? "webp" : "";
+    if (!magic) throw new Error("ไฟล์ไม่ใช่รูป PNG/JPEG/WebP/GIF ที่ถูกต้อง");
+    const ext = magic === "png" ? "png" : magic === "jpg" ? "jpg" : magic; // jpeg→jpg
+    const dir = path.join(this.root, "app", "outputs", "sa-products", client.id);
+    fs.mkdirSync(dir, { recursive: true });
+    this._unlinkProductImages(client.id, product.sku, `.${ext}`);
+    fs.writeFileSync(path.join(dir, `${product.sku}.${ext}`), buf);
+    return `/sa-products/${client.id}/${product.sku}.${ext}`;
+  }
+
+  // Remove any stored image files for a sku (optionally keep `keepExt`).
+  _unlinkProductImages(clientId, sku, keepExt = null) {
+    try {
+      const dir = path.join(this.root, "app", "outputs", "sa-products", clientId);
+      if (!fs.existsSync(dir)) return;
+      for (const e of [".jpg", ".jpeg", ".png", ".webp", ".gif"]) {
+        if (e === keepExt) continue;
+        try { fs.unlinkSync(path.join(dir, `${sku}${e}`)); } catch { /* not there */ }
+      }
+    } catch { /* best effort */ }
+  }
+
+  // Serve a local image file as a thumbnail (folder-scan preview lists).
+  // Same local-trust model as scan-folder: extension + size caps only.
+  _serveImagePreview(res, filePathStr) {
+    const p = String(filePathStr || "");
+    const ext = path.extname(p).toLowerCase();
+    const mime = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" }[ext];
+    let st = null;
+    try { st = fs.statSync(p); } catch { /* missing */ }
+    if (!mime || !st || !st.isFile() || st.size <= 0 || st.size > 10 * 1024 * 1024) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "ไม่พบรูปพรีวิว" }));
+      return true;
+    }
+    fs.readFile(p, (err, data) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" });
+      res.end(data);
+    });
+    return true;
   }
 
   deleteProduct(clientId, sku) {
@@ -2303,6 +2370,7 @@ class SocialAgencyRuntime {
     const before = (client.products || []).length;
     client.products = (client.products || []).filter((p) => p.sku !== sku);
     if (client.products.length === before) throw new Error("ไม่พบสินค้านี้");
+    this._unlinkProductImages(client.id, sku); // drop stored thumbnail, if any
     const orphans = (client.calendar || []).filter((e) => e.sku === sku).length;
     this._write(state);
     return { deleted: sku, orphanEntries: orphans };
@@ -2317,6 +2385,7 @@ class SocialAgencyRuntime {
     const notFound = skus.filter((s) => !have.has(s));
     const gone = new Set(deleted);
     client.products = (client.products || []).filter((p) => !gone.has(p.sku));
+    for (const sku of gone) this._unlinkProductImages(client.id, sku); // drop stored thumbnails
     const orphans = (client.calendar || []).filter((e) => gone.has(e.sku)).length;
     this._write(state);
     return { deleted, notFound, orphans };
@@ -5310,6 +5379,9 @@ class SocialAgencyRuntime {
       if (pathname === "/api/social-agency/products" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, product: this.addProduct(clientId || body.clientId, body) });
+      }
+      if (pathname === "/api/social-agency/products/preview-image" && method === "GET") {
+        return this._serveImagePreview(res, parsed.searchParams.get("path") || "");
       }
       if (pathname === "/api/social-agency/products/import-url" && method === "POST") {
         const body = await readBody();
