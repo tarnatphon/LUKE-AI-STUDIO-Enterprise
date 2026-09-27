@@ -203,13 +203,21 @@ for entry in "${PROTECTED_DIRS[@]}"; do
   if [[ -d "$BACKUP_DIR/$entry" ]]; then
     mkdir -p "$entry"
     # Put back what the update removed, without overwriting what it brought.
+    #
+    # The leading "./" is stripped inside the loop rather than with `sed -z`:
+    # that flag is a GNU extension, and BSD sed has never had it. On a Mac the
+    # whole pipeline therefore produced nothing, the loop body never ran, and
+    # the user's release copies were deleted by the very update these two
+    # steps exist to survive — with the script still exiting 0 and reporting
+    # success. find -print0 and read -d '' both work everywhere.
     while IFS= read -r -d '' relative; do
+      relative="${relative#./}"
       if [[ ! -e "$entry/$relative" ]]; then
         mkdir -p "$entry/$(dirname "$relative")"
         cp -p "$BACKUP_DIR/$entry/$relative" "$entry/$relative"
         restored=$((restored + 1))
       fi
-    done < <(cd "$BACKUP_DIR/$entry" && find . -type f -print0 | sed -z 's|^\./||')
+    done < <(cd "$BACKUP_DIR/$entry" && find . -type f -print0)
   fi
 done
 

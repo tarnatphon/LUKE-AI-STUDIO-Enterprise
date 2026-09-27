@@ -115,13 +115,23 @@ async function main() {
   const source = path.join(sandbox, "model.gguf");
   fs.writeFileSync(source, "weights ".repeat(1024));
 
-  const defaultPlan = await modelCache.cachePlan(source);
+  // "The same disk" is a claim about two paths, and the fixture's disk was
+  // never one this suite chose: tmpdir sits next to the app folder on a Linux
+  // checkout, and on the user's machine the app is on /Volumes/AI while tmpdir
+  // is not. Asking the default cache about a tmpdir fixture was therefore
+  // asking the other-disk question on one machine and the same-disk question
+  // on another, and which one it was depended on where the suite ran. Both
+  // cases are now built out of the fixture itself, so the volume each is really
+  // on is a fact about the test rather than about the machine.
   check("the default cache sits inside the app folder", modelCache.cacheRoot().includes(path.join("app", "runtime-state", "model-cache")));
   check("the internal disk is a separate, opt-in place", modelCache.internalCacheRoot() !== modelCache.cacheRoot());
-  check("nothing is copied onto the same disk", defaultPlan.shouldCache === false, JSON.stringify(defaultPlan.reason));
+
+  const sameDiskDir = path.join(sandbox, "same-disk");
+  const sameDiskPlan = await modelCache.cachePlan(source, { cacheDir: sameDiskDir });
+  check("nothing is copied onto the same disk", sameDiskPlan.shouldCache === false, JSON.stringify(sameDiskPlan.reason));
   let refused = null;
   try {
-    await modelCache.primeCache(source);
+    await modelCache.primeCache(source, { cacheDir: sameDiskDir });
   } catch (error) {
     refused = error instanceof Error ? error.message : String(error);
   }

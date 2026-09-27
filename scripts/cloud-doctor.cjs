@@ -67,6 +67,29 @@ const adviceFor = (code) => ADVICE[code] || "Unrecognised failure. The message a
 
 // ── the key file ───────────────────────────────────────────────────────────
 
+/**
+ * Does this volume keep file permissions at all?
+ *
+ * A drive formatted exFAT or NTFS takes the write, ignores the mode, and hands
+ * back 0644 every time — the app asks for 0600 and the disk says no. Telling
+ * the user their key file "should be 0600" on such a disk is advice they can
+ * follow a hundred times without it ever changing, so the answer is worth
+ * knowing. The probe is a real file in the same folder, removed straight after,
+ * because the only reliable answer comes from the filesystem itself.
+ */
+function volumeKeepsPermissions(dir) {
+  const probe = path.join(dir, `.luke-mode-probe-${process.pid}`);
+  try {
+    fs.writeFileSync(probe, "");
+    fs.chmodSync(probe, 0o600);
+    return (fs.statSync(probe).mode & 0o777) === 0o600;
+  } catch {
+    return false;
+  } finally {
+    try { fs.rmSync(probe, { force: true }); } catch {}
+  }
+}
+
 async function inspectKeyFile(relativePath) {
   const absolute = path.join(ROOT, relativePath);
   const report = { path: relativePath, exists: false, mode: "", modeOk: null, gitIgnored: null };
@@ -78,8 +101,12 @@ async function inspectKeyFile(relativePath) {
   try {
     const mode = fs.statSync(absolute).mode & 0o777;
     report.mode = `0${mode.toString(8)}`;
-    // Only the owner may read a file that holds API keys.
-    report.modeOk = mode === 0o600;
+    // Only the owner may read a file that holds API keys — on a volume that
+    // keeps permissions. On one that does not, no mode is better than another
+    // and the file is as private as that disk is able to make it, so this is
+    // reported rather than counted as a problem.
+    report.volumeKeepsPermissions = volumeKeepsPermissions(path.dirname(absolute));
+    report.modeOk = mode === 0o600 || report.volumeKeepsPermissions === false;
   } catch {
     report.mode = "unreadable";
   }
@@ -279,7 +306,11 @@ async function main() {
   say(
     `           ${keyFile.exists ? "exists" : "not created yet (no key has ever been saved)"} · mode ${
       keyFile.mode || "—"
-    }${keyFile.modeOk === false ? " (should be 0600)" : ""} · ignored by git: ${
+    }${keyFile.modeOk === false ? " (should be 0600)" : ""}${
+      keyFile.exists && keyFile.volumeKeepsPermissions === false
+        ? " (this volume does not keep file permissions, so 0600 is not something it can store)"
+        : ""
+    } · ignored by git: ${
       keyFile.gitIgnored === null ? "unknown" : keyFile.gitIgnored ? "yes" : "NO"
     }`
   );

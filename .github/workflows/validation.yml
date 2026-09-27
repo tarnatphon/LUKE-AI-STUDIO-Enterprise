@@ -40,6 +40,18 @@ jobs:
 
       # The suites require serve.cjs, which needs scripts/server's dependencies
       # (@aws-sdk/*, jszip, ...). Without them the run dies with MODULE_NOT_FOUND.
+      # validate-release.sh runs the Image-to-Video Duration Worker checks
+      # through a Python that can import imageio_ffmpeg, and stops the whole
+      # script when no such interpreter is on the machine. GitHub's runner has
+      # Python but not that module, so without this step the release contract is
+      # only ever half-checked here.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation Python dependencies
+        run: pip install --disable-pip-version-check imageio-ffmpeg
+
       - name: Install server dependencies
         run: npm ci
         working-directory: scripts/server

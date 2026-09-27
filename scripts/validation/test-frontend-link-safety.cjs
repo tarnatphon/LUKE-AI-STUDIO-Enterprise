@@ -44,6 +44,9 @@ async function main() {
     "mailto:someone@example.com",
     "/api/output-file?filename=abc.png",
     "#section",
+    // The app hands its own generated image to the browser as a data: URL,
+    // and that value is a link as well as a picture.
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
   ];
 
   for (const url of allowed) {
@@ -55,6 +58,11 @@ async function main() {
     "JavaScript:alert(1)",
     "JAVASCRIPT:alert(1)",
     "data:text/html,<script>alert(1)</script>",
+    // An SVG is a document that can run script, so the raster allowance the
+    // app's own images rely on must not cover it. Nor does a "data:image"
+    // value that is not base64 at all.
+    "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIj48L3N2Zz4=",
+    "data:image/png,<svg onload=alert(1)>",
     "vbscript:msgbox(1)",
     "file:///etc/passwd",
     "blob:http://app.example/uuid",

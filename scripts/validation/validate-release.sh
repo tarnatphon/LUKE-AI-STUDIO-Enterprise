@@ -13,8 +13,21 @@ python3 -m py_compile "$ROOT/scripts/workers/image_to_video_worker.py" || fail "
 python3 -m py_compile "$ROOT/scripts/workers/install_image_to_video_runtime.py" || fail "image-to-video installer"
 [ -f "$ROOT/app/capabilities/image-to-video/manifest.json" ] || fail "capability manifest missing"
 [ -f "$ROOT/app/frontend/src/components/ImageToVideo.jsx" ] || fail "ImageToVideo UI missing"
-find "$ROOT" -type d -name '__pycache__' -prune -exec rm -rf {} +
-find "$ROOT" -type f -name '*.pyc' -delete
+# The two cleanup walks below used to start at the root of the repository, which
+# on macOS is the root of the volume — and a volume root also holds .Spotlight-
+# V100, .TemporaryItems and .Trashes, which answer "Operation not permitted".
+# With `set -e` that ended the whole release contract in its first second, on a
+# Mac, before a single check had run. Pruning those by name makes the walk the
+# same on a Mac, on Linux and in CI; nothing that can hold bytecode is skipped.
+VOLUME_FOLDERS=(
+  -type d \( -name '.Spotlight-V100' -o -name '.TemporaryItems' -o -name '.Trashes'
+    -o -name '.fseventsd' -o -name '.DocumentRevisions-V100' \)
+)
+find "$ROOT" \( "${VOLUME_FOLDERS[@]}" \) -prune -o -type d -name '__pycache__' -prune -exec rm -rf {} +
+# -exec rm -f rather than -delete: -delete turns on -depth, and -depth makes
+# -prune meaningless, so find refuses the combination and answers non-zero —
+# which, with set -e, ends the contract all over again.
+find "$ROOT" \( "${VOLUME_FOLDERS[@]}" \) -prune -o -type f -name '*.pyc' -exec rm -f {} +
 pass "release structure and syntax"
 
 
@@ -30,8 +43,19 @@ validate_portable_runtime_policy() {
   fi
 
   if [ ! -f "$runtime_metadata" ]; then
-    echo "FAIL: Portable Node runtime exists without runtime.json"
-    return 1
+    if [ "$packaging_mode" = "1" ]; then
+      echo "FAIL: Portable Node runtime exists without runtime.json"
+      return 1
+    fi
+    # Not packaging, and the runtime has no release metadata: that is a working
+    # machine, not a broken package. setup.sh installs the portable Node into
+    # this folder on every machine that has run the app once, and only the
+    # release scripts write runtime.json — so calling it a fault ended the
+    # release contract on the developer's own Mac, over a folder that was the
+    # app working normally. The stale-artifact case below still catches a real
+    # leftover, because that one carries its metadata with it.
+    echo "PASS: Portable Node runtime present without release metadata — installed machine state, not a package"
+    return 0
   fi
 
   if ! python3 -m json.tool "$runtime_metadata" >/dev/null 2>&1; then

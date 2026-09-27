@@ -148,13 +148,13 @@ function writeConfig({ keys, models = {}, useLocalFallback = true, order }) {
   );
 }
 
-async function runDoctor(baseUrl, extraArgs = []) {
+async function runDoctor(baseUrl, extraArgs = [], providerFile = keyFile) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [doctorFile, ...extraArgs], {
       cwd: root,
       env: {
         ...process.env,
-        LUKE_REMOTE_PROVIDER_FILE: keyFile,
+        LUKE_REMOTE_PROVIDER_FILE: providerFile,
         LUKE_REMOTE_PROVIDER_BASE_URL: baseUrl,
       },
     });
@@ -210,16 +210,32 @@ async function main() {
     standIn.requestedModels.length = 0;
     const healthy = await runDoctor(baseUrl);
 
-    assert(healthy.code === 0, `A healthy chain exits 0 (got ${healthy.code}).`);
+    // Every assertion in this block carries the doctor's own words. The
+    // baseline this replaces said "the healthy-chain check exits 1 and the
+    // suite never learns why", and that was the whole problem with it: a
+    // failure that reports a code and nothing else has to be reproduced by hand
+    // to be worth anything.
+    const say = (result) => `\n--- doctor stdout ---\n${result.stdout}\n--- doctor stderr ---\n${result.stderr}\n---`;
+
+    assert(healthy.code === 0, `A healthy chain exits 0 (got ${healthy.code}).${say(healthy)}`);
     assert(
       healthy.stdout.includes("HEALTHY"),
-      "The verdict says healthy when every configured provider answered."
+      `The verdict says healthy when every configured provider answered.${say(healthy)}`
     );
     assert(
       healthy.stdout.includes("ignored by git: yes"),
-      "It confirms the key file is ignored by git, asking git rather than reading .gitignore."
+      `It confirms the key file is ignored by git, asking git rather than reading .gitignore.${say(healthy)}`
     );
-    assert(healthy.stdout.includes("mode 0600"), "It confirms the key file is owner-readable only.");
+    // 0600 is the mode the app writes, and on a volume that keeps permissions
+    // the doctor says so. On one that does not — an exFAT or NTFS drive, which
+    // the app lives on here — the file cannot hold it and the doctor now says
+    // that instead of reporting a fault nobody can fix. Both are correct; only
+    // the second is a fact about the machine rather than the code.
+    assert(
+      healthy.stdout.includes("mode 0600") ||
+        healthy.stdout.includes("this volume does not keep file permissions"),
+      `It reports how private the key file is: 0600, or a volume that cannot hold it.${say(healthy)}`
+    );
     assert(
       healthy.stdout.includes("answered by nvidia / moonshotai/kimi-k3"),
       "One real turn through the chain names the provider and model that answered."
@@ -227,6 +243,46 @@ async function main() {
     assert(
       standIn.requestedModels.includes("moonshotai/kimi-k3"),
       "The probe sent a real model on the wire, not an empty one."
+    );
+
+    // ── a volume that cannot keep permissions at all ───────────────────────
+    // The app lives on an external drive, and a drive formatted without POSIX
+    // permissions accepts every chmod and ignores it. That made the doctor
+    // report a fault about a file the app had written exactly as it should
+    // should, on a machine where following the advice changes nothing — which
+    // is what this suite was failing on. The mode is now something the volume
+    // is asked about, so the honest state is reported instead of a problem.
+    // A folder the suite cannot write to is the same thing in miniature.
+    const lockedDir = path.join(root, "app", "runtime-state", "text-chat", "volume-without-modes");
+    const lockedFile = path.join(lockedDir, "keys.json");
+    fs.rmSync(lockedDir, { recursive: true, force: true });
+    fs.mkdirSync(lockedDir, { recursive: true });
+    fs.writeFileSync(
+      lockedFile,
+      `${JSON.stringify({ keys: KEYS, order: ["nvidia", "openrouter", "zai"], models: {}, useLocalFallback: true }, null, 2)}\n`,
+      { mode: 0o644 }
+    );
+    fs.chmodSync(lockedDir, 0o500);
+
+    let noModes = null;
+    try {
+      noModes = await runDoctor(baseUrl, [], lockedFile);
+    } finally {
+      fs.chmodSync(lockedDir, 0o700);
+      fs.rmSync(lockedDir, { recursive: true, force: true });
+    }
+
+    assert(
+      noModes.stdout.includes("this volume does not keep file permissions"),
+      `A volume that ignores chmod is named as one, rather than being blamed on the file.${say(noModes)}`
+    );
+    assert(
+      !noModes.stdout.includes("should be 0600"),
+      `and the mode is not reported as a fault the user cannot fix.${say(noModes)}`
+    );
+    assert(
+      noModes.code === 0,
+      `so the chain is still healthy on such a volume (got ${noModes.code}).${say(noModes)}`
     );
 
     // ── the defect this suite exists to keep fixed ─────────────────────────

@@ -290,6 +290,10 @@ async function main() {
     serverLog += chunk.toString("utf8");
   });
 
+  // Set by the teardown below, raised after it: a throw inside a finally
+  // replaces whatever the sweep was already failing with.
+  let cleanupError = null;
+
   try {
     let ready = false;
     for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -558,7 +562,39 @@ async function main() {
       if (fs.lstatSync(linked).isSymbolicLink()) fs.unlinkSync(linked);
     } catch {}
 
-    fs.rmSync(temp, { recursive: true, force: true });
+    // A single removal was enough while the tree was static. It stopped being
+    // one: the sweep starts a real server, and that server writes — a log, a
+    // cache entry under app/runtime-state — into the copy while the tree is
+    // being walked. macOS unlinks lazily and answers ENOTEMPTY when a name
+    // reappears in a directory already emptied, so the whole sweep passed and
+    // the suite still exited 1 on the cleanup. Retrying is what that is; the
+    // retries Node applies for ENOTEMPTY on its own are counted in
+    // maxRetries, and this loop is the outer patience on top of them.
+    let removed = true;
+    for (let attempt = 1; attempt <= 5 && !removed; attempt += 1) {
+      try {
+        fs.rmSync(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+        removed = true;
+      } catch (error) {
+        if (attempt === 5) {
+          // Not thrown from here: this block is a finally, and a throw in one
+          // replaces whatever the sweep was failing with — the rule the lint
+          // run enforces is right about that. The failure is kept and raised
+          // once the sweep's own result is settled.
+          cleanupError = error;
+          removed = true;
+        } else {
+          // Wait for whatever is still writing to let go before trying again.
+          await delay(400);
+        }
+      }
+    }
+  }
+
+  if (cleanupError) {
+    throw new Error(
+      `the sweep itself completed, but its temporary copy could not be deleted (${cleanupError.code || cleanupError.message}): ${temp}`
+    );
   }
 }
 

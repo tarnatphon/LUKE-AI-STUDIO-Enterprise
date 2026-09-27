@@ -213,7 +213,23 @@ async function main() {
   const fakeToken = `ghp_${"a".repeat(30)}`;
   const saved = await workGithub.storeToken(fakeToken);
   check("a well-shaped token is saved", saved.saved === true);
-  check("it is saved with owner-only permissions", (fs.statSync(workGithub.AUTH_FILE).mode & 0o777) === 0o600);
+  // Owner-only permissions are the point of the mode, but they are a property
+  // of the volume as much as of the code: a drive formatted without them cannot
+  // hold 0600 no matter what is asked of it. On such a machine the assertion
+  // worth making is that the code noticed and said so, rather than that the
+  // mode came out right — which is the whole reason storeToken stopped
+  // swallowing the chmod failure in an empty catch.
+  const mode = fs.statSync(workGithub.AUTH_FILE).mode & 0o777;
+  if (mode === 0o600) {
+    check("it is saved with owner-only permissions", true, `mode ${mode.toString(8)}`);
+    check("and the volume held them, so there is nothing to warn about", !saved.warning, String(saved.warning || "no warning"));
+  } else {
+    check(
+      "this volume cannot hold owner-only permissions, and storeToken says so rather than failing quietly",
+      typeof saved.warning === "string" && saved.warning.length > 0,
+      `mode ${mode.toString(8)}, warning: ${String(saved.warning)}`
+    );
+  }
 
   const status = await workGithub.authStatus();
   const statusText = JSON.stringify(status);

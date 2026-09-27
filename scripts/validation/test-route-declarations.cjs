@@ -86,9 +86,28 @@ function main() {
     `The ${regexLiterals.length} regex-declared routes are still declared as regex literals (the sweep expands their alternatives into the remaining routes).`
   );
 
+  // The namespaces serve.cjs actually answers on: four of them are API, and
+  // /sa-products/ is the static folder the Social Agency reads product images
+  // out of. A literal that reached the parser through one of its broad forms
+  // but starts with nothing on this list would be a file path or a
+  // cache-control comparison mistaken for a route, which is what this
+  // assertion is here to notice. cacheControlForStaticFile compares pathname
+  // against "/" and "/index.html"; it stays out on its own, because the narrow
+  // forms accept only a known namespace and the broad forms key on req.url,
+  // which is a different variable entirely.
+  const NAMESPACES = /^(?:\/api\/|\/v1\/|\/sdapi\/|\/tts-outputs\/|\/sa-products\/)/;
+
   assert(
-    entries.every((entry) => /^(\/api\/|\/v1\/|\/sdapi\/|\/tts-outputs\/)/.test(entry.url)),
-    "Every declared route lives in a known namespace."
+    entries.every((entry) => NAMESPACES.test(entry.url)),
+    `Every declared route lives in a known namespace.${
+      entries.filter((entry) => !NAMESPACES.test(entry.url)).length
+        ? ` Outside: ${entries.filter((e) => !NAMESPACES.test(e.url)).map((e) => `L${e.line} ${e.url}`).join(" | ")}`
+        : ""
+    }`
+  );
+  assert(
+    entries.some((entry) => entry.url === "/sa-products/"),
+    "The static product-image namespace is on the list, so a rename of it shows up here instead of as a mystery literal."
   );
 
   // ── the invariant ────────────────────────────────────────────────────────

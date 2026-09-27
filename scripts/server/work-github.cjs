@@ -205,8 +205,28 @@ async function storeToken(token) {
   }
   await fsp.mkdir(path.dirname(AUTH_FILE), { recursive: true });
   await fsp.writeFile(AUTH_FILE, `${JSON.stringify({ token: value, savedAt: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
-  try { fs.chmodSync(AUTH_FILE, 0o600); } catch {}
-  return { saved: true, tokenFile: path.relative(ROOT, AUTH_FILE) };
+  // The mode above applies when the file is created, and only on a volume that
+  // has permissions at all. A drive formatted without them — exFAT, NTFS — takes
+  // the write happily and ignores the mode, and this used to find out inside an
+  // empty catch: the token went to disk readable by every account on the
+  // machine and nobody was told. So check, and say so out loud. The save is not
+  // refused — a user who cannot store a token at all is worse off than one who
+  // is warned about the one they stored.
+  const result = { saved: true, tokenFile: path.relative(ROOT, AUTH_FILE) };
+  try {
+    fs.chmodSync(AUTH_FILE, 0o600);
+    const mode = fs.statSync(AUTH_FILE).mode & 0o777;
+    if (mode !== 0o600) {
+      result.warning =
+        `The token was saved, but this volume did not give the file owner-only permissions — it is ${mode.toString(8)}. `
+        + "Anyone with access to this machine can read it. Keep the app folder on a volume that supports permissions.";
+    }
+  } catch (error) {
+    result.warning =
+      `The token was saved, but this volume does not support file permissions, so the file is readable by anyone with access to this machine `
+      + `(${error && error.code ? error.code : String(error)}).`;
+  }
+  return result;
 }
 
 async function clearToken() {
