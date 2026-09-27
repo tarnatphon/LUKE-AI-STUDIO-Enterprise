@@ -35,6 +35,7 @@
 * [Hardware Compatibility & Acceleration](#hardware-compatibility-acceleration)
 * [Troubleshooting & FAQ](#troubleshooting-faq)
 * [Building From Source](#building-from-source)
+* [Running the validation suites](#validation)
 * [Licensing](#licensing)
 
 ---
@@ -306,6 +307,58 @@ After copying, rename the server binary to match what `scripts/server/serve.cjs`
 - ROCm: `sd` → `sd-rocm`
 
 Then restart the app with `./linux.sh` (Linux) or `./mac.sh` (macOS).
+
+---
+
+## <a id="validation"></a>🧪 Running the validation suites
+
+`scripts/validation/` holds the test suites as plain `node` programs that exit
+non-zero when an assertion fails. `run-all.cjs` runs the lot, prints one line per
+suite plus a summary (passed, failed, known-failing, xpassed and skipped), and
+writes a timestamped report to `validation-reports/` (local output, not tracked by
+git).
+
+```bash
+npm ci --prefix scripts/server    # the suites require serve.cjs
+node scripts/validation/run-all.cjs
+```
+
+```bash
+node scripts/validation/run-all.cjs --list             # names only, run nothing
+node scripts/validation/run-all.cjs --filter social    # only matching suites
+node scripts/validation/run-all.cjs --bail             # stop at the first failure
+node scripts/validation/run-all.cjs --timeout 300      # per-suite budget in seconds
+node scripts/validation/run-all.cjs --include-python   # needs imageio_ffmpeg
+node scripts/validation/run-all.cjs --strict           # ignore the known-failing list
+```
+
+Some suites read the built UI, so build the frontend once first
+(`cd app/frontend && npm install && npx vite build`) or they fail on a missing
+`app/dist/`.
+
+### Known-failing suites
+
+`scripts/validation/ci-baseline.json` lists the suites that fail for a known
+reason. A listed suite that fails is reported as `XFAIL` and does not break the
+run; a listed suite that starts passing is reported as `XPASS`, which is the
+signal to delete its entry. Anything not listed has to pass.
+
+An entry may also name the platforms it applies to — for example
+`"test-work-github.cjs": {"reason": "macOS only: …", "platforms": ["darwin"]}`.
+A scoped entry means "expected to fail here, and nowhere else": on a listed
+platform it is baselined and reported as `XFAIL`, on every other platform it is
+not baselined at all, so it has to pass. Four entries are scoped this way, all
+because a macOS working copy on an external volume is a different environment
+from the Linux CI runner, and a failure there says nothing about the code.
+
+### In CI
+
+`.github/workflows/validation.yml` runs the same command on every pull request,
+on pushes to `main`, and on demand from the Actions tab. The job runs on
+`ubuntu-latest` with Node 22, installs `scripts/server` and `app/frontend`
+dependencies, builds the frontend so `app/dist/` exists, then runs
+`run-all.cjs --timeout 300` and uploads the report as an artifact. Anything not
+already in `ci-baseline.json` fails the job.
 
 ---
 
