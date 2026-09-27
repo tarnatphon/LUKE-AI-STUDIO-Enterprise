@@ -191,7 +191,7 @@ const totalMs = results.reduce((sum, r) => sum + r.ms, 0);
 
 process.stdout.write(`\n${"-".repeat(60)}\n`);
 process.stdout.write(
-  `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s\n`
+  `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s\n`
 );
 
 if (xfailed.length) {
@@ -227,7 +227,7 @@ if (writeReport) {
       `platform: ${process.platform} ${process.arch}`,
       `command: ${process.argv.slice(1).join(" ")}`,
       "",
-      `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s`,
+      `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s`,
       "",
       ...results.map((r) => {
         const state = r.skipped ? "SKIP" : r.state.toUpperCase();
