@@ -100,6 +100,10 @@ app/runtime-state/
 thai-tts.patch*
 SuperTrader/
 
+# scratch backups left by ad-hoc patching scripts (apply-p5w.py -> *.p5w-orig, audit dumps)
+*.p5*-orig
+p5w-*.txt
+
 
 
 
