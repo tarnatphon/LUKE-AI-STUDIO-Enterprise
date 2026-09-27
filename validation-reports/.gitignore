@@ -1,0 +1,3 @@
+# Validation reports are local run output, not source.
+*
+!.gitignore
