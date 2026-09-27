@@ -61,10 +61,21 @@ const timeoutMs = Math.max(1, Number(valueOf("--timeout", "180"))) * 1000;
  */
 const BASELINE_FILE = path.join(HERE, "ci-baseline.json");
 
+function normaliseEntry(name, value) {
+  if (typeof value === "string") return { name, reason: value, platforms: null };
+  return {
+    name,
+    reason: (value && value.reason) || "(no reason given)",
+    platforms: Array.isArray(value && value.platforms) && value.platforms.length ? value.platforms : null,
+  };
+}
+
 function loadBaseline() {
   try {
     const parsed = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
-    return new Map(Object.entries(parsed.suites || {}));
+    return new Map(
+      Object.entries(parsed.suites || {}).map(([name, value]) => [name, normaliseEntry(name, value)])
+    );
   } catch (err) {
     if (err.code !== "ENOENT") {
       process.stderr.write(`(could not read ${path.relative(ROOT, BASELINE_FILE)}: ${err.message})\n`);
@@ -155,11 +166,12 @@ for (const suite of suites) {
   }
   const result = runSuite(suite);
   const known = baseline.get(suite.name);
+  const applies = known && (!known.platforms || known.platforms.includes(process.platform));
   if (result.ok) {
-    result.state = known ? "xpass" : "pass";
+    result.state = applies ? "xpass" : "pass";
   } else {
-    result.state = known && !strict ? "xfail" : "fail";
-    result.knownReason = known;
+    result.state = applies && !strict ? "xfail" : "fail";
+    result.knownReason = applies ? known.reason : undefined;
   }
   results.push(result);
   const label = { pass: "PASS ", xfail: "XFAIL", xpass: "XPASS", fail: "FAIL ", skip: "SKIP " }[result.state];

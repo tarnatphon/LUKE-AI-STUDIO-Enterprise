@@ -150,6 +150,18 @@ async function main() {
     for (const file of files) {
       for (const message of file.messages) {
         if (!message.ruleId) continue;
+        // This sweep runs a self-contained config (js.configs.recommended only,
+        // no plugins), so a component that silences a rule from a plugin we do
+        // not load — `// eslint-disable-line react-hooks/exhaustive-deps` —
+        // makes eslint complain that the rule is undefined. That says nothing
+        // about the code being correct, which is what this suite is for, so it
+        // is printed as a note and never counted.
+        if (/^Definition for rule/.test(message.message)) {
+          console.log(
+            `    note: ${path.relative(root, file.filePath)}:${message.line}  disables "${message.ruleId}", a rule this self-contained config does not load`
+          );
+          continue;
+        }
         found += 1;
         problems.push(
           `${path.relative(root, file.filePath)}:${message.line}  ${message.ruleId}  ${message.message}`
