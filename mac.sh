@@ -38,24 +38,45 @@ PLATFORM_LABEL="macOS"
 DIST_INDEX="$APP_DIR/dist/index.html"
 SETUP_SCRIPT="$SCRIPT_DIR/scripts/setup/setup.sh"
 
-# ── Self-heal the built frontend: every bundle referenced by index.html ──────
-#    must exist, otherwise the browser loads a half broken app.
+# ── Self-heal the built frontend: every file the build emitted must exist ───
+#    on disk, otherwise the browser loads a half broken app.
 #
-#    This checks every file git tracks under app/dist, not just the bundles
-#    named in index.html. index.html only references the entry point, so a
-#    grep of it sees 3 files out of 55 — the other 52 are the code-split chunks
-#    the app fetches when you open Asset Library, Generator, Settings and so
-#    on. Restoring only what index.html names leaves those missing, and the
-#    app starts cleanly and then fails the moment you navigate to one of them.
-if [[ -f "$DIST_INDEX" ]] && command -v git >/dev/null 2>&1; then
+#    index.html names only the entry point, so checking it sees 3 files out of
+#    ~65. The code-split chunks the app fetches when you open Asset Library,
+#    Generator, Settings and so on are referenced from inside the entry script,
+#    not from index.html, so the authoritative list is the build manifest vite
+#    writes beside the output (build.manifest in app/frontend/vite.config.js).
+#
+#    This used to restore missing files with `git checkout`, which stopped
+#    working the moment app/dist/ was gitignored: `git ls-files app/dist`
+#    answered with an empty list, the loop below it never ran a single time,
+#    and the script reported a healthy frontend over a broken one. There is
+#    nothing left to restore from, so the repair is to rebuild.
+MANIFEST="$APP_DIR/dist/.vite/manifest.json"
+if [[ -f "$DIST_INDEX" ]]; then
   MISSING_ASSET=0
-  while IFS= read -r tracked; do
-    [[ -z "$tracked" ]] && continue
-    [[ -f "$SCRIPT_DIR/$tracked" ]] || MISSING_ASSET=1
-  done < <(git -C "$SCRIPT_DIR" ls-files app/dist)
+  if [[ -f "$MANIFEST" ]]; then
+    # Only "file" and the "css"/"assets" arrays name emitted files. "src" names
+    # the source, including paths under node_modules, so matching on "any
+    # string with a slash" would call those missing and rebuild every launch.
+    while IFS= read -r asset; do
+      [[ -z "$asset" ]] && continue
+      [[ -f "$APP_DIR/dist/$asset" ]] || MISSING_ASSET=1
+    done < <(tr -d ' \t\n' < "$MANIFEST" \
+      | grep -oE '"file":"[^"]*"|"(css|assets)":\[[^]]*\]' \
+      | grep -oE '"[^"]+\.[a-zA-Z0-9]+"' | tr -d '"' | sort -u)
+  else
+    # Built before the manifest existed. Unknown is not the same as healthy.
+    MISSING_ASSET=1
+  fi
   if [[ "$MISSING_ASSET" == "1" ]]; then
-    echo "  [dist] Restoring missing frontend files..."
-    git -C "$SCRIPT_DIR" checkout -- app/dist || true
+    echo "  [dist] The built frontend is incomplete — rebuilding it."
+    if (cd "$APP_DIR/frontend" && npm run build) >/dev/null 2>&1; then
+      echo "  [dist] Rebuilt."
+    else
+      echo "  [dist] Could not rebuild. Run this by hand, then start the app again:"
+      echo "         (cd app/frontend && npm install && npm run build)"
+    fi
   fi
 fi
 
