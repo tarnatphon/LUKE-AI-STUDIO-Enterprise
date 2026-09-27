@@ -11,6 +11,10 @@ export default defineConfig(async () => ({
     // Output to app/dist/ so serve.cjs can find it
     outDir: "../dist",
     emptyOutDir: true,
+    // app/dist is not tracked by git, so when a chunk goes missing there is
+    // nothing to restore it from. The manifest is the authoritative list of
+    // what the build emits, which is what mac.sh checks the build against.
+    manifest: true,
   },
 
   clearScreen: false,

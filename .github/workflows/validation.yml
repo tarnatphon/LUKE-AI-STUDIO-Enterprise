@@ -22,11 +22,18 @@ jobs:
   suites:
     name: validation suites
     # Node 22 is what the baseline (see ci-baseline.json) was measured on.
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest: GitHub moves that label to Ubuntu 26
+    # on 2026-10-19, and a runner that changes under a passing suite turns a
+    # green build red without anyone touching the code. 24.04 is what
+    # ubuntu-latest points at today, so pinning it changes nothing now.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
+      # Every action here is on the major that runs on Node 24. The v4/v5
+      # versions target Node 20, which the runners no longer carry, so every
+      # run has been ending in a deprecation warning.
+      - uses: actions/checkout@v7
         with:
           # Several suites read git history to prove something is not tracked
           # (test-releases-untracked, test-runtime-state-not-in-git,
@@ -34,7 +41,7 @@ jobs:
           # differently from a full one.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -45,7 +52,7 @@ jobs:
       # script when no such interpreter is on the machine. GitHub's runner has
       # Python but not that module, so without this step the release contract is
       # only ever half-checked here.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -73,7 +80,7 @@ jobs:
 
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: validation-report
           path: validation-reports/
