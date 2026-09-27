@@ -1,6 +1,6 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
-> **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089…` — ปิดงานค้างหัวข้อ 6 ครบทุกข้อ, `ci-baseline.json` ว่าง, 140 passed / 0 failed)
+> **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089…` — ปิดงานค้างหัวข้อ 6 ครบทุกข้อและ merge เข้า `main` แล้วเป็น `6397105` · `ci-baseline.json` ว่าง · 140 passed / 0 failed ทั้ง macOS และ Linux CI)
 > **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089-luke-ai-studio-enterprise` — เก็บกวาด repo: ลบไฟล์สำรอง + ลบ branch เก่า)
 >
 > **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089…` — CI + ตัวรันชุดเทสต์, แก้บั๊กที่ CI เจอ)
@@ -17,9 +17,9 @@
 |---|---|
 | `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-27 มี PR #12 (เก็บกวาด repo) และ PR #13 (sync ไฟล์นี้) merge แล้ว |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เปิดค้าง | **#21** — `fix/close-handoff-section-6` → `main` (ปิดงานหัวข้อ 6 ทั้งหมด + บั๊ก macOS ที่เจอระหว่างทาง) · PR #20 merge เป็น `b3fb3f8` แล้ว |
-| branch อื่นบน GitHub | `main` + `fix/close-handoff-section-6` (PR #21) · หลัง merge ให้ลบ branch ทิ้ง |
-| งานค้างที่ทราบ | หัวข้อ 6 **ปิดครบแล้ว** — เหลือแค่ merge PR #21 เข้า `main` แล้วลบ branch |
+| PR ที่เปิดค้าง | **ไม่มี** — PR #21 (ปิดงานหัวข้อ 6) merge เป็น `6397105` แล้ว · PR #20 เป็น `b3fb3f8` |
+| branch อื่นบน GitHub | เหลือแค่ `main` — branch ของ session ลบแล้วทั้งหมดหลัง merge |
+| งานค้างที่ทราบ | หัวข้อ 6 **ปิดครบแล้ว** — ไม่มีรายการค้างที่รู้แล้ว · งานที่จงใจทิ้งไว้อยู่ท้ายหัวข้อ 6 |
 
 ---
 
