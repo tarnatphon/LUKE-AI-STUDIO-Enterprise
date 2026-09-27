@@ -44,11 +44,12 @@ function run(cwd, command, args) {
 function main() {
   console.log("\n=== sync.sh updates a checkout ===\n");
 
-  const branch = git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  assert(
-    branch && branch !== "HEAD",
-    `The repository is on a branch (${branch}), which the script requires.`
-  );
+  // The fixture branch is named here rather than read out of the checkout this
+  // suite happens to run in: actions/checkout leaves GitHub Actions on a
+  // detached HEAD, and "HEAD" is not a name anybody can clone. Every clone
+  // below is put on the branch at whatever commit this checkout is on, which
+  // is the state the script requires — a named branch, not a detached one.
+  const branch = "fixture";
 
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-sync-"));
   const origin = path.join(temp, "origin");
@@ -60,8 +61,15 @@ function main() {
     // them. Cloning locally needs no network.
     execFileSync(
       "git",
-      ["clone", "--quiet", "--branch", branch, "--single-branch", root, origin],
+      ["clone", "--quiet", root, origin],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    // A clone of a detached HEAD is detached as well, so the branch the clones
+    // below ask for is created here rather than inherited.
+    git(origin, ["checkout", "-B", branch]);
+    assert(
+      git(origin, ["rev-parse", "--abbrev-ref", "HEAD"]) === branch,
+      "The fixture origin is on a branch, which the script requires."
     );
     git(origin, ["config", "user.email", "sync-test@example.invalid"]);
     git(origin, ["config", "user.name", "sync test"]);
@@ -176,9 +184,10 @@ function main() {
 
     execFileSync(
       "git",
-      ["clone", "--quiet", "--branch", branch, "--single-branch", root, origin2],
+      ["clone", "--quiet", root, origin2],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
     );
+    git(origin2, ["checkout", "-B", branch]);
     git(origin2, ["config", "user.email", "sync-test@example.invalid"]);
     git(origin2, ["config", "user.name", "sync test"]);
 
