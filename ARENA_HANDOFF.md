@@ -2,6 +2,7 @@
 
 > **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089-luke-ai-studio-enterprise` — เก็บกวาด repo: ลบไฟล์สำรอง + ลบ branch เก่า)
 >
+> **อัปเดตล่าสุด:** 2026-09-27 (session `arena/01a0e089…` — CI + ตัวรันชุดเทสต์, แก้บั๊กที่ CI เจอ)
 > **วิธีใช้ไฟล์นี้:** ท้ายทุก session ให้แก้หัวข้อ "งานค้าง" ด้านล่าง แล้ว **commit + push ให้เรียบร้อย**
 > ทุก session ของ Arena จะ clone ใหม่จาก `main` เสมอ — ไฟล์หรือโค้ดที่ไม่ได้ push จะ**ไม่ตามมา** session ถัดไป
 > **หมายเหตุ:** เพราะ session ถัดไป clone จาก `main` งานจึงต้อง **merge เข้า `main` ด้วย** (เปิด PR → merge) ไม่ใช่แค่ push branch ทิ้งไว้
@@ -15,13 +16,19 @@
 |---|---|
 | `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-27 มี PR #12 (เก็บกวาด repo) และ PR #13 (sync ไฟล์นี้) merge แล้ว |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เปิดค้าง | ไม่มี |
-| branch อื่นบน GitHub | เหลือแค่ `main` + branch ของ session ที่กำลังทำงาน (`arena/01a0e089…`) ซึ่งจะ merge แล้วลบท้าย session (ดูหัวข้อ 4) |
-| งานค้างที่ทราบ | ไม่มี (ดูหัวข้อ 6) |
+| PR ที่เปิดค้าง | **#20** — `ci/validation-workflow` → `main` (CI + ตัวรันชุดเทสต์ + แก้บั๊ก 503) — **CI เขียวแล้ว รอ merge** · PR #17 merge เป็น `940565e` แล้ว |
+| branch อื่นบน GitHub | `main` + `ci/validation-workflow` (PR #20) · หลัง merge ให้ลบ branch ทิ้ง |
+| งานค้างที่ทราบ | ดูหัวข้อ 6 — เหลือแก้บั๊กจริง 3 รายการจาก `ci-baseline.json` |
 
 ---
 
 ## 2. งานล่าสุดที่เข้า `main`
+
+### PR #20 (2026-09-27) — CI + ตัวรันชุดเทสต์ (รอ merge — CI เขียวแล้ว)
+- `.github/workflows/validation.yml` — รัน `scripts/validation/` ทุก PR ทุก push เข้า `main` และกดรันเองได้ (ubuntu-latest, Node 22, build frontend ก่อน)
+- `run-all.cjs` + `ci-baseline.json` — รันทั้งชุด สรุปผล เขียนรายงาน · รายการที่ล้มอยู่แล้วถูกบันทึกเป็น XFAIL พร้อมเหตุผล (บางรายการ scope เฉพาะ `darwin` = ล้มได้บน macOS เท่านั้น ที่อื่นต้องผ่าน)
+- แก้ `serve.cjs` — ที่ยังไม่ได้ดาวน์โหลดโมเดล speech/TTS ตอบ **503** แทน 500 (CI รอบแรกเจอ แก้ใน PR นี้เลย)
+- ผลวัด: Linux CI **133 passed · 0 failed · 7 known-failing · 1 skipped** · เครื่องจริง (macOS) **129 passed · 0 failed · 10 known-failing · 1 xpassed · 1 skipped** → `exit 0` ทั้งคู่
 
 ### PR #12 (2026-09-27) — เก็บกวาด repo
 - ลบไฟล์สำรองจากการ patch ที่หลุดเข้า git 13 ไฟล์ (~1.3 MB) + เพิ่ม `.gitignore` กันซ้ำ (ดูข้อ 6.1)
@@ -89,7 +96,7 @@ cd app/frontend && npm install && npx vite build
 
 ## 6. งานค้าง / สิ่งที่ควรทำต่อ
 
-_(ไม่มีงานค้าง — งานเก็บกวาด repo ข้อ 6.1–6.3 ของ session นี้เสร็จแล้วทั้งหมด)_
+_(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแล้ว · ต่อมาเพิ่ม CI + ตัวรันชุดเทสต์ใน session เดียวกัน)_
 
 **เสร็จแล้ว (session `arena/01a0e089…`, 2026-09-27):**
 - [x] **6.1 ลบไฟล์สำรองจากการ patch ที่หลุดเข้า git** — ลบ 13 ไฟล์ (`*.p5w-orig` 6, `*.p5w2-orig` 2, `*.p5y-orig` 1, `*.p5z-orig` 1, `*.p5x-orig` 1) ใน `app/frontend/src/…` และ `scripts/server/…` รวมถึง `p5w-audit.txt`, `p5w-dump.txt` ที่ root
@@ -98,6 +105,15 @@ _(ไม่มีงานค้าง — งานเก็บกวาด rep
 - [x] **6.2 ลบ branch เก่า** — ลบ arena branch ที่ merge แล้ว 7 ตัว + `backup/volumes-ai-20260914` (ตรวจโค้ดซ้ำก่อนลบ ดูตารางข้อ 4) เหลือแค่ `main`
 - [x] **6.3 อัปเดตไฟล์นี้** — แก้ข้อ 1 (main), ข้อ 2 (เพิ่ม PR #11/#12), ข้อ 4 (บันทึกการลบ branch), ข้อ 6 (ติ๊กรายการ) — merge เข้า `main` แล้ว (PR #12)
 
-**ข้อเสนอแนะรอบหน้า (ยังไม่ได้ทำ, ตัดสินใจทีหลังได้):**
-- [ ] ย้าย `validation-reports/` ออกจาก git หรือ gitignore (สะสมเป็นส่วนใหญ่ของ repo แล้ว เป็น output ล้วน ไม่ใช่โค้ด)
-- [ ] ตั้ง CI ให้รัน `scripts/validation/` (143 ไฟล์) อัตโนมัติทุก PR — ตอนนี้ยังรันด้วยมือเท่านั้น
+**เสร็จแล้วเพิ่ม (session `arena/01a0e089…`, ต่อจากข้อ 6.3):**
+- [x] **ตั้ง CI ให้รัน `scripts/validation/` ทุก PR** — `.github/workflows/validation.yml` + ตัวรัน `run-all.cjs` (ดูหัวข้อ 2)
+- [x] **แยก known-failing ตามแพลตฟอร์ม** — `ci-baseline.json` รับได้แบบ `{reason, platforms}` · รายการที่ scope เป็น `darwin` ถูกเมินบนแพลตฟอร์มอื่น **และต้องผ่านจริง** ไม่ใช่ถูกบดบัง (มี 4 รายการ — เหตุผลอยู่ในไฟล์นั้น)
+- [x] **ให้บรรทัดสรุปนับ xpassed ด้วย** — ก่อนหน้านี้ยอดรวมไม่ตรงกับผลจริงเพราะไม่นับชุดที่ผ่านทั้งที่ถูกบันทึกว่าล้ม
+- [x] **แก้บั๊ก 503 ที่ CI เจอ** — `POST /api/speech/start` ตอบ 500 เมื่อยังไม่ได้ดาวน์โหลดโมเดล เพราะ `resolveSpeechModel()` โยน `Error` ที่ไม่มี `statusCode` (CI ติดตั้ง whisper.cpp ได้จึงเดินถึงจุดนั้น) · เปลี่ยนเป็น `serviceUnavailable()` → 503 แก้จุดเดียวกันใน `resolveTtsModel()` ด้วย
+
+**ข้อเสนอแนะรอบหน้า (ยังไม่ได้ทำ):**
+- [ ] **ปิดงานรอบนี้ให้จบ** — merge PR #20 เข้า `main` แล้วลบ branch `ci/validation-workflow`
+- [ ] แก้ 3 เรื่องที่เป็น**บั๊กโค้ดจริง** ใน `ci-baseline.json` (link safety, `validate-release.sh`, `test-config-write-fixed-point`)
+- [ ] แก้ชุดที่เป็น**บั๊กเทสต์** — `test-route-declarations.cjs` · `test-sync-script.cjs` (เขียนไฟล์โดยไม่สร้างโฟลเดอร์ก่อน)
+- [ ] ตัดสินใจเรื่องสภาพแวดล้อม — จะเอา `app/runtimes/`, `releases/` และการตรวจ file permission ออกจากขอบเขตเทสต์ CI ไหม
+- [ ] ทำให้ `chmod` ใน `work-github.cjs` ล้มเหลวแบบดังกับข้อมูล แทนที่จะกลืนทิ้งใน `catch {}` — token ไม่ควรถูกเขียนแบบอ่านได้โดยไม่บอกผู้ใช้

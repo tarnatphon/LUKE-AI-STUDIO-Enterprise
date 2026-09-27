@@ -3685,10 +3685,10 @@ function resolveSpeechModel(value) {
   const raw = String(value || "").trim();
   const model = getSpeechModels().find((item) => item.id === raw || item.filename === raw) ||
     getSpeechModels().find((item) => item.installed);
-  if (!model) throw new Error("Download or import a Whisper model first.");
+  if (!model) throw serviceUnavailable("Download or import a Whisper model first.");
   const modelPath = path.join(SPEECH_MODELS, path.basename(model.filename));
   if (!pathInside(modelPath, SPEECH_MODELS) || !fs.existsSync(modelPath)) {
-    throw new Error(`Speech model is not installed: ${model.filename}`);
+    throw serviceUnavailable(`Speech model is not installed: ${model.filename}`);
   }
   return { ...model, path: modelPath };
 }
@@ -3770,10 +3770,10 @@ function resolveTtsModel(value) {
   const raw = String(value || "").trim();
   const model = getTtsModels().find((item) => item.id === raw || item.filename === raw) ||
     getTtsModels().find((item) => item.installed);
-  if (!model) throw new Error("Download or import a Kokoro TTS model from Model Manager first.");
+  if (!model) throw serviceUnavailable("Download or import a Kokoro TTS model from Model Manager first.");
   const manifestPath = getTtsManifestPath(model.filename);
   if (!manifestPath || !fs.existsSync(manifestPath)) {
-    throw new Error(`TTS model is not installed: ${model.filename}`);
+    throw serviceUnavailable(`TTS model is not installed: ${model.filename}`);
   }
   return { ...model, path: manifestPath };
 }
