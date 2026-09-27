@@ -34,6 +34,37 @@ const frontendSrc = path.join(root, "app", "frontend", "src");
 const FALLBACK = "Unknown API endpoint";
 const METHODS = ["POST", "GET", "PATCH", "DELETE"];
 
+/**
+ * Endpoints whose job is to open a native dialog and wait for a person.
+ *
+ * /api/storage/choose-folder asks the operating system for a folder picker: on
+ * macOS that is an osascript dialog which stays on screen until somebody
+ * chooses something, and on Windows a modal does the same. There is no answer
+ * to collect, so the suite was calling it, waiting 20 seconds for a timeout,
+ * and then reporting the URL as one the server does not have — on macOS only,
+ * and only because a person had not clicked. Linux answers 501 fast enough to
+ * be probed normally, which is why this stayed hidden.
+ *
+ * So these are checked by their declaration in the server source instead. The
+ * claim this suite makes is "every URL the frontend calls reaches a route", and
+ * a route that opens a dialog is a route.
+ */
+const INTERACTIVE = new Map([
+  ["/api/storage/choose-folder", path.join("scripts", "server", "serve.cjs")],
+]);
+
+function isDeclared(url) {
+  const relative = INTERACTIVE.get(url);
+  if (!relative) return false;
+  try {
+    return fs
+      .readFileSync(path.join(root, relative), "utf8")
+      .includes(`"${url}"`);
+  } catch {
+    return false;
+  }
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(`FAIL: ${message}`);
   console.log(`  ✓ ${message}`);
@@ -236,6 +267,7 @@ async function main() {
     assert(ready, "The server starts on a throwaway checkout.");
 
     const isServed = async (target) => {
+      let answered = false;
       for (const method of METHODS) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 20000);
@@ -246,23 +278,36 @@ async function main() {
             headers: { "content-type": "application/json" },
             body: method === "GET" ? undefined : "{}",
           });
-          if (!(await response.text()).includes(FALLBACK)) return true;
+          answered = true;
+          if (!(await response.text()).includes(FALLBACK)) return "served";
         } catch {
           // A timeout or a reset connection is not "no such route"; the sweep in
-          // test-api-route-methods.cjs is where those are judged.
+          // test-api-route-methods.cjs is where those are judged. It is also not
+          // "served", and it is not the same thing as the fallback answering —
+          // so it is remembered as "no answer" and reported as its own thing
+          // rather than folded into the list of routes the server lacks.
         } finally {
           clearTimeout(timer);
         }
       }
-      return false;
+      return answered ? "fallback" : "no-answer";
     };
 
     const unserved = [];
+    const unanswered = [];
     const served = new Set();
     const viaAction = [];
+    const byDeclaration = [];
 
     for (const { url, actions } of entries) {
-      let handled = await isServed(url);
+      let verdict;
+
+      if (INTERACTIVE.has(url)) {
+        verdict = isDeclared(url) ? "served" : "fallback";
+        if (verdict === "served") byDeclaration.push(url);
+      } else {
+        verdict = await isServed(url);
+      }
 
       // A URL whose last segment is an action the caller picks at runtime —
       // `/download-queue/${id}/${action}`, `/batches/${id}/${action}`,
@@ -270,18 +315,19 @@ async function main() {
       // statically, and "probe-id" is not a word any route accepts. The accepted
       // words are recovered from the calling file rather than from the server,
       // and the URL counts as served if any of them is.
-      if (!handled && url.endsWith("/probe-id") && actions?.length) {
+      if (verdict !== "served" && url.endsWith("/probe-id") && actions?.length) {
         const base = url.slice(0, -"/probe-id".length);
         for (const action of actions) {
-          if (await isServed(`${base}/${action}`)) {
-            handled = true;
+          if ((await isServed(`${base}/${action}`)) === "served") {
+            verdict = "served";
             viaAction.push(`${url}  →  ${base}/${action}`);
             break;
           }
         }
       }
 
-      if (handled) served.add(url);
+      if (verdict === "served") served.add(url);
+      else if (verdict === "no-answer") unanswered.push(url);
       else unserved.push(url);
     }
 
@@ -293,10 +339,20 @@ async function main() {
       viaAction.forEach((line) => console.log(`    ${line}`));
     }
     if (unserved.length) console.log(`  not served: ${unserved.join(", ")}`);
+    if (unanswered.length) console.log(`  no answer: ${unanswered.join(", ")}`);
+    if (byDeclaration.length) {
+      console.log(
+        `  ${byDeclaration.length} open a native dialog, so they are checked by their declaration instead: ${byDeclaration.join(", ")}`
+      );
+    }
 
     assert(
       unserved.length === 0,
       `Every URL the frontend calls reaches a route (${unserved.length} fall through to "${FALLBACK}").`
+    );
+    assert(
+      unanswered.length === 0,
+      `Every URL the frontend calls answers at all (${unanswered.length} timed out or reset on every method, which is a different thing and belongs to test-api-route-methods.cjs).`
     );
 
     let alive = false;

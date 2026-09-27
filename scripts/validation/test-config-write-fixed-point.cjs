@@ -71,11 +71,37 @@ function buildTempRoot() {
     fs.symlinkSync(dependencies, path.join(destination, "scripts", "server", "node_modules"), "dir");
   }
 
-  for (const folder of ["config", "dist"]) {
-    const source = path.join(root, "app", folder);
-    if (fs.existsSync(source)) {
-      fs.cpSync(source, path.join(destination, "app", folder), { recursive: true });
-    }
+  // The config comes from git, not from the working tree. Those are files the
+  // running app writes, so on a machine where the app has been used the copy
+  // on disk is whatever the app last saved — which is not what the assertion
+  // is about. "The committed file is a fixed point of the server's own writer"
+  // is a claim about the bytes in the repository, and it has to be tested
+  // against those bytes; testing the machine's copy made this suite fail on
+  // the one computer where the app had actually been run.
+  const committed = spawnSync("git", ["ls-files", "app/config"], {
+    cwd: root,
+    encoding: "utf8",
+  }).stdout
+    .split("\n")
+    .filter(Boolean);
+
+  for (const file of committed) {
+    const blob = spawnSync("git", ["show", `HEAD:${file}`], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    if (blob.status !== 0) continue;
+    const target = path.join(destination, file);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, blob.stdout);
+  }
+
+  // dist is build output and is only here so the server has something to
+  // serve; which build it is makes no difference to anything below.
+  const dist = path.join(root, "app", "dist");
+  if (fs.existsSync(dist)) {
+    fs.cpSync(dist, path.join(destination, "app", "dist"), { recursive: true });
   }
 
   return { temp, destination };
@@ -278,14 +304,42 @@ async function main() {
       "On a checkout with no runtime and no record, the answer is not-installed."
     );
 
-    // A record written on another computer: what a clone used to carry.
-    for (const name of ["installed.json", "install-status.json"]) {
-      const source = path.join(root, "app", "runtimes", "image-to-video", name);
-      if (fs.existsSync(source)) {
-        fs.mkdirSync(i2vDir, { recursive: true });
-        fs.copyFileSync(source, path.join(i2vDir, name));
-      }
-    }
+    // A record written on another computer: what a clone used to carry. It
+    // is written here rather than copied out of this machine's own
+    // app/runtimes/image-to-video, because that folder is machine-local and
+    // gitignored — on a checkout that has never installed the runtime it is
+    // not there at all, and the suite then had no stale record to test with
+    // and failed on the machine that had done nothing wrong.
+    fs.mkdirSync(i2vDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(i2vDir, "install-status.json"),
+      `${JSON.stringify(
+        {
+          state: "ready",
+          step: "Complete",
+          message: "Image-to-Video is installed and ready.",
+          manifest: {
+            capability: "image-to-video",
+            installed: true,
+            python: "/Volumes/ai/app/runtimes/image-to-video/venv/bin/python",
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+    fs.writeFileSync(
+      path.join(i2vDir, "installed.json"),
+      `${JSON.stringify(
+        {
+          capability: "image-to-video",
+          installed: true,
+          python: "/Volumes/ai/app/runtimes/image-to-video/venv/bin/python",
+        },
+        null,
+        2
+      )}\n`
+    );
 
     const stale = await getStatus();
     assert(

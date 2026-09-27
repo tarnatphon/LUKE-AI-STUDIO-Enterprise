@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
 import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload } from "lucide-react";
 import { api, postJson } from "./lib.js";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
+
+/**
+ * The link a product page came from is content the app did not write — it
+ * arrives with an import, from a paste, or from a fetch of someone else's
+ * page. It becomes a link only once the guard has agreed to it, and a value
+ * the guard refuses renders as nothing at all rather than as a link that
+ * navigates the app home.
+ */
+function ProductSourceLink({ url }) {
+  const href = safeExternalUrl(url);
+  if (!href) return null;
+  return <a href={href} target="_blank" rel="noreferrer" className="sa-muted">ลิงก์</a>;
+}
 
 // ── product image helpers ───────────────────────────────────────────────────
 // Downscale an uploaded photo to a compact data URL (640px JPEG) so it fits
@@ -539,7 +553,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                 <ProductThumb src={p.image} onPick={() => setImgEditSku(imgEditSku === p.sku ? null : p.sku)} />
                 <b>{p.name}</b>
                 <span className="sa-muted">{p.sku} · {p.category}{p.price ? ` · ${p.price}` : ""}</span>
-                {p.sourceUrl && <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="sa-muted">ลิงก์</a>}
+                <ProductSourceLink url={p.sourceUrl} />
                 <span style={{ flex: 1 }} />
                 <button className="sa-icon-btn sm danger" title="ลบสินค้า" onClick={() => removeProduct(p.sku)}>
                   <Trash2 size={13} />

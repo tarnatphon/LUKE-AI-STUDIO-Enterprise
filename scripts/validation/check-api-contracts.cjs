@@ -268,6 +268,52 @@ function extractTemplateEndpoints(
 }
 
 // LUKE_AI_REGEX_ENDPOINT_EXTRACTION_V3
+// LUKE_AI_REGEX_OPTIONAL_GROUP_EXPANSION_V1
+/**
+ * `(\/duplicate)?` is two routes, not a third thing that is neither.
+ *
+ * Left where it is, a pattern like /workflows/:param(/duplicate)? matches
+ * neither /workflows/:param nor /workflows/:param/duplicate, so an interface
+ * calling a route the backend really does serve was reported as calling
+ * something that does not exist. The workflow CRUD is declared only as a
+ * regex, so it had no other way in.
+ */
+function expandOptionalGroups(
+  route
+) {
+  const group =
+    route.match(
+      /\(([^()]*)\)\?/
+    );
+
+  if (!group) {
+    return [
+      route
+    ];
+  }
+
+  const without =
+    route.replace(
+      group[0],
+      ""
+    );
+
+  const withGroup =
+    route.replace(
+      group[0],
+      group[1]
+    );
+
+  return [
+    ...expandOptionalGroups(
+      without
+    ),
+    ...expandOptionalGroups(
+      withGroup
+    ),
+  ];
+}
+
 function extractRegexEndpoints(
   source
 ) {
@@ -421,21 +467,25 @@ function extractRegexEndpoints(
         ":param"
       );
 
-    endpoint =
-      endpoint.replace(
-        /\$$/,
-        ""
-      );
-
-    const normalized =
-      normalizeEndpoint(
+    for (
+      const variant of
+      expandOptionalGroups(
         endpoint
-      );
+      )
+    ) {
+      const normalized =
+        normalizeEndpoint(
+          variant.replace(
+            /\$$/,
+            ""
+          )
+        );
 
-    if (normalized) {
-      endpoints.add(
-        normalized
-      );
+      if (normalized) {
+        endpoints.add(
+          normalized
+        );
+      }
     }
   }
 

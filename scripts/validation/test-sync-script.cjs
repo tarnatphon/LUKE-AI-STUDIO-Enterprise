@@ -162,8 +162,11 @@ function main() {
     // from the working tree. The user's copy is theirs, not the machine's:
     // the script has to carry it through, byte for byte.
     //
-    // Built on the last commit that still tracked the files, so the scenario
-    // holds whether or not the real branch has made that move yet.
+    // The commit where that is true is built here rather than dug out of the
+    // checkout's history. Whether the branch this suite happens to run on has
+    // already made the move is not this suite's business — and it cannot be
+    // looked up reliably, because app/runtimes/ is gitignored and so a clone
+    // of any branch has no record file to find in the first place.
 
     const recordFile = "app/runtimes/image-to-video/install-status.json";
     const recordFile2 = "app/runtimes/image-to-video/installed.json";
@@ -179,6 +182,17 @@ function main() {
     git(origin2, ["config", "user.email", "sync-test@example.invalid"]);
     git(origin2, ["config", "user.name", "sync test"]);
 
+    // The premise, made true on purpose: at this commit both records are
+    // tracked. -f because the folder is gitignored, which is the whole reason
+    // the next commit has to untrack them.
+    const shippedRecord = JSON.stringify({ state: "ready", step: "Complete" }, null, 2);
+    const shippedRecord2 = JSON.stringify({ capability: "image-to-video", installed: true }, null, 2);
+    fs.mkdirSync(path.join(origin2, "app", "runtimes", "image-to-video"), { recursive: true });
+    fs.writeFileSync(path.join(origin2, recordFile), shippedRecord);
+    fs.writeFileSync(path.join(origin2, recordFile2), shippedRecord2);
+    git(origin2, ["add", "-f", recordFile, recordFile2]);
+    git(origin2, ["commit", "--quiet", "-m", "the install records are tracked at this point"]);
+
     execFileSync(
       "git",
       ["clone", "--quiet", "--branch", branch, "--single-branch", origin2, user2],
@@ -187,16 +201,9 @@ function main() {
     git(user2, ["config", "user.email", "user@example.invalid"]);
     git(user2, ["config", "user.name", "user"]);
 
-    // The user is one step behind, on the last commit that still tracked the
-    // records. The branch keeps its real name, so the script's fetch lands
-    // the way it does on a real single-branch clone.
-    const lastDeletion = git(user2, ["log", "--format=%H", "--diff-filter=D", "-n", "1", "--", recordFile]).split("\n").filter(Boolean);
-    const base = lastDeletion.length > 0
-      ? git(user2, ["rev-parse", `${lastDeletion[0]}^`])
-      : git(user2, ["rev-parse", "HEAD"]);
-
-    git(user2, ["reset", "--hard", "--quiet", base]);
-    git(origin2, ["reset", "--hard", "--quiet", base]);
+    // The user is on the commit that still tracked the records, and the branch
+    // keeps its real name, so the script's fetch lands the way it does on a
+    // real single-branch clone.
 
     // The app writes these during an install; simulate a machine that has
     // installed the runtime since the last update.
@@ -211,6 +218,11 @@ function main() {
       installed: true,
       python: "/Volumes/ai/app/runtimes/image-to-video/venv/bin/python",
     }, null, 2);
+    // app/runtimes/ is machine-local and gitignored, so it is not in the
+    // clone this scenario starts from. The suite's whole point is to write a
+    // record into that folder, so it has to make the folder first — the way
+    // the app does when it installs the capability.
+    fs.mkdirSync(path.join(user2, "app", "runtimes", "image-to-video"), { recursive: true });
     fs.writeFileSync(path.join(user2, recordFile), userRecord);
     fs.writeFileSync(path.join(user2, recordFile2), userRecord2);
 

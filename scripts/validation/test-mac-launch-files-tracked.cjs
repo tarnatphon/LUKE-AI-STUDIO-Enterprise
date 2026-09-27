@@ -6,9 +6,17 @@
  *
  * mac.sh is what the user runs to start the application. Some of the paths it
  * touches are machine state it creates itself — node_modules, the llama and
- * whisper backends, the bundled Node runtime. Others must arrive with the
- * checkout, because mac.sh reads them before setup has built anything:
- * app/dist/index.html, serve.cjs, setup.sh, git-local-state.sh, update.cjs.
+ * whisper backends, the bundled Node runtime, and the built frontend under
+ * app/dist. Others must arrive with the checkout, because mac.sh reads them
+ * before setup has built anything: serve.cjs, setup.sh, git-local-state.sh,
+ * update.cjs.
+ *
+ * app/dist used to be on that second list, and this suite used to insist it
+ * was tracked. It is not any more: the frontend is built by setup
+ * (`SETUP_REASON="Frontend build is missing."` is what mac.sh reports when
+ * index.html is absent) and the folder is gitignored, so a clean checkout has
+ * none of it. What is still worth pinning is that a build which is there is
+ * complete — see the dist block below.
  *
  * If one of those is ever untracked or gitignored, `bash sync.sh` will never
  * deliver it and the app fails to start on the user's machine while looking
@@ -54,6 +62,9 @@ const MACHINE_GENERATED = [
   "app/speech-backend/",
   "app/tts-runtime/",
   "app/tools/",
+  // The built frontend. setup.sh produces it, .gitignore excludes it, and a
+  // checkout that has never run a build simply has no app/dist at all.
+  "app/dist/",
   "app/frontend/node_modules",
   "app/frontend/.active_modules_os",
   "app/frontend/.test_symlink",
@@ -115,117 +126,42 @@ function main() {
     `None of them is gitignored, so sync.sh can deliver them (${ignored.length} are).`
   );
 
-  // mac.sh's own self-heal restores whatever index.html refers to but cannot
-  // find, which only works if those bundles are in git too.
+  // The built frontend, if this checkout has one. mac.sh only asks whether
+  // index.html exists, so a build that got as far as writing index.html and
+  // not its bundles looks ready to it and breaks the app the first time a
+  // view is opened.
   const distIndex = path.join(root, "app", "dist", "index.html");
-  assert(fs.existsSync(distIndex), "app/dist/index.html exists, which mac.sh checks first.");
+  if (fs.existsSync(distIndex)) {
+    const assets = [
+      ...new Set(
+        (fs.readFileSync(distIndex, "utf8").match(/assets\/[A-Za-z0-9._-]+/g) || [])
+      ),
+    ].sort();
 
-  const assets = [
-    ...new Set(
-      (fs.readFileSync(distIndex, "utf8").match(/assets\/[A-Za-z0-9._-]+/g) || [])
-    ),
-  ].sort();
+    assert(assets.length > 0, `index.html references ${assets.length} bundle files.`);
 
-  assert(assets.length > 0, `index.html references ${assets.length} bundle files.`);
+    const missing = assets.filter(
+      (asset) => !fs.existsSync(path.join(root, "app", "dist", asset))
+    );
 
-  const untrackedAssets = assets.filter(
-    (asset) => !isTracked(path.join("app", "dist", asset))
-  );
-
-  assert(
-    untrackedAssets.length === 0,
-    `Every bundle mac.sh would try to self-heal is tracked (${untrackedAssets.length} are not).`
-  );
-
-  checkSelfHealSeesWholeTree();
+    assert(
+      missing.length === 0,
+      `Every bundle index.html references is on disk (${missing.length} are missing).`
+    );
+  } else {
+    console.log("  – No app/dist/index.html here, which is what a checkout that has not built yet looks like.");
+  }
 
   console.log("\n  PASS: mac.sh launch files are tracked completed.\n");
 }
 
-/**
- * index.html names only the entry point, so the old self-heal — which grepped
- * index.html for asset names — saw 3 of the 55 tracked files. The other 52 are
- * code-split chunks fetched when you open a view, so a missing one survived the
- * check and broke the app later.
- *
- * This runs mac.sh's own block, extracted from the file at runtime rather than
- * rewritten here, against a real deletion of a chunk index.html does not name.
- */
-function checkSelfHealSeesWholeTree() {
-  const os = require("node:os");
-  const { execFileSync } = require("node:child_process");
-
-  const lines = fs.readFileSync(macSh, "utf8").split("\n");
-  const start = lines.findIndex((line) => line.startsWith('if [[ -f "$DIST_INDEX" ]]'));
-  assert(start >= 0, "Found mac.sh's dist self-heal block to run.");
-
-  let end = -1;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (lines[i] === "fi") { end = i; break; }
-  }
-  assert(end > start, "The self-heal block has a closing fi.");
-
-  const block = lines.slice(start, end + 1).join("\n");
-
-  // A tracked chunk that index.html does not reference — exactly the case the
-  // grep-based version could not see.
-  const distIndexHtml = fs.readFileSync(path.join(root, "app", "dist", "index.html"), "utf8");
-  const named = new Set(distIndexHtml.match(/assets\/[A-Za-z0-9._-]+/g) || []);
-  const tracked = git(["ls-files", "app/dist"]).split("\n").filter(Boolean);
-  const victim = tracked.find(
-    (file) => file.startsWith("app/dist/assets/") && !named.has(file.replace("app/dist/", ""))
-  );
-  assert(Boolean(victim), `Found a tracked chunk index.html does not name (${victim}).`);
-
-  // The block runs `git checkout -- app/dist`, which restores from the index.
-  // Staged work therefore survives it, but an unstaged edit would be destroyed,
-  // so that is the only state this needs to insist on — not a pristine tree,
-  // which would make the suite unusable in the same commit that rebuilds dist.
-  const unstaged = () => git(["diff", "--name-only", "--", "app/dist"]);
-  assert(unstaged() === "", "app/dist has no unstaged edits for the self-heal to destroy.");
-
-  const script = path.join(
-    os.tmpdir(),
-    `luke-selfheal-${process.pid}.sh`
-  );
-  fs.writeFileSync(
-    script,
-    [
-      "#!/usr/bin/env bash",
-      "set -uo pipefail",
-      `SCRIPT_DIR=${JSON.stringify(root)}`,
-      'APP_DIR="$SCRIPT_DIR/app"',
-      'DIST_INDEX="$APP_DIR/dist/index.html"',
-      block,
-      "",
-    ].join("\n")
-  );
-
-  try {
-    const quiet = execFileSync("bash", [script], { encoding: "utf8" });
-    assert(
-      !quiet.includes("Restoring"),
-      "With every file present the block stays quiet and restores nothing."
-    );
-
-    fs.rmSync(path.join(root, victim));
-    const healed = execFileSync("bash", [script], { encoding: "utf8" });
-
-    assert(
-      healed.includes("Restoring missing frontend files"),
-      `Deleting ${path.basename(victim)}, which index.html never mentions, is detected.`
-    );
-    assert(
-      fs.existsSync(path.join(root, victim)),
-      "and the block restored it."
-    );
-  } finally {
-    fs.rmSync(script, { force: true });
-    execFileSync("git", ["checkout", "--", "app/dist"], { cwd: root });
-  }
-
-  assert(unstaged() === "", "app/dist has no unstaged edits afterwards either.");
-}
+// The self-heal block at the top of mac.sh used to be covered here: it
+// restores app/dist out of the git index, and this suite deleted a real
+// bundle to watch it do so. It is not covered any more because it cannot
+// be — `git ls-files app/dist` is empty now that the folder is build
+// output, so the block finds nothing to restore and always stays quiet.
+// The block itself is left in mac.sh untouched: deleting launcher code is
+// a separate decision, and until then it is harmless rather than wrong.
 
 try {
   main();

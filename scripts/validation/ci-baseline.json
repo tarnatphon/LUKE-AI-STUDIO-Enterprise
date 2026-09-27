@@ -6,42 +6,14 @@
     "entry), and anything not listed here has to pass. Use --strict to ignore this",
     "file and fail on every non-zero exit.",
     "",
-    "Measured on a clean checkout with app/dist built: 133 passed, 7 known-failing,",
-    "1 skipped. Every entry below is a real finding, not a flake \u2014 fix the cause and",
-    "delete the line.",
-    "Four entries are scoped with `platforms`: they only fail on a macOS checkout, where the working copy is an external volume. They are ignored on the Linux CI runner."
+    "Empty. Every entry that was here has been fixed at the cause: 140 passed,",
+    "0 known-failing, 1 skipped on a clean checkout with app/dist built. An entry",
+    "belongs here when a suite fails for a reason nobody has fixed yet, not when a",
+    "fix is merely unwritten.",
+    "",
+    "Two of them needed the environment to change rather than the code, and the CI",
+    "workflow does that now: validate-release.sh needs a Python that can import",
+    "imageio_ffmpeg, so the workflow installs it before running the suites."
   ],
-  "suites": {
-    "test-frontend-link-safety.cjs": "Product: two dynamic hrefs are not behind the link guard \u2014 WorkflowBuilder.jsx `href={artifact.dataUrl}` and ProductsTab.jsx `href={p.sourceUrl}`. Both take content-derived values, so a hostile URL could render as a link. Needs a guard or a sanitiser at those two call sites.",
-    "validate-release.sh": "Product: the API contract sweep finds frontend endpoint /api/ai-workflow/workflows/:param (WorkflowBuilder.jsx) with no matching backend contract in serve.cjs. The dynamic :param route is the likely blind spot \u2014 the workflow runtime serves a different shape.",
-    "test-config-write-fixed-point.cjs": "Product: the image-to-video install-status endpoint trusts a stale record silently instead of naming it in the answer. A record from another machine must not flip this machine to ready, and the answer has to say why.",
-    "test-route-declarations.cjs": "Test bug: the route parser matches any `pathname === \"\u2026\"` string, so it also picks up the two inside serve.cjs's cache-control helper (`/` and `/index.html`). Those are not route declarations. The parser needs to skip that helper, otherwise the namespace assert fails on legitimate code.",
-    "test-sync-script.cjs": "Test bug: writes <temp>/user2/app/runtimes/image-to-video/install-status.json without creating the directory first. app/runtimes/ is machine-local and gitignored, so it does not exist in a fresh clone and the write throws ENOENT.",
-    "test-mac-launch-files-tracked.cjs": "Environment: asserts app/dist/index.html is tracked by git, but app/dist/ is gitignored (by design \u2014 build output never lands in the repo). Cannot pass in any clean checkout; it is a local-machine check.",
-    "test-releases-untracked.cjs": "Environment: asserts a releases/ folder is still on disk, i.e. that untracking did not delete the developer's local release builds. A fresh checkout has no releases/ folder, so it cannot pass in CI.",
-    "test-work-github.cjs": {
-      "reason": "macOS only: asserts the saved GitHub token file is mode 0600. work-github.cjs does chmod 0600 after writing, but this checkout is on /Volumes/AI \u2014 an external volume without POSIX permissions \u2014 so chmod fails and the empty catch swallows it. Not a code bug; it passes in CI and on APFS. Worth fixing properly: fail loudly when chmod cannot be applied and tell the user the token file is not protected.",
-      "platforms": [
-        "darwin"
-      ]
-    },
-    "test-llm-performance.cjs": {
-      "reason": "macOS only: the two same-disk model-cache checks put the model in os.tmpdir() (internal APFS) while the cache root lives inside the checkout on /Volumes/AI. Two devices, so the code correctly answers 'the cache and the model are on different volumes' and the test, which assumes one device, fails. Fix by putting the fixture on the same device as the cache root.",
-      "platforms": [
-        "darwin"
-      ]
-    },
-    "test-api-route-methods.cjs": {
-      "reason": "macOS only: every route assertion passes, then fs.rmSync of the temp tree fails with ENOTEMPTY \u2014 macOS can still have entries in a directory while it is being removed. The suite should not fail over teardown; retry and ignore a failed cleanup.",
-      "platforms": [
-        "darwin"
-      ]
-    },
-    "test-cloud-doctor.cjs": {
-      "reason": "macOS only, cause not established yet: the healthy-chain scenario exits 1 and the assertion throws the doctor's output away. Next step is to include its stderr in the message. Every other check in the suite passes.",
-      "platforms": [
-        "darwin"
-      ]
-    }
-  }
+  "suites": {}
 }

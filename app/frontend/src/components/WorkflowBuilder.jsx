@@ -8,6 +8,7 @@ import {
   STEP_TYPES, newStep, runWorkflowSteps, RUN_STATUS_TH, formatDuration, formatDateTimeTh,
   api, postJson,
 } from "../workflow-builder/lib.js";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
 
 const SAMPLERS = ["euler_a", "euler", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2m_sde", "lcm"];
 
@@ -24,8 +25,21 @@ function NodeStatusIcon({ status }) {
 function ArtifactView({ artifact }) {
   if (!artifact) return null;
   if (artifact.kind === "image" && artifact.dataUrl) {
+    // The image is also the link you click to open or save it, so the value
+    // meets the same guard as every other link in the interface. A value the
+    // guard refuses renders as a picture with no link around it — a link with
+    // an empty href would navigate the app to its own home page instead.
+    const href = safeExternalUrl(artifact.dataUrl);
+    if (!href) {
+      return (
+        <div className="awb-artifact">
+          <img src={artifact.dataUrl} alt="ผลลัพธ์ภาพ" />
+          <span className="awb-artifact-caption">seed {artifact.seed ?? "-"}</span>
+        </div>
+      );
+    }
     return (
-      <a className="awb-artifact" href={artifact.dataUrl} download="luke-workflow-image.png" target="_blank" rel="noreferrer">
+      <a className="awb-artifact" href={href} download="luke-workflow-image.png" target="_blank" rel="noreferrer">
         <img src={artifact.dataUrl} alt="ผลลัพธ์ภาพ" />
         <span className="awb-artifact-caption">seed {artifact.seed ?? "-"} · คลิกเพื่อเปิด/บันทึก</span>
       </a>

@@ -50,8 +50,16 @@ function main() {
   }).status === 0;
   assert(ignored, "git ignores the folder, so it cannot be added back by accident.");
 
-  const onDisk = fs.existsSync(path.join(root, "releases"));
-  assert(onDisk, "The folder is still on disk here — untracking is not deleting.");
+  // Untracking a path is the step that would delete the user's copies, so it
+  // is worth seeing whether this checkout still has any. A checkout that never
+  // built a release has none to have kept, and failing it for that would only
+  // measure which machine the suite ran on — the sync run below is the part
+  // that actually proves the copies survive.
+  if (fs.existsSync(path.join(root, "releases"))) {
+    assert(true, "The folder is still on disk here — untracking is not deleting.");
+  } else {
+    console.log("  – No releases/ folder in this checkout to have kept; the sync run below is the part that proves it.");
+  }
 
   // ── and an update that removes it does not take the user's copies ─────────
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-releases-"));

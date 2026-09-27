@@ -12,8 +12,9 @@
  * characters from an href before they parse the scheme — so
  * "java\tscript:alert(1)" runs just as well. The check therefore strips
  * those characters first and only then looks at the scheme, and allows
- * exactly three: http, https, mailto. Everything else becomes a plain,
- * non-clickable value.
+ * exactly three: http, https, mailto — plus a base64 raster data: URL, which
+ * is how the app hands its own generated image to the browser as a link.
+ * Everything else becomes a plain, non-clickable value.
  */
 
 export function safeExternalUrl(url) {
@@ -25,6 +26,17 @@ export function safeExternalUrl(url) {
   const cleaned = url.replace(/[\u0000-\u0020]+/g, "");
 
   if (!cleaned) return "";
+
+  // A raster image the app generated itself: the workflow builder's image step
+  // answers with data:image/png;base64,… and that value is a navigation target
+  // as well as a picture, so it is allowed on its own terms rather than waved
+  // through. Only raster types are on the list — an SVG can carry script, and a
+  // data: URL that runs in the app's own origin is exactly what this guard
+  // exists to prevent. The payload is matched as base64 so that nothing can
+  // ride along behind the first comma.
+  if (/^data:image\/(?:png|jpeg|jpg|gif|webp|bmp|avif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(cleaned)) {
+    return cleaned;
+  }
 
   const schemeMatch = cleaned.match(/^([a-z][a-z0-9+.\-]*):/i);
 
