@@ -129,6 +129,21 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     }
   }, [state, refresh]);
 
+  const handleCreateExperiment = useCallback(async (entryId, options) => {
+    if (!state?.activeClientId) return;
+    const data = await postJson("/api/social-agency/hook-experiment", { clientId: state.activeClientId, entryId, ...options });
+    await refresh();
+    if (data.created?.[0]?.id) setDrawerEntryId(data.created[0].id);
+    return data;
+  }, [state, refresh]);
+
+  const handleCancelExperiment = useCallback(async (testId) => {
+    if (!state?.activeClientId) return;
+    const data = await postJson("/api/social-agency/hook-experiment/cancel", { clientId: state.activeClientId, testId });
+    await refresh();
+    if (data.restoredEntryId) setDrawerEntryId(data.restoredEntryId);
+  }, [state, refresh]);
+
   const handleRepurpose = useCallback(async (entryId) => {
     if (!state?.activeClientId) return;
     try {
@@ -142,6 +157,20 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
   const handleSaveMetrics = useCallback(async (entryId, metrics) => {
     if (!state?.activeClientId) return;
     await postJson(`/api/social-agency/calendar/${encodeURIComponent(entryId)}?clientId=${encodeURIComponent(state.activeClientId)}`, { metrics }, "PATCH");
+    refresh();
+  }, [state, refresh]);
+
+  const handleRefreshMetrics = useCallback(async (entryId) => {
+    if (!state?.activeClientId) return;
+    const data = await postJson(`/api/social-agency/metrics/refresh?clientId=${encodeURIComponent(state.activeClientId)}`, { entryId });
+    refresh();
+    return data.result;
+  }, [state, refresh]);
+
+  const handleSaveMediaUrls = useCallback(async (entryId, videoPublicUrl, previewImagePublicUrl) => {
+    if (!state?.activeClientId) return;
+    await postJson(`/api/social-agency/calendar/${encodeURIComponent(entryId)}?clientId=${encodeURIComponent(state.activeClientId)}`,
+      { videoPublicUrl, previewImagePublicUrl }, "PATCH");
     refresh();
   }, [state, refresh]);
 
@@ -469,6 +498,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           {tab === "insights" && (
             <InsightsTab
               activeClient={activeClient}
+              onOpenEntry={setDrawerEntryId}
               refreshKey={refreshSeq}
               onChanged={refresh}
             />
@@ -509,8 +539,26 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           generatingVideo={generatingVideo}
           videoGenError={videoGenError}
           onUseHook={handleUseHook}
+          onCreateExperiment={handleCreateExperiment}
+          onCancelExperiment={handleCancelExperiment}
           onRepurpose={handleRepurpose}
           onSaveMetrics={handleSaveMetrics}
+          onRefreshMetrics={handleRefreshMetrics}
+          onSaveMediaUrls={handleSaveMediaUrls}
+          onTikTokCreatorInfo={async (id) => (await api(`/api/social-agency/tiktok/creator-info?clientId=${encodeURIComponent(activeClient.id)}&entryId=${encodeURIComponent(id)}`)).creator}
+          onTikTokSaveCaption={async (id, caption) => {
+            await postJson(`/api/social-agency/calendar/${encodeURIComponent(id)}?clientId=${encodeURIComponent(activeClient.id)}`, { caption }, "PATCH");
+            await refresh();
+          }}
+          onTikTokConsent={async (id, consent) => {
+            const data = await postJson(`/api/social-agency/tiktok/${encodeURIComponent(id)}/consent?clientId=${encodeURIComponent(activeClient.id)}`, consent);
+            await refresh();
+            return data.consent;
+          }}
+          onTikTokStatus={async () => {
+            await postJson(`/api/social-agency/tiktok/status?clientId=${encodeURIComponent(activeClient.id)}`, {});
+            await refresh();
+          }}
           onOpenChat={onOpenChat}
         />
       )}
