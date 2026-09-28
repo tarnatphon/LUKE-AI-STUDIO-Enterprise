@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
-  formatDateTimeTh, formatDuration, scoreClass, weekdayTh,
+  formatDateTimeTh, formatDuration, scoreClass, weekdayTh, bangkokToday,
 } from "./lib.js";
 
 function Drawer({ title, onClose, children, footer }) {
@@ -49,16 +49,116 @@ function NodeTimeline({ run }) {
   );
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onRepurpose, onSaveMetrics, busy }) {
+function TikTokConsent({ entry, onCreatorInfo, onSaveCaption, onConsent, onStatus }) {
+  const [creator, setCreator] = useState(null);
+  const [captionDraft, setCaptionDraft] = useState(entry.caption || "");
+  useEffect(() => setCaptionDraft(entry.caption || ""), [entry.id, entry.caption]);
+  const [privacy, setPrivacy] = useState(""); // intentionally no default
+  const [commercial, setCommercial] = useState(false);
+  const [yourBrand, setYourBrand] = useState(false);
+  const [branded, setBranded] = useState(false);
+  const [disableComment, setDisableComment] = useState(false);
+  const [disableDuet, setDisableDuet] = useState(false);
+  const [disableStitch, setDisableStitch] = useState(false);
+  const [music, setMusic] = useState(false);
+  const [upload, setUpload] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const load = async () => {
+    setLoading(true); setError(""); setPrivacy(""); setCreator(null);
+    try { setCreator(await onCreatorInfo(entry.id)); } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { if (!entry.tiktokInitAttemptedAt && onCreatorInfo) load(); }, [entry.id]);
+  const saveCaption = async () => {
+    setLoading(true); setError("");
+    try { await onSaveCaption(entry.id, captionDraft); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+  const submit = async () => {
+    setLoading(true); setError("");
+    try {
+      await onConsent(entry.id, {
+        creatorUsername: creator.creator_username, privacyLevel: privacy,
+        previewCaption: creator.captionPreview,
+        commercialContent: commercial, yourBrand, brandedContent: branded,
+        disableComment, disableDuet, disableStitch,
+        musicUsageConfirmed: music, uploadConsent: upload,
+      });
+      setMusic(false); setUpload(false); setPrivacy(""); // renewed consent must be explicit
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+  const done = Boolean(entry.tiktokInitAttemptedAt);
+  return <section className="sa-drawer-section">
+    <h4>TikTok · Direct Post วิดีโอ</h4>
+    <p className="sa-form-hint">ใช้ไฟล์วิดีโอในเครื่อง (ไม่ใช้ URL) · ต้องมี app product Content Posting API, scope video.publish และ User Access Token ที่อนุญาตแล้ว · โทเค็นที่ใส่เองอาจหมดอายุ; ไม่มี OAuth/refresh ในแอปนี้ · แอปที่ไม่ผ่าน audit ส่งได้เฉพาะ SELF_ONLY ตามข้อจำกัดของ TikTok</p>
+    {entry.tiktokPost && <p className="sa-muted">ยืนยันล่าสุด: @{entry.tiktokPost.creatorUsername} · {entry.tiktokPost.privacyLevel} · {entry.tiktokPost.consentedAt} (หากแก้แคปชัน/ไฟล์ต้องยืนยันใหม่)</p>}
+    {entry.tiktokInitAttemptedAt && <div>
+      <p className="sa-form-hint">คำขอ init เริ่มแล้ว ห้ามกดส่งซ้ำ แม้เครือข่ายขัดข้อง · publish_id ไม่ใช่โพสต์ที่เผยแพร่แล้ว</p>
+      <p className="sa-muted">สถานะ: {entry.tiktokStatus || "ไม่ทราบ (init อาจสำเร็จแล้ว)"} {entry.tiktokPublishId && `· publish_id ${entry.tiktokPublishId}`}</p>
+      {entry.tiktokStatusError && <p className="sa-form-error" role="alert">{entry.tiktokStatusError}</p>}
+      {entry.tiktokPublicPostIds?.length > 0 && <p className="sa-muted">Public post IDs: {entry.tiktokPublicPostIds.join(", ")}</p>}
+      {entry.tiktokPublishId && <button className="sa-btn ghost sm" disabled={loading} onClick={async () => {
+        setLoading(true); setError(""); try { await onStatus(); } catch (err) { setError(err.message); } finally { setLoading(false); }
+      }}>เช็กสถานะจาก TikTok</button>}
+    </div>}
+    {!done && <>
+      <label className="sa-field"><span>แคปชัน TikTok (แก้ไขได้ก่อนยืนยัน)</span>
+        <textarea rows={4} value={captionDraft} onChange={(e) => setCaptionDraft(e.target.value)} disabled={loading || entry.inFlight} />
+      </label>
+      <button className="sa-btn ghost sm" disabled={loading || entry.inFlight || captionDraft === entry.caption} onClick={saveCaption}>บันทึกแคปชัน</button>
+      <button className="sa-btn ghost sm" disabled={loading || captionDraft !== entry.caption} onClick={load}>รีเฟรชบัญชีและตัวเลือกจาก TikTok</button>
+      {creator && <>
+        <p className="sa-muted">บัญชี @{creator.creator_username} ({creator.creator_nickname}) · วิดีโอได้สูงสุด {creator.max_video_post_duration_sec} วินาที</p>
+        <p className="sa-form-hint">แคปชันที่จะส่ง (รวม UTM):</p>
+        <pre className="sa-caption small" style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{creator.captionPreview}</pre>
+        <label className="sa-field"><span>Privacy (ต้องเลือกเอง)</span>
+          <select value={privacy} onChange={(e) => { setPrivacy(e.target.value); if (e.target.value === "SELF_ONLY") setBranded(false); }}>
+            <option value="">— เลือก privacy —</option>
+            {creator.privacy_level_options.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <label className="sa-field"><input type="checkbox" checked={commercial} onChange={(e) => { setCommercial(e.target.checked); if (!e.target.checked) { setYourBrand(false); setBranded(false); } }} /> Commercial Content (ปิดเป็นค่าเริ่มต้น)</label>
+        {commercial && <div>
+          <label className="sa-field"><input type="checkbox" checked={yourBrand} onChange={(e) => setYourBrand(e.target.checked)} /> Your brand</label>
+          <label className="sa-field"><input type="checkbox" checked={branded} disabled={privacy === "SELF_ONLY"} onChange={(e) => setBranded(e.target.checked)} /> Branded content (ห้าม SELF_ONLY)</label>
+        </div>}
+        {[ ["disableComment", disableComment, setDisableComment, creator.comment_disabled, "ปิดคอมเมนต์"], ["disableDuet", disableDuet, setDisableDuet, creator.duet_disabled, "ปิด Duet"], ["disableStitch", disableStitch, setDisableStitch, creator.stitch_disabled, "ปิด Stitch"] ].map(([id, value, setter, locked, label]) => <label className="sa-field" key={id}><input type="checkbox" checked={value || locked} disabled={locked} onChange={(e) => setter(e.target.checked)} /> {label}{locked ? " (บัญชีปิดไว้)" : ""}</label>)}
+        <p className="sa-form-hint">แคปชันที่แก้ไขได้อยู่ในรายการนี้; ระบบอาจเติม UTM ให้ลิงก์ และจะระบุวิดีโอ AI-generated ใน TikTok · ตรวจเนื้อหา/เสียงก่อนยืนยัน</p>
+        <label className="sa-field"><input type="checkbox" checked={music} onChange={(e) => setMusic(e.target.checked)} /> ฉันยืนยันว่ามีสิทธิ์ใช้เพลง/เสียงในวิดีโอนี้ (Music Usage Confirmation)</label>
+        <label className="sa-field"><input type="checkbox" checked={upload} onChange={(e) => setUpload(e.target.checked)} /> ฉันยินยอมส่งไฟล์วิดีโอและแคปชันนี้ไปยังบัญชี @{creator.creator_username} ตาม privacy ที่เลือก เมื่อฉันสั่งรันหรือถึงเวลาที่ตั้งไว้</label>
+        <button className="sa-btn sm" disabled={loading || !privacy || !music || !upload || !entry.video?.path || !entry.caption?.trim() || captionDraft !== entry.caption || (commercial && !yourBrand && !branded) || (branded && privacy === "SELF_ONLY")} onClick={submit}>บันทึกความยินยอม TikTok สำหรับรายการนี้</button>
+      </>}
+    </>}
+    {error && <p className="sa-form-error" role="alert">{error}</p>}
+  </section>;
+}
+
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
+  const [abDate, setAbDate] = useState(() => new Date(Date.parse(`${bangkokToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10));
+  const [abMorning, setAbMorning] = useState("09:00");
+  const [abEvening, setAbEvening] = useState("18:30");
+  const [abFirst, setAbFirst] = useState(() => String(Math.max(0, (entry.hookVariants || []).findIndex((h) => h.used))));
+  const [abSecond, setAbSecond] = useState(() => String((entry.hookVariants || []).findIndex((_, i) => i !== Math.max(0, (entry.hookVariants || []).findIndex((h) => h.used)))));
+  const [abBusy, setAbBusy] = useState(false);
+  const [abError, setAbError] = useState("");
+
   const [metricsForm, setMetricsForm] = useState({
     likes: entry.metrics?.likes ?? "",
     comments: entry.metrics?.comments ?? "",
     shares: entry.metrics?.shares ?? "",
     views: entry.metrics?.views ?? "",
   });
+  const [videoPublicUrl, setVideoPublicUrl] = useState(entry.video?.publicUrl || "");
+  const [previewImagePublicUrl, setPreviewImagePublicUrl] = useState(entry.image?.publicUrl || "");
+  const [mediaUrlError, setMediaUrlError] = useState("");
+  const [mediaUrlSaved, setMediaUrlSaved] = useState(false);
   const [metricsBusy, setMetricsBusy] = useState(false);
+  const [refreshMetricsBusy, setRefreshMetricsBusy] = useState(false);
   const [metricsError, setMetricsError] = useState("");
   const saveMetrics = async () => {
     if (!onSaveMetrics) return;
@@ -72,6 +172,12 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
       setMetricsBusy(false);
     }
   };
+  useEffect(() => {
+    setMetricsForm({
+      likes: entry.metrics?.likes ?? "", comments: entry.metrics?.comments ?? "",
+      shares: entry.metrics?.shares ?? "", views: entry.metrics?.views ?? "",
+    });
+  }, [entry.id, entry.metrics?.recordedAt]);
   const [time, setTime] = useState(entry.time);
   const [copied, setCopied] = useState("");
   const run = useMemo(
@@ -92,14 +198,14 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
       onClose={onClose}
       footer={
         <div className="sa-drawer-actions">
-          {["planned", "needs_review", "failed", "missed", "rejected", "ready"].includes(entry.status) && (
-            <button className="sa-btn primary" disabled={busy} onClick={() => onRunNow(entry.id)}>
+          {!entry.abTestSource && ["planned", "needs_review", "failed", "missed", "rejected", "ready"].includes(entry.status) && (
+            <button className="sa-btn primary" disabled={busy || (entry.platform === "tiktok" && !entry.tiktokPost)} onClick={() => onRunNow(entry.id)}>
               <Play size={14} /> รันเลยตอนนี้
             </button>
           )}
-          {entry.status === "needs_review" && (
+          {!entry.abTestSource && entry.status === "needs_review" && (
             <>
-              <button className="sa-btn success" disabled={busy} onClick={() => onApprove(entry.id)}><Check size={14} /> อนุมัติและเผยแพร่</button>
+              <button className="sa-btn success" disabled={busy || (entry.platform === "tiktok" && !entry.tiktokPost)} onClick={() => onApprove(entry.id)}><Check size={14} /> อนุมัติและเผยแพร่</button>
               <button className="sa-btn danger ghost" disabled={busy} onClick={() => onReject(entry.id)}><Ban size={14} /> ปฏิเสธ</button>
             </>
           )}
@@ -120,7 +226,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           <button
             className="sa-icon-btn danger"
             title="ลบรายการ"
-            disabled={busy || entry.inFlight}
+            disabled={busy || entry.inFlight || entry.tiktokInitAttemptedAt}
             onClick={() => onDelete(entry.id)}
           >
             <Trash2 size={15} />
@@ -134,8 +240,10 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <span className="sa-muted">{entry.angle}</span>
         {entry.pillar && <span className="sa-pill">{entry.pillar}</span>}
         {entry.repurposedFrom && <span className="sa-muted">แตกจาก {String(entry.repurposedFrom).slice(-6)}</span>}
+        {entry.abTest && <span className="sa-pill">A/B {entry.abTest.variant}</span>}
+        {entry.abTestSource && <span className="sa-muted">ต้นฉบับ A/B — เก็บแล้ว ไม่เผยแพร่</span>}
         {entry.late && <span className="sa-pill late">รันช้า</span>}
-        {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
+        {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "pending" ? "รอ TikTok ประมวลผล" : entry.publishMode === "failed" ? "TikTok ล้มเหลว" : entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>
 
       <div className="sa-entry-facts">
@@ -143,8 +251,28 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <div><span>SKU</span><b>{entry.sku}</b></div>
         {product && <div><span>ขั้นต่ำ / เวลาผลิต</span><b>{product.minimumOrder} · {product.productionTime}</b></div>}
         {entry.publishedAt && <div><span>เผยแพร่เมื่อ</span><b>{formatDateTimeTh(entry.publishedAt)}</b></div>}
-        {entry.postId && <div><span>Post ID</span><b className="sa-mono">{entry.postId}</b></div>}
+        {entry.postId && <div><span>{entry.platform === "tiktok" && entry.tiktokPublishId ? "publish_id (ไม่ใช่ public post ID)" : "Post ID"}</span><b className="sa-mono">{entry.postId}</b></div>}
+        {entry.abTest && <div><span>Hook {entry.abTest.variant}</span><b>{entry.abTest.hook}</b></div>}
       </div>
+
+      {(entry.abTest || entry.abTestSource) && (() => {
+        const testId = entry.abTest?.id || entry.abTestSource?.id;
+        const children = (client.calendar || []).filter((x) => x.abTest?.id === testId);
+        const canCancel = children.length && children.every((x) => !x.inFlight && !["published", "publishing"].includes(x.status));
+        return <section className="sa-drawer-section">
+          <h4>ชุด A/B {testId}</h4>
+          <p className="sa-form-hint">{entry.abTestSource ? "ต้นฉบับถูกเก็บเพื่อไม่ให้เผยแพร่เป็นโพสต์ที่สาม" : `แบบ ${entry.abTest.variant} ของชุดนี้`} · เทียบผลใน Insights หลังโพสต์ทั้งสองครบ 48 ชม.</p>
+          {canCancel && onCancelExperiment && <button className="sa-btn ghost sm" disabled={busy || abBusy} onClick={async () => {
+            if (!window.confirm("ยกเลิกโพสต์ A/B ทั้งคู่ แล้วคืนสถานะต้นฉบับ?")) return;
+            setAbBusy(true); setAbError("");
+            try { await onCancelExperiment(testId); } catch (err) { setAbError(err.message); }
+            finally { setAbBusy(false); }
+          }}>ยกเลิกชุด A/B และคืนต้นฉบับ</button>}
+          {abError && <p className="sa-form-error">{abError}</p>}
+        </section>;
+      })()}
+
+      {entry.platform === "tiktok" && <TikTokConsent entry={entry} onCreatorInfo={onTikTokCreatorInfo} onSaveCaption={onTikTokSaveCaption} onConsent={onTikTokConsent} onStatus={onTikTokStatus} />}
 
       <section className="sa-drawer-section">
         <h4>เลื่อนเวลา</h4>
@@ -153,7 +281,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           <button
             className="sa-btn"
-            disabled={busy || entry.inFlight || (date === entry.date && time === entry.time)}
+            disabled={busy || entry.inFlight || entry.tiktokInitAttemptedAt || (date === entry.date && time === entry.time)}
             onClick={() => onReschedule(entry.id, date, time)}
           >
             <CalendarClock size={14} /> บันทึก
@@ -168,6 +296,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <section className="sa-drawer-section">
           <h4>คอนเทนต์ {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
           <pre className="sa-caption">{entry.caption}</pre>
+          {entry.publishedCaption && entry.publishedCaption !== entry.caption && <p className="sa-form-hint">ข้อความที่เผยแพร่จริง (ลิงก์ติด UTM):<br /><span style={{ overflowWrap: "anywhere" }}>{entry.publishedCaption}</span></p>}
           <button className="sa-btn ghost sm" onClick={() => copy(entry.caption, "caption")}>
             <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอก"}
           </button>
@@ -182,12 +311,36 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
               {entry.hookVariants.map((h, i) => (
                 <li key={i}>
                   {h.used ? "✅ " : ""}{h.text} <span className="sa-muted">({h.score})</span>
-                  {!h.used && onUseHook ? (
+                  {!h.used && !entry.abTest && !entry.abTestSource && onUseHook ? (
                     <> <button className="sa-btn ghost sm" onClick={() => onUseHook(entry.id, i)}>ใช้ hook นี้</button></>
                   ) : null}
                 </li>
               ))}
             </ul>
+          )}
+          {onCreateExperiment && !entry.abTest && !entry.abTestSource && !entry.inFlight &&
+            ["facebook", "instagram"].includes(entry.platform) && ["planned", "ready", "needs_review"].includes(entry.status) &&
+            entry.caption && (entry.hookVariants || []).length >= 2 && (
+            <div className="sa-drawer-section">
+              <h4>ทดลอง A/B: hook เช้า / เย็น</h4>
+              <p className="sa-form-hint">สร้างโพสต์ใหม่ 2 รายการ โดยใช้เนื้อหาและสื่อเดิม เปลี่ยนแค่ hook กับเวลา · ต้นฉบับจะถูกเก็บ ไม่ถูกโพสต์ · หากเปิด live และผ่าน AI Check ระบบอาจเผยแพร่ตามเวลาที่เลือก</p>
+              <label className="sa-field"><span>Hook A (เช้า)</span><select value={abFirst} onChange={(e) => setAbFirst(e.target.value)}>{entry.hookVariants.map((h, i) => <option key={i} value={i}>{h.text}</option>)}</select></label>
+              <label className="sa-field"><span>Hook B (เย็น)</span><select value={abSecond} onChange={(e) => setAbSecond(e.target.value)}>{entry.hookVariants.map((h, i) => <option key={i} value={i}>{h.text}</option>)}</select></label>
+              <div className="sa-reschedule">
+                <input type="date" value={abDate} min={bangkokToday()} onChange={(e) => setAbDate(e.target.value)} aria-label="วันทดลอง A/B" />
+                <input type="time" value={abMorning} onChange={(e) => setAbMorning(e.target.value)} aria-label="เวลาตอนเช้า" />
+                <input type="time" value={abEvening} onChange={(e) => setAbEvening(e.target.value)} aria-label="เวลาตอนเย็น" />
+              </div>
+              <button className="sa-btn ghost sm" disabled={busy || abBusy || abFirst === abSecond} onClick={async () => {
+                if (!window.confirm(`สร้างโพสต์ A/B ${abDate} เวลา ${abMorning} และ ${abEvening}? ต้นฉบับจะถูกเก็บและไม่เผยแพร่ แต่สองโพสต์ใหม่อาจเผยแพร่จริงตามเวลา`)) return;
+                setAbBusy(true); setAbError("");
+                try { await onCreateExperiment(entry.id, { firstIndex: Number(abFirst), secondIndex: Number(abSecond), date: abDate, morning: abMorning, evening: abEvening }); }
+                catch (err) { setAbError(err.message); }
+                finally { setAbBusy(false); }
+              }}>{abBusy ? "กำลังสร้าง…" : "สร้างโพสต์ทดสอบ A/B"}</button>
+              {abError && <p className="sa-form-error" role="alert">{abError}</p>}
+              <p className="sa-form-hint">เทียบผลงานใน Insights หลังทั้งคู่ live ≥48 ชม. การเปรียบเทียบนี้วัดชุด hook+เวลา ไม่ได้พิสูจน์ผลของ hook เพียงอย่างเดียว</p>
+            </div>
           )}
           {entry.viralScore?.breakdown ? (
             <ul className="sa-issues">
@@ -202,13 +355,22 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
       {(entry.status === "published" || entry.metrics) && (
         <section className="sa-drawer-section">
           <h4>📊 ผลงานโพสต์</h4>
+          {entry.status === "published" && entry.publishMode === "live" && ["facebook", "instagram"].includes(entry.platform) && entry.postId && onRefreshMetrics && (
+            <button className="sa-btn ghost sm" disabled={refreshMetricsBusy} onClick={async () => {
+              setRefreshMetricsBusy(true); setMetricsError("");
+              try { await onRefreshMetrics(entry.id); }
+              catch (err) { setMetricsError(err.message); }
+              finally { setRefreshMetricsBusy(false); }
+            }}><RefreshCw size={13} /> {refreshMetricsBusy ? "กำลังดึงยอด…" : "ดึงยอดจาก Meta"}</button>
+          )}
           {entry.metrics ? (
             <p className="sa-muted">
-              ❤️ {entry.metrics.likes ?? 0} · 💬 {entry.metrics.comments ?? 0} · 🔁 {entry.metrics.shares ?? 0} · 👁️ {entry.metrics.views ?? 0}
+              ❤️ {entry.metrics.likes ?? "—"} · 💬 {entry.metrics.comments ?? "—"} · 🔁 {entry.metrics.shares ?? "—"} · 👁️ {entry.metrics.views ?? "—"}
               {entry.metrics.recordedAt ? ` · บันทึก ${formatDateTimeTh(entry.metrics.recordedAt)}` : ""}
+              {entry.metrics.source ? ` · ${entry.metrics.source === "meta" ? "Meta" : entry.metrics.source === "mixed" ? "Meta + กรอกเอง" : "กรอกเอง"}` : ""}
             </p>
           ) : (
-            <p className="sa-muted">ยังไม่มีตัวเลข — กรอกยอดจากแพลตฟอร์มด้านล่าง แล้วแท็บ Insights จะจัดอันดับให้เอง</p>
+            <p className="sa-muted">ยังไม่มีตัวเลข — FB/IG live จะดึงให้อัตโนมัติหลังเผยแพร่ประมาณ 5 นาที และซิงค์ซ้ำ (Meta อาจใช้เวลาถึง 48 ชม.) หรือกรอกเองด้านล่าง</p>
           )}
           {onSaveMetrics && (
             <div className="sa-style-row">
@@ -228,6 +390,9 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
               </button>
             </div>
           )}
+          {entry.metricsSync?.error && <p className="sa-form-hint">ซิงค์ล่าสุดไม่สำเร็จ: {entry.metricsSync.error}</p>}
+          {entry.metricsSync?.warning && <p className="sa-form-hint">ข้อมูลบางรายการดึงไม่ได้: {entry.metricsSync.warning}</p>}
+          <p className="sa-form-hint">ช่องที่กรอกเองจะไม่ถูก Meta เขียนทับ เว้นว่างแล้วบันทึกเพื่อกลับไปใช้ยอดอัตโนมัติ · — หมายถึง Meta ยังไม่ส่งค่านั้น (ไม่ใช่ศูนย์)</p>
           {metricsError && <p className="sa-error-banner">{metricsError}</p>}
         </section>
       )}
@@ -280,7 +445,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
                 <Copy size={13} /> {copied === "prompt" ? "คัดลอกแล้ว" : "คัดลอกพรอมต์"}
               </button>
             )}
-            <button className="sa-btn ghost sm" disabled={generatingImage === entry.id} onClick={() => onGenerateImage?.(entry.id)}>
+            <button className="sa-btn ghost sm" disabled={generatingImage === entry.id || Boolean(entry.abTest || entry.abTestSource)} onClick={() => onGenerateImage?.(entry.id)}>
               <ImageIcon size={13} /> {generatingImage === entry.id ? "กำลังสร้าง…" : entry.image?.url ? "สร้างภาพใหม่" : "สร้างภาพ"}
             </button>
             <button className="sa-btn ghost sm" onClick={onCreateImage}><ExternalLink size={13} /> เปิดใน Generator</button>
@@ -300,8 +465,22 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           {entry.video?.url && (
             <>
               <video className="sa-entry-video" src={entry.video.url} controls preload="metadata" />
-              <p className="sa-muted">📎 วิดีโอนี้จะแนบไปกับโพสต์จริงด้วย (FB วิดีโอ / IG Reels / LINE วิดีโอ)</p>
+              <p className="sa-muted">📎 FB/IG ส่งไฟล์วิดีโอตรงไป Meta; LINE ต้องมี publicUrl HTTPS ของวิดีโอและภาพตัวอย่าง มิฉะนั้นการส่งจะล้มพร้อมแจ้งสาเหตุ (ไม่โพสต์รูปแทน)</p>
             </>
+          )}
+          {entry.platform === "line" && onSaveMediaUrls && (
+            <div>
+              <p className="sa-form-hint">LINE ต้องดาวน์โหลดวิดีโอและภาพตัวอย่างได้จาก URL HTTPS สาธารณะ ใส่ URL จากโฮสต์ของคุณก่อนเผยแพร่</p>
+              <label className="sa-field"><span>วิดีโอสาธารณะ (HTTPS)</span><input type="url" value={videoPublicUrl} onChange={(e) => setVideoPublicUrl(e.target.value)} placeholder="https://media.example.com/clip.mp4" /></label>
+              <label className="sa-field"><span>ภาพตัวอย่างสาธารณะ (HTTPS)</span><input type="url" value={previewImagePublicUrl} onChange={(e) => setPreviewImagePublicUrl(e.target.value)} placeholder="https://media.example.com/preview.jpg" /></label>
+              <button className="sa-btn sm" disabled={busy || entry.inFlight} onClick={async () => {
+                setMediaUrlError(""); setMediaUrlSaved(false);
+                try { await onSaveMediaUrls(entry.id, videoPublicUrl, previewImagePublicUrl); setMediaUrlSaved(true); }
+                catch (err) { setMediaUrlError(err.message); }
+              }}>บันทึก URL สำหรับ LINE</button>
+              {mediaUrlSaved && <span className="sa-muted"> บันทึกแล้ว ✓</span>}
+              {mediaUrlError && <p className="sa-form-error" role="alert">{mediaUrlError}</p>}
+            </div>
           )}
           {generatingVideo === entry.id && (
             <>
@@ -318,7 +497,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
                 <Copy size={13} /> {copied === "aprompt" ? "คัดลอกแล้ว" : "คัดลอก animate prompt"}
               </button>
             )}
-            <button className="sa-btn ghost sm" disabled={generatingVideo === entry.id || !entry.image?.url} title={entry.image?.url ? "" : "สร้างภาพนิ่งก่อน"} onClick={() => onGenerateVideo?.(entry.id)}>
+            <button className="sa-btn ghost sm" disabled={generatingVideo === entry.id || !entry.image?.url || Boolean(entry.abTest || entry.abTestSource)} title={entry.image?.url ? "" : "สร้างภาพนิ่งก่อน"} onClick={() => onGenerateVideo?.(entry.id)}>
               <Film size={13} /> {generatingVideo === entry.id ? "กำลังสร้างวิดีโอ…" : entry.video?.url ? "สร้างวิดีโอใหม่" : "ทำภาพเคลื่อนไหว"}
             </button>
           </div>
@@ -378,9 +557,10 @@ function ConnectorToggle({ checked, onChange, label }) {
 
 export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, busy }) {
   const [form, setForm] = useState(() => ({
-    facebook: { pageId: connectors?.facebook?.pageId || "", accessToken: connectors?.facebook?.accessToken || "", dryRun: connectors?.facebook?.dryRun !== false },
-    instagram: { igUserId: connectors?.instagram?.igUserId || "", accessToken: connectors?.instagram?.accessToken || "", imgbbApiKey: connectors?.instagram?.imgbbApiKey || "", dryRun: connectors?.instagram?.dryRun !== false },
+    facebook: { pageId: connectors?.facebook?.pageId || "", accessToken: connectors?.facebook?.accessToken || "", apiVersion: connectors?.facebook?.apiVersion || "v25.0", dryRun: connectors?.facebook?.dryRun !== false },
+    instagram: { igUserId: connectors?.instagram?.igUserId || "", accessToken: connectors?.instagram?.accessToken || "", imgbbApiKey: connectors?.instagram?.imgbbApiKey || "", insightsAccessToken: connectors?.instagram?.insightsAccessToken || "", apiVersion: connectors?.instagram?.apiVersion || "v25.0", dryRun: connectors?.instagram?.dryRun !== false },
     line: { channelAccessToken: connectors?.line?.channelAccessToken || "", dryRun: connectors?.line?.dryRun !== false, sendImageTextStack: connectors?.line?.sendImageTextStack !== false },
+    tiktok: { accessToken: connectors?.tiktok?.accessToken || "", dryRun: connectors?.tiktok?.dryRun !== false, auditApproved: connectors?.tiktok?.auditApproved === true },
     settings: {
       threshold: connectors?.settings?.threshold ?? 80,
       postsPerWeek: connectors?.settings?.postsPerWeek ?? 5,
@@ -404,6 +584,24 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
     } catch (err) {
       setTests((t) => ({ ...t, [platform]: { ok: false, message: err.message } }));
     }
+  };
+  const versionField = (platform) => {
+    const expires = connectors?.[platform]?.apiVersion === form[platform].apiVersion
+      ? connectors?.[platform]?.versionExpiresAt : {
+        "v21.0": "2027-01-21", "v22.0": "2027-05-20", "v23.0": "2027-10-08",
+        "v24.0": "2028-02-18", "v25.0": "2028-07-29",
+      }[form[platform].apiVersion];
+    const daysLeft = expires ? Math.ceil((Date.parse(`${expires}T00:00:00Z`) - Date.now()) / 86400000) : null;
+    return <>
+      <label className="sa-field"><span>Meta Graph API version</span>
+        <select value={form[platform].apiVersion} onChange={setField(platform, "apiVersion")}>
+          {["v21.0", "v22.0", "v23.0", "v24.0", "v25.0", "v26.0"].map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+      </label>
+      {daysLeft !== null && daysLeft <= 120 && <p className="sa-form-error" role="alert">
+        {daysLeft <= 0 ? "เวอร์ชันนี้หมดอายุแล้ว" : `เวอร์ชันนี้หมดอายุใน ${daysLeft} วัน (${expires})`} — เปลี่ยนเวอร์ชันและทดสอบการเชื่อมต่อ
+      </p>}
+    </>;
   };
   const testBadge = (platform) => {
     const t = tests[platform];
@@ -458,6 +656,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         </header>
         <label className="sa-field"><span>Page ID</span><input value={form.facebook.pageId} onChange={setField("facebook", "pageId")} placeholder="1234567890" /></label>
         <label className="sa-field"><span>Page Access Token (long-lived)</span><input value={form.facebook.accessToken} onChange={setField("facebook", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
+        {versionField("facebook")}
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.facebook.dryRun} onChange={setFlag("facebook", "dryRun")} label="โหมดทดลอง (dry-run)" />
           <button className="sa-btn ghost sm" disabled={busy || tests.facebook?.loading} onClick={() => runTest("facebook")}>
@@ -465,7 +664,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
           </button>
         </div>
         {tests.facebook?.message && <p className={`sa-test-msg ${tests.facebook.ok ? "ok" : "err"}`}>{tests.facebook.message}</p>}
-        <p className="sa-form-hint">Text ไปที่ /feed · รูปไปที่ /photos · เว้นจังหวะโพสต์อย่างน้อย 5 นาทีต่อเพจ</p>
+        <p className="sa-form-hint">Text ไปที่ /feed · รูปไปที่ /photos · วิดีโอส่งตรงไป Meta /videos · เว้นจังหวะโพสต์อย่างน้อย 5 นาทีต่อเพจ</p>
       </section>
 
       <section className="sa-connector">
@@ -475,6 +674,8 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         </header>
         <label className="sa-field"><span>IG User ID (ผูกกับเพจ FB แอปเดียวกัน)</span><input value={form.instagram.igUserId} onChange={setField("instagram", "igUserId")} placeholder="1784…" /></label>
         <label className="sa-field"><span>Access Token (Meta app เดียวกับ Facebook)</span><input value={form.instagram.accessToken} onChange={setField("instagram", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
+        {versionField("instagram")}
+        <label className="sa-field"><span>User Access Token สำหรับอ่าน Insights (instagram_manage_insights; เว้นว่างเพื่อทดลองใช้ token เผยแพร่เดิม)</span><input value={form.instagram.insightsAccessToken} onChange={setField("instagram", "insightsAccessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
         <label className="sa-field"><span>imgbb API key (อัปโหลดรูปเป็นสาธารณะ)</span><input value={form.instagram.imgbbApiKey} onChange={setField("instagram", "imgbbApiKey")} placeholder="••••xxxx" autoComplete="off" /></label>
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.instagram.dryRun} onChange={setFlag("instagram", "dryRun")} label="โหมดทดลอง (dry-run)" />
@@ -483,7 +684,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
           </button>
         </div>
         {tests.instagram?.message && <p className={`sa-test-msg ${tests.instagram.ok ? "ok" : "err"}`}>{tests.instagram.message}</p>}
-        <p className="sa-form-hint">โพสต์ 2 ขั้น: สร้าง container → poll จน FINISHED → publish · จำกัด 50 โพสต์/24 ชม. (นับในเครื่องให้)</p>
+        <p className="sa-form-hint">Reels: สร้าง container → ส่งไฟล์ตรงไป Meta rupload → poll → publish (ไม่ต้องใช้โฮสต์วิดีโอภายนอก) · จำกัด 50 โพสต์/24 ชม. (นับในเครื่องให้) · ทดสอบสิทธิ์อ่าน Insights ด้วยปุ่มดึงยอดในโพสต์ live</p>
       </section>
 
       <section className="sa-connector">
@@ -501,6 +702,20 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <ConnectorToggle checked={form.line.sendImageTextStack} onChange={setFlag("line", "sendImageTextStack")} label="ส่งรูป+ข้อความพร้อมกัน (ถ้ามีรูป)" />
         {tests.line?.message && <p className={`sa-test-msg ${tests.line.ok ? "ok" : "err"}`}>{tests.line.message}</p>}
         <p className="sa-form-hint">Publish = broadcast ถึงผู้ติดตามทุกคน · เช็คโควตารายเดือนก่อนส่งเสมอ (แพ็กเกจฟรีมีจำกัด) · โพสต์ไปไทม์ไลน์ส่วนตัว/กลุ่มส่วนตัวไม่ได้ด้วย API ทางการ</p>
+      </section>
+
+      <section className="sa-connector">
+        <header><h4>TikTok (Content Posting API · วิดีโอเท่านั้น)</h4>
+          {connectors?.tiktok?.configured ? testBadge("tiktok") : <span className="sa-pill planned">ยังไม่ตั้งค่า</span>}
+        </header>
+        <label className="sa-field"><span>User Access Token (scope video.publish)</span><input value={form.tiktok.accessToken} onChange={setField("tiktok", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
+        <div className="sa-connector-row">
+          <ConnectorToggle checked={form.tiktok.dryRun} onChange={setFlag("tiktok", "dryRun")} label="โหมดทดลอง (dry-run)" />
+          <button className="sa-btn ghost sm" disabled={busy || tests.tiktok?.loading} onClick={() => runTest("tiktok")}><RefreshCw size={13} /> ทดสอบ creator info</button>
+        </div>
+        <ConnectorToggle checked={form.tiktok.auditApproved} onChange={setFlag("tiktok", "auditApproved")} label="ยืนยันว่า TikTok ตรวจ audit และอนุมัติแอปสำหรับ public Direct Post แล้ว (ไม่ใช่ผลจากปุ่มทดสอบ)" />
+        {tests.tiktok?.message && <p className={`sa-test-msg ${tests.tiktok.ok ? "ok" : "err"}`}>{tests.tiktok.message}</p>}
+        <p className="sa-form-hint">ต้องเปิด Content Posting API และขอสิทธิ์ video.publish ผ่าน OAuth ของ TikTok ก่อน · แอปนี้ยังไม่มี OAuth/refresh token ในตัว: ต้องใส่ token ที่ได้รับโดยชอบด้วยตนเองและอาจหมดอายุก่อนถึงเวลาตั้งโพสต์ · ค่าเริ่มต้น dry-run; unaudited จำกัด SELF_ONLY และข้อจำกัดการใช้ตาม TikTok · ทุกโพสต์ต้องยืนยัน privacy/สิทธิ์เสียง/การส่งก่อนรัน</p>
       </section>
 
       <section className="sa-connector">

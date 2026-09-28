@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Trash2, Copy, Check, Plus } from "lucide-react";
 import { api, postJson, STATUS_META, PLATFORM_META, ANGLES } from "./lib.js";
 
-const PLATFORM_ORDER = ["facebook", "instagram", "line", "demo"];
+const PLATFORM_ORDER = ["facebook", "instagram", "line", "tiktok", "demo"];
 
 export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
   const clientId = activeClient?.id;
@@ -281,7 +281,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
         <header>
           <Copy size={15} />
           <b>ฉบับต่อแพลตฟอร์ม</b>
-          <span className="sa-muted">Facebook / IG / LINE / Demo</span>
+          <span className="sa-muted">Facebook / IG / LINE / TikTok / Demo</span>
         </header>
         {previewError && <p className="sa-error-banner">{previewError}</p>}
         <div className="sa-style-form">
@@ -305,7 +305,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
           />
           <div>
             <button className="sa-btn primary sm" disabled={previewBusy} onClick={generate}>
-              <Sparkles size={13} /> {previewBusy ? "กำลังสร้าง…" : "สร้างฉบับ 4 แพลตฟอร์ม"}
+              <Sparkles size={13} /> {previewBusy ? "กำลังสร้าง…" : "สร้างฉบับ 5 แพลตฟอร์ม"}
             </button>
           </div>
         </div>

@@ -257,6 +257,7 @@
 .sa-platform-chip.facebook { color: #1877f2; border-color: #1877f2; }
 .sa-platform-chip.instagram { color: #d6249f; border-color: #d6249f; }
 .sa-platform-chip.line { color: #06c755; border-color: #06c755; }
+.sa-platform-chip.tiktok { color: var(--sa-on-surface); border-color: #39c5bb; background: var(--sa-card-1); }
 .sa-platform-chip.demo { color: var(--sa-on-primary-container); border-color: var(--sa-primary); background: var(--sa-primary-container); }
 
 .sa-score {

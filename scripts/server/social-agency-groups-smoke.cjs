@@ -577,7 +577,7 @@ async function main() {
     assert.strictEqual(rt._selectPublishMedia({ image: { path: "/tmp/x.jpg" }, video: { path: "/tmp/x.mp4" } }), "video");
   });
 
-  check("video file read + public host url parse", () => {
+  check("video file read + LINE requires a first-party public URL", () => {
     const vf = path.join(root, "clip.mp4");
     fs.writeFileSync(vf, Buffer.from("fake-mp4-bytes"));
     const got = rt._entryVideoFile({ video: { path: vf } });
@@ -585,10 +585,97 @@ async function main() {
     assert.strictEqual(got.filename, "clip.mp4");
     assert.strictEqual(rt._entryVideoFile({}), null);
     assert.strictEqual(rt._entryVideoFile({ video: { path: path.join(root, "nope.mp4") } }), null);
-    assert.strictEqual(SocialAgencyRuntime._parsePublicFileUrl("https://0x0.st/abc123.mp4\n"), "https://0x0.st/abc123.mp4");
-    assert.throws(() => SocialAgencyRuntime._parsePublicFileUrl("error"), /โฮสต์สาธารณะ/);
+    assert.strictEqual(rt._publicVideoUrl({ video: { publicUrl: "https://media.example/clip.mp4" } }), "https://media.example/clip.mp4");
+    assert.throws(() => rt._publicVideoUrl({ video: { path: vf } }), /publicUrl HTTPS/);
+    assert.throws(() => rt._publicVideoUrl({ video: { publicUrl: "https://0x0.st/abc123.mp4" } }), /0x0.st/);
     fs.unlinkSync(vf);
   });
+
+  check("LINE media URLs can be saved per entry (reject anonymous hosts)", () => {
+    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(8), time: "17:32", platform: "line", sku, angle: "เปิดตัวสินค้า" } });
+    const saved = rt.updateCalendarEntry(clientId, e.id, {
+      videoPublicUrl: "https://media.example.com/clip.mp4",
+      previewImagePublicUrl: "https://media.example.com/preview.jpg",
+    });
+    assert.strictEqual(saved.video.publicUrl, "https://media.example.com/clip.mp4");
+    assert.strictEqual(saved.image.publicUrl, "https://media.example.com/preview.jpg");
+    assert.throws(() => rt.updateCalendarEntry(clientId, e.id, { videoPublicUrl: "https://0x0.st/abc.mp4" }), /0x0.st/);
+    assert.strictEqual(rt._findEntry(clientId, e.id).entry.video.publicUrl, "https://media.example.com/clip.mp4");
+  });
+
+  // Meta video regression: no external host, no silent image fallback on failure.
+  {
+    const vf = path.join(root, "meta-test.mp4");
+    fs.writeFileSync(vf, Buffer.from("fake-mp4-bytes"));
+    const fbEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(-1), time: "14:51", platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+    const igEntry = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(-1), time: "14:52", platform: "instagram", sku, angle: "เปิดตัวสินค้า" } });
+    rt.saveConnectors(clientId, { connectors: {
+      facebook: { apiVersion: "v25.0", dryRun: false },
+      instagram: { igUserId: "1784", accessToken: "fake-ig-token", apiVersion: "v25.0", dryRun: false },
+    } });
+    check("per-connector Graph API version is saved and validated", () => {
+      assert.strictEqual(rt.getConnectorsView(clientId).instagram.apiVersion, "v25.0");
+      assert.strictEqual(rt.getConnectorsView(clientId).instagram.versionExpiresAt, "2028-07-29");
+      rt.saveConnectors(clientId, { connectors: { facebook: { apiVersion: "v24.0" } } });
+      assert.strictEqual(rt.getConnectorsView(clientId).facebook.apiVersion, "v24.0");
+      rt.saveConnectors(clientId, { connectors: { facebook: { apiVersion: "v25.0" } } });
+      assert.throws(() => rt.saveConnectors(clientId, { connectors: { facebook: { apiVersion: "v99.0" } } }), /version ไม่รองรับ/);
+    });
+    const getClient = () => rt._read().clients.find((c) => c.id === clientId);
+    const entry = (id) => ({ ...getClient().calendar.find((e) => e.id === id), video: { path: vf }, caption: "ทดสอบวิดีโอ" });
+    rt._mutateClient(clientId, (c) => { c.connectors.facebook.lastPublishAt = null; });
+    const realHttps = SocialAgencyRuntime._https;
+    const calls = [];
+    let failUpload = false;
+    let failFacebook = false;
+    SocialAgencyRuntime._https = async (opts) => {
+      calls.push(opts);
+      if (opts.host === "rupload.facebook.com") return failUpload
+        ? { status: 400, json: { success: false, error: { message: "upload denied" } } }
+        : { status: 200, json: { success: true } };
+      if (opts.path.endsWith("?fields=status_code&access_token=fake-ig-token")) return { status: 200, json: { status_code: "FINISHED" } };
+      if (opts.path.endsWith("/media_publish")) return { status: 200, json: { id: "ig-published" } };
+      if (opts.path.endsWith("/media")) return { status: 200, json: { id: "ig-container" } };
+      if (opts.path.endsWith("/videos")) return failFacebook
+        ? { status: 400, json: { error: { message: "video denied" } } }
+        : { status: 200, json: { id: "fb-video" } };
+      throw new Error(`unexpected network request: ${opts.host}${opts.path}`);
+    };
+    try {
+      const fb = await rt._publishEntry(getClient(), entry(fbEntry.id), { trigger: "schedule" });
+      assert.strictEqual(fb.postId, "fb-video");
+      assert.ok(calls.some((c) => c.host === "graph.facebook.com" && c.path === "/v25.0/1234567890/videos"));
+      const ig = await rt._publishEntry(getClient(), entry(igEntry.id), { trigger: "schedule" });
+      assert.strictEqual(ig.postId, "ig-published");
+      const create = calls.find((c) => c.path === "/v25.0/1784/media");
+      assert.strictEqual(JSON.parse(create.body).upload_type, "resumable");
+      assert.ok(!JSON.parse(create.body).video_url);
+      const upload = calls.find((c) => c.host === "rupload.facebook.com");
+      assert.strictEqual(upload.path, "/ig-api-upload/v25.0/ig-container");
+      assert.strictEqual(upload.headers.offset, "0");
+      assert.strictEqual(upload.headers.file_size, String(fs.statSync(vf).size));
+      assert.deepStrictEqual(upload.body, fs.readFileSync(vf));
+      assert.ok(!calls.some((c) => c.host === "0x0.st"));
+      passed += 1;
+      console.log("  ok - FB video direct + IG Reels resumable binary upload and publish");
+      calls.length = 0;
+      failUpload = true;
+      await assert.rejects(rt._publishEntry(getClient(), entry(igEntry.id), { trigger: "schedule" }), /upload denied/);
+      assert.ok(!calls.some((c) => c.path.endsWith("/media_publish") || c.path.endsWith("/photos")), "failed Reels must not publish another medium");
+      passed += 1;
+      console.log("  ok - IG upload failure stops publish without silent photo fallback");
+      calls.length = 0;
+      failFacebook = true;
+      rt._mutateClient(clientId, (c) => { c.connectors.facebook.lastPublishAt = null; });
+      await assert.rejects(rt._publishEntry(getClient(), entry(fbEntry.id), { trigger: "schedule" }), /video denied/);
+      assert.ok(!calls.some((c) => c.path.endsWith("/photos") || c.path.endsWith("/feed")), "failed FB video must not publish photo/text");
+      passed += 1;
+      console.log("  ok - FB video failure stops publish without silent photo fallback");
+    } finally {
+      SocialAgencyRuntime._https = realHttps;
+      fs.unlinkSync(vf);
+    }
+  }
 
   check("stale running video job reconciles to error on read", () => {
     const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(4), time: "10:00", platform: "demo", sku, angle: "เปิดตัวสินค้า" } });

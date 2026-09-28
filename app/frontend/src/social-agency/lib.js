@@ -33,6 +33,7 @@ export const PLATFORM_META = {
   facebook: { label: "Facebook", short: "f", cls: "facebook" },
   instagram: { label: "Instagram", short: "IG", cls: "instagram" },
   line: { label: "LINE", short: "LINE", cls: "line" },
+  tiktok: { label: "TikTok", short: "TT", cls: "tiktok" },
 };
 
 export const TONES = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];

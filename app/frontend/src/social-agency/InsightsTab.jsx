@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, Send, Download, Save, Upload, ChevronLeft, ChevronRight, HardDrive, TrendingUp } from "lucide-react";
+import { BarChart3, Send, Download, Save, Upload, ChevronLeft, ChevronRight, HardDrive, TrendingUp, RefreshCw } from "lucide-react";
 import { api, postJson, bangkokToday } from "./lib.js";
+import { safeExternalUrl } from "../lib/safe-link.mjs";
 
-export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
+export default function InsightsTab({ activeClient, refreshKey, onChanged, onOpenEntry }) {
   const clientId = activeClient?.id;
   const [weekOffset, setWeekOffset] = useState(0);
   const [summary, setSummary] = useState(null);
@@ -16,6 +17,11 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
   const [backupNote, setBackupNote] = useState("");
   const [perf, setPerf] = useState(null);
   const [perfError, setPerfError] = useState("");
+  const [perfBusy, setPerfBusy] = useState(false);
+  const [perfNote, setPerfNote] = useState("");
+  const [tracking, setTracking] = useState(null);
+  const [trackingOpen, setTrackingOpen] = useState(false);
+  const [trackingPlatform, setTrackingPlatform] = useState("all");
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -69,6 +75,28 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
       cancelled = true;
     };
   }, [clientId, refreshKey]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    api(`/api/social-agency/tracking?clientId=${encodeURIComponent(clientId)}`)
+      .then((data) => { if (!cancelled) setTracking(data.tracking); })
+      .catch(() => { if (!cancelled) setTracking(null); });
+    return () => { cancelled = true; };
+  }, [clientId, refreshKey]);
+
+  const syncRecent = async () => {
+    if (!clientId || perfBusy) return;
+    setPerfBusy(true); setPerfNote("");
+    try {
+      const { result } = await postJson(`/api/social-agency/metrics/refresh-recent?clientId=${encodeURIComponent(clientId)}`, {});
+      setPerfNote(result.attempted ? `ซิงค์ ${result.updated}/${result.attempted} โพสต์${result.results.some((r) => r.error) ? " — ดูสาเหตุใน drawer โพสต์" : ""}` : "ยังไม่มีโพสต์ FB/IG live ที่ครบ 5 นาทีภายใน 30 วันที่ซิงค์ได้");
+      const data = await api(`/api/social-agency/performance?clientId=${encodeURIComponent(clientId)}`);
+      setPerf(data.performance);
+      onChanged?.();
+    } catch (err) { setPerfNote(`ซิงค์ไม่สำเร็จ: ${err.message}`); }
+    finally { setPerfBusy(false); }
+  };
 
   const sendLine = async () => {
     if (!clientId || sendBusy) return;
@@ -159,10 +187,14 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
           <TrendingUp size={15} />
           <b>ผลงานโพสต์</b>
           <span className="sa-muted">{perf ? `วัดผลแล้ว ${perf.measured}/${perf.total} โพสต์` : "…"}</span>
+          <button className="sa-btn ghost sm" disabled={perfBusy} onClick={syncRecent}>
+            <RefreshCw size={13} /> {perfBusy ? "กำลังซิงค์…" : "ซิงค์ Meta สูงสุด 3 โพสต์"}
+          </button>
         </header>
+        {perfNote && <p className="sa-muted">{perfNote}</p>}
         {perfError && <p className="sa-error-banner">{perfError}</p>}
         {perf && perf.measured === 0 && (
-          <p className="sa-muted">ยังไม่มีตัวเลข — เปิด drawer ของโพสต์ที่เผยแพร่แล้ว กรอกยอดไลก์/คอมเมนต์/แชร์/วิว ระบบจะจัดอันดับเสา·มุม·แพลตฟอร์มให้เอง</p>
+          <p className="sa-muted">ยังไม่มีตัวเลข — FB/IG live จะซิงค์ให้อัตโนมัติหลังโพสต์ 5 นาที (อาจรอ Meta ประมวลผลถึง 48 ชม.) หรือกดซิงค์ด้านบน / กรอกเองใน drawer โพสต์</p>
         )}
         {perf && perf.measured > 0 && (
           <>
@@ -194,6 +226,43 @@ export default function InsightsTab({ activeClient, refreshKey, onChanged }) {
             </ul>
           </>
         )}
+      </section>
+
+      <section className="sa-insights-card">
+        <header><TrendingUp size={15} /><b>A/B hook + เวลา</b><span className="sa-muted">{perf?.experiments?.length || 0} ชุด</span></header>
+        {!perf?.experiments?.length && <p className="sa-muted">เลือก 2 hook ใน drawer ของโพสต์ FB/IG ที่ยังไม่เผยแพร่ เพื่อสร้างโพสต์เช้า/เย็นแยกกัน</p>}
+        {(perf?.experiments || []).map((test) => (
+          <div key={test.id} className="sa-drawer-section">
+            <p><b>{test.platform} · {test.winner ? `ผล: ${test.winner === "tie" ? "เสมอ" : `แบบ ${test.winner} ได้ไลก์+คอมเมนต์มากกว่า`}` : "รอทั้งสองโพสต์ live และครบ 48 ชม. พร้อมยอดไลก์+คอมเมนต์"}</b></p>
+            {(test.variants || []).map((v) => <p key={v.entryId} className="sa-muted">
+              <button className="sa-btn ghost sm" onClick={() => onOpenEntry?.(v.entryId)}>ดูโพสต์ {v.variant}</button>
+              {` ${v.date} ${v.time} · ${v.hook} · ${v.ready ? `${v.engagement} ไลก์+คอมเมนต์` : v.status}`}
+            </p>)}
+          </div>
+        ))}
+        {!!perf?.experiments?.length && <p className="sa-form-hint">A/B นี้ทดสอบ hook พร้อมกับช่วงเวลา จึงไม่แยกผลของ hook เพียงอย่างเดียว; ช่วงเวลาและผู้ชมอาจมีผล</p>}
+      </section>
+
+      <section className="sa-insights-card">
+        <header><TrendingUp size={15} /><b>รายงานลิงก์ UTM ตามแพลตฟอร์ม</b>
+          <button className="sa-btn ghost sm" onClick={() => setTrackingOpen((v) => !v)}>{trackingOpen ? "ซ่อนรายงาน" : "เปิดรายงาน"}</button>
+        </header>
+        {trackingOpen && <>
+          <p className="sa-form-hint">แสดงลิงก์ที่ส่งออกจริงพร้อม utm_source / utm_medium / utm_campaign / utm_content · ยอดคลิกต้องดูในเครื่องมือ Analytics ของเว็บไซต์ ไม่ใช่ยอด engagement จาก Meta (ลิงก์ในแคปชัน IG กดไม่ได้)</p>
+          <div className="sa-insights-actions">
+            <button className="sa-btn ghost sm" onClick={() => setTrackingPlatform("all")}>ทั้งหมด ({tracking?.rows?.length || 0})</button>
+            {["facebook", "instagram", "line"].map((p) => <button key={p} className="sa-btn ghost sm" onClick={() => setTrackingPlatform(p)}>{p} ({tracking?.byPlatform?.[p] || 0})</button>)}
+          </div>
+          <ul className="sa-insights-backups">
+            {(tracking?.rows || []).filter((r) => trackingPlatform === "all" || r.platform === trackingPlatform).map((r, i) => (
+              <li key={`${r.entryId}-${i}`}><span className="sa-muted">{r.platform} · {r.date} · </span>
+                <a href={safeExternalUrl(r.url) || undefined} target="_blank" rel="noopener noreferrer" style={{ overflowWrap: "anywhere" }}>{r.url.slice(0, 150)}{r.url.length > 150 ? "…" : ""}</a>
+                <button className="sa-btn ghost sm" onClick={() => onOpenEntry?.(r.entryId)}>ดูโพสต์</button>
+              </li>
+            ))}
+          </ul>
+          {!tracking?.rows?.length && <p className="sa-muted">ยังไม่มีลิงก์ติด UTM ในโพสต์ live</p>}
+        </>}
       </section>
 
       <section className="sa-insights-card">

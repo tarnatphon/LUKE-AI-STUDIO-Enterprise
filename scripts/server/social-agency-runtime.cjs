@@ -24,7 +24,7 @@ const CONTENT_ANGLES = [
   "โปรโมชัน/ข้อเสนอ OEM",
 ];
 const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
-const PLATFORMS = ["demo", "facebook", "instagram", "line"];
+const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok"];
 const ENTRY_STATUSES = [
   "planned",
   "in_workflow",
@@ -57,20 +57,33 @@ const PLATFORM_VERSION_RULES = {
   facebook: { maxChars: 2000, maxHashtags: 4 },
   instagram: { maxChars: 2200, maxHashtags: 8 },
   line: { maxChars: 400, maxHashtags: 2 },
+  tiktok: { maxChars: 2200, maxHashtags: 5 },
 };
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
 const MAX_GLOBAL_CONCURRENCY = 2;
 const FB_GRAPH_HOST = "graph.facebook.com";
-const FB_API_VERSION = "v21.0";
+const FB_API_VERSION = "v25.0";
+// Meta Graph API expiration dates: https://developers.facebook.com/docs/graph-api/changelog/versions
+const GRAPH_VERSION_EXPIRY = Object.freeze({
+  "v21.0": "2027-01-21", "v22.0": "2027-05-20", "v23.0": "2027-10-08",
+  "v24.0": "2028-02-18", "v25.0": "2028-07-29", "v26.0": null,
+});
 const FB_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const IG_24H_LIMIT = 50;
 const LINE_HOST = "api.line.me";
 const IMGBB_HOST = "api.imgbb.com";
-const VIDEO_PUBLIC_HOST = "0x0.st";
+const IG_UPLOAD_HOST = "rupload.facebook.com";
+const TIKTOK_HOST = "open.tiktokapis.com";
+const TIKTOK_UPLOAD_HOST = "open-upload.tiktokapis.com";
+const TIKTOK_CHUNK_BYTES = 10 * 1000 * 1000;
 const VIDEO_UPLOAD_TIMEOUT_MS = 120 * 1000;
 const HTTP_TIMEOUT_MS = 30 * 1000;
+const METRICS_INITIAL_DELAY_MS = 5 * 60 * 1000;
+const METRICS_RECENT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const METRICS_OLDER_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const METRICS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ── Time helpers (Asia/Bangkok) ─────────────────────────────────────────────
 function bangkokDateStr(d = new Date()) {
@@ -117,6 +130,14 @@ function sleep(ms) {
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID().slice(0, 13)}`;
 }
+function withFirstLine(caption, hook) {
+  const lines = String(caption || "").split("\n");
+  const at = lines.findIndex((line) => line.trim());
+  if (at < 0) return String(hook || "");
+  lines[at] = String(hook || "");
+  return lines.join("\n");
+}
+
 function clampNumber(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -303,6 +324,7 @@ function defaultConnectorMeta() {
     facebook: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null },
     instagram: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null, counter: null },
     line: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null, sendImageTextStack: true },
+    tiktok: { dryRun: true, testedAt: null, testOk: false, auditApproved: false },
   };
 }
 
@@ -706,7 +728,7 @@ function templateHashtags(product, platform) {
   const hit = table.find(([re]) => re.test(cat) || re.test(name));
   if (hit) tags = hit[1];
   if (platform === "line") return tags.slice(0, 2);
-  if (platform === "instagram") return tags.slice(0, 5);
+  if (platform === "instagram" || platform === "tiktok") return tags.slice(0, 5);
   return tags.slice(0, 4);
 }
 
@@ -1158,6 +1180,8 @@ class SocialAgencyRuntime {
     this.activeRunCount = 0;
     this.activeByClientPlatform = new Set();
     this._slotByRunId = new Map();
+    this._metricsInFlight = new Set();
+    this._metricsSweepRunning = false;
     this.knownVersion = null;
     this._recovered = false;
     this._read(); // load / migrate eagerly
@@ -1724,6 +1748,7 @@ class SocialAgencyRuntime {
       { platform: "facebook", tagList: fill(tags, PLATFORM_VERSION_RULES.facebook.maxHashtags) },
       { platform: "instagram", tagList: fill(tags, PLATFORM_VERSION_RULES.instagram.maxHashtags) },
       { platform: "line", tagList: tags.slice(0, PLATFORM_VERSION_RULES.line.maxHashtags) },
+      { platform: "tiktok", tagList: fill(tags, PLATFORM_VERSION_RULES.tiktok.maxHashtags) },
     ];
     for (const { platform, tagList } of jobs) {
       const rules = PLATFORM_VERSION_RULES[platform];
@@ -1931,6 +1956,11 @@ class SocialAgencyRuntime {
   updateCalendarEntry(clientId, entryId, patch) {
     const { state, client, entry } = this._findEntry(clientId, entryId);
     if (!patch || typeof patch !== "object") throw new Error("ไม่มีข้อมูลที่ต้องการแก้ไข");
+    if (entry.abTestSource && patch.status !== undefined) throw new Error("ต้นฉบับ A/B ถูกเก็บแล้ว ยกเลิกชุดทดสอบก่อนคืนสถานะ");
+    if (entry.abTest && ["platform", "sku", "angle", "pillar", "brief", "caption"].some((k) => patch[k] !== undefined)) {
+      throw new Error("โพสต์ A/B ต้องคงแพลตฟอร์ม สินค้า และข้อความเดิมเพื่อเทียบผล; สร้างชุดทดสอบใหม่หากต้องแก้");
+    }
+    if (entry.tiktokInitAttemptedAt || entry.tiktokPublishId) throw new Error("รายการ TikTok เริ่มส่งไปแล้ว — รอตรวจสอบสถานะ ห้ามแก้ไขหรือส่งซ้ำ");
     if (patch.date !== undefined || patch.time !== undefined) {
       if (entry.inFlight) throw new Error("รายการนี้กำลังรันอยู่ รอเสร็จก่อนแล้วค่อยเลื่อนเวลา");
       const date = patch.date !== undefined ? String(patch.date) : entry.date;
@@ -1945,8 +1975,12 @@ class SocialAgencyRuntime {
       if (entry.status === "missed" || entry.status === "rejected") entry.status = "planned";
       delete entry.missedAt;
     }
-    if (patch.platform !== undefined && PLATFORMS.includes(patch.platform)) entry.platform = patch.platform;
+    if (patch.platform !== undefined && PLATFORMS.includes(patch.platform)) {
+      if (entry.tiktokPost && patch.platform !== entry.platform) delete entry.tiktokPost;
+      entry.platform = patch.platform;
+    }
     if (patch.sku !== undefined) {
+      if (entry.tiktokPost && patch.sku !== entry.sku) delete entry.tiktokPost;
       const product = client.products.find((p) => p.sku === patch.sku);
       if (product) {
         entry.sku = product.sku;
@@ -1961,23 +1995,43 @@ class SocialAgencyRuntime {
     }
     if (patch.brief !== undefined) entry.brief = String(patch.brief);
     if (patch.caption !== undefined) {
+      if (entry.tiktokPost) delete entry.tiktokPost; // require renewed consent for changed content
       entry.caption = String(patch.caption); // manual override (deliberate bad-draft test path)
       entry.captionManual = true;
     }
+    if (entry.platform === "tiktok" && ["publishing", "published"].includes(patch.status)) throw new Error("TikTok status ต้องมาจาก API เท่านั้น");
     if (patch.status !== undefined && ENTRY_STATUSES.includes(patch.status) && !entry.inFlight) {
       entry.status = patch.status;
     }
+    if (patch.videoPublicUrl !== undefined || patch.previewImagePublicUrl !== undefined) {
+      if (entry.inFlight) throw new Error("รายการกำลังเผยแพร่ รอเสร็จก่อนแก้ URL สื่อ");
+      const videoUrl = patch.videoPublicUrl === undefined ? entry.video?.publicUrl || "" : SocialAgencyRuntime._mediaUrl(patch.videoPublicUrl);
+      const previewUrl = patch.previewImagePublicUrl === undefined ? entry.image?.publicUrl || "" : SocialAgencyRuntime._mediaUrl(patch.previewImagePublicUrl);
+      if (patch.videoPublicUrl !== undefined) entry.video = { ...(entry.video || {}), publicUrl: videoUrl };
+      if (patch.previewImagePublicUrl !== undefined) entry.image = { ...(entry.image || {}), publicUrl: previewUrl };
+    }
     if (patch.metrics !== undefined && patch.metrics && typeof patch.metrics === "object") {
-      const clean = {};
+      const old = entry.metrics || {};
+      // Pre-migration metrics without a source were manually entered: preserve them.
+      const manual = new Set(old.manualFields || (!old.source ? ["likes", "comments", "shares", "views"].filter((k) => Number.isFinite(old[k])) : []));
+      const clean = { ...old };
+      let changed = false;
       for (const k of ["likes", "comments", "shares", "views"]) {
+        if (!Object.hasOwn(patch.metrics, k)) continue;
         const v = patch.metrics[k];
-        if (v === undefined || v === null || v === "") continue;
-        const n = Math.floor(Number(v));
-        if (!Number.isFinite(n) || n < 0) throw new Error(`ยอด ${k} ต้องเป็นตัวเลข 0 ขึ้นไป`);
-        if (n > 1000000000) throw new Error(`ยอด ${k} สูงเกินจริง`);
-        clean[k] = n;
+        if (v === "" || v === null) {
+          delete clean[k]; // clear an override; next sync can refill it
+          manual.delete(k);
+        } else {
+          const n = Math.floor(Number(v));
+          if (!Number.isFinite(n) || n < 0) throw new Error(`ยอด ${k} ต้องเป็นตัวเลข 0 ขึ้นไป`);
+          if (n > 1000000000) throw new Error(`ยอด ${k} สูงเกินจริง`);
+          clean[k] = n;
+          manual.add(k);
+        }
+        changed = true;
       }
-      entry.metrics = { ...(entry.metrics || {}), ...clean, recordedAt: new Date().toISOString() };
+      if (changed) entry.metrics = { ...clean, manualFields: [...manual], source: "manual", recordedAt: new Date().toISOString() };
     }
     entry.updatedAt = new Date().toISOString();
     this._write(state);
@@ -1986,7 +2040,10 @@ class SocialAgencyRuntime {
 
   deleteCalendarEntry(clientId, entryId) {
     const { state, client, entry } = this._findEntry(clientId, entryId);
-    if (entry.inFlight) throw new Error("รายการนี้กำลังรันอยู่ ลบไม่ได้ตอนนี้");
+    if (entry.inFlight || entry.tiktokPublishId || entry.tiktokInitAttemptedAt) throw new Error("รายการนี้กำลังรันหรือส่ง TikTok แล้ว ลบไม่ได้จนกว่าจะทราบสถานะ");
+    if (entry.abTestSource && client.calendar.some((e) => e.abTest?.id === entry.abTestSource.id && e.status !== "published")) {
+      throw new Error("ยกเลิกชุด A/B ก่อนลบต้นฉบับที่ยังมีโพสต์รอเผยแพร่");
+    }
     client.calendar = client.calendar.filter((e) => e.id !== entryId);
     this._write(state);
     return { deleted: entryId };
@@ -2003,7 +2060,7 @@ class SocialAgencyRuntime {
     for (const id of ids) {
       const e = byId.get(id);
       if (!e) { notFound.push(id); continue; }
-      if (e.inFlight) { skipped.push(id); continue; }
+      if (e.inFlight || e.tiktokInitAttemptedAt || (e.abTestSource && client.calendar.some((child) => child.abTest?.id === e.abTestSource.id && child.status !== "published" && !ids.includes(child.id)))) { skipped.push(id); continue; }
       deleted.push(id);
     }
     const gone = new Set(deleted);
@@ -2013,6 +2070,56 @@ class SocialAgencyRuntime {
   }
 
   // ── auto-plan ──
+  // At least 3 mature live posts in EACH of two alternatives before moving
+  // planning away from the default rotation/time. Compare likes+comments only
+  // (shares/plays are not consistently available across Meta media types).
+  _planningSignals(client) {
+    const now = Date.now();
+    const posts = (client.calendar || []).filter((e) => {
+      const age = now - Date.parse(e.publishedAt);
+      return e.status === "published" && e.publishMode === "live" && e.platform !== "tiktok" && // never add TikTok to unattended auto-plan rotation
+        Number.isFinite(age) && age >= 48 * 60 * 60 * 1000 && age <= 90 * 86400000 &&
+        Number.isFinite(e.metrics?.likes) && Number.isFinite(e.metrics?.comments);
+    });
+    const defaults = { platformRotation: ["demo", "demo", "facebook", "instagram", "line"], weekdayTime: "18:30", weekendTime: "11:00", platformSource: "default", timeSource: "default", samples: posts.length };
+    const rank = (rows, key) => {
+      const groups = new Map();
+      for (const row of rows) {
+        const id = key(row);
+        if (!id) continue;
+        const g = groups.get(id) || { name: id, count: 0, total: 0 };
+        g.count += 1;
+        g.total += row.metrics.likes + row.metrics.comments;
+        groups.set(id, g);
+      }
+      return [...groups.values()].filter((g) => g.count >= 3)
+        .map((g) => ({ ...g, avg: g.total / g.count }))
+        .sort((a, b) => b.avg - a.avg || a.name.localeCompare(b.name));
+    };
+    const platforms = rank(posts.filter((e) => ["facebook", "instagram", "line"].includes(e.platform)), (e) => e.platform);
+    if (platforms.length >= 2 && platforms[0].avg > platforms[1].avg * 1.1 && platforms[0].avg > 0) {
+      const best = platforms[0].name;
+      defaults.platformRotation = [best, best, ...["facebook", "instagram", "line"].filter((p) => p !== best), "demo"];
+      defaults.platformSource = `performance (${best}: ${platforms[0].count} โพสต์)`;
+    }
+    const timeFor = (weekend, fallback) => {
+      const rows = posts.filter((e) => {
+        const ms = Date.parse(e.publishedAt);
+        const weekday = (new Date(ms + BANGKOK_OFFSET_MS).getUTCDay() + 6) % 7;
+        return (weekday >= 5) === weekend;
+      });
+      const ranked = rank(rows, (e) => String(new Date(Date.parse(e.publishedAt) + BANGKOK_OFFSET_MS).getUTCHours()).padStart(2, "0"));
+      if (ranked.length < 2 || ranked[0].avg <= ranked[1].avg * 1.1 || ranked[0].avg <= 0) return fallback;
+      // Use the best hour; keep :30 for weekday and :00 for weekend so previews
+      // stay predictable rather than overfitting a one-off posting minute.
+      return `${ranked[0].name}:${weekend ? "00" : "30"}`;
+    };
+    defaults.weekdayTime = timeFor(false, defaults.weekdayTime);
+    defaults.weekendTime = timeFor(true, defaults.weekendTime);
+    if (defaults.weekdayTime !== "18:30" || defaults.weekendTime !== "11:00") defaults.timeSource = "performance (>=3 โพสต์ต่อช่วงเวลา, >=2 ช่วงเวลา)";
+    return defaults;
+  }
+
   // P5w: "one product a day, no repeats inside the month"
   _buildDailySlots(client, monthStr, opts = {}) {
     const { year, month, daysInMonth } = currentMonthWeeks(monthStr);
@@ -2025,8 +2132,9 @@ class SocialAgencyRuntime {
     const usedSku = new Set(monthEntries.filter((e) => e.sku).map((e) => e.sku));
     const seed = String(opts.seed || `${monthStr}:${client.id}`);
     const pool = seededShuffle((client.products || []).filter((p) => !usedSku.has(p.sku)), seed);
-    const time = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : "18:30";
-    const platforms = ["facebook", "instagram", "line", "demo"];
+    const signals = this._planningSignals(client);
+    const time = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : null;
+    const platforms = signals.platformSource === "default" ? ["facebook", "instagram", "line", "demo"] : signals.platformRotation;
     const slots = [];
     const dayKey = (day) => `${year}-${pad(month)}-${pad(day)}`;
     let openDays = 0;
@@ -2037,7 +2145,7 @@ class SocialAgencyRuntime {
       const product = pool[slots.length];
       slots.push({
         date,
-        time,
+        time: time || ([0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay()) ? signals.weekendTime : signals.weekdayTime),
         sku: product.sku,
         productName: product.name,
         angle: CONTENT_ANGLES[(day - 1) % CONTENT_ANGLES.length],
@@ -2052,6 +2160,7 @@ class SocialAgencyRuntime {
       poolSize: pool.length,
       shortBy: Math.max(0, openDays - pool.length),
       seed,
+      strategy: signals,
     };
   }
 
@@ -2095,7 +2204,8 @@ class SocialAgencyRuntime {
     }
     const ordered = [...products].sort((a, b) => (monthUsage.get(a.sku) || 0) - (monthUsage.get(b.sku) || 0));
     const perWeek = clampNumber(postsPerWeek, 1, 7, 5);
-    const platformRotation = ["demo", "demo", "facebook", "instagram", "line"];
+    const strategy = this._planningSignals(client);
+    const platformRotation = strategy.platformRotation;
     const slots = [];
     let productIdx = 0;
     let angleIdx = 0;
@@ -2116,10 +2226,10 @@ class SocialAgencyRuntime {
     };
     for (const week of weeks) {
       const weekdayCount = Math.max(0, perWeek - 1);
-      week.weekdays.slice(0, weekdayCount).forEach((day) => pushSlot(day, "18:30"));
+      week.weekdays.slice(0, weekdayCount).forEach((day) => pushSlot(day, strategy.weekdayTime));
       if (perWeek >= 1) {
         const weekendDay = week.weekend.find((d) => new Date(Date.UTC(year, month - 1, d)).getUTCDay() === 6) ?? week.weekend[0];
-        pushSlot(weekendDay, "11:00");
+        pushSlot(weekendDay, strategy.weekendTime);
       }
     }
     return slots;
@@ -2145,24 +2255,26 @@ class SocialAgencyRuntime {
         productPool: daily.poolSize,
         shortBy: daily.shortBy,
         seed: daily.seed,
+        strategy: daily.strategy,
         slots: daily.slots,
       };
     }
     const fallback = this._buildFallbackSlots(client, month, postsPerWeek);
+    const strategy = this._planningSignals(client);
     let slots = fallback;
     let source = "template";
     if (this._llmReady()) {
       try {
-        const llmSlots = await this._llmPlanSlots(client, month, postsPerWeek, fallback.length);
+        const llmSlots = await this._llmPlanSlots(client, month, postsPerWeek, fallback.length, strategy);
         if (Array.isArray(llmSlots) && llmSlots.length) {
-          const valid = new Set(fallback.map((s) => `${s.date} ${s.time}`));
+          const valid = new Map(fallback.map((s) => [`${s.date} ${s.time}`, s]));
           const seen = new Set();
           const merged = [];
           for (const slot of llmSlots) {
             const key = `${slot.date} ${slot.time}`;
             if (!valid.has(key) || seen.has(key)) continue; // only safe, free, in-month slots
             seen.add(key);
-            merged.push(slot);
+            merged.push(strategy.platformSource === "default" ? slot : { ...slot, platform: valid.get(key).platform });
           }
           for (const slot of fallback) {
             if (merged.length >= Math.max(fallback.length, 1)) break;
@@ -2185,6 +2297,7 @@ class SocialAgencyRuntime {
       month,
       postsPerWeek,
       source,
+      strategy,
       uniqueProducts: new Set(capped.map((x) => x.sku)).size,
       slots: capped,
     };
@@ -2230,12 +2343,171 @@ class SocialAgencyRuntime {
     return { created, count: created.length, skippedDuplicateProduct: skippedDup };
   }
 
+  // Meta returns *missing* (not zero) for unavailable insights. Read the
+  // published media object, not an IG container, and never fabricate counts.
+  static _metaCount(value) {
+    const n = Number(value);
+    return value !== null && value !== undefined && value !== "" && Number.isInteger(n) && n >= 0 && n <= 1000000000 ? n : undefined;
+  }
+
+  async _fetchMetaMetrics(platform, mediaKind, postId, token, version) {
+    const base = `/${version}/${encodeURIComponent(postId)}`;
+    const request = async (suffix) => {
+      const res = await SocialAgencyRuntime._https({
+        host: FB_GRAPH_HOST, path: `${base}${suffix}${suffix.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`,
+      });
+      if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Meta HTTP ${res.status}`);
+      return res.json || {};
+    };
+    const values = {};
+    const warnings = [];
+    if (platform === "facebook") {
+      const isObject = mediaKind === "video" || mediaKind === "photo-object";
+      const edge = isObject ? "likes" : "reactions";
+      const obj = await request(`?fields=${edge}.limit(0).summary(true),comments.limit(0).summary(true)`);
+      const likes = SocialAgencyRuntime._metaCount(obj[edge]?.summary?.total_count);
+      const comments = SocialAgencyRuntime._metaCount(obj.comments?.summary?.total_count);
+      if (likes !== undefined) values.likes = likes; // reactions for feed, likes for video/photo
+      if (comments !== undefined) values.comments = comments;
+      if (!isObject) {
+        try {
+          const shareObj = await request("?fields=shares");
+          const shares = SocialAgencyRuntime._metaCount(shareObj.shares?.count);
+          if (shares !== undefined) values.shares = shares;
+        } catch (err) { warnings.push(`แชร์ Facebook: ${String(err.message).replaceAll(token, "[redacted]")}`); }
+      }
+    } else if (platform === "instagram") {
+      const obj = await request("?fields=like_count,comments_count");
+      const likes = SocialAgencyRuntime._metaCount(obj.like_count);
+      const comments = SocialAgencyRuntime._metaCount(obj.comments_count);
+      if (likes !== undefined) values.likes = likes;
+      if (comments !== undefined) values.comments = comments;
+      // Insights needs instagram_manage_insights + pages_read_engagement. Call
+      // individually: one unavailable metric must not erase the other counts.
+      for (const metric of mediaKind === "reel" ? ["shares", "views"] : ["shares"]) {
+        try {
+          const insight = await request(`/insights?metric=${metric}`);
+          const row = (insight.data || []).find((r) => r.name === metric);
+          const count = SocialAgencyRuntime._metaCount(row?.total_value?.value ?? row?.values?.[0]?.value);
+          if (count !== undefined) values[metric] = count;
+        } catch (err) { warnings.push(`${metric} IG: ${String(err.message).replaceAll(token, "[redacted]")}`); }
+      }
+    }
+    return { values, warnings };
+  }
+
+  // A refresh is safe for cron and the user-facing button: no publishing or
+  // mutation of a manual override, no demo entries, no token persisted.
+  async syncEntryMetrics(clientId, entryId, { force = false } = {}) {
+    const { client, entry } = this._findEntry(clientId, entryId);
+    if (entry.status !== "published" || entry.publishMode !== "live" || !["facebook", "instagram"].includes(entry.platform) || !entry.postId || /^(demo|dry)-/.test(entry.postId)) {
+      throw new Error("ซิงค์ metrics ได้เฉพาะโพสต์ FB/IG ที่เผยแพร่จริงและมี post ID");
+    }
+    const age = Date.now() - Date.parse(entry.publishedAt);
+    if (!force && (!Number.isFinite(age) || age < METRICS_INITIAL_DELAY_MS || age > METRICS_MAX_AGE_MS)) return { skipped: "outside-refresh-window" };
+    const previous = Date.parse(entry.metricsSync?.lastAttemptAt || "");
+    const interval = age < 48 * 60 * 60 * 1000 ? METRICS_RECENT_INTERVAL_MS : METRICS_OLDER_INTERVAL_MS;
+    if (!force && Number.isFinite(previous) && Date.now() - previous < interval) return { skipped: "recently-refreshed" };
+    const key = `${clientId}:${entryId}`;
+    if (this._metricsInFlight.has(key)) return { skipped: "already-syncing" };
+    const secret = this._getSecrets(clientId)[entry.platform] || {};
+    if (!this._connectorConfigured(entry.platform, secret)) throw new Error("ตั้งค่า Meta connector ก่อนซิงค์ metrics");
+    const version = SocialAgencyRuntime._graphVersion(client.connectors?.[entry.platform]?.apiVersion);
+    const token = entry.platform === "instagram" ? (secret.insightsAccessToken || secret.accessToken) : secret.accessToken;
+    this._metricsInFlight.add(key);
+    const id = entry.postId;
+    const at = new Date().toISOString();
+    try {
+      // Older published entries predate mediaKind; infer from their saved video.
+      const mediaKind = entry.mediaKind || ((entry.video?.path || entry.video?.publicUrl)
+        ? (entry.platform === "instagram" ? "reel" : "video") : "post");
+      const { values, warnings } = await this._fetchMetaMetrics(entry.platform, mediaKind, id, token, version);
+      if (!Object.keys(values).length) throw new Error("Meta ยังไม่ส่ง metrics ของโพสต์นี้ (อาจต้องรอประมวลผลหรือเปิดสิทธิ์ insights)");
+      let result;
+      this._mutateClient(clientId, (c) => {
+        const e = c.calendar.find((x) => x.id === entryId);
+        if (!e || e.postId !== id || e.status !== "published" || e.publishMode !== "live") return;
+        const old = e.metrics || {};
+        const manual = old.manualFields || (!old.source ? ["likes", "comments", "shares", "views"].filter((k) => Number.isFinite(old[k])) : []);
+        const next = { ...old };
+        for (const [k, v] of Object.entries(values)) if (!manual.includes(k)) next[k] = v;
+        e.metrics = { ...next, manualFields: manual, source: manual.length ? "mixed" : "meta", recordedAt: at };
+        e.metricsSync = { lastAttemptAt: at, lastSuccessAt: at, warning: warnings.join("; ").slice(0, 250) };
+        result = { metrics: e.metrics, warning: e.metricsSync.warning };
+      });
+      return result || { skipped: "post-changed" };
+    } catch (err) {
+      const safeError = String(err.message || err).replaceAll(token, "[redacted]").replaceAll(secret.accessToken, "[redacted]").slice(0, 250);
+      this._mutateClient(clientId, (c) => {
+        const e = c.calendar.find((x) => x.id === entryId);
+        if (e && e.postId === id && e.status === "published") e.metricsSync = { ...(e.metricsSync || {}), lastAttemptAt: at, error: safeError };
+      });
+      throw new Error(safeError);
+    } finally {
+      this._metricsInFlight.delete(key);
+    }
+  }
+
+  async syncRecentMetrics(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const eligible = (client.calendar || [])
+      .filter((e) => e.status === "published" && e.publishMode === "live" && ["facebook", "instagram"].includes(e.platform) && e.postId)
+      .filter((e) => this._connectorConfigured(e.platform, this._getSecrets(clientId)[e.platform]))
+      .filter((e) => {
+        const age = Date.now() - Date.parse(e.publishedAt);
+        return age >= METRICS_INITIAL_DELAY_MS && age <= METRICS_MAX_AGE_MS;
+      })
+      .sort((a, b) => (Date.parse(a.metricsSync?.lastSuccessAt || "") || 0) - (Date.parse(b.metricsSync?.lastSuccessAt || "") || 0) || Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+      .slice(0, 3);
+    const results = [];
+    for (const entry of eligible) {
+      try { results.push({ entryId: entry.id, ...(await this.syncEntryMetrics(clientId, entry.id, { force: true })) }); }
+      catch (err) { results.push({ entryId: entry.id, error: err.message }); }
+    }
+    return { attempted: results.length, updated: results.filter((r) => r.metrics).length, results };
+  }
+
+  async _maybeSyncMetrics() {
+    if (this._metricsSweepRunning) return;
+    this._metricsSweepRunning = true;
+    try {
+      const now = Date.now();
+      const state = this._read();
+      const candidates = state.clients.flatMap((client) => (client.calendar || [])
+        .filter((e) => e.status === "published" && e.publishMode === "live" && ["facebook", "instagram"].includes(e.platform) && e.postId)
+        .filter((e) => {
+          try {
+            SocialAgencyRuntime._graphVersion(client.connectors?.[e.platform]?.apiVersion);
+            return this._connectorConfigured(e.platform, this._getSecrets(client.id)[e.platform]);
+          } catch { return false; }
+        })
+        .filter((e) => {
+          const age = now - Date.parse(e.publishedAt);
+          if (!Number.isFinite(age) || age < METRICS_INITIAL_DELAY_MS || age > METRICS_MAX_AGE_MS) return false;
+          const previous = Date.parse(e.metricsSync?.lastAttemptAt || "");
+          return !Number.isFinite(previous) || now - previous >= (age < 48 * 60 * 60 * 1000 ? METRICS_RECENT_INTERVAL_MS : METRICS_OLDER_INTERVAL_MS);
+        })
+        .map((entry) => ({ clientId: client.id, entry })));
+      // One post per minute at most, oldest attempted first; never let an outage
+      // block the publishing scheduler or hammer Meta in parallel.
+      candidates.sort((a, b) => (Date.parse(a.entry.metricsSync?.lastAttemptAt || "") || 0) - (Date.parse(b.entry.metricsSync?.lastAttemptAt || "") || 0));
+      for (const { clientId, entry } of candidates) {
+        if (this._metricsInFlight.has(`${clientId}:${entry.id}`)) continue;
+        try { await this.syncEntryMetrics(clientId, entry.id); }
+        catch (err) { console.warn("[social-agency] metrics refresh:", clientId, entry.id, err.message); }
+        break;
+      }
+    } finally {
+      this._metricsSweepRunning = false;
+    }
+  }
+
   // ── performance loop (P4): engagement -> pillar/angle ranking ──
   buildPerformance(clientId) {
     const { client } = this._resolveClient(clientId);
     const engagementOf = (m) => (m.likes || 0) + (m.comments || 0) + (m.shares || 0);
     const rows = (client.calendar || [])
-      .filter((e) => e.metrics && Number.isFinite(e.metrics.likes))
+      .filter((e) => e.metrics && ["likes", "comments", "shares"].some((k) => Number.isFinite(e.metrics[k])))
       .map((e) => ({
         id: e.id,
         date: e.date,
@@ -2272,8 +2544,22 @@ class SocialAgencyRuntime {
     if (platforms.length >= 2 && platforms[0].avg > 0) {
       suggestions.push(`แพลตฟอร์มที่ปังสุดคือ ${platforms[0].name} (เฉลี่ย ${platforms[0].avg}/โพสต์) — เอาโพสต์ดีจากที่อื่นมาแตกเข้า ${platforms[0].name} บ้าง`);
     }
+    const experiments = [...new Set((client.calendar || []).filter((e) => e.abTest).map((e) => e.abTest.id))].map((testId) => {
+      const children = (client.calendar || []).filter((e) => e.abTest?.id === testId)
+        .sort((a, b) => a.abTest.variant.localeCompare(b.abTest.variant));
+      const variants = children.map((e) => {
+        const age = Date.now() - Date.parse(e.publishedAt);
+        const comparable = e.status === "published" && e.publishMode === "live" && Number.isFinite(age) && age >= 48 * 60 * 60 * 1000 && Number.isFinite(e.metrics?.likes) && Number.isFinite(e.metrics?.comments);
+        return { entryId: e.id, variant: e.abTest.variant, hook: e.abTest.hook, date: e.date, time: e.time, status: e.status,
+          engagement: comparable ? e.metrics.likes + e.metrics.comments : null, ready: comparable };
+      });
+      const ready = variants.length === 2 && variants.every((v) => v.ready);
+      const winner = ready ? (variants[0].engagement === variants[1].engagement ? "tie" : variants[0].engagement > variants[1].engagement ? "A" : "B") : null;
+      return { id: testId, platform: children[0]?.platform || "", variants, winner };
+    });
     return {
       measured: rows.length,
+      experiments,
       total: (client.calendar || []).length,
       pillars,
       angles: group("angle"),
@@ -3324,6 +3610,7 @@ class SocialAgencyRuntime {
   }
 
   _platformGuide(platform) {
+    if (platform === "tiktok") return "แพลตฟอร์ม TikTok วิดีโอ: แคปชันไม่เกิน 2200 ตัวอักษร ใช้ hook สั้นและแฮชแท็กที่เกี่ยวข้องราว 3-5 อัน; ห้ามอ้างว่าลิงก์ในแคปชันคลิกได้";
     if (platform === "line") {
       return "แพลตฟอร์ม LINE Official Account (broadcast): ข้อความกระชับไม่เกิน 400 ตัวอักษร เปิดด้วยประโยคทักทายฉันทะมิตร แฮชแท็กไม่เกิน 2 อัน (หรือไม่ใส่ก็ได้) เพราะส่งพร้อมรูปภาพ";
     }
@@ -3500,7 +3787,7 @@ class SocialAgencyRuntime {
     return parsed;
   }
 
-  async _llmPlanSlots(client, month, postsPerWeek, targetCount) {
+  async _llmPlanSlots(client, month, postsPerWeek, targetCount, strategy = this._planningSignals(client)) {
     const raw = await this._llmChat(
       [
         {
@@ -3510,7 +3797,7 @@ class SocialAgencyRuntime {
         },
         {
           role: "user",
-          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ 18:30 + สุดสัปดาห์ 1 ช่อง 11:00)\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nกระจายสินค้าให้ครบทุกตัวก่อนซ้ำ (ห้ามใช้สินค้าเดิมซ้ำถ้ายังมีตัวที่ไม่ได้ใช้)\nมุมคอนเทนต์ให้หมุนเวียน: ${CONTENT_ANGLES.join(" / ")}\nแพลตฟอร์มส่วนใหญ่ใช้ demo แล้วสลับ facebook/instagram/line บ้าง\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
+          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ ${strategy.weekdayTime} + สุดสัปดาห์ 1 ช่อง ${strategy.weekendTime})\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nกระจายสินค้าให้ครบทุกตัวก่อนซ้ำ (ห้ามใช้สินค้าเดิมซ้ำถ้ายังมีตัวที่ไม่ได้ใช้)\nมุมคอนเทนต์ให้หมุนเวียน: ${CONTENT_ANGLES.join(" / ")}\nแพลตฟอร์มหมุนเวียนตาม ${strategy.platformRotation.join(" / ")} (${strategy.platformSource})\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
         },
       ],
       { json: true, temperature: 0.5, maxTokens: 1400, timeoutMs: 240000 }
@@ -3525,7 +3812,7 @@ class SocialAgencyRuntime {
         time: /^\d{2}:\d{2}$/.test(String(s?.time || "")) ? String(s.time) : "18:30",
         sku: skuSet.has(s?.sku) ? s.sku : client.products[0].sku,
         angle: CONTENT_ANGLES.includes(s?.angle) ? s.angle : CONTENT_ANGLES[Math.floor(Math.random() * CONTENT_ANGLES.length)],
-        platform: PLATFORMS.includes(s?.platform) ? s.platform : "demo",
+        platform: PLATFORMS.includes(s?.platform) && s.platform !== "tiktok" ? s.platform : "demo",
       }))
       .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.date.startsWith(monthPrefix));
   }
@@ -3578,6 +3865,9 @@ class SocialAgencyRuntime {
     if (platform === "line") {
       if (text.length > 420) platformIssue = `ข้อความยาว ${text.length} ตัวอักษร เกินสำหรับ LINE broadcast (~400)`;
       else if (hashtagCount > 2) platformIssue = `แฮชแท็ก ${hashtagCount} อัน เกินกว่าที่ LINE ควรใช้ (0-2)`;
+    } else if (platform === "tiktok") {
+      if (text.length > 2200) platformIssue = `ข้อความ TikTok ยาว ${text.length} ตัวอักษร เกิน 2200`;
+      else if (hashtagCount > 5) platformIssue = `แฮชแท็ก ${hashtagCount} อัน ควรไม่เกิน 5`;
     } else if (platform === "instagram") {
       const firstLine = text.split("\n")[0] || "";
       if (firstLine.length > 90) platformIssue = "hook บรรทัดแรกยาวเกินไป ควรสั้นและดึงดูด";
@@ -3728,7 +4018,7 @@ class SocialAgencyRuntime {
     if (!run) return null;
     const entry = (client.calendar || []).find((e) => e.id === run.entryId);
     const result = mutator(run, client, entry, state);
-    if (["success", "failed", "needs_review"].includes(run.status)) this._releaseRun(run.id);
+    if (["success", "failed", "needs_review", "pending"].includes(run.status)) this._releaseRun(run.id);
     this._syncRunLog(state, run, client.name);
     this._write(state);
     return result;
@@ -3806,6 +4096,8 @@ class SocialAgencyRuntime {
     const { trigger = "manual", force = false, late = false } = options;
     const { state, client, entry } = this._findEntry(clientId, entryId);
     if (entry.inFlight) throw new Error("เวิร์กโฟลว์นี้กำลังรันอยู่แล้ว");
+    if (entry.status === "published" || entry.status === "publishing" || entry.tiktokInitAttemptedAt) throw new Error("รายการนี้เผยแพร่แล้วหรือเริ่มส่งไปแล้ว ไม่สามารถรันซ้ำได้");
+    if (entry.abTestSource) throw new Error("ต้นฉบับนี้ถูกเก็บไว้เป็นแหล่ง A/B แล้ว — รันสองโพสต์ A/B ในปฏิทินแทน");
     const nowIso = new Date().toISOString();
     entry.inFlight = true;
     entry.status = "in_workflow";
@@ -3919,7 +4211,7 @@ class SocialAgencyRuntime {
         .concat(hooks.filter((h) => h && h.trim()).map((h) => ({ text: h.trim(), current: false })));
       for (const s of scored) s.score = scoreViralCaption(s.text + (rest ? "\n" + rest : ""), entry.platform).score;
       scored.sort((a, b) => b.score - a.score);
-      const best = scored[0];
+      const best = (entry.abTest || entry.tiktokPost) ? (scored.find((x) => x.text === (entry.abTest?.hook || capLines[firstIdx]?.trim())) || scored[0]) : scored[0];
       if (best && !best.current && firstIdx >= 0) {
         capLines[firstIdx] = best.text;
         caption = capLines.join("\n");
@@ -3951,7 +4243,7 @@ class SocialAgencyRuntime {
         check: check1,
       };
     });
-    if (check && check.verdict === "fix" && !check.failSafe) {
+    if (check && check.verdict === "fix" && !check.failSafe && !fresh().entry.abTest && !fresh().entry.tiktokPost) {
       for (let pass = 1; pass <= 2; pass += 1) {
         let fixedCaption = null;
         try {
@@ -4050,26 +4342,39 @@ class SocialAgencyRuntime {
         entry.updatedAt = new Date().toISOString();
       }
     });
+    let publishResult = null;
     await this._nodeStep(clientId, runId, "publish", async () => {
       const { client, entry } = fresh();
       const result = await this._publishWithRetry(client, entry, ctx);
+      publishResult = result;
       const patch = {
-        status: "published",
-        publishedAt: new Date().toISOString(),
+        status: result.pending ? "publishing" : "published",
+        ...(result.pending ? { tiktokStatus: "PROCESSING_UPLOAD" } : { publishedAt: new Date().toISOString() }),
         postId: result.postId,
-        publishMode: result.mode,
+        mediaKind: result.mediaKind || "post",
+        publishMode: result.pending ? "pending" : result.mode,
+        ...(result.publishedCaption !== undefined ? { publishedCaption: result.publishedCaption } : {}),
         dryRun: result.mode !== "live",
       };
       this._mutateRun(clientId, runId, (run) => {
-        run.publish = { ...result, at: patch.publishedAt };
+        run.publish = { ...result, at: new Date().toISOString() };
       });
-      const platformLabel = { demo: "Demo", facebook: "Facebook Page", instagram: "Instagram", line: "LINE OA" }[entry.platform] || entry.platform;
+      const platformLabel = { demo: "Demo", facebook: "Facebook Page", instagram: "Instagram", line: "LINE OA", tiktok: "TikTok" }[entry.platform] || entry.platform;
       return {
-        output: `${platformLabel} · โหมด ${result.mode} · ID ${result.postId} · ${result.latencyMs}ms`,
-        detail: `แพลตฟอร์ม: ${platformLabel}\nโหมด: ${result.mode}${result.note ? `\nหมายเหตุ: ${result.note}` : ""}\npost/message ID: ${result.postId}\nเวลาที่ใช้: ${result.latencyMs}ms`,
+        output: `${platformLabel} · ${result.pending ? "รอ TikTok ประมวลผล" : `โหมด ${result.mode}`} · ID ${result.postId} · ${result.latencyMs}ms`,
+        detail: `แพลตฟอร์ม: ${platformLabel}\nโหมด: ${result.mode}${result.note ? `\nหมายเหตุ: ${result.note}` : ""}\n${result.pending ? "publish_id (ยังไม่เผยแพร่)" : "post/message ID"}: ${result.postId}\nเวลาที่ใช้: ${result.latencyMs}ms`,
         entryPatch: patch,
       };
     });
+
+    if (publishResult?.pending) {
+      this._mutateRun(clientId, runId, (run, client, entry) => {
+        run.status = "pending";
+        run.finishedAt = new Date().toISOString();
+        if (entry) { entry.inFlight = false; entry.status = "publishing"; }
+      });
+      return { outcome: "publishing", publishId: publishResult.postId };
+    }
 
     // 10. result
     await this._nodeStep(clientId, runId, "result", async () => {
@@ -4095,7 +4400,7 @@ class SocialAgencyRuntime {
     try {
       return await this._publishEntry(client, entry, ctx);
     } catch (err) {
-      if (this._isTransientError(err)) {
+      if (entry.platform !== "tiktok" && this._isTransientError(err)) {
         await sleep(30 * 1000);
         return await this._publishEntry(client, entry, ctx);
       }
@@ -4110,6 +4415,7 @@ class SocialAgencyRuntime {
 
   useEntryHook(clientId, entryId, index) {
     const { state, entry } = this._findEntry(clientId, entryId);
+    if (entry.abTest || entry.abTestSource || entry.inFlight || entry.tiktokPost || entry.status === "published") throw new Error("ไม่สามารถเปลี่ยน hook ของโพสต์ A/B / โพสต์ที่เผยแพร่หรือกำลังรัน");
     const variants = entry.hookVariants || [];
     const v = variants[Number(index)];
     if (!v || !v.text) throw new Error("ไม่พบ hook ตัวที่เลือก");
@@ -4126,6 +4432,84 @@ class SocialAgencyRuntime {
     entry.updatedAt = new Date().toISOString();
     this._write(state);
     return entry;
+  }
+
+  // Opt-in: replace the unfinished source with two *new* scheduled records.
+  // A/B keeps body/media/platform identical; only the hook and scheduled hour
+  // differ. Source is archived, so three posts cannot publish by accident.
+  createHookExperiment(clientId, entryId, body = {}) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (entry.abTest || entry.abTestSource || entry.inFlight || !["planned", "ready", "needs_review"].includes(entry.status)) {
+      throw new Error("เลือกต้นฉบับที่ยังไม่เผยแพร่และไม่ได้อยู่ในชุด A/B");
+    }
+    if ([entry.imageJob?.status, entry.videoJob?.status].includes("running")) throw new Error("รอสร้างสื่อของต้นฉบับให้เสร็จก่อนสร้าง A/B");
+    if (!["facebook", "instagram"].includes(entry.platform) || !this._connectorConfigured(entry.platform, this._getSecrets(clientId)[entry.platform]) || client.connectors?.[entry.platform]?.dryRun !== false) {
+      throw new Error("A/B ต้องเป็นโพสต์ Facebook/Instagram ที่ตั้งค่า live (ปิด dry-run) แล้ว");
+    }
+    if (entry.platform === "instagram" && !entry.image && !entry.video) throw new Error("A/B Instagram ต้องมีรูปหรือวิดีโอแนบอยู่ก่อน");
+    const caption = String(entry.caption || "");
+    if (!caption.trim()) throw new Error("ต้องมีแคปชันและ hookVariants ก่อนสร้าง A/B (รัน workflow ก่อน)");
+    const variants = Array.isArray(entry.hookVariants) ? entry.hookVariants : [];
+    const aIndex = Number(body.firstIndex);
+    const bIndex = Number(body.secondIndex);
+    if (!Number.isInteger(aIndex) || !Number.isInteger(bIndex) || aIndex === bIndex || !variants[aIndex]?.text || !variants[bIndex]?.text || variants[aIndex].text.trim() === variants[bIndex].text.trim()) {
+      throw new Error("เลือก hook 2 ตัวที่ไม่ซ้ำกัน");
+    }
+    const date = String(body.date || "");
+    const morning = String(body.morning || "09:00");
+    const evening = String(body.evening || "18:30");
+    const dateMs = Date.parse(`${date}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(dateMs) || new Date(dateMs).toISOString().slice(0, 10) !== date ||
+        !/^\d{2}:\d{2}$/.test(morning) || !/^\d{2}:\d{2}$/.test(evening) ||
+        !/^0[6-9]:[0-5]\d$|^1[01]:[0-5]\d$/.test(morning) || !/^(1[6-9]|2[0-2]):[0-5]\d$/.test(evening)) {
+      throw new Error("เลือกวันที่จริงและเวลาเช้า 06:00–11:59 / เวลาเย็น 16:00–22:59");
+    }
+    if ([morning, evening].some((time) => bangkokToUtcMs(date, time) <= Date.now() + 5 * 60 * 1000)) throw new Error("ทั้งสองช่วงเวลาต้องเป็นอนาคตอย่างน้อย 5 นาที");
+    if ((client.calendar || []).some((e) => e.date === date && [morning, evening].includes(e.time))) throw new Error("มีโพสต์ในช่องเวลานี้แล้ว เลือกวันหรือเวลาอื่น");
+    const now = new Date().toISOString();
+    const testId = newId("ab");
+    const created = [
+      { variant: "A", index: aIndex, time: morning },
+      { variant: "B", index: bIndex, time: evening },
+    ].map(({ variant, index, time }) => {
+      const hook = String(variants[index].text).trim();
+      const text = withFirstLine(caption, hook);
+      const score = scoreViralCaption(text, entry.platform);
+      return {
+        id: newId("cal"), date, time, platform: entry.platform,
+        sku: entry.sku, productName: entry.productName, angle: entry.angle,
+        pillar: entry.pillar || "", brief: entry.brief || "",
+        caption: text, captionManual: true, captionSource: "ab-test",
+        hook, hookVariants: variants.map((h, i) => ({ text: h.text, score: h.score, used: i === index })),
+        viralScore: { score: score.score, breakdown: score.breakdown, gradedAt: now },
+        ...(entry.image ? { image: { ...entry.image } } : {}),
+        ...(entry.video ? { video: { ...entry.video } } : {}),
+        abTest: { id: testId, variant, sourceEntryId: entry.id, hook },
+        status: "planned", createdAt: now, updatedAt: now,
+      };
+    });
+    entry.abTestSource = { id: testId, childIds: created.map((x) => x.id), previousStatus: entry.status, createdAt: now };
+    entry.status = "rejected"; // archived source is never eligible for scheduler
+    entry.updatedAt = now;
+    client.calendar.push(...created);
+    this._write(state);
+    return { testId, created, sourceEntryId: entry.id };
+  }
+
+  cancelHookExperiment(clientId, testId) {
+    const { state, client } = this._resolveClient(clientId);
+    const source = client.calendar.find((e) => e.abTestSource?.id === testId);
+    if (!source) throw new Error("ไม่พบต้นฉบับ A/B นี้");
+    const children = (client.calendar || []).filter((e) => e.abTest?.id === testId);
+    if (children.some((e) => e.inFlight || e.status === "publishing" || e.status === "published")) {
+      throw new Error("ยกเลิก A/B ไม่ได้เมื่อมีโพสต์กำลังรันหรือเผยแพร่แล้ว");
+    }
+    client.calendar = client.calendar.filter((e) => e.abTest?.id !== testId);
+    source.status = source.abTestSource.previousStatus || "planned";
+    source.updatedAt = new Date().toISOString();
+    delete source.abTestSource;
+    this._write(state);
+    return { restoredEntryId: source.id, deleted: children.map((e) => e.id) };
   }
 
   async _llmRepurposeCaption({ caption, from, to, product, angle, pillar, tone }) {
@@ -4220,7 +4604,7 @@ class SocialAgencyRuntime {
 
   rejectEntry(clientId, entryId) {
     const { state, client, entry } = this._findEntry(clientId, entryId);
-    if (entry.inFlight) throw new Error("รายการนี้กำลังรันอยู่");
+    if (entry.inFlight || entry.tiktokInitAttemptedAt) throw new Error("รายการนี้กำลังส่ง TikTok หรือเคยเริ่มส่งแล้ว — ห้ามเปลี่ยนสถานะ");
     entry.status = "rejected";
     entry.updatedAt = new Date().toISOString();
     this._write(state);
@@ -4331,11 +4715,21 @@ class SocialAgencyRuntime {
     return typeof value === "string" && value.startsWith("••••");
   }
 
+  static _graphVersion(value) {
+    const version = value || FB_API_VERSION;
+    if (!Object.hasOwn(GRAPH_VERSION_EXPIRY, version)) throw new Error("Graph API version ไม่รองรับ — เลือก v21.0 ถึง v26.0");
+    if (GRAPH_VERSION_EXPIRY[version] && Date.now() >= Date.parse(`${GRAPH_VERSION_EXPIRY[version]}T00:00:00Z`)) {
+      throw new Error(`Graph API ${version} หมดอายุแล้ว — เลือกเวอร์ชันใหม่ใน Connectors`);
+    }
+    return version;
+  }
+
   _connectorConfigured(platform, secrets) {
     const s = secrets || {};
     if (platform === "facebook") return Boolean(s.pageId && s.accessToken);
     if (platform === "instagram") return Boolean(s.igUserId && s.accessToken);
     if (platform === "line") return Boolean(s.channelAccessToken);
+    if (platform === "tiktok") return Boolean(s.accessToken);
     return platform === "demo";
   }
 
@@ -4354,6 +4748,8 @@ class SocialAgencyRuntime {
         accessToken: mask(secrets.facebook?.accessToken),
         hasToken: Boolean(secrets.facebook?.accessToken),
         ...meta.facebook,
+        apiVersion: meta.facebook?.apiVersion || FB_API_VERSION,
+        versionExpiresAt: GRAPH_VERSION_EXPIRY[meta.facebook?.apiVersion || FB_API_VERSION],
       },
       instagram: {
         configured: this._connectorConfigured("instagram", secrets.instagram),
@@ -4361,8 +4757,18 @@ class SocialAgencyRuntime {
         accessToken: mask(secrets.instagram?.accessToken),
         hasToken: Boolean(secrets.instagram?.accessToken),
         imgbbApiKey: mask(secrets.instagram?.imgbbApiKey),
+        insightsAccessToken: mask(secrets.instagram?.insightsAccessToken),
+        hasInsightsToken: Boolean(secrets.instagram?.insightsAccessToken),
         hasImgbbKey: Boolean(secrets.instagram?.imgbbApiKey),
         ...meta.instagram,
+        apiVersion: meta.instagram?.apiVersion || FB_API_VERSION,
+        versionExpiresAt: GRAPH_VERSION_EXPIRY[meta.instagram?.apiVersion || FB_API_VERSION],
+      },
+      tiktok: {
+        configured: this._connectorConfigured("tiktok", secrets.tiktok),
+        accessToken: mask(secrets.tiktok?.accessToken),
+        hasToken: Boolean(secrets.tiktok?.accessToken),
+        ...meta.tiktok,
       },
       line: {
         configured: this._connectorConfigured("line", secrets.line),
@@ -4378,8 +4784,9 @@ class SocialAgencyRuntime {
     const incoming = (body && body.connectors) || {};
     const platformSecretFields = {
       facebook: ["pageId", "accessToken"],
-      instagram: ["igUserId", "accessToken", "imgbbApiKey"],
+      instagram: ["igUserId", "accessToken", "insightsAccessToken", "imgbbApiKey"],
       line: ["channelAccessToken"],
+      tiktok: ["accessToken"],
     };
     const secrets = this._getSecrets(client.id);
     for (const [platform, fields] of Object.entries(platformSecretFields)) {
@@ -4392,6 +4799,10 @@ class SocialAgencyRuntime {
       }
       secrets[platform] = current;
       if (typeof patch.dryRun === "boolean") client.connectors[platform].dryRun = patch.dryRun;
+      if ((platform === "facebook" || platform === "instagram") && patch.apiVersion !== undefined) {
+        client.connectors[platform].apiVersion = SocialAgencyRuntime._graphVersion(patch.apiVersion);
+      }
+      if (platform === "tiktok" && typeof patch.auditApproved === "boolean") client.connectors.tiktok.auditApproved = patch.auditApproved;
       if (platform === "line" && typeof patch.sendImageTextStack === "boolean") {
         client.connectors.line.sendImageTextStack = patch.sendImageTextStack;
       }
@@ -4428,22 +4839,28 @@ class SocialAgencyRuntime {
       if (platform === "demo") {
         result = { ok: true, message: "Demo publisher พร้อมใช้งานเสมอ — จำลองการเผยแพร่ให้ทุกลูกค้า" };
       } else if (platform === "facebook") {
+        const version = SocialAgencyRuntime._graphVersion(override.apiVersion || client.connectors?.facebook?.apiVersion);
         if (!merged.pageId || !merged.accessToken) throw new Error("กรอก Page ID และ Page Access Token ก่อนทดสอบ");
         const res = await SocialAgencyRuntime._https({
           host: FB_GRAPH_HOST,
-          path: `/${FB_API_VERSION}/${encodeURIComponent(merged.pageId)}?fields=name&access_token=${encodeURIComponent(merged.accessToken)}`,
+          path: `/${version}/${encodeURIComponent(merged.pageId)}?fields=name&access_token=${encodeURIComponent(merged.accessToken)}`,
         });
         if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
         result = { ok: true, message: `เชื่อมต่อสำเร็จ — หน้า "${res.json?.name || merged.pageId}"`, name: res.json?.name };
       } else if (platform === "instagram") {
+        const version = SocialAgencyRuntime._graphVersion(override.apiVersion || client.connectors?.instagram?.apiVersion);
         if (!merged.igUserId || !merged.accessToken) throw new Error("กรอก IG User ID และ Access Token ก่อนทดสอบ");
         const res = await SocialAgencyRuntime._https({
           host: FB_GRAPH_HOST,
-          path: `/${FB_API_VERSION}/${encodeURIComponent(merged.igUserId)}?fields=username&access_token=${encodeURIComponent(merged.accessToken)}`,
+          path: `/${version}/${encodeURIComponent(merged.igUserId)}?fields=username&access_token=${encodeURIComponent(merged.accessToken)}`,
         });
         if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Instagram ตอบ HTTP ${res.status}`);
         const imgbbNote = merged.imgbbApiKey ? "" : " (ยังไม่ได้ใส่ imgbb API key — จะอัปโหลดรูปเป็นสาธารณะไม่ได้)";
         result = { ok: true, message: `เชื่อมต่อสำเร็จ — บัญชี @${res.json?.username || merged.igUserId}${imgbbNote}`, name: res.json?.username };
+      } else if (platform === "tiktok") {
+        if (!merged.accessToken) throw new Error("ใส่ User Access Token ที่อนุญาต video.publish ก่อน");
+        const creator = await this._tiktokCreatorInfo(merged.accessToken);
+        result = { ok: true, message: `เชื่อมต่อ @${creator.creator_username || "TikTok"} (การทดสอบนี้ไม่ยืนยันว่าผ่าน audit)`, name: creator.creator_username };
       } else if (platform === "line") {
         if (!merged.channelAccessToken) throw new Error("กรอก Messaging API Channel Access Token ก่อนทดสอบ");
         const res = await SocialAgencyRuntime._https({
@@ -4468,6 +4885,42 @@ class SocialAgencyRuntime {
       c.connectors[platform].testOk = true;
     });
     return result;
+  }
+
+  // Only public outbound caption links get tracking parameters. Media URLs,
+  // product evidence URLs, and the editable draft caption remain untouched.
+  static _tagCaptionLinks(caption, clientId, platform, entryId) {
+    const slug = String(clientId || "client").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "client";
+    return String(caption || "").replace(/https?:\/\/[^\s<>"'`]+/gi, (match) => {
+      const suffix = (match.match(/[.,;!?\]\)}”ฯ]+$/u) || [""])[0];
+      const raw = match.slice(0, match.length - suffix.length);
+      try {
+        const url = new URL(raw);
+        if (!url.hostname || !["http:", "https:"].includes(url.protocol) || url.username || url.password) return match;
+        url.searchParams.set("utm_source", platform);
+        url.searchParams.set("utm_medium", "social");
+        url.searchParams.set("utm_campaign", slug.slice(0, 80));
+        url.searchParams.set("utm_content", entryId);
+        return url.toString() + suffix;
+      } catch { return match; }
+    });
+  }
+
+  buildTrackingReport(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const rows = [];
+    for (const entry of client.calendar || []) {
+      if (entry.status !== "published" || entry.publishMode !== "live" || !entry.publishedCaption) continue;
+      for (const match of entry.publishedCaption.matchAll(/https?:\/\/[^\s<>"'`]+/gi)) {
+        const urlText = match[0].replace(/[.,;!?\]\)}”ฯ]+$/u, "");
+        try {
+          const url = new URL(urlText);
+          if (url.searchParams.get("utm_content") !== entry.id || url.searchParams.get("utm_source") !== entry.platform) continue;
+          rows.push({ entryId: entry.id, date: entry.date, platform: entry.platform, url: url.href });
+        } catch { /* bad/partial URL */ }
+      }
+    }
+    return { rows, byPlatform: Object.fromEntries(PLATFORMS.map((p) => [p, rows.filter((r) => r.platform === p).length])) };
   }
 
   // ── publishers ──
@@ -4527,6 +4980,7 @@ class SocialAgencyRuntime {
 
   startEntryImageGen(clientId, entryId) {
     const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (entry.abTest || entry.abTestSource) throw new Error("A/B แชร์สื่อเดียวกันอยู่ — อย่าสร้างสื่อทับในชุดทดสอบ");
     if (entry.imageJob && entry.imageJob.status === "running") return { status: "running", entryId: entry.id };
     const now = new Date().toISOString();
     entry.imageJob = { status: "running", startedAt: now, finishedAt: null, error: "" };
@@ -4736,6 +5190,8 @@ class SocialAgencyRuntime {
 
   startEntryVideoGen(clientId, entryId) {
     const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (entry.inFlight || entry.tiktokInitAttemptedAt) throw new Error("กำลังส่งโพสต์ TikTok แล้ว ไม่สามารถเปลี่ยนไฟล์วิดีโอ");
+    if (entry.abTest || entry.abTestSource) throw new Error("A/B แชร์สื่อเดียวกันอยู่ — อย่าสร้างสื่อทับในชุดทดสอบ");
     if (!entry.image || !entry.image.path) throw new Error("สร้างภาพนิ่งก่อน แล้วค่อยทำภาพเคลื่อนไหวครับ");
     try {
       if (this._reconcileEntryVideo(entry)) this._write(state);
@@ -4836,6 +5292,7 @@ class SocialAgencyRuntime {
     if (old && old.path && old.path !== prepared.outputPath) { try { fs.unlinkSync(old.path); } catch {} }
     const now = new Date().toISOString();
     third.entry.video = { path: prepared.outputPath || "", url, jobId: job.id, seconds: 5, createdAt: now };
+    delete third.entry.tiktokPost;
     third.entry.videoJob = { status: "done", jobId: job.id, progress: 100, startedAt: (third.entry.videoJob && third.entry.videoJob.startedAt) || now, finishedAt: now, error: "" };
     third.entry.updatedAt = now;
     this._write(third.state);
@@ -4890,39 +5347,36 @@ class SocialAgencyRuntime {
     return { buffer, filename };
   }
 
-  static _parsePublicFileUrl(text) {
-    const url = String(text || "").trim().split(/\s+/)[0] || "";
-    if (!/^https:\/\//.test(url)) throw new Error("อัปโหลดวิดีโอขึ้นโฮสต์สาธารณะไม่สำเร็จ");
-    return url;
-  }
-
-  async _uploadVideoPublic(buffer, filename) {
-    const { body, contentType } = SocialAgencyRuntime._multipart({}, "file", buffer, filename || "clip.mp4");
-    const res = await SocialAgencyRuntime._https({
-      method: "POST",
-      host: VIDEO_PUBLIC_HOST,
-      path: "/",
-      headers: { "Content-Type": contentType, "User-Agent": "LUKE-AI-STUDIO/1.0" },
-      body,
-      timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS,
-    });
-    if (res.status >= 300) throw new Error(`อัปโหลดวิดีโอขึ้นโฮสต์สาธารณะไม่สำเร็จ (HTTP ${res.status})`);
-    return SocialAgencyRuntime._parsePublicFileUrl(res.text);
-  }
-
-  async _publicVideoUrl(client, entry) {
-    const v = entry.video || {};
-    if (v.publicUrl && /^https:\/\//.test(v.publicUrl)) return v.publicUrl;
-    const file = this._entryVideoFile(entry);
-    if (!file) throw new Error("ไม่มีไฟล์วิดีโอแนบอยู่ในรายการนี้");
-    const url = await this._uploadVideoPublic(file.buffer, file.filename);
+  // LINE requires a stable public HTTPS URL. Never upload customer media to an
+  // anonymous third-party host; IG and FB can accept the local file directly.
+  static _mediaUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
     try {
-      this._mutateClient(client.id, (c) => {
-        const e = (c.calendar || []).find((x) => x.id === entry.id);
-        if (e && e.video) e.video.publicUrl = url;
-      });
-    } catch {}
+      const url = new URL(raw);
+      if (url.protocol !== "https:" || !url.hostname || url.hostname === "0x0.st" || url.username || url.password || raw.length > 2048) throw new Error("invalid URL");
+      return raw;
+    } catch {
+      throw new Error("URL สื่อต้องเป็น HTTPS ที่เข้าถึงได้จากภายนอก (ไม่รองรับ 0x0.st)");
+    }
+  }
+
+  _publicVideoUrl(entry) {
+    const url = SocialAgencyRuntime._mediaUrl(entry.video?.publicUrl);
+    if (!url) throw new Error("วิดีโอต้องมี publicUrl HTTPS จากโฮสต์ของคุณ (LINE ต้องใช้ URL; IG ใช้ไฟล์ในเครื่องได้)");
     return url;
+  }
+
+  async _uploadInstagramVideo(containerId, file, token, version) {
+    const res = await SocialAgencyRuntime._https({
+      method: "POST", host: IG_UPLOAD_HOST,
+      path: `/ig-api-upload/${version}/${encodeURIComponent(containerId)}`,
+      headers: { Authorization: `OAuth ${token}`, offset: "0", file_size: String(file.buffer.length), "Content-Type": "application/octet-stream" },
+      body: file.buffer, timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS,
+    });
+    if (res.status >= 300 || res.json?.error || res.json?.success !== true) {
+      throw new Error(res.json?.error?.message || res.json?.debug_info?.message || `Instagram rupload ตอบ HTTP ${res.status}`);
+    }
   }
 
   _bumpInstagramCounter(clientId) {
@@ -4934,6 +5388,208 @@ class SocialAgencyRuntime {
       else m.counter = { count: 1, windowStart: new Date().toISOString() };
       m.lastPublishAt = new Date().toISOString();
     });
+  }
+
+  // TikTok Direct Post: an explicit per-entry export, not a generic scheduler opt-in.
+  // The app does not implement OAuth: only a user-provided video.publish User Access Token is supported.
+  async _tiktokRequest(token, endpoint, body) {
+    const res = await SocialAgencyRuntime._https({ method: "POST", host: TIKTOK_HOST,
+      path: `/v2/post/publish/${endpoint}/`,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify(body), timeoutMs: 30000 });
+    if (res.status >= 300 || res.json?.error?.code !== "ok") {
+      throw new Error(`TikTok ${endpoint}: ${res.json?.error?.code || `HTTP ${res.status}`} ${res.json?.error?.message || ""}`.trim());
+    }
+    return res.json?.data || {};
+  }
+
+  async _tiktokCreatorInfo(token) {
+    const info = await this._tiktokRequest(token, "creator_info/query", {});
+    if (!info.creator_username || !Array.isArray(info.privacy_level_options)) throw new Error("TikTok ไม่ส่ง creator info / privacy levels กลับมา");
+    return info;
+  }
+
+  async getTikTokCreatorInfo(clientId, entryId) {
+    const { client } = this._resolveClient(clientId);
+    const token = this._getSecrets(client.id).tiktok?.accessToken;
+    if (!token) throw new Error("บันทึก TikTok User Access Token (scope video.publish) ใน Connectors ก่อน");
+    const info = await this._tiktokCreatorInfo(token);
+    return {
+      creator_username: info.creator_username,
+      creator_nickname: info.creator_nickname,
+      ...(entryId ? { captionPreview: (() => {
+        const entry = this._findEntry(client.id, entryId).entry;
+        if (entry.platform !== "tiktok") throw new Error("รายการนี้ไม่ใช่ TikTok");
+        return SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, "tiktok", entryId);
+      })() } : {}),
+      privacy_level_options: info.privacy_level_options,
+      max_video_post_duration_sec: info.max_video_post_duration_sec,
+      comment_disabled: Boolean(info.comment_disabled),
+      duet_disabled: Boolean(info.duet_disabled),
+      stitch_disabled: Boolean(info.stitch_disabled),
+    };
+  }
+
+  async consentTikTokPost(clientId, entryId, body = {}) {
+    const { client, entry } = this._findEntry(clientId, entryId);
+    if (entry.platform !== "tiktok" || entry.inFlight || entry.tiktokInitAttemptedAt || ["publishing", "published"].includes(entry.status)) throw new Error("รายการนี้ไม่พร้อมส่ง TikTok หรือเริ่ม upload ไปแล้ว");
+    if (body.uploadConsent !== true || body.musicUsageConfirmed !== true) throw new Error("ต้องยืนยันการส่งวิดีโอและสิทธิ์การใช้เสียง/เพลงอย่างชัดเจน");
+    if (!String(entry.caption || "").trim()) throw new Error("แก้ไขแคปชันก่อนยินยอมส่ง TikTok");
+    const file = this._entryVideoFile(entry);
+    if (!file || !/\.(mp4|mov|webm)$/i.test(file.filename)) throw new Error("TikTok ต้องใช้ไฟล์วิดีโอ MP4, MOV หรือ WebM ที่สร้างไว้ในเครื่อง (ไม่ใช้ URL รูป/วิดีโอ)");
+    const info = await this.getTikTokCreatorInfo(client.id);
+    if (body.creatorUsername !== info.creator_username) throw new Error("บัญชี TikTok เปลี่ยนไป — เปิดหน้าเลือกใหม่");
+    const privacy = String(body.privacyLevel || "");
+    if (!privacy || !info.privacy_level_options.includes(privacy)) throw new Error("เลือก privacy จากตัวเลือกปัจจุบันของบัญชี (ไม่มีค่าเริ่มต้น)");
+    const yourBrand = body.yourBrand === true;
+    const brandedContent = body.brandedContent === true;
+    if (body.commercialContent === true && !yourBrand && !brandedContent) throw new Error("เปิด Commercial Content แล้วต้องเลือก Your brand หรือ Branded content อย่างน้อยหนึ่งรายการ");
+    if ((yourBrand || brandedContent) && body.commercialContent !== true) throw new Error("ต้องเปิด Commercial Content ก่อนเลือกรายละเอียดสินค้า/แบรนด์");
+    if (brandedContent && privacy === "SELF_ONLY") throw new Error("Branded content ไม่สามารถใช้ SELF_ONLY ได้");
+    if (privacy !== "SELF_ONLY" && client.connectors?.tiktok?.auditApproved !== true) throw new Error("แอปที่ยังไม่ผ่าน TikTok audit อนุญาตเฉพาะ SELF_ONLY; ห้ามเลือก public");
+    if (Number(entry.video?.seconds) > Number(info.max_video_post_duration_sec || 0)) throw new Error("วิดีโอยาวเกินขีดจำกัดของบัญชี TikTok");
+    const caption = SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, "tiktok", entry.id);
+    if (caption.length > 2200) throw new Error("แคปชันหลังเติม UTM เกิน 2200 ตัวอักษร — แก้ไขก่อนยินยอม");
+    if (body.previewCaption !== caption) throw new Error("แคปชันตัวอย่างเปลี่ยนไป — รีเฟรชเพื่ออ่านก่อนยินยอม");
+    const post = {
+      creatorUsername: info.creator_username, privacyLevel: privacy, yourBrand, brandedContent,
+      disableComment: info.comment_disabled || body.disableComment === true,
+      disableDuet: info.duet_disabled || body.disableDuet === true,
+      disableStitch: info.stitch_disabled || body.disableStitch === true,
+      captionHash: crypto.createHash("sha256").update(caption).digest("hex"),
+      videoHash: crypto.createHash("sha256").update(file.buffer).digest("hex"),
+      consentedAt: new Date().toISOString(),
+    };
+    this._mutateClient(client.id, (c) => {
+      const target = c.calendar.find((e) => e.id === entryId);
+      if (!target || target.inFlight || target.tiktokInitAttemptedAt) throw new Error("รายการเปลี่ยนระหว่างขอยินยอม");
+      target.tiktokPost = post;
+      target.captionManual = true; // keep exactly the user-approved caption in the workflow
+      target.updatedAt = new Date().toISOString();
+    });
+    return { ...post, videoHash: undefined, captionHash: undefined };
+  }
+
+  async _publishTikTok(client, entry, secret, meta, caption) {
+    if (entry.tiktokInitAttemptedAt || entry.tiktokPublishId) throw new Error("TikTok เคยเริ่มส่งรายการนี้แล้ว — ตรวจสอบสถานะก่อน ห้ามเริ่มส่งซ้ำ");
+    const consent = entry.tiktokPost;
+    if (!consent) throw new Error("TikTok ต้องเลือก privacy และยืนยันการส่งวิดีโอในปฏิทินก่อน (ห้าม auto-post)");
+    if (consent.privacyLevel !== "SELF_ONLY" && !meta.auditApproved) throw new Error("TikTok public ต้องผ่าน audit ก่อน; ใช้ SELF_ONLY เท่านั้น");
+    const file = this._entryVideoFile(entry);
+    if (!file || !/\.(mp4|mov|webm)$/i.test(file.filename)) throw new Error("TikTok ต้องใช้ไฟล์วิดีโอ MP4, MOV หรือ WebM ในเครื่อง");
+    if (crypto.createHash("sha256").update(caption).digest("hex") !== consent.captionHash ||
+        crypto.createHash("sha256").update(file.buffer).digest("hex") !== consent.videoHash) throw new Error("แคปชันหรือไฟล์วิดีโอเปลี่ยนไป — ต้องยืนยันการส่ง TikTok ใหม่");
+    if (caption.length > 2200) throw new Error("แคปชัน TikTok เกิน 2200 ตัวอักษร");
+    const info = await this._tiktokCreatorInfo(secret.accessToken);
+    if (info.creator_username !== consent.creatorUsername || !info.privacy_level_options.includes(consent.privacyLevel)) throw new Error("บัญชี/ตัวเลือก privacy TikTok เปลี่ยนไป — ต้องยืนยันใหม่");
+    if (consent.brandedContent && consent.privacyLevel === "SELF_ONLY") throw new Error("Branded content ไม่สามารถใช้ SELF_ONLY");
+    if (Number(entry.video?.seconds) > Number(info.max_video_post_duration_sec || 0)) throw new Error("วิดีโอยาวเกินขีดจำกัด TikTok");
+    const size = file.buffer.length;
+    // TikTok requires 5-64 MB chunks except for files under 5 MB. Merge the remainder into the last chunk.
+    const count = Math.max(1, Math.floor(size / TIKTOK_CHUNK_BYTES));
+    const chunkSize = count === 1 ? size : TIKTOK_CHUNK_BYTES;
+    const mime = /\.mov$/i.test(file.filename) ? "video/quicktime" : /\.webm$/i.test(file.filename) ? "video/webm" : "video/mp4";
+    // Persist BEFORE init: a network failure can be ambiguous; never silently re-init and duplicate a post.
+    this._mutateClient(client.id, (c) => { c.calendar.find((e) => e.id === entry.id).tiktokInitAttemptedAt = new Date().toISOString(); });
+    const started = Date.now();
+    const data = await this._tiktokRequest(secret.accessToken, "video/init", {
+      post_info: {
+        title: caption, privacy_level: consent.privacyLevel,
+        disable_comment: consent.disableComment || Boolean(info.comment_disabled),
+        disable_duet: consent.disableDuet || Boolean(info.duet_disabled),
+        disable_stitch: consent.disableStitch || Boolean(info.stitch_disabled),
+        brand_content_toggle: consent.brandedContent, brand_organic_toggle: consent.yourBrand,
+        is_aigc: true, // clips generated by this app are AI-generated
+      },
+      source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: chunkSize, total_chunk_count: count },
+    });
+    const publishId = data.publish_id;
+    let uploadUrl;
+    try { uploadUrl = new URL(data.upload_url); } catch {}
+    if (!publishId) throw new Error("TikTok init ไม่ส่ง publish_id — ผลลัพธ์คลุมเครือ ห้ามส่งซ้ำ");
+    this._mutateClient(client.id, (c) => {
+      const e = c.calendar.find((x) => x.id === entry.id);
+      e.tiktokPublishId = publishId;
+      e.tiktokStatus = "PROCESSING_UPLOAD";
+      e.status = "publishing";
+    });
+    let uploadWarning = "";
+    if (uploadUrl?.protocol !== "https:" || uploadUrl?.hostname !== TIKTOK_UPLOAD_HOST || uploadUrl.username || uploadUrl.password) {
+      uploadWarning = "TikTok คืน upload URL ที่ไม่อนุญาต; ไม่ส่งไฟล์ (ตรวจสอบ publish_id)";
+    } else {
+      try {
+        for (let i = 0; i < count; i++) {
+          const start = i * TIKTOK_CHUNK_BYTES;
+          const end = i === count - 1 ? size : start + TIKTOK_CHUNK_BYTES;
+          const res = await SocialAgencyRuntime._https({ method: "PUT", host: uploadUrl.hostname,
+            path: uploadUrl.pathname + uploadUrl.search,
+            headers: { "Content-Type": mime, "Content-Range": `bytes ${start}-${end - 1}/${size}` },
+            body: file.buffer.subarray(start, end), timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS });
+          if (res.status !== (i === count - 1 ? 201 : 206)) throw new Error(`TikTok upload ตอบ HTTP ${res.status}`);
+        }
+        this._mutateClient(client.id, (c) => { c.calendar.find((e) => e.id === entry.id).tiktokUploadComplete = true; });
+      } catch (err) {
+        // Do not retry PUT/init automatically: it may have succeeded remotely. Status fetch is the only safe next step.
+        uploadWarning = `upload ไม่แน่นอน: ${err.message}; ห้ามส่งซ้ำอัตโนมัติ`;
+      }
+    }
+    return { platform: "tiktok", mode: "live", pending: true, postId: publishId, publishId,
+      publishedCaption: caption, mediaKind: "video", latencyMs: Date.now() - started,
+      note: `TikTok รับคำขอแล้ว (${consent.privacyLevel}); ยังไม่เผยแพร่ ${uploadWarning}`.trim() };
+  }
+
+  async _maybeReconcileTikTok(force = false) {
+    const all = this._read().clients.flatMap((c) => (c.calendar || [])
+      .filter((e) => e.platform === "tiktok" && e.tiktokPublishId && e.status === "publishing" && !e.inFlight &&
+        (force || !e.tiktokStatusCheckedAt || Date.now() - Date.parse(e.tiktokStatusCheckedAt) >= 60000))
+      .map((e) => ({ clientId: c.id, entryId: e.id, publishId: e.tiktokPublishId })));
+    for (const item of all.slice(0, 5)) {
+      const checkedAt = new Date().toISOString();
+      try {
+        const token = this._getSecrets(item.clientId).tiktok?.accessToken;
+        if (!token) throw new Error("TikTok token หายไป — ใส่ใหม่เพื่อเช็กสถานะ");
+        const data = await this._tiktokRequest(token, "status/fetch", { publish_id: item.publishId });
+        this._mutateClient(item.clientId, (c, state) => {
+          const e = c.calendar.find((x) => x.id === item.entryId);
+          if (!e || e.tiktokPublishId !== item.publishId || e.status !== "publishing") return;
+          e.tiktokStatusCheckedAt = checkedAt;
+          e.updatedAt = checkedAt;
+          e.tiktokStatus = data.status || "UNKNOWN";
+          e.tiktokStatusError = "";
+          if (data.status === "PUBLISH_COMPLETE") {
+            e.status = "published"; e.publishMode = "live"; e.publishedAt = checkedAt;
+            // Public ID may not be available for private posts. publish_id is NOT a public post ID.
+            e.tiktokPublicPostIds = data.publicaly_available_post_id || [];
+          } else if (data.status === "FAILED") {
+            e.status = "failed"; e.publishMode = "failed";
+            e.tiktokStatusError = String(data.fail_reason || "TikTok ประมวลผลไม่สำเร็จ");
+          }
+          const run = (c.workflowRuns || []).find((r) => r.id === e.workflowRunId);
+          if (run && ["PUBLISH_COMPLETE", "FAILED"].includes(data.status)) {
+            run.status = data.status === "PUBLISH_COMPLETE" ? "success" : "failed";
+            run.finishedAt = checkedAt;
+            run.publish = { ...(run.publish || {}), status: data.status };
+            run.durationMs = Date.parse(checkedAt) - Date.parse(run.startedAt);
+            const result = run.nodes.find((n) => n.key === "result");
+            if (result) {
+              result.status = data.status === "PUBLISH_COMPLETE" ? "done" : "failed";
+              result.output = data.status === "PUBLISH_COMPLETE" ? "TikTok ยืนยันเผยแพร่แล้ว" : `TikTok ล้มเหลว: ${e.tiktokStatusError}`;
+              result.detail = result.output;
+              result.finishedAt = checkedAt;
+            }
+            this._syncRunLog(state, run, c.name);
+          }
+        });
+      } catch (err) {
+        this._mutateClient(item.clientId, (c) => {
+          const e = c.calendar.find((x) => x.id === item.entryId);
+          if (e && e.tiktokPublishId === item.publishId) {
+            e.tiktokStatusCheckedAt = checkedAt;
+            e.tiktokStatusError = String(err.message || err).slice(0, 300);
+          }
+        });
+      }
+    }
   }
 
   async _publishEntry(client, entry, ctx) {
@@ -4950,22 +5606,33 @@ class SocialAgencyRuntime {
     // Passing the whole map made `configured` always false, so publishing silently dry-ran forever.
     const configured = this._connectorConfigured(platform, secret);
     const dueMs = bangkokToUtcMs(entry.date, entry.time);
-    const manualEarly = ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
+    const manualEarly = platform !== "tiktok" && ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
     const live = configured && meta.dryRun === false && !manualEarly;
+    if (platform === "tiktok") {
+      if (entry.tiktokInitAttemptedAt || entry.tiktokPublishId) throw new Error("TikTok เริ่มส่งรายการนี้แล้ว — ตรวจสอบสถานะก่อน ห้ามส่งซ้ำ");
+      if (!entry.tiktokPost) throw new Error("TikTok ต้องเลือก privacy และยืนยันการส่งวิดีโอในปฏิทินก่อน (ห้าม auto-post)");
+      if (!this._entryVideoFile(entry)) throw new Error("TikTok ต้องมีไฟล์วิดีโอในเครื่องก่อนรัน แม้เป็น dry-run");
+    }
     if (!live) return this._dryPublish(platform, configured);
 
+    const caption = SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, platform, entry.id);
+    if (caption !== String(entry.caption || "") && ((platform === "line" && caption.length > 400) || (platform === "instagram" && caption.length > 2200))) {
+      throw new Error(`ลิงก์ UTM ทำให้แคปชันเกิน ${platform === "line" ? 400 : 2200} ตัวอักษร — ย่อข้อความ/ลิงก์ก่อนเผยแพร่`);
+    }
     const t0 = Date.now();
+    const version = (platform === "facebook" || platform === "instagram")
+      ? SocialAgencyRuntime._graphVersion(meta.apiVersion) : null;
+    if (platform === "tiktok") return this._publishTikTok(client, entry, secret, meta, caption);
     if (platform === "facebook") {
       if (meta.lastPublishAt && Date.now() - Date.parse(meta.lastPublishAt) < FB_MIN_INTERVAL_MS) {
         throw new Error("Facebook Page ควรเว้นจังหวะโพสต์อย่างน้อย 5 นาที — ลองอีกครั้งเร็วๆ นี้");
       }
-      let videoFallbackNote = "";
       if (this._selectPublishMedia(entry) === "video") {
         try {
           const file = this._entryVideoFile(entry);
           if (!file) throw new Error("no video file");
           const { body: vbody, contentType: vct } = SocialAgencyRuntime._multipart(
-            { description: entry.caption || "", access_token: secret.accessToken },
+            { description: caption, access_token: secret.accessToken },
             "source",
             file.buffer,
             file.filename
@@ -4973,7 +5640,7 @@ class SocialAgencyRuntime {
           const vres = await SocialAgencyRuntime._https({
             method: "POST",
             host: FB_GRAPH_HOST,
-            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.pageId)}/videos`,
+            path: `/${version}/${encodeURIComponent(secret.pageId)}/videos`,
             headers: { "Content-Type": vct },
             body: vbody,
             timeoutMs: VIDEO_UPLOAD_TIMEOUT_MS,
@@ -4982,18 +5649,18 @@ class SocialAgencyRuntime {
           this._mutateClient(client.id, (c) => {
             c.connectors.facebook.lastPublishAt = new Date().toISOString();
           });
-          return { platform, mode: "live", postId: vres.json?.id, latencyMs: Date.now() - t0, note: `โพสต์วิดีโอบนเพจ ${secret.pageId}` };
+          return { platform, mode: "live", publishedCaption: caption, mediaKind: "video", postId: vres.json?.id, latencyMs: Date.now() - t0, note: `โพสต์วิดีโอบนเพจ ${secret.pageId}` };
         } catch (err) {
-          videoFallbackNote = ` (วิดีโอส่งไม่สำเร็จ จึงโพสต์รูปแทน: ${err.message || err})`;
-          console.warn("[social-agency] facebook video fallback to photo:", err.message || err);
+          throw new Error(`Facebook วิดีโอเผยแพร่ไม่สำเร็จ (ไม่ได้โพสต์รูปแทน): ${err.message || err}`);
         }
       }
       let postId;
+      let mediaKind = "post";
       if (entry.image && (entry.image.publicUrl || entry.image.path)) {
         let buffer = entry.image.buffer;
         if (!buffer && entry.image.path) buffer = fs.readFileSync(entry.image.path);
         const { body, contentType } = SocialAgencyRuntime._multipart(
-          { caption: entry.caption || "", access_token: secret.accessToken },
+          { caption: caption, access_token: secret.accessToken },
           "source",
           buffer,
           entry.image.filename || "post.jpg"
@@ -5001,20 +5668,21 @@ class SocialAgencyRuntime {
         const res = await SocialAgencyRuntime._https({
           method: "POST",
           host: FB_GRAPH_HOST,
-          path: `/${FB_API_VERSION}/${encodeURIComponent(secret.pageId)}/photos`,
+          path: `/${version}/${encodeURIComponent(secret.pageId)}/photos`,
           headers: { "Content-Type": contentType },
           body,
           timeoutMs: 60 * 1000,
         });
         if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
         postId = res.json?.post_id || res.json?.id;
+        mediaKind = res.json?.post_id ? "post" : "photo-object";
       } else {
         const res = await SocialAgencyRuntime._https({
           method: "POST",
           host: FB_GRAPH_HOST,
-          path: `/${FB_API_VERSION}/${encodeURIComponent(secret.pageId)}/feed`,
+          path: `/${version}/${encodeURIComponent(secret.pageId)}/feed`,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: entry.caption || "", access_token: secret.accessToken }),
+          body: JSON.stringify({ message: caption, access_token: secret.accessToken }),
           timeoutMs: 60 * 1000,
         });
         if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
@@ -5023,7 +5691,7 @@ class SocialAgencyRuntime {
       this._mutateClient(client.id, (c) => {
         c.connectors.facebook.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", postId, latencyMs: Date.now() - t0, note: `โพสต์บนเพจ ${secret.pageId}${videoFallbackNote}` };
+      return { platform, mode: "live", publishedCaption: caption, mediaKind, postId, latencyMs: Date.now() - t0, note: `โพสต์บนเพจ ${secret.pageId}` };
     }
 
     if (platform === "instagram") {
@@ -5032,26 +5700,28 @@ class SocialAgencyRuntime {
       if (counter && counter.count >= IG_24H_LIMIT && now - Date.parse(counter.windowStart) < 24 * 60 * 60 * 1000) {
         throw new Error("ถึงขีดจำกัด Instagram 50 โพสต์/24 ชม. แล้ว — รอให้หน้าต่าง 24 ชม. ผ่านไปก่อน");
       }
-      let videoFallbackNote = "";
       if (this._selectPublishMedia(entry) === "video") {
         try {
-          const videoUrl = await this._publicVideoUrl(client, entry);
+          const file = this._entryVideoFile(entry);
+          const videoUrl = !file ? this._publicVideoUrl(entry) : null;
           const vcreate = await SocialAgencyRuntime._https({
             method: "POST",
             host: FB_GRAPH_HOST,
-            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media`,
+            path: `/${version}/${encodeURIComponent(secret.igUserId)}/media`,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: entry.caption || "", access_token: secret.accessToken }),
+            body: JSON.stringify({ media_type: "REELS", ...(file ? { upload_type: "resumable" } : { video_url: videoUrl }), caption: caption, access_token: secret.accessToken }),
             timeoutMs: 60 * 1000,
           });
           if (vcreate.status >= 300 || vcreate.json?.error) throw new Error(vcreate.json?.error?.message || `Instagram ตอบ HTTP ${vcreate.status}`);
           const vcontainerId = vcreate.json?.id;
+          if (!vcontainerId) throw new Error("Instagram ไม่ส่ง container ID กลับมา");
+          if (file) await this._uploadInstagramVideo(vcontainerId, file, secret.accessToken, version);
           let vstatusCode = "IN_PROGRESS";
           for (let i = 0; i < 30 && vstatusCode === "IN_PROGRESS"; i += 1) {
             await sleep(5000);
             const vpoll = await SocialAgencyRuntime._https({
               host: FB_GRAPH_HOST,
-              path: `/${FB_API_VERSION}/${vcontainerId}?fields=status_code&access_token=${encodeURIComponent(secret.accessToken)}`,
+              path: `/${version}/${vcontainerId}?fields=status_code&access_token=${encodeURIComponent(secret.accessToken)}`,
             });
             if (vpoll.status >= 300 || vpoll.json?.error) throw new Error(vpoll.json?.error?.message || `Instagram poll ตอบ HTTP ${vpoll.status}`);
             vstatusCode = vpoll.json?.status_code || "IN_PROGRESS";
@@ -5060,26 +5730,25 @@ class SocialAgencyRuntime {
           const vpublish = await SocialAgencyRuntime._https({
             method: "POST",
             host: FB_GRAPH_HOST,
-            path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media_publish`,
+            path: `/${version}/${encodeURIComponent(secret.igUserId)}/media_publish`,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ creation_id: vcontainerId, access_token: secret.accessToken }),
             timeoutMs: 60 * 1000,
           });
           if (vpublish.status >= 300 || vpublish.json?.error) throw new Error(vpublish.json?.error?.message || `Instagram publish ตอบ HTTP ${vpublish.status}`);
           this._bumpInstagramCounter(client.id);
-          return { platform, mode: "live", postId: vpublish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ Reels IG ${secret.igUserId} (คอนเทนเนอร์ ${vcontainerId})` };
+          return { platform, mode: "live", publishedCaption: caption, mediaKind: "reel", postId: vpublish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ Reels IG ${secret.igUserId} (คอนเทนเนอร์ ${vcontainerId})` };
         } catch (err) {
-          videoFallbackNote = ` (Reels ส่งไม่สำเร็จ จึงโพสต์รูปแทน: ${err.message || err})`;
-          console.warn("[social-agency] instagram reels fallback to photo:", err.message || err);
+          throw new Error(`Instagram Reels เผยแพร่ไม่สำเร็จ (ไม่ได้โพสต์รูปแทน): ${err.message || err}`);
         }
       }
       const imageUrl = await this._publicImageUrl(client, entry);
       const create = await SocialAgencyRuntime._https({
         method: "POST",
         host: FB_GRAPH_HOST,
-        path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media`,
+        path: `/${version}/${encodeURIComponent(secret.igUserId)}/media`,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: imageUrl, caption: entry.caption || "", access_token: secret.accessToken }),
+        body: JSON.stringify({ image_url: imageUrl, caption: caption, access_token: secret.accessToken }),
         timeoutMs: 60 * 1000,
       });
       if (create.status >= 300 || create.json?.error) throw new Error(create.json?.error?.message || `Instagram ตอบ HTTP ${create.status}`);
@@ -5089,7 +5758,7 @@ class SocialAgencyRuntime {
         await sleep(3000);
         const poll = await SocialAgencyRuntime._https({
           host: FB_GRAPH_HOST,
-          path: `/${FB_API_VERSION}/${containerId}?fields=status_code&access_token=${encodeURIComponent(secret.accessToken)}`,
+          path: `/${version}/${containerId}?fields=status_code&access_token=${encodeURIComponent(secret.accessToken)}`,
         });
         if (poll.status >= 300 || poll.json?.error) throw new Error(poll.json?.error?.message || `Instagram poll ตอบ HTTP ${poll.status}`);
         statusCode = poll.json?.status_code || "IN_PROGRESS";
@@ -5098,43 +5767,39 @@ class SocialAgencyRuntime {
       const publish = await SocialAgencyRuntime._https({
         method: "POST",
         host: FB_GRAPH_HOST,
-        path: `/${FB_API_VERSION}/${encodeURIComponent(secret.igUserId)}/media_publish`,
+        path: `/${version}/${encodeURIComponent(secret.igUserId)}/media_publish`,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ creation_id: containerId, access_token: secret.accessToken }),
         timeoutMs: 60 * 1000,
       });
       if (publish.status >= 300 || publish.json?.error) throw new Error(publish.json?.error?.message || `Instagram publish ตอบ HTTP ${publish.status}`);
       this._bumpInstagramCounter(client.id);
-      return { platform, mode: "live", postId: publish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ IG ${secret.igUserId} (คอนเทนเนอร์ ${containerId})${videoFallbackNote}` };
+      return { platform, mode: "live", publishedCaption: caption, mediaKind: "photo", postId: publish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ IG ${secret.igUserId} (คอนเทนเนอร์ ${containerId})` };
     }
 
     if (platform === "line") {
       const messages = [];
-      let videoFallbackNote = "";
       if (this._selectPublishMedia(entry) === "video") {
-        try {
-          const videoUrl = await this._publicVideoUrl(client, entry);
-          const previewUrl = await this._publicImageUrl(client, entry);
-          messages.push({ type: "video", originalContentUrl: videoUrl, previewImageUrl: previewUrl });
-          messages.push({ type: "text", text: entry.caption || "" });
-        } catch (err) {
-          videoFallbackNote = ` (วิดีโอส่งไม่สำเร็จ จึงส่งรูปแบบเดิมแทน: ${err.message || err})`;
-          console.warn("[social-agency] line video fallback:", err.message || err);
-        }
+        // LINE fetches both assets itself. Fail rather than mark a text/image
+        // substitute as a successful video broadcast.
+        const videoUrl = this._publicVideoUrl(entry);
+        const previewUrl = await this._publicImageUrl(client, entry);
+        messages.push({ type: "video", originalContentUrl: videoUrl, previewImageUrl: previewUrl });
+        messages.push({ type: "text", text: caption });
       }
       const wantsImage = entry.image && (entry.image.publicUrl || entry.image.path) && meta.sendImageTextStack !== false;
       if (messages.length === 0 && wantsImage) {
         const url = await this._publicImageUrl(client, entry);
         messages.push({ type: "image", originalContentUrl: url, previewImageUrl: url });
-        messages.push({ type: "text", text: entry.caption || "" });
+        messages.push({ type: "text", text: caption });
       } else if (messages.length === 0) {
-        messages.push({ type: "text", text: entry.caption || "" });
+        messages.push({ type: "text", text: caption });
       }
       const { quotaNote } = await this._lineBroadcast(secret, messages);
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}${videoFallbackNote}` };
+      return { platform, mode: "live", publishedCaption: caption, postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
@@ -5351,11 +6016,17 @@ class SocialAgencyRuntime {
     for (const client of state.clients) {
       for (const entry of client.calendar || []) {
         if (entry.inFlight) {
-          // crash recovery: re-arm so the scheduler can pick it up again
+          // TikTok init can succeed before a crash: never re-arm ambiguous sends.
           entry.inFlight = false;
-          entry.status = "planned";
+          entry.status = entry.tiktokInitAttemptedAt ? (entry.tiktokPublishId ? "publishing" : "failed") : "planned";
           entry.recoveredAt = now;
           entry.updatedAt = now;
+          const run = (client.workflowRuns || []).find((r) => r.id === entry.workflowRunId && r.status === "running");
+          if (run) {
+            run.status = entry.status === "publishing" ? "pending" : entry.status === "failed" ? "failed" : "needs_review";
+            run.finishedAt = now;
+            this._syncRunLog(state, run, client.name);
+          }
           changed = true;
         }
       }
@@ -5397,6 +6068,7 @@ class SocialAgencyRuntime {
     for (const client of state.clients) {
       for (const entry of client.calendar || []) {
         if (entry.inFlight || !["planned", "ready"].includes(entry.status)) continue;
+        if (entry.platform === "tiktok" && !entry.tiktokPost) continue; // never auto-run without explicit per-entry consent
         const dueMs = bangkokToUtcMs(entry.date, entry.time);
         if (!Number.isFinite(dueMs) || dueMs > now) continue;
         const ageMs = now - dueMs;
@@ -5424,6 +6096,16 @@ class SocialAgencyRuntime {
         this.activeRunCount = Math.max(0, this.activeRunCount - 1);
         console.warn("[social-agency] scheduled run failed to start:", err.message);
       }
+    }
+    try {
+      await this._maybeReconcileTikTok();
+    } catch (err) {
+      console.warn("[social-agency] TikTok status sweep skipped:", err.message);
+    }
+    try {
+      await this._maybeSyncMetrics();
+    } catch (err) {
+      console.warn("[social-agency] metrics sweep skipped:", err.message);
     }
     try {
       await this._maybeWeeklySummary();
@@ -5466,6 +6148,7 @@ class SocialAgencyRuntime {
     for (const client of state.clients) {
       for (const entry of client.calendar || []) {
         if (entry.inFlight || !["planned", "ready"].includes(entry.status)) continue;
+        if (entry.platform === "tiktok" && !entry.tiktokPost) continue;
         const ms = bangkokToUtcMs(entry.date, entry.time);
         if (!Number.isFinite(ms) || ms <= Date.now()) continue;
         if (!next || ms < next.at) {
@@ -5709,6 +6392,18 @@ class SocialAgencyRuntime {
         }
       }
 
+      match = pathname.match(/^\/api\/social-agency\/tiktok\/creator-info$/);
+      if (match && method === "GET") return json(res, 200, { ok: true, creator: await this.getTikTokCreatorInfo(clientId, parsed.searchParams.get("entryId")) });
+      match = pathname.match(/^\/api\/social-agency\/tiktok\/([^/]+)\/consent$/);
+      if (match && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, consent: await this.consentTikTokPost(clientId || body.clientId, decodeURIComponent(match[1]), body) });
+      }
+      if (pathname === "/api/social-agency/tiktok/status" && method === "POST") {
+        await this._maybeReconcileTikTok(true);
+        return json(res, 200, { ok: true, entries: this._resolveClient(clientId).client.calendar });
+      }
+
       // auto-plan
       if (pathname === "/api/social-agency/auto-plan" && method === "POST") {
         const body = await readBody();
@@ -5742,6 +6437,14 @@ class SocialAgencyRuntime {
         const body = await readBody();
         if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
         return json(res, 200, { ok: true, entry: this.rejectEntry(clientId || body.clientId, body.entryId) });
+      }
+      if (pathname === "/api/social-agency/hook-experiment/cancel" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, ...this.cancelHookExperiment(clientId || body.clientId, body.testId) });
+      }
+      if (pathname === "/api/social-agency/hook-experiment" && method === "POST") {
+        const body = await readBody();
+        return json(res, 201, { ok: true, ...this.createHookExperiment(clientId || body.clientId, body.entryId, body) });
       }
       if (pathname === "/api/social-agency/entry-hook" && method === "POST") {
         const body = await readBody();
@@ -5838,8 +6541,19 @@ class SocialAgencyRuntime {
         const body = await readBody();
         return json(res, 200, { ok: true, ...this.restoreBackup(clientId || body.clientId || undefined, body.snapshot) });
       }
+      if (pathname === "/api/social-agency/tracking" && method === "GET") {
+        return json(res, 200, { ok: true, tracking: this.buildTrackingReport(clientId) });
+      }
       if (pathname === "/api/social-agency/performance" && method === "GET") {
         return json(res, 200, { ok: true, performance: this.buildPerformance(clientId) });
+      }
+      if (pathname === "/api/social-agency/metrics/refresh" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, result: await this.syncEntryMetrics(clientId || body.clientId, body.entryId, { force: true }) });
+      }
+      if (pathname === "/api/social-agency/metrics/refresh-recent" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, result: await this.syncRecentMetrics(clientId || body.clientId) });
       }
       if (pathname === "/api/social-agency/weekly-summary" && method === "GET") {
         const weekOffset = Number(parsed.searchParams.get("weekOffset") || 0) || 0;

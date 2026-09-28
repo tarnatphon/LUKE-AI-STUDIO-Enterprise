@@ -250,6 +250,12 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
         </>
       }
     >
+      {preview?.strategy && <p className="sa-form-hint">
+        แผนแพลตฟอร์ม: {preview.strategy.platformSource === "default" ? "ค่าเริ่มต้น (ข้อมูลยังไม่พอ)" : preview.strategy.platformSource}
+        {` · จ-ศ ${preview.strategy.weekdayTime} / ส-อา ${preview.strategy.weekendTime}`}
+        {` · เวลา: ${preview.strategy.timeSource === "default" ? "ค่าเริ่มต้น" : "อิงผลงานจริง"}`}
+        {` · โพสต์ live ที่มีข้อมูล ≥48 ชม. ${preview.strategy.samples} รายการ`}
+      </p>}
       {onePerDay && preview?.shortBy > 0 ? (
         <p className="sa-probe-note warn">
           สินค้าในคลังมีไม่พอสำหรับ {preview.openDays} วันที่เหลือ — ขาดอีก {preview.shortBy} สินค้า ระบบจะไม่ใส่สินค้าซ้ำวันเดิม
