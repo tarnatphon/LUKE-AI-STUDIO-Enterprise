@@ -62,6 +62,9 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
                   {check.issues.slice(0, 5).map((issue, i) => <li key={i}>{issue}</li>)}
                 </ul>
               )}
+              {entry.imageGate?.required && !entry.imageGate.ok && (
+                <p className="sa-error-banner" role="status">⛔ ด่านตรวจภาพ: {entry.imageGate.reason} — เปิดรายการเพื่อตรวจภาพก่อนส่งจริง</p>
+              )}
               <footer>
                 <button className="sa-btn ghost sm" onClick={() => onOpenEntry(entry.id)}>ดูเวิร์กโฟลว์เต็ม</button>
                 <div style={{ flex: 1 }} />

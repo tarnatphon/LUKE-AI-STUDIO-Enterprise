@@ -136,7 +136,47 @@ function TikTokConsent({ entry, onCreatorInfo, onSaveCaption, onConsent, onStatu
   </section>;
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
+const IMAGE_GATE_LABEL = {
+  approved: "ตรวจภาพแล้ว — พร้อมส่งจริง",
+  unreviewed: "ยังไม่ได้ตรวจภาพ — ระบบจะไม่ส่งจริง",
+  stale: "ภาพ / Public URL / สินค้า เปลี่ยนหลังตรวจ — ต้องตรวจใหม่",
+  generating: "กำลังสร้างภาพทดแทน — ระบบจะไม่ส่งจริงจนกว่าจะตรวจภาพใหม่",
+  unreadable: "อ่านไฟล์ภาพไม่ได้ — ตรวจและส่งจริงไม่ได้",
+};
+
+// Human image review — separate from caption approval. Recording it never
+// starts a workflow and never publishes; dry-run works without it.
+function ImageReviewGate({ entry, busy, onReviewImage }) {
+  const gate = entry.imageGate;
+  const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => { setConfirmed(false); }, [entry.id, gate?.status]);
+  if (!gate?.required || !entry.image) return null;
+  const approved = gate.status === "approved";
+  const canReview = ["unreviewed", "stale"].includes(gate.status);
+  return (
+    <div className={`sa-image-gate ${approved ? "ok" : "blocked"}`} role="group" aria-label="ด่านตรวจภาพ">
+      <strong>{approved ? "✅" : "⛔"} ด่านตรวจภาพ: {IMAGE_GATE_LABEL[gate.status] || gate.reason}</strong>
+      {approved && gate.reviewedAt && <span className="sa-muted"> · ตรวจเมื่อ {formatDateTimeTh(gate.reviewedAt)}</span>}
+      {canReview && (
+        <>
+          <label className="sa-image-gate-confirm">
+            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            ฉันดูภาพนี้เทียบกับรูปสินค้าจริงของ SKU {entry.sku} แล้ว และภาพเหมาะจะโพสต์จริง
+          </label>
+          <button className="sa-btn success sm" disabled={busy || !confirmed} onClick={() => onReviewImage?.(entry.id, true)}>
+            <ShieldCheck size={13} /> ตรวจภาพแล้ว
+          </button>
+        </>
+      )}
+      {approved && (
+        <button className="sa-btn ghost sm" disabled={busy} onClick={() => onReviewImage?.(entry.id, false)}>ยกเลิกการตรวจภาพ</button>
+      )}
+      <p className="sa-form-hint">การกดตรวจภาพไม่เริ่ม workflow และไม่เผยแพร่เอง · ด่านนี้ใช้กับการส่งจริงเท่านั้น dry-run ใช้งานได้ตามปกติ</p>
+    </div>
+  );
+}
+
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
   const [abDate, setAbDate] = useState(() => new Date(Date.parse(`${bangkokToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10));
@@ -433,6 +473,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           {entry.image?.url && (
             <img className="sa-entry-image" src={entry.image.url} alt="พรีวิวภาพประกอบโพสต์" />
           )}
+          <ImageReviewGate entry={entry} busy={busy} onReviewImage={onReviewImage} />
           {generatingImage === entry.id && (
             <p className="sa-muted">⏳ กำลังสร้างภาพ… (ปกติ 1–4 นาที เสร็จแล้วรูปจะขึ้นตรงนี้เอง)</p>
           )}
