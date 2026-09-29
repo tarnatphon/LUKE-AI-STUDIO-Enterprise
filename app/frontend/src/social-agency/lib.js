@@ -163,6 +163,51 @@ export function hasActiveWork(state) {
   );
 }
 
+// ── product photo conditioning (see imageJob.refMode in the runtime) ────────
+export const PRODUCT_REF_MODE_LABEL = {
+  img2img: "img2img — ใช้รูปสินค้าเป็นภาพตั้งต้น (แนะนำ)",
+  reference: "reference_images — วิธีเดิม (backend อาจไม่ใช้รูปสินค้า)",
+  none: "ไม่มีรูปสินค้าอ้างอิง",
+  off: "ปิดการใช้รูปอ้างอิงไว้ในการตั้งค่า",
+};
+
+// What an operator has to know before trusting a calendar image, derived from
+// the job record the runtime wrote. `img2img` is the only mode where the
+// backend was forced to paint over the real product, so it reports nothing.
+// Returns null when there is nothing to say (or the job is still running).
+export function productRefNotice(entry) {
+  const job = entry?.imageJob;
+  if (!job || job.status === "running" || !job.status || job.status === "idle") return null;
+  if (job.warning) return { level: "warn", mode: job.refMode, text: job.warning };
+  switch (job.refMode) {
+    case "img2img":
+      return null;
+    case "reference":
+      return {
+        level: "warn",
+        mode: job.refMode,
+        text: "ภาพนี้ส่งรูปสินค้าแบบ reference_images (วิธีเดิม) ซึ่ง backend อาจไม่ใช้ — ตรวจภาพเทียบรูปสินค้าจริงก่อนอนุมัติ",
+      };
+    case "none":
+      return {
+        level: "warn",
+        mode: job.refMode,
+        text: "สินค้านี้ยังไม่มีรูปอ้างอิงในระบบ — ภาพอาจไม่ตรงสินค้า ดึงรูปจากเว็บที่แท็บสินค้าก่อนสร้างใหม่",
+      };
+    case "off":
+      return { level: "info", mode: job.refMode, text: "ปิดการใช้รูปสินค้าอ้างอิงไว้ในการตั้งค่า — ภาพนี้ไม่ได้สร้างจากรูปสินค้า" };
+    default:
+      // No refMode at all: the image was generated before this was recorded, so
+      // its provenance is unknown — exactly the case where a wrong product can
+      // slip through a review that trusts the picture.
+      return {
+        level: "warn",
+        mode: "",
+        text: "ภาพนี้สร้างก่อนอัปเดตโหมด img2img — ไม่รู้ว่าใช้รูปสินค้าอ้างอิงหรือไม่ ควรตรวจเทียบรูปสินค้าจริงก่อนอนุมัติ",
+      };
+  }
+}
+
 export function clientMonthlyCounts(client, monthStr) {
   const entries = entriesOfMonth(client?.calendar || [], monthStr || currentMonth());
   return {

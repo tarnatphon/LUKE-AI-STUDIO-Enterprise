@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Check, Ban, Inbox, Activity, ChevronRight } from "lucide-react";
 import {
   PLATFORM_META, STATUS_META, formatDateTimeTh, formatDuration, scoreClass, currentMonth,
+  productRefNotice,
 } from "./lib.js";
 
 const RUN_STATUS_TH = {
@@ -43,6 +44,7 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
         {queue.map((entry) => {
           const run = (activeClient.workflowRuns || []).find((r) => r.id === entry.workflowRunId);
           const check = run?.check;
+          const refNotice = productRefNotice(entry);
           return (
             <article key={entry.id} className="sa-approval-card">
               <header>
@@ -61,6 +63,11 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
                 <ul className="sa-issues">
                   {check.issues.slice(0, 5).map((issue, i) => <li key={i}>{issue}</li>)}
                 </ul>
+              )}
+              {refNotice && (
+                <p className={refNotice.level === "warn" ? "sa-warn-banner" : "sa-form-hint"} role="status">
+                  {refNotice.level === "warn" ? "⚠️ รูปสินค้าอ้างอิง: " : "ℹ️ "}{refNotice.text}
+                </p>
               )}
               {entry.imageGate?.required && !entry.imageGate.ok && (
                 <p className="sa-error-banner" role="status">⛔ ด่านตรวจภาพ: {entry.imageGate.reason} — เปิดรายการเพื่อตรวจภาพก่อนส่งจริง</p>

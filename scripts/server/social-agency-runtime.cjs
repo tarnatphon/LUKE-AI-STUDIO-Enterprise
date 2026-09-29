@@ -148,6 +148,14 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+// Same idea for the 0–1 knobs (denoising strength), which clampNumber would
+// round away: 0.38 must not become 0.
+function clampFloat(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n * 100) / 100));
+}
+
 // ── Seed data (5 sample clients, demo out of the box) ──────────────────────
 const seedProducts = [
   {
@@ -341,6 +349,8 @@ function defaultSettings() {
     notify: false,
     weeklySummaryLine: false,
     useProductRef: true, // ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น reference ตอนสร้างภาพปฏิทิน
+    productRefMode: "img2img", // img2img = ส่งรูปสินค้าเป็นภาพตั้งต้น (backend ใช้จริง) · reference = วิธีเดิม
+    productRefDenoise: PRODUCT_REF_DENOISE.def, // ยิ่งต่ำ สินค้ายิ่งตรง แต่ฉากจะคล้ายรูปสินค้ามาก
   };
 }
 
@@ -351,6 +361,26 @@ const PRODUCT_REF_BOOST =
   "Do not redesign the product, do not change its colors or details. Keep the scene/staging around it creative.";
 const PRODUCT_REF_NEGATIVE =
   "different product, redesigned product, changed colors, wrong material, extra pockets, wrong straps, wrong hardware, ignoring reference image";
+
+// How the real product photo reaches the image backend.
+//
+//   img2img   — the photo is the init image and denoising stays low, so the
+//               backend *has* to paint over the actual product. This is the
+//               same request shape the Generator workspace uses, and it is the
+//               only mode that measurably keeps the product identical, because
+//               the bundled stable-diffusion backend ignores `reference_images`
+//               on /v1/images/generations (it answers 200 with a picture of
+//               something else — a bag came back as a dress).
+//   reference — the old behaviour: prompt boost plus `reference_images` in the
+//               request body. Kept for backends that really do honour it.
+const PRODUCT_REF_MODES = ["img2img", "reference"];
+const PRODUCT_REF_DENOISE = { min: 0.15, max: 0.75, def: 0.38 };
+// Statuses that mean "this backend has no img2img endpoint", as opposed to a
+// genuine generation failure. 400/422 only count when the backend says the
+// img2img-only fields are the problem, so a real bad request still surfaces.
+const IMG2IMG_MISSING_STATUS = new Set([404, 405, 501]);
+const IMG2IMG_FIELD_HINT = /init_images?|denoising_strength|img2img|unknown field|unsupported/i;
+const REF_WARNING_PREFIX = "ไม่ได้ใช้รูปสินค้าอ้างอิง";
 
 // ── P3: per-client content pillars ──
 function defaultPillars() {
@@ -1177,6 +1207,7 @@ class SocialAgencyRuntime {
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
     this.imageSaver = null; // injected by serve.cjs: async (dataUrl, metadata) => saved { image, url, absPath }
     this.imageDefaultsProvider = null; // injected by serve.cjs: () => { model, steps, cfgScale, sampler, width, height }
+    this.imageBackendProvider = null; // injected by serve.cjs: () => base URL of the live Image API (port can move)
     this.i2v = null; // injected by serve.cjs: { createJob, prepare, start, getJob, failJob }
     this.imageBackend = process.env.SD_BACKEND_URL || "http://127.0.0.1:8080";
     this.schedulerTimer = null;
@@ -4865,6 +4896,8 @@ class SocialAgencyRuntime {
       if (typeof s.notify === "boolean") merged.notify = s.notify && process.platform === "darwin";
       if (typeof s.weeklySummaryLine === "boolean") merged.weeklySummaryLine = s.weeklySummaryLine;
       if (typeof s.useProductRef === "boolean") merged.useProductRef = s.useProductRef;
+      if (s.productRefMode !== undefined && PRODUCT_REF_MODES.includes(String(s.productRefMode))) merged.productRefMode = String(s.productRefMode);
+      if (s.productRefDenoise !== undefined) merged.productRefDenoise = clampFloat(s.productRefDenoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
       client.settings = merged;
     }
     this._write(state);
@@ -5055,24 +5088,35 @@ class SocialAgencyRuntime {
   async _generateEntryImage(clientId, entryId) {
     const first = this._findEntry(clientId, entryId);
     const prompt = this._ensureEntryImagePrompt(first.client, first.entry);
-    // Attach the product's real photo (fetched from the web by SKU) as a
-    // reference so calendar images show the actual product.
+    // Attach the product's real photo (fetched from the web by SKU) so calendar
+    // images show the actual product. In img2img mode (default) it becomes the
+    // init image, which is what the bundled backend actually honours.
     const refInfo = {};
-    const ref = first.client.settings?.useProductRef === false
-      ? null
-      : await this._productReferenceDataUrl(first.client, first.entry, refInfo);
+    const refSettings = this._productRefSettings(first.client);
+    const ref = refSettings.enabled
+      ? await this._productReferenceDataUrl(first.client, first.entry, refInfo)
+      : null;
     const fullPrompt = ref ? `${prompt}\n\nReference guidance: ${PRODUCT_REF_BOOST}` : prompt;
+    const backend = this._imageBackendUrl();
+    const plan = this._imageRequestPlan(fullPrompt, ref, refSettings, refInfo);
     this._write(first.state);
     let res;
     try {
-      res = await fetch(`${this.imageBackend}/v1/images/generations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(this._imageGenBody(fullPrompt, ref)),
-        signal: AbortSignal.timeout(10 * 60 * 1000),
-      });
+      res = await this._postImageRequest(backend, plan.path, plan.body);
     } catch (err) {
-      throw new Error(`เชื่อมต่อ Image backend ไม่ได้ (${this.imageBackend}) — เปิด Image API ก่อน (${err.message})`);
+      throw new Error(`เชื่อมต่อ Image backend ไม่ได้ (${backend}) — เปิด Image API ก่อน (${err.message})`);
+    }
+    // A backend without img2img must not turn "the product will be right" into a
+    // failed post: fall back to the old reference_images path, but say so, so the
+    // operator knows the reference may have been ignored.
+    if (!res.ok && plan.mode === "img2img" && (await this._img2imgMissing(res))) {
+      plan.mode = "reference";
+      plan.warning = `backend ไม่รองรับ img2img (HTTP ${res.status}) — ส่งรูปอ้างอิงแบบเดิมแทน ซึ่ง backend อาจไม่ใช้รูปสินค้า`;
+      try {
+        res = await this._postImageRequest(backend, "/v1/images/generations", this._imageGenBody(fullPrompt, ref));
+      } catch (err) {
+        throw new Error(`เชื่อมต่อ Image backend ไม่ได้ (${backend}) — เปิด Image API ก่อน (${err.message})`);
+      }
     }
     if (!res.ok) throw new Error(`Image backend ตอบกลับ HTTP ${res.status}`);
     const data = await res.json();
@@ -5084,7 +5128,11 @@ class SocialAgencyRuntime {
     const isWebp = buf.length > 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
     if (!b64 || (!isPng && !isJpeg && !isWebp)) throw new Error("Image backend ส่งรูปกลับมาไม่ถูกต้อง");
     if (!this.imageSaver) throw new Error("image saver ยังไม่ได้เชื่อมต่อ (restart เซิร์ฟเวอร์)");
-    const seed = (data && data.data && data.data[0] && data.data[0].seed) ?? null;
+    const rawSeed = (data && data.data && data.data[0] && data.data[0].seed)
+      ?? (data && data.seed)
+      ?? (data && data.parameters && data.parameters.seed)
+      ?? null;
+    const seed = Number.isFinite(Number(rawSeed)) ? Number(rawSeed) : null;
     const saved = await this.imageSaver(`data:image/png;base64,${b64}`, { prompt, seed, entryId, clientId, source: "social-agency" });
     const second = this._findEntry(clientId, entryId);
     const old = second.entry.image;
@@ -5092,10 +5140,91 @@ class SocialAgencyRuntime {
     const now = new Date().toISOString();
     second.entry.image = { path: saved.absPath || "", filename: saved.image || "", url: saved.url || "", seed, createdAt: now };
     delete second.entry.imageReview; // a new image always needs a fresh human review
-    second.entry.imageJob = { status: "done", startedAt: (second.entry.imageJob && second.entry.imageJob.startedAt) || now, finishedAt: now, error: "", ...(refInfo.warning ? { warning: `ไม่ได้ใช้รูปสินค้าอ้างอิง: ${refInfo.warning}` } : {}), usedProductRef: Boolean(ref) };
+    const warning = plan.warning || refInfo.warning || "";
+    second.entry.imageJob = {
+      status: "done",
+      startedAt: (second.entry.imageJob && second.entry.imageJob.startedAt) || now,
+      finishedAt: now,
+      error: "",
+      refMode: plan.mode, // img2img | reference | none | off — what the backend was told
+      usedProductRef: Boolean(ref), // the photo was sent (not proof the backend used it)
+      ...(plan.mode === "img2img" ? { denoise: plan.denoise } : {}),
+      ...(warning ? { warning: `${REF_WARNING_PREFIX}: ${warning}` } : {}),
+    };
     second.entry.updatedAt = now;
     this._write(second.state);
     return { status: "done", entryId };
+  }
+
+  // The Image API port is chosen at start-up and can move (another process holds
+  // 8080, or the user sets backendPort), so read it from serve.cjs every time
+  // instead of trusting a URL captured when this runtime was constructed.
+  setImageBackendProvider(fn) {
+    this.imageBackendProvider = fn;
+  }
+
+  _imageBackendUrl() {
+    try {
+      if (typeof this.imageBackendProvider === "function") {
+        const url = this.imageBackendProvider();
+        if (typeof url === "string" && url.trim()) return url.trim().replace(/\/+$/, "");
+      }
+    } catch { /* fall through to the configured default */ }
+    return String(this.imageBackend || "").replace(/\/+$/, "");
+  }
+
+  async _postImageRequest(backend, path, body) {
+    return fetch(`${backend}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10 * 60 * 1000),
+    });
+  }
+
+  // True when the backend answered "there is no img2img here", so falling back
+  // to the reference_images path is the right move. A 400/422 only counts when
+  // the backend names an img2img-only field — otherwise it is a real failure.
+  async _img2imgMissing(res) {
+    if (IMG2IMG_MISSING_STATUS.has(res.status)) return true;
+    if (res.status !== 400 && res.status !== 422) return false;
+    try {
+      const text = typeof res.text === "function" ? await res.text() : "";
+      return IMG2IMG_FIELD_HINT.test(String(text || ""));
+    } catch {
+      return false;
+    }
+  }
+
+  // What the client asked for: off / img2img / legacy reference.
+  _productRefSettings(client) {
+    const s = (client && client.settings) || {};
+    const enabled = s.useProductRef !== false;
+    const mode = PRODUCT_REF_MODES.includes(String(s.productRefMode || "")) ? String(s.productRefMode) : "img2img";
+    const denoise = clampFloat(s.productRefDenoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
+    return { enabled, mode, denoise };
+  }
+
+  // Decide the endpoint + body once, so the caller can retry the documented
+  // fallback without rebuilding the request.
+  _imageRequestPlan(prompt, ref, refSettings, refInfo = {}) {
+    if (!ref) {
+      const warning = refSettings.enabled
+        ? (refInfo.warning || "สินค้านี้ยังไม่มีรูปในระบบ — ดึงรูปสินค้าจากเว็บที่แท็บสินค้าก่อนสร้างภาพ")
+        : "";
+      return { mode: refSettings.enabled ? "none" : "off", path: "/v1/images/generations", body: this._imageGenBody(prompt, null), warning };
+    }
+    if (refSettings.mode === "reference") {
+      return { mode: "reference", path: "/v1/images/generations", body: this._imageGenBody(prompt, ref), warning: "" };
+    }
+    const init = String(ref.dataUrl || "").replace(/^data:[^;]+;base64,/, "");
+    return {
+      mode: "img2img",
+      path: "/sdapi/v1/img2img",
+      body: this._imageImg2ImgBody(prompt, init, ref, refSettings.denoise),
+      denoise: refSettings.denoise,
+      warning: "",
+    };
   }
 
   getEntryImage(clientId, entryId) {
@@ -5149,22 +5278,8 @@ class SocialAgencyRuntime {
     }
   }
 
-  _imageGenBody(prompt, ref = null) {
-    const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
-    const preset = this._modelPreset(d.model);
-    const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
-    const width = Math.round(num(d.width, preset.width));
-    const height = Math.round(num(d.height, preset.height));
+  _productRefPayload(ref, denoise = PRODUCT_REF_DENOISE.def) {
     return {
-      prompt: String(prompt || ""),
-      negative_prompt: ref ? PRODUCT_REF_NEGATIVE : "",
-      n: 1,
-      size: `${width}x${height}`,
-      response_format: "b64_json",
-      steps: Math.round(num(d.steps, preset.steps)),
-      cfg_scale: num(d.cfgScale, preset.cfg_scale),
-      seed: Math.floor(Math.random() * 1000000000),
-      sample_method: d.sampler || "euler_a",
       reference_images: ref
         ? [{
             id: "product-ref",
@@ -5184,8 +5299,60 @@ class SocialAgencyRuntime {
           }]
         : [],
       reference_settings: ref
-        ? { mode: "Appearance Lock", strength: 1.35, similarityBoost: 1, faceLock: true, hairLock: true, clothingLock: true, bodyLock: true, denoiseGuidance: 0.38 }
+        ? { mode: "Appearance Lock", strength: 1.35, similarityBoost: 1, faceLock: true, hairLock: true, clothingLock: true, bodyLock: true, denoiseGuidance: denoise }
         : {},
+    };
+  }
+
+  _imageGenBody(prompt, ref = null) {
+    const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
+    const preset = this._modelPreset(d.model);
+    const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
+    const width = Math.round(num(d.width, preset.width));
+    const height = Math.round(num(d.height, preset.height));
+    return {
+      prompt: String(prompt || ""),
+      negative_prompt: ref ? PRODUCT_REF_NEGATIVE : "",
+      n: 1,
+      size: `${width}x${height}`,
+      response_format: "b64_json",
+      steps: Math.round(num(d.steps, preset.steps)),
+      cfg_scale: num(d.cfgScale, preset.cfg_scale),
+      seed: Math.floor(Math.random() * 1000000000),
+      sample_method: d.sampler || "euler_a",
+      ...this._productRefPayload(ref),
+    };
+  }
+
+  // The request the Generator workspace sends for img2img (see
+  // app/frontend/src/services/api.js): the product photo is the init image and
+  // denoising_strength stays low, so the model paints around the real product
+  // instead of inventing one. Same body shape, so it works against the same
+  // stable-diffusion backend the Generator already drives.
+  _imageImg2ImgBody(prompt, initBase64, ref, denoise) {
+    const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
+    const preset = this._modelPreset(d.model);
+    const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
+    const width = Math.round(num(d.width, preset.width));
+    const height = Math.round(num(d.height, preset.height));
+    const strength = clampFloat(denoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
+    return {
+      init_images: [initBase64],
+      prompt: String(prompt || ""),
+      negative_prompt: PRODUCT_REF_NEGATIVE,
+      denoising_strength: strength,
+      steps: Math.round(num(d.steps, preset.steps)),
+      cfg_scale: num(d.cfgScale, preset.cfg_scale),
+      seed: Math.floor(Math.random() * 1000000000),
+      width,
+      height,
+      sampler_name: d.sampler || "euler_a",
+      sample_method: d.sampler || "euler_a",
+      batch_size: 1,
+      n_iter: 1,
+      send_images: true,
+      save_images: false,
+      ...this._productRefPayload(ref, strength),
     };
   }
 
