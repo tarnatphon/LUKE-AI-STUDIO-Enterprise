@@ -25,6 +25,10 @@ const CONTENT_ANGLES = [
 ];
 const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
 const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok"];
+// Platforms where a real send puts an image in front of the public. Those need a
+// human image review (separate from caption approval) before going live.
+const IMAGE_REVIEW_PLATFORMS = ["facebook", "instagram", "line"];
+const PRODUCT_IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const ENTRY_STATUSES = [
   "planned",
   "in_workflow",
@@ -1326,6 +1330,8 @@ class SocialAgencyRuntime {
     delete clean.selectionHistory;
     delete clean.scheduler;
     delete clean.serverNow;
+    // response-only badge (derived from the image + review record) — never persisted
+    for (const c of clean.clients || []) for (const e of c.calendar || []) if (e && e.imageGate !== undefined) delete e.imageGate;
     const tmp = `${this.filePath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), "utf8");
     fs.renameSync(tmp, this.filePath);
@@ -1498,6 +1504,7 @@ class SocialAgencyRuntime {
     try {
       for (const c of state.clients || []) for (const e of c.calendar || []) this._ensureEntryAnimatePrompt(c, e);
     } catch {}
+    for (const c of state.clients || []) for (const e of c.calendar || []) this._decorateImageGate(e);
     state.scheduler = this.getSchedulerStatus();
     state.serverNow = new Date().toISOString();
     return state;
@@ -1664,6 +1671,7 @@ class SocialAgencyRuntime {
       );
     }
     entries.sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    entries.forEach((e) => this._decorateImageGate(e));
     return entries;
   }
 
@@ -2008,7 +2016,10 @@ class SocialAgencyRuntime {
       const videoUrl = patch.videoPublicUrl === undefined ? entry.video?.publicUrl || "" : SocialAgencyRuntime._mediaUrl(patch.videoPublicUrl);
       const previewUrl = patch.previewImagePublicUrl === undefined ? entry.image?.publicUrl || "" : SocialAgencyRuntime._mediaUrl(patch.previewImagePublicUrl);
       if (patch.videoPublicUrl !== undefined) entry.video = { ...(entry.video || {}), publicUrl: videoUrl };
-      if (patch.previewImagePublicUrl !== undefined) entry.image = { ...(entry.image || {}), publicUrl: previewUrl };
+      if (patch.previewImagePublicUrl !== undefined) {
+        if ((entry.image?.publicUrl || "") !== previewUrl) delete entry.imageReview;
+        entry.image = { ...(entry.image || {}), publicUrl: previewUrl };
+      }
     }
     if (patch.metrics !== undefined && patch.metrics && typeof patch.metrics === "object") {
       const old = entry.metrics || {};
@@ -2636,7 +2647,13 @@ class SocialAgencyRuntime {
       return "";
     }
     if (/^https?:\/\//i.test(img)) return img.slice(0, 500);
-    if (img.startsWith("/sa-products/")) return img.slice(0, 500);
+    if (img.startsWith("/sa-products/")) {
+      const same = (product.image || "") === img;
+      const mm = img.match(/^\/sa-products\/([^/\\]+)\/([^/\\]+)\.([A-Za-z0-9]+)$/);
+      const ok = mm && mm[1] === client.id && mm[2] === product.sku && PRODUCT_IMAGE_EXTS.has(mm[3].toLowerCase());
+      if (!ok && !same) throw new Error("พาธ /sa-products/ ต้องเป็นรูปของลูกค้าและ SKU นี้เท่านั้น");
+      return img.slice(0, 500);
+    }
     const m = img.match(/^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/i);
     if (!m) throw new Error("รูปต้องเป็นลิงก์ http(s), พาธ /sa-products/ หรือไฟล์รูป (data URL)");
     const buf = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
@@ -4330,6 +4347,36 @@ class SocialAgencyRuntime {
       });
       return { outcome: "needs_review" };
     }
+    // 8b. image review gate — only bites when this run would really send.
+    // A missing/changed/regenerating image parks the entry for a human image
+    // review instead of failing; dry-run never reaches this.
+    {
+      const { client: imgClient, entry: imgEntry } = fresh();
+      const wouldGoLive = imgEntry && this._publishLiveState(imgClient, imgEntry, ctx).live;
+      const imageGate = wouldGoLive ? this._imageGateInfo(imgEntry) : { ok: true };
+      if (!imageGate.ok) {
+        this._mutateRun(clientId, runId, (run, client, entry) => {
+          const node = run.nodes.find((n) => n.key === "gate");
+          if (node) {
+            node.status = "waiting";
+            node.output = `รอตรวจภาพ — ${imageGate.reason}`;
+            node.detail = `ด่านตรวจภาพ: ${imageGate.reason}\nเปิดรายการในหน้าโพสต์ ตรวจภาพเทียบรูปสินค้าจริง แล้วกด "ตรวจภาพแล้ว" จากนั้นค่อยอนุมัติและเผยแพร่\n(การกดตรวจภาพไม่เริ่ม workflow และไม่เผยแพร่เอง)`;
+          }
+          const publishNode = run.nodes.find((n) => n.key === "publish");
+          if (publishNode) publishNode.status = "waiting";
+          run.status = "needs_review";
+          run.gate = { decision: "image-review", reason: `image ${imageGate.status}` };
+          run.finishedAt = new Date().toISOString();
+          run.durationMs = Date.now() - startedMs;
+          if (entry) {
+            entry.status = "needs_review";
+            entry.inFlight = false;
+            entry.updatedAt = new Date().toISOString();
+          }
+        });
+        return { outcome: "needs_review", imageGate: imageGate.status };
+      }
+    }
     await this._nodeStep(clientId, runId, "gate", async () => ({
       output: ctx.force ? "ผ่าน — อนุมัติโดยคน" : `ผ่านอัตโนมัติ (check ${check?.score}≥${threshold} + ไวรัล ${viralScore}≥${viralThreshold})`,
       detail: ctx.force ? "ผู้ใช้อนุมัติเองจากคิวอนุมัติ" : `คะแนน check ${check?.score} ถึงเกณฑ์ ${threshold} และไวรัล ${viralScore} ถึงเกณฑ์ ${viralThreshold} → เผยแพร่อัตโนมัติ`,
@@ -5010,9 +5057,10 @@ class SocialAgencyRuntime {
     const prompt = this._ensureEntryImagePrompt(first.client, first.entry);
     // Attach the product's real photo (fetched from the web by SKU) as a
     // reference so calendar images show the actual product.
+    const refInfo = {};
     const ref = first.client.settings?.useProductRef === false
       ? null
-      : await this._productReferenceDataUrl(first.client, first.entry);
+      : await this._productReferenceDataUrl(first.client, first.entry, refInfo);
     const fullPrompt = ref ? `${prompt}\n\nReference guidance: ${PRODUCT_REF_BOOST}` : prompt;
     this._write(first.state);
     let res;
@@ -5043,7 +5091,8 @@ class SocialAgencyRuntime {
     if (old && old.absPath && old.absPath !== saved.absPath) { try { fs.unlinkSync(old.absPath); } catch {} }
     const now = new Date().toISOString();
     second.entry.image = { path: saved.absPath || "", filename: saved.image || "", url: saved.url || "", seed, createdAt: now };
-    second.entry.imageJob = { status: "done", startedAt: (second.entry.imageJob && second.entry.imageJob.startedAt) || now, finishedAt: now, error: "" };
+    delete second.entry.imageReview; // a new image always needs a fresh human review
+    second.entry.imageJob = { status: "done", startedAt: (second.entry.imageJob && second.entry.imageJob.startedAt) || now, finishedAt: now, error: "", ...(refInfo.warning ? { warning: `ไม่ได้ใช้รูปสินค้าอ้างอิง: ${refInfo.warning}` } : {}), usedProductRef: Boolean(ref) };
     second.entry.updatedAt = now;
     this._write(second.state);
     return { status: "done", entryId };
@@ -5078,17 +5127,17 @@ class SocialAgencyRuntime {
 
   // Resolve a product's stored image (by entry SKU) to a data URL usable as a
   // generation reference: local /sa-products/ file, or a downloaded web URL.
-  async _productReferenceDataUrl(client, entry) {
+  async _productReferenceDataUrl(client, entry, out = {}) {
     try {
       const product = (client.products || []).find((p) => p.sku === entry.sku);
       const img = String(product?.image || "").trim();
       if (!img) return null;
       if (img.startsWith("/sa-products/")) {
-        const rel = img.replace(/^\/sa-products\//, "");
-        const filePath = path.join(this.root, "app", "outputs", "sa-products", rel);
-        const ext = path.extname(filePath).toLowerCase().replace(".", "") || "jpg";
-        const buf = fs.readFileSync(filePath);
-        return { dataUrl: `data:image/${ext};base64,${buf.toString("base64")}`, product };
+        const found = this._resolveProductImageFile(client, product);
+        if (found.error) { out.warning = found.error; return null; }
+        const buf = fs.readFileSync(found.file);
+        const mime = found.ext === "jpg" ? "jpeg" : found.ext;
+        return { dataUrl: `data:image/${mime};base64,${buf.toString("base64")}`, product };
       }
       if (/^https?:\/\//i.test(img)) {
         const dl = await this._downloadImage(img, 20000);
@@ -5309,6 +5358,143 @@ class SocialAgencyRuntime {
       job: entry.videoJob || { status: "idle", jobId: null, progress: 0, startedAt: null, finishedAt: null, error: "" },
       video: entry.video && entry.video.url ? { url: entry.video.url, jobId: entry.video.jobId || "" } : null,
     };
+  }
+
+  // Whether this entry would really be sent (vs dry-run) right now. Shared by
+  // _publishEntry and the workflow pre-check so both always agree.
+  _publishLiveState(client, entry, ctx = {}) {
+    const platform = entry.platform;
+    const secrets = this._getSecrets(client.id);
+    const secret = secrets[platform] || {};
+    const meta = (client.connectors || {})[platform] || {};
+    // NOTE: _connectorConfigured expects per-platform secrets (secret), NOT the whole-client map (secrets).
+    // Passing the whole map made `configured` always false, so publishing silently dry-ran forever.
+    const configured = this._connectorConfigured(platform, secret);
+    const dueMs = bangkokToUtcMs(entry.date, entry.time);
+    const manualEarly = platform !== "tiktok" && ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
+    const live = configured && meta.dryRun === false && !manualEarly;
+    return { secret, meta, configured, live };
+  }
+
+  // ── image review gate ─────────────────────────────────────────────────────
+  // A human must look at the image attached to an entry (on the post page)
+  // before FB / IG / LINE OA broadcast can send it for real. The approval is
+  // bound to a fingerprint of the file bytes + Public URL + SKU, so replacing
+  // the file, changing the URL or regenerating the image invalidates it.
+  // It never starts a workflow and never publishes; dry-run is unaffected.
+  _imageFingerprint(entry) {
+    const image = entry && entry.image;
+    if (!image || typeof image !== "object") return null;
+    const url = String(image.publicUrl || "");
+    let content = "";
+    if (image.buffer && image.buffer.length) {
+      content = crypto.createHash("sha256").update(image.buffer).digest("hex");
+    } else if (image.path) {
+      try {
+        const st = fs.statSync(image.path);
+        const key = `${image.path}|${st.size}|${st.mtimeMs}`;
+        this._fpCache = this._fpCache || new Map();
+        content = this._fpCache.get(key);
+        if (!content) {
+          content = crypto.createHash("sha256").update(fs.readFileSync(image.path)).digest("hex");
+          if (this._fpCache.size > 500) this._fpCache.clear();
+          this._fpCache.set(key, content);
+        }
+      } catch {
+        return "unreadable"; // never equals a stored approval
+      }
+    }
+    if (!content && !url) return null;
+    return crypto.createHash("sha256").update(`file:${content}\nurl:${url}`).digest("hex");
+  }
+
+  _imageGateInfo(entry) {
+    const platform = entry && entry.platform;
+    const generating = entry?.imageJob?.status === "running";
+    const image = entry && entry.image;
+    const hasImage = Boolean(image && (image.publicUrl || image.path || (image.buffer && image.buffer.length)));
+    let usesImage = false;
+    if (hasImage) {
+      const media = this._selectPublishMedia(entry);
+      usesImage = media === "image" || (platform === "line" && media === "video"); // LINE video needs the preview image
+    }
+    const required = IMAGE_REVIEW_PLATFORMS.includes(platform) && (generating || usesImage);
+    if (!required) return { required: false, ok: true, status: "not_required", reason: "" };
+    if (generating) return { required: true, ok: false, status: "generating", reason: "กำลังสร้างภาพทดแทน — รอให้เสร็จแล้วตรวจภาพใหม่" };
+    const fp = this._imageFingerprint(entry);
+    if (fp === "unreadable") return { required: true, ok: false, status: "unreadable", reason: "อ่านไฟล์ภาพไม่ได้ — สร้างภาพใหม่หรือแนบภาพอีกครั้ง" };
+    const review = entry.imageReview;
+    if (!review || review.status !== "approved") return { required: true, ok: false, status: "unreviewed", reason: "ยังไม่ได้ตรวจภาพในหน้าโพสต์" };
+    if (review.fingerprint !== fp || review.sku !== entry.sku) {
+      return { required: true, ok: false, status: "stale", reason: "ไฟล์ภาพ / Public URL / สินค้า เปลี่ยนหลังตรวจภาพ — ต้องตรวจใหม่", reviewedAt: review.reviewedAt };
+    }
+    return { required: true, ok: true, status: "approved", reason: "", reviewedAt: review.reviewedAt };
+  }
+
+  _assertImageReviewed(entry) {
+    const gate = this._imageGateInfo(entry);
+    if (!gate.ok) throw new Error(`ด่านตรวจภาพ: ${gate.reason} (ยังไม่ส่งจริง — dry-run ยังใช้ได้)`);
+  }
+
+  // Records the human's decision. Deliberately does NOT run the workflow,
+  // change status, or publish anything.
+  reviewEntryImage(clientId, entryId, body = {}) {
+    const { state, entry } = this._findEntry(clientId, entryId);
+    if (entry.inFlight || entry.status === "publishing" || entry.status === "published") throw new Error("รายการนี้กำลังเผยแพร่หรือเผยแพร่แล้ว — แก้การตรวจภาพไม่ได้");
+    if (entry.abTestSource) throw new Error("ต้นฉบับ A/B ถูกเก็บแล้ว — ตรวจภาพที่โพสต์ A/B ในปฏิทินแทน");
+    if (entry.imageJob?.status === "running") throw new Error("กำลังสร้างภาพอยู่ — รอให้เสร็จก่อนตรวจภาพ");
+    const now = new Date().toISOString();
+    if (body.approve === false) {
+      delete entry.imageReview;
+      entry.updatedAt = now;
+      this._write(state);
+      return { entryId: entry.id, imageGate: this._imageGateInfo(entry) };
+    }
+    if (body.confirmed !== true) throw new Error("ต้องยืนยันว่าตรวจภาพเทียบรูปสินค้าจริงแล้ว (confirmed: true)");
+    const fp = this._imageFingerprint(entry);
+    if (!fp) throw new Error("รายการนี้ไม่มีภาพแนบให้ตรวจ");
+    if (fp === "unreadable") throw new Error("อ่านไฟล์ภาพไม่ได้ — ตรวจภาพไม่ได้");
+    entry.imageReview = {
+      status: "approved",
+      fingerprint: fp,
+      sku: entry.sku,
+      publicUrl: String(entry.image?.publicUrl || ""),
+      imageFilename: String(entry.image?.filename || ""),
+      reviewedAt: now,
+      reviewedBy: "operator",
+    };
+    entry.updatedAt = now;
+    this._write(state);
+    return { entryId: entry.id, imageGate: this._imageGateInfo(entry) };
+  }
+
+  // Derived, response-only field so the UI can show the gate state.
+  _decorateImageGate(entry) {
+    try { entry.imageGate = this._imageGateInfo(entry); } catch { /* never break a read over a badge */ }
+    return entry;
+  }
+
+  // Product photo lookup that can only ever resolve to
+  // app/outputs/sa-products/<this client>/<this product's SKU>.<image ext>.
+  _resolveProductImageFile(client, product) {
+    const img = String(product?.image || "").trim();
+    if (!img.startsWith("/sa-products/")) return { error: "not-local" };
+    const rel = img.slice("/sa-products/".length);
+    const m = rel.match(/^([^/\\]+)\/([^/\\]+)\.([A-Za-z0-9]+)$/);
+    if (!m || m[1] !== client.id || m[2] !== product.sku || !PRODUCT_IMAGE_EXTS.has(m[3].toLowerCase())) {
+      return { error: `พาธรูปสินค้า ${img} ไม่ตรงกับลูกค้า/SKU (${client.id}/${product.sku})` };
+    }
+    const base = path.join(this.root, "app", "outputs", "sa-products");
+    const file = path.join(base, m[1], `${m[2]}.${m[3]}`);
+    try {
+      const realBase = fs.realpathSync(base);
+      const realFile = fs.realpathSync(file);
+      // must resolve to exactly <base>/<client>/<sku>.<ext> — no symlink or ".." escape
+      if (realFile !== path.join(realBase, m[1], `${m[2]}.${m[3]}`)) return { error: "รูปสินค้าอยู่นอกโฟลเดอร์ของลูกค้า" };
+      return { file: realFile, ext: m[3].toLowerCase() };
+    } catch {
+      return { error: "ไม่พบไฟล์รูปสินค้า" };
+    }
   }
 
   async _publicImageUrl(client, entry) {
@@ -5599,21 +5785,16 @@ class SocialAgencyRuntime {
       await sleep(800);
       return { platform, mode: "demo", postId: `demo-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: "Demo publisher — จำลองการเผยแพร่ 800ms" };
     }
-    const secrets = this._getSecrets(client.id);
-    const secret = secrets[platform] || {};
-    const meta = (client.connectors || {})[platform] || {};
-    // NOTE: _connectorConfigured expects per-platform secrets (secret), NOT the whole-client map (secrets).
-    // Passing the whole map made `configured` always false, so publishing silently dry-ran forever.
-    const configured = this._connectorConfigured(platform, secret);
-    const dueMs = bangkokToUtcMs(entry.date, entry.time);
-    const manualEarly = platform !== "tiktok" && ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
-    const live = configured && meta.dryRun === false && !manualEarly;
+    const { secret, meta, configured, live } = this._publishLiveState(client, entry, ctx);
     if (platform === "tiktok") {
       if (entry.tiktokInitAttemptedAt || entry.tiktokPublishId) throw new Error("TikTok เริ่มส่งรายการนี้แล้ว — ตรวจสอบสถานะก่อน ห้ามส่งซ้ำ");
       if (!entry.tiktokPost) throw new Error("TikTok ต้องเลือก privacy และยืนยันการส่งวิดีโอในปฏิทินก่อน (ห้าม auto-post)");
       if (!this._entryVideoFile(entry)) throw new Error("TikTok ต้องมีไฟล์วิดีโอในเครื่องก่อนรัน แม้เป็น dry-run");
     }
     if (!live) return this._dryPublish(platform, configured);
+    // Last line of defence: even if a caller skipped the workflow pre-check, a
+    // real send never goes out with an unreviewed / changed / regenerating image.
+    this._assertImageReviewed(entry);
 
     const caption = SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, platform, entry.id);
     if (caption !== String(entry.caption || "") && ((platform === "line" && caption.length > 400) || (platform === "instagram" && caption.length > 2200))) {
@@ -6465,6 +6646,15 @@ class SocialAgencyRuntime {
           return json(res, 202, { ok: true, ...this.startEntryImageGen(clientId || body.clientId, body.entryId) });
         } catch (error) {
           return fail(error, 404);
+        }
+      }
+      if (pathname === "/api/social-agency/entry-image/review" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.reviewEntryImage(clientId || body.clientId, body.entryId, body) });
+        } catch (error) {
+          return fail(error, 409);
         }
       }
       if (pathname === "/api/social-agency/entry-image" && method === "GET") {

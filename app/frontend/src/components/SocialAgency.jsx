@@ -231,6 +231,11 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     await postJson("/api/social-agency/approve", { clientId: activeClient.id, entryId });
   });
 
+  // Records the human's image review only — never starts a workflow or publishes.
+  const reviewImage = withBusy(async (entryId, approve = true) => {
+    await postJson("/api/social-agency/entry-image/review", { clientId: activeClient.id, entryId, approve, confirmed: approve });
+  });
+
   const reject = withBusy(async (entryId) => {
     await postJson("/api/social-agency/reject", { clientId: activeClient.id, entryId });
     setDrawerEntryId(null);
@@ -533,6 +538,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           onCreateImage={onCreateImage}
           onCreateVideo={onCreateVideo}
           onGenerateImage={handleGenerateImage}
+          onReviewImage={reviewImage}
           generatingImage={generatingImage}
           imageGenError={imageGenError}
           onGenerateVideo={handleGenerateVideo}
