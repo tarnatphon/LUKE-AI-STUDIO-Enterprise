@@ -18,7 +18,7 @@
 |---|---|
 | `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-29 มี PR #25 (ด่านตรวจภาพ) merge เป็น `e21eb87` แล้ว |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เปิดค้าง | PR ของ session นี้ (รูปสินค้าอ้างอิง → img2img + เตือนใน UI + แก้เช็กบ็อกซ์) — รอ merge เข้า `main` (session ก่อนหน้า: #25 = `e21eb87`, #21 = `6397105`) |
+| PR ที่เปิดค้าง | **PR #26** (session นี้: รูปสินค้าอ้างอิง → img2img + เตือนใน UI + แก้เช็กบ็อกซ์) — รอ merge เข้า `main` (session ก่อนหน้า: #25 = `e21eb87`, #21 = `6397105`) |
 | branch อื่นบน GitHub | เหลือแค่ `main` — branch ของ session ลบแล้วทั้งหมดหลัง merge |
 | งานค้างที่ทราบ | หัวข้อ 6 **ปิดครบแล้ว** · ของ session นี้: **ยืนยัน img2img กับ backend จริงบน Mac** + สร้างภาพ WSB-019 ใหม่ (ดูท้ายหัวข้อ 2) · งานที่จงใจทิ้งไว้อยู่ท้ายหัวข้อ 6 |
 
@@ -26,7 +26,7 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
-### (session `arena/01a0eb60…`, 2026-09-29 — รอ merge) — รูปสินค้าอ้างอิงเข้า backend จริง + เตือนใน UI + แก้เช็กบ็อกซ์
+### PR #26 (session `arena/01a0eb60…`, 2026-09-29 — รอ merge) — รูปสินค้าอ้างอิงเข้า backend จริง + เตือนใน UI + แก้เช็กบ็อกซ์
 > ต่อจาก PR #25 โดยตรง: อาการคือ backend รับ `reference_images` แล้วตอบ 200 แต่**ไม่ได้ใช้รูปอ้างอิง** (กระเป๋าออกมาเป็นเดรส) — แก้ที่ต้นเหตุด้วยวิธีเดียวกับที่ Generator ใช้อยู่แล้ว
 - `scripts/server/social-agency-runtime.cjs` — การสร้างภาพปฏิทินส่ง **img2img** เป็นค่าเริ่มต้น (`POST /sdapi/v1/img2img`, `init_images:[<รูปสินค้า>]`, `denoising_strength` 0.38) ให้เหมือน `app/frontend/src/services/api.js` ของ Generator
   - `settings.productRefMode` = `img2img` (เริ่มต้น) หรือ `reference` (วิธีเดิมที่ส่ง `reference_images`) · `settings.productRefDenoise` 0.15–0.75 (ค่าเริ่มต้น 0.38, `clampFloat` ไม่ปัดเป็นจำนวนเต็ม) · บันทึกผ่าน `saveConnectors`
