@@ -7,6 +7,7 @@ import {
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
   formatDateTimeTh, formatDuration, scoreClass, weekdayTh, bangkokToday,
+  PRODUCT_REF_MODE_LABEL, productRefNotice,
 } from "./lib.js";
 
 function Drawer({ title, onClose, children, footer }) {
@@ -153,15 +154,21 @@ function ImageReviewGate({ entry, busy, onReviewImage }) {
   if (!gate?.required || !entry.image) return null;
   const approved = gate.status === "approved";
   const canReview = ["unreviewed", "stale"].includes(gate.status);
+  const refNotice = productRefNotice(entry);
   return (
     <div className={`sa-image-gate ${approved ? "ok" : "blocked"}`} role="group" aria-label="ด่านตรวจภาพ">
       <strong>{approved ? "✅" : "⛔"} ด่านตรวจภาพ: {IMAGE_GATE_LABEL[gate.status] || gate.reason}</strong>
       {approved && gate.reviewedAt && <span className="sa-muted"> · ตรวจเมื่อ {formatDateTimeTh(gate.reviewedAt)}</span>}
+      {refNotice && (
+        <p className={refNotice.level === "warn" ? "sa-warn-banner" : "sa-form-hint"} role="status">
+          {refNotice.level === "warn" ? "⚠️ รูปสินค้าอ้างอิง: " : "ℹ️ "}{refNotice.text}
+        </p>
+      )}
       {canReview && (
         <>
           <label className="sa-image-gate-confirm">
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            ฉันดูภาพนี้เทียบกับรูปสินค้าจริงของ SKU {entry.sku} แล้ว และภาพเหมาะจะโพสต์จริง
+            <input type="checkbox" className="sa-image-gate-check" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            <span>ฉันดูภาพนี้เทียบกับรูปสินค้าจริงของ SKU {entry.sku} แล้ว และภาพเหมาะจะโพสต์จริง</span>
           </label>
           <button className="sa-btn success sm" disabled={busy || !confirmed} onClick={() => onReviewImage?.(entry.id, true)}>
             <ShieldCheck size={13} /> ตรวจภาพแล้ว
@@ -174,6 +181,19 @@ function ImageReviewGate({ entry, busy, onReviewImage }) {
       <p className="sa-form-hint">การกดตรวจภาพไม่เริ่ม workflow และไม่เผยแพร่เอง · ด่านนี้ใช้กับการส่งจริงเท่านั้น dry-run ใช้งานได้ตามปกติ</p>
     </div>
   );
+}
+
+// Which product photo actually reached the backend for the image on screen, so
+// nobody approves a wrong-product picture without being told.
+function ImageRefLine({ entry }) {
+  const job = entry?.imageJob;
+  if (!job || !job.status || job.status === "running" || job.status === "idle") return null;
+  const label = PRODUCT_REF_MODE_LABEL[job.refMode];
+  if (!label) return null;
+  const denoise = job.refMode === "img2img" && Number.isFinite(Number(job.denoise))
+    ? ` · denoise ${Number(job.denoise).toFixed(2)}`
+    : "";
+  return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}</p>;
 }
 
 export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
@@ -473,6 +493,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           {entry.image?.url && (
             <img className="sa-entry-image" src={entry.image.url} alt="พรีวิวภาพประกอบโพสต์" />
           )}
+          <ImageRefLine entry={entry} />
           <ImageReviewGate entry={entry} busy={busy} onReviewImage={onReviewImage} />
           {generatingImage === entry.id && (
             <p className="sa-muted">⏳ กำลังสร้างภาพ… (ปกติ 1–4 นาที เสร็จแล้วรูปจะขึ้นตรงนี้เอง)</p>
@@ -610,6 +631,8 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       notify: Boolean(connectors?.settings?.notify),
       weeklySummaryLine: Boolean(connectors?.settings?.weeklySummaryLine),
       useProductRef: connectors?.settings?.useProductRef !== false,
+      productRefMode: connectors?.settings?.productRefMode === "reference" ? "reference" : "img2img",
+      productRefDenoise: Number.isFinite(Number(connectors?.settings?.productRefDenoise)) ? Number(connectors.settings.productRefDenoise) : 0.38,
     },
   }));
   const [tests, setTests] = useState({});
@@ -775,6 +798,34 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
         <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
         <ConnectorToggle checked={form.settings.useProductRef} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, useProductRef: v } }))} label="ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น Reference ตอนสร้างภาพปฏิทิน" />
+        {form.settings.useProductRef && (
+          <>
+            <label className="sa-field">
+              <span>วิธีส่งรูปสินค้าไปให้ Image backend</span>
+              <select
+                value={form.settings.productRefMode}
+                onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefMode: e.target.value } }))}
+              >
+                <option value="img2img">img2img — ใช้รูปสินค้าเป็นภาพตั้งต้น (แนะนำ · สินค้าตรงที่สุด)</option>
+                <option value="reference">reference_images — วิธีเดิม (backend อาจไม่ใช้รูปสินค้าจึงได้สินค้าผิด)</option>
+              </select>
+            </label>
+            <p className="sa-form-hint">
+              โหมด img2img ส่งรูปสินค้าเป็นภาพตั้งต้นให้โมเดลวาดทับ สินค้าจึงตรงกับของจริง — แต่ฉาก/พื้นหลังจะคล้ายรูปสินค้าเดิม
+              {form.settings.productRefMode === "reference" && " · โหมดเดิม backend ที่แพ็กมาไม่ใช้รูปอ้างอิง (จะเห็นคำเตือนในหน้ารายการ)"}
+            </p>
+            {form.settings.productRefMode === "img2img" && (
+              <label className="sa-field">
+                <span>Denoise ของ img2img — {Number(form.settings.productRefDenoise).toFixed(2)} (ต่ำ = สินค้าตรง แต่ฉากคล้ายรูปเดิม)</span>
+                <input
+                  type="range" min="0.15" max="0.75" step="0.01"
+                  value={form.settings.productRefDenoise}
+                  onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefDenoise: Number(e.target.value) } }))}
+                />
+              </label>
+            )}
+          </>
+        )}
       </section>
     </Drawer>
   );

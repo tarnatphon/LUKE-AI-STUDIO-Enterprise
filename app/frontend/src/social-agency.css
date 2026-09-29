@@ -35,7 +35,11 @@
 
 .sa-shell *, .sa-shell *::before, .sa-shell *::after { box-sizing: border-box; }
 .sa-shell button { font: inherit; color: inherit; cursor: pointer; }
-.sa-shell input, .sa-shell select, .sa-shell textarea {
+/* Text controls only. Without the :not() guards this rule also hit every
+   checkbox and radio in the workspace — width:100%, min-height:36px and a card
+   background turned them into big white squares (first seen in the image review
+   gate) that pushed their label text into the button underneath. */
+.sa-shell input:not([type="checkbox"]):not([type="radio"]), .sa-shell select, .sa-shell textarea {
   font: inherit;
   color: var(--sa-text);
   border: 1px solid var(--sa-outline);
@@ -50,6 +54,20 @@
   outline-offset: -1px;
 }
 .sa-shell input:disabled { opacity: 0.55; cursor: not-allowed; }
+.sa-shell input[type="checkbox"], .sa-shell input[type="radio"] {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  accent-color: var(--sa-primary);
+  cursor: pointer;
+}
+.sa-shell input[type="range"] { min-height: 0; padding: 0; }
 .sa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; }
 .sa-muted { color: var(--sa-muted); font-weight: 400; }
 
@@ -557,11 +575,28 @@
 .sa-issues { margin: 0; padding-left: 18px; font-size: 0.74rem; color: var(--sa-muted); display: flex; flex-direction: column; gap: 3px; }
 .sa-handoff { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
 .sa-entry-image { width: 100%; border-radius: 8px; margin-top: 8px; display: block; }
-.sa-image-gate { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--sa-border, #d0d5dd); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.sa-image-gate { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--sa-border, #d0d5dd); display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 100%; }
+.sa-image-gate > * { min-width: 0; max-width: 100%; }
 .sa-image-gate.ok { border-color: #12b76a; background: rgba(18, 183, 106, 0.08); }
 .sa-image-gate.blocked { border-color: #f79009; background: rgba(247, 144, 9, 0.08); }
-.sa-image-gate-confirm { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+/* the checkbox keeps its own 15px column so the text wraps next to it instead
+   of flowing under/over the button below */
+.sa-image-gate-confirm { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.sa-image-gate-confirm > span { min-width: 0; overflow-wrap: anywhere; }
+.sa-image-gate .sa-btn { align-self: flex-start; }
 .sa-image-gate .sa-form-hint { margin: 0; }
+
+/* warning banner for "this image was not built from the real product photo" */
+.sa-warn-banner {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--sa-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--sa-warn) 12%, transparent);
+  color: var(--sa-warn);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
 .sa-entry-video { width: 100%; border-radius: 8px; margin-top: 8px; display: block; background: #000; }
 .sa-progress { height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); margin-top: 6px; overflow: hidden; }
 .sa-progress-fill { height: 100%; border-radius: 3px; background: #8b5cf6; transition: width .5s; }

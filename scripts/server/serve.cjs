@@ -1133,6 +1133,11 @@ function getSocialAgencyRuntime() {
       width: currentSettings.width,
       height: currentSettings.height,
     }));
+    // The Image API port is picked at start-up and can change (another process
+    // holds 8080, or the user sets backendPort). Read it live so calendar image
+    // generation — including the product-photo img2img request — always reaches
+    // the backend that is actually running.
+    socialAgencyRuntime.setImageBackendProvider(() => `http://127.0.0.1:${PORT_BACKEND}`);
     // NOTE: setImageToVideoJobs is wired per-request in the /api/social-agency
     // delegation below, because prepareImageToVideoJobExecution is declared
     // inside the request handler and is not visible at module scope.
