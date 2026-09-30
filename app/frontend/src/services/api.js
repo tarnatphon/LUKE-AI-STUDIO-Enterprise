@@ -1,5 +1,11 @@
 // Tauri API helper for desktop mode, falling back to HTTP/Mock in browser
 import { invoke } from "@tauri-apps/api/core";
+// The img2img step rule, shared with the server (scripts/server/social-agency-runtime.cjs
+// requires the same file) so the Generator and the Social Agency cannot drift apart.
+// It is CommonJS, so take the default export and destructure it.
+import img2imgSteps from "../../../../scripts/server/img2img-steps.cjs";
+
+const { planImg2ImgSteps } = img2imgSteps;
 
 // Helper to check if running inside Tauri desktop container
 export const isTauri = () => {
@@ -1295,6 +1301,26 @@ export async function listOpenVinoModels() {
   return await readJsonResponse(res, "The local server returned invalid OpenVINO model data.");
 }
 
+// How many steps an img2img request really needs.
+//
+// The bundled stable-diffusion backend trims the schedule with denoising_strength
+// instead of lengthening it, so a request of 20 steps at denoise 0.38 only samples
+// 7 — the scene keeps the init photo's structure and the prompt hardly shows. The
+// shared rule (scripts/server/img2img-steps.cjs) inflates the number on the wire so
+// the trim lands back on the steps the user asked for. txt2img is untouched.
+//
+// Exported so the Generator can size its progress estimate with the same numbers
+// that generateImage will send.
+export function planImageSteps(constraints = {}, referenceSettings = {}, hasInitImage = false) {
+  const steps = constraints.steps || 20;
+  if (!hasInitImage) return planImg2ImgSteps(steps, 1); // nothing trims a txt2img run
+  const raw = Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? 0.38);
+  // Same window this function has always applied to denoiseGuidance (0.15–0.75);
+  // a value that is not a number falls back to the default instead of NaN.
+  const denoise = Number.isFinite(raw) ? Math.min(0.75, Math.max(0.15, raw)) : 0.38;
+  return planImg2ImgSteps(steps, denoise);
+}
+
 // Generate image (T2I / I2I)
 // Handles API calls to sd-server. If the server is unreachable or returns an error,
 // we surface that error to the UI instead of silently returning a fake placeholder.
@@ -1305,6 +1331,11 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
   const referenceBoost = buildReferencePromptBoost(referenceImages, referenceSettings);
   const effectivePrompt = referenceBoost.promptSuffix ? `${prompt}\n\nReference guidance: ${referenceBoost.promptSuffix}` : prompt;
   const effectiveNegativePrompt = [negativePrompt || "", referenceBoost.negativeSuffix].filter(Boolean).join(", ");
+
+  // When an init image is present, one plan settles the whole request: the
+  // denoise it carries and the steps it needs so the backend's SDEdit trim still
+  // leaves the number the user asked for (see planImageSteps).
+  const img2imgPlan = inputImageBase64 ? planImageSteps(constraints, referenceSettings, true) : null;
 
   // Prepare payload based on standard stable-diffusion.cpp REST endpoint schemas
   const payload = {
@@ -1317,9 +1348,7 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
     seed: constraints.seed === -1 ? Math.floor(Math.random() * 1000000) : constraints.seed,
     sampler: constraints.sampler || "euler_a",
     image: inputImageBase64 || null, // Image to image source (base64)
-    denoising_strength: inputImageBase64
-      ? Math.min(0.75, Math.max(0.15, Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? 0.38)))
-      : (constraints.denoisingStrength || 0.7),
+    denoising_strength: img2imgPlan ? img2imgPlan.strength : (constraints.denoisingStrength || 0.7),
     reference_images: referenceImages,
     reference_settings: referenceSettings,
   };
@@ -1366,6 +1395,15 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
 
   // txt2img uses /v1/images/generations; img2img uses /sdapi/v1/img2img.
   const isImg2Img = !!payload.image;
+  // What the request carries as `steps`, and what the backend will sample out of
+  // it. For txt2img `sent` is the number the user set.
+  const img2imgSteps = img2imgPlan || planImg2ImgSteps(payload.steps, 1);
+  if (img2imgSteps.scaled) {
+    console.log(
+      `img2img step scaling: ${img2imgSteps.steps} real steps at denoise ${img2imgSteps.strength} → ` +
+      `sending steps=${img2imgSteps.sent}${img2imgSteps.capped ? " (capped; expect a shorter run)" : ""}`
+    );
+  }
   let endpoint = `${baseUrl}/v1/images/generations`;
 
   let genBody = {
@@ -1392,7 +1430,10 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       prompt:             payload.prompt,
       negative_prompt:    payload.negative_prompt || "",
       denoising_strength: payload.denoising_strength || 0.7,
-      steps:              payload.steps,
+      // Scaled: denoising_strength trims the schedule, so sending the plain
+      // number would sample floor(steps × denoise) steps and the prompt would
+      // barely move the picture (see planImageSteps above).
+      steps:              img2imgSteps.sent,
       cfg_scale:          payload.cfg_scale,
       seed:               payload.seed,
       width:              payload.width,
@@ -1440,6 +1481,11 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
           image:        `data:image/png;base64,${normalizedB64}`,
           seed:         data.data?.[0]?.seed ?? payload.seed,
           duration_sec: durationSec,
+          // What the request asked for, what it carried, and whether the backend
+          // ceiling stopped the run short of the requested steps.
+          steps:        img2imgSteps.steps,
+          stepsSent:    img2imgSteps.sent,
+          stepsCapped:  img2imgSteps.capped,
         };
       }
     } else {

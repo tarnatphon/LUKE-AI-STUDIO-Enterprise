@@ -12,6 +12,11 @@ const path = require("path");
 const crypto = require("crypto");
 const https = require("https");
 const { exec } = require("child_process");
+// The img2img step rule, shared with the Generator (app/frontend/src/services/api.js
+// imports this same file): `denoising_strength` trims the schedule instead of
+// lengthening it, so the request has to carry more steps to spend the budget the
+// user asked for. See img2img-steps.cjs for the backend source it mirrors.
+const { planImg2ImgSteps } = require("./img2img-steps.cjs");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TZ_LABEL = "Asia/Bangkok";
@@ -5148,7 +5153,14 @@ class SocialAgencyRuntime {
       error: "",
       refMode: plan.mode, // img2img | reference | none | off — what the backend was told
       usedProductRef: Boolean(ref), // the photo was sent (not proof the backend used it)
-      ...(plan.mode === "img2img" ? { denoise: plan.denoise } : {}),
+      ...(plan.mode === "img2img" ? {
+        denoise: plan.denoise,
+        // steps = steps of real sampling asked for, stepsSent = what the request
+        // carried so the backend's trim by denoise still leaves that many.
+        steps: plan.steps,
+        stepsSent: plan.stepsSent,
+        ...(plan.stepsCapped ? { stepsCapped: true } : {}),
+      } : {}),
       ...(warning ? { warning: `${REF_WARNING_PREFIX}: ${warning}` } : {}),
     };
     second.entry.updatedAt = now;
@@ -5218,11 +5230,17 @@ class SocialAgencyRuntime {
       return { mode: "reference", path: "/v1/images/generations", body: this._imageGenBody(prompt, ref), warning: "" };
     }
     const init = String(ref.dataUrl || "").replace(/^data:[^;]+;base64,/, "");
+    const stepPlan = this._img2imgStepPlan(refSettings.denoise);
     return {
       mode: "img2img",
       path: "/sdapi/v1/img2img",
-      body: this._imageImg2ImgBody(prompt, init, ref, refSettings.denoise),
+      body: this._imageImg2ImgBody(prompt, init, ref, refSettings.denoise, stepPlan),
       denoise: refSettings.denoise,
+      // steps = what the operator asked for, stepsSent = what the request carries.
+      // The job record shows both, because the backend trims the schedule.
+      steps: stepPlan.steps,
+      stepsSent: stepPlan.sent,
+      stepsCapped: stepPlan.capped,
       warning: "",
     };
   }
@@ -5324,24 +5342,40 @@ class SocialAgencyRuntime {
     };
   }
 
+  // How many steps an img2img request for this client should carry: the steps the
+  // backend is configured to run, inflated so the trim by denoising_strength still
+  // leaves that many real sampling steps. Shared rule — see img2img-steps.cjs.
+  _img2imgStepPlan(denoise) {
+    const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
+    const preset = this._modelPreset(d.model);
+    const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
+    return planImg2ImgSteps(Math.round(num(d.steps, preset.steps)), denoise);
+  }
+
   // The request the Generator workspace sends for img2img (see
   // app/frontend/src/services/api.js): the product photo is the init image and
   // denoising_strength stays low, so the model paints around the real product
   // instead of inventing one. Same body shape, so it works against the same
   // stable-diffusion backend the Generator already drives.
-  _imageImg2ImgBody(prompt, initBase64, ref, denoise) {
+  //
+  // `steps` is the *scaled* count (stepPlan.sent): the backend samples
+  // floor(steps × denoising_strength) of whatever it is given, so sending the
+  // plain number would quietly turn a 20-step request at denoise 0.38 into 7
+  // steps — the product stays right but the prompt stops working.
+  _imageImg2ImgBody(prompt, initBase64, ref, denoise, stepPlan = null) {
     const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
     const preset = this._modelPreset(d.model);
     const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
     const width = Math.round(num(d.width, preset.width));
     const height = Math.round(num(d.height, preset.height));
     const strength = clampFloat(denoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
+    const plan = stepPlan || this._img2imgStepPlan(strength);
     return {
       init_images: [initBase64],
       prompt: String(prompt || ""),
       negative_prompt: PRODUCT_REF_NEGATIVE,
       denoising_strength: strength,
-      steps: Math.round(num(d.steps, preset.steps)),
+      steps: plan.sent,
       cfg_scale: num(d.cfgScale, preset.cfg_scale),
       seed: Math.floor(Math.random() * 1000000000),
       width,

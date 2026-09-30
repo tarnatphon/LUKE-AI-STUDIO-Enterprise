@@ -193,7 +193,14 @@ function ImageRefLine({ entry }) {
   const denoise = job.refMode === "img2img" && Number.isFinite(Number(job.denoise))
     ? ` · denoise ${Number(job.denoise).toFixed(2)}`
     : "";
-  return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}</p>;
+  // The backend trims an img2img schedule by denoise, so the request carries more
+  // steps than the number of real ones the operator asked for. Show both, and say
+  // when the 150-step ceiling stopped the run short.
+  const steps = job.refMode === "img2img" && Number.isFinite(Number(job.steps))
+    ? ` · steps ${Number(job.steps)}→${Number(job.stepsSent ?? job.steps)}` +
+      (job.stepsCapped ? " (แตะเพดาน 150 — รอบนี้ได้สเต็ปจริงน้อยกว่าที่ตั้งไว้)" : "")
+    : "";
+  return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}{steps}</p>;
 }
 
 export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
@@ -815,14 +822,21 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
               {form.settings.productRefMode === "reference" && " · โหมดเดิม backend ที่แพ็กมาไม่ใช้รูปอ้างอิง (จะเห็นคำเตือนในหน้ารายการ)"}
             </p>
             {form.settings.productRefMode === "img2img" && (
-              <label className="sa-field">
-                <span>Denoise ของ img2img — {Number(form.settings.productRefDenoise).toFixed(2)} (ต่ำ = สินค้าตรง แต่ฉากคล้ายรูปเดิม)</span>
-                <input
-                  type="range" min="0.15" max="0.75" step="0.01"
-                  value={form.settings.productRefDenoise}
-                  onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefDenoise: Number(e.target.value) } }))}
-                />
-              </label>
+              <>
+                <label className="sa-field">
+                  <span>Denoise ของ img2img — {Number(form.settings.productRefDenoise).toFixed(2)} (ต่ำ = สินค้าตรง แต่ฉากคล้ายรูปเดิม)</span>
+                  <input
+                    type="range" min="0.15" max="0.75" step="0.01"
+                    value={form.settings.productRefDenoise}
+                    onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefDenoise: Number(e.target.value) } }))}
+                  />
+                </label>
+                <p className="sa-form-hint">
+                  backend ตัดสเต็ปตาม denoise (steps × denoise) ระบบจึงส่ง steps มากขึ้นเพื่อให้ได้สเต็ปจริงเท่าเดิม —
+                  เช่น 20 สเต็ป ที่ denoise 0.38 จะส่ง 53 สเต็ป (ได้ 20 สเต็ปจริง) ภาพจึงเปลี่ยนตาม prompt มากขึ้น
+                  แต่ใช้เวลาประมาณ 1/denoise เท่า (denoise 0.38 ≈ 2.6 เท่า) · สูงสุด 150 สเต็ป
+                </p>
+              </>
             )}
           </>
         )}
