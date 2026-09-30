@@ -3,6 +3,7 @@ import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus 
 import ReferenceManager from "./ReferenceManager";
 import { 
   generateImage, 
+  planImageSteps,
   startServer, 
   stopServer, 
   waitForServerReady, 
@@ -68,6 +69,11 @@ function Generator({
   const [elapsedTime, setElapsedTime] = useState(0);
   const [estimatedLeftTime, setEstimatedLeftTime] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+  // The backend samples floor(steps x denoise) of what it is sent, so an img2img
+  // run is given more steps than the user asked for (see planImageSteps). This is
+  // the total the run is really working through — the progress endpoint reports it.
+  const [activeTotalSteps, setActiveTotalSteps] = useState(0);
+  const [generationStepPlan, setGenerationStepPlan] = useState(null);
   const [generationSpeed, setGenerationSpeed] = useState("");
   const [isCpuFallback, setIsCpuFallback] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -501,7 +507,18 @@ function Generator({
     let fallbackProgress = 0;
     let elapsedSeconds = 0;
 
-    setEstimatedLeftTime(Math.round(constraints.steps * activeStepTime));
+    // The request may carry more steps than the user asked for (img2img at a low
+    // denoise), so the estimate below counts the steps that will really be run.
+    const generationSteps = planImageSteps(
+      constraints,
+      normalizedReferenceSettings,
+      Boolean(baseImage || getBestReferenceSource())
+    );
+    const plannedRunSteps = generationSteps.sent;
+    setActiveTotalSteps(plannedRunSteps);
+    setGenerationStepPlan(generationSteps);
+
+    setEstimatedLeftTime(Math.round(plannedRunSteps * activeStepTime));
 
     timerRef.current = setInterval(async () => {
       elapsedSeconds++;
@@ -513,8 +530,9 @@ function Generator({
           const decoding = progress.decoding || false;
           setIsDecoding(decoding);
 
-          const step = decoding ? (progress.steps || constraints.steps || 20) : (progress.step || 0);
-          const steps = progress.steps || constraints.steps || 20;
+          const step = decoding ? (progress.steps || plannedRunSteps || 20) : (progress.step || 0);
+          const steps = progress.steps || plannedRunSteps || 20;
+          setActiveTotalSteps(steps);
           const speed = decoding ? "" : (progress.speed || "");
           const numericSpeed = parseFloat(speed);
           const backendMode = String(progress.backendMode || "").toLowerCase();
@@ -592,21 +610,21 @@ function Generator({
         console.warn("Failed to get generation progress, running simulation fallback:", e);
 
         // Fallback simulation logic
-        if (gpuSelected && !cpuFallbackDetected && elapsedSeconds > constraints.steps * baseGpuStepTime * 1.3) {
+        if (gpuSelected && !cpuFallbackDetected && elapsedSeconds > plannedRunSteps * baseGpuStepTime * 1.3) {
           cpuFallbackDetected = true;
           setIsCpuFallback(true);
           activeStepTime = baseCpuStepTime;
           fallbackTime = elapsedSeconds;
-          fallbackProgress = Math.min(95, Math.round((elapsedSeconds / (constraints.steps * baseGpuStepTime)) * 100));
+          fallbackProgress = Math.min(95, Math.round((elapsedSeconds / (plannedRunSteps * baseGpuStepTime)) * 100));
         }
 
-        let step = Math.min(constraints.steps - 1, Math.floor(elapsedSeconds / activeStepTime));
-        let expectedTotal = constraints.steps * activeStepTime;
+        let step = Math.min(plannedRunSteps - 1, Math.floor(elapsedSeconds / activeStepTime));
+        let expectedTotal = plannedRunSteps * activeStepTime;
         if (elapsedSeconds >= expectedTotal) {
           const computedStepTime = Math.ceil(elapsedSeconds / Math.max(0.5, step));
           activeStepTime = Math.max(activeStepTime + 15, computedStepTime + 15);
-          expectedTotal = constraints.steps * activeStepTime;
-          step = Math.min(constraints.steps - 1, Math.floor(elapsedSeconds / activeStepTime));
+          expectedTotal = plannedRunSteps * activeStepTime;
+          step = Math.min(plannedRunSteps - 1, Math.floor(elapsedSeconds / activeStepTime));
         }
         const remaining = Math.max(1, expectedTotal - elapsedSeconds);
         setEstimatedLeftTime(Math.round(remaining));
@@ -659,7 +677,8 @@ function Generator({
 
       if (timerRef.current) clearInterval(timerRef.current);
       setGenerationProgress(100);
-      setCurrentStep(constraints.steps);
+      setCurrentStep(plannedRunSteps);
+      setActiveTotalSteps(plannedRunSteps);
       setEstimatedLeftTime(0);
       setGenerationSpeed("");
 
@@ -669,6 +688,10 @@ function Generator({
         negativePrompt: negativePrompt,
         seed: result.seed,
         steps: constraints.steps,
+        // img2img at a low denoise sends more steps than the user asked for so
+        // the backend's trim still leaves `steps` of real sampling (see api.js).
+        stepsSent: result.stepsSent ?? plannedRunSteps,
+        stepsCapped: result.stepsCapped === true,
         cfgScale: constraints.cfgScale,
         width: constraints.width,
         height: constraints.height,
@@ -1159,12 +1182,22 @@ function Generator({
                     {/* Real-time stats display */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", width: "80%", margin: "8px 0 0 0", fontSize: "0.85rem", opacity: 0.9 }}>
                       <div style={{ textAlign: "left" }}>
-                        <strong>Step:</strong> {currentStep} / {constraints.steps} ({Math.max(0, constraints.steps - currentStep)} left)
+                        <strong>Step:</strong> {currentStep} / {activeTotalSteps || constraints.steps} ({Math.max(0, (activeTotalSteps || constraints.steps) - currentStep)} left)
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <strong>Elapsed:</strong> {elapsedTime}s{generationSpeed && ` (${generationSpeed === "decoding" ? "decoding" : generationSpeed})`}
                       </div>
                     </div>
+
+                    {/* The backend trims an img2img schedule by denoising_strength,
+                        so the request carries more steps than the user asked for.
+                        Say so, or the step count above looks wrong. */}
+                    {generationStepPlan?.scaled && (
+                      <div style={{ fontSize: "0.78rem", opacity: 0.75, margin: "6px 0 0 0", textAlign: "center" }}>
+                        img2img: sending {generationStepPlan.sent} steps so denoise {Number(generationStepPlan.strength).toFixed(2)} still leaves {generationStepPlan.effective} real steps
+                        {generationStepPlan.capped && " (capped at 150 — this run will finish short of the requested steps)"}
+                      </div>
+                    )}
 
                     <div className="progress-bar-container" style={{ margin: "4px 0 10px 0" }}>
                       <div
