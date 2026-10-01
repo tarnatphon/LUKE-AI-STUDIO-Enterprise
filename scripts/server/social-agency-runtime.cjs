@@ -356,6 +356,9 @@ function defaultSettings() {
     useProductRef: true, // ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น reference ตอนสร้างภาพปฏิทิน
     productRefMode: "img2img", // img2img = ส่งรูปสินค้าเป็นภาพตั้งต้น (backend ใช้จริง) · reference = วิธีเดิม
     productRefDenoise: PRODUCT_REF_DENOISE.def, // ยิ่งต่ำ สินค้ายิ่งตรง แต่ฉากจะคล้ายรูปสินค้ามาก
+    productRefInPost: true, // แนบรูปสินค้าจริง (ย่อด้านยาว 500px) เป็นรูปที่ 2 ของโพสต์ Facebook
+    imageWidth: SA_IMAGE_SIZE.width, // ขนาดภาพปฏิทินของลูกค้านี้ (default แบนเนอร์ 1024×600)
+    imageHeight: SA_IMAGE_SIZE.height,
   };
 }
 
@@ -380,6 +383,10 @@ const PRODUCT_REF_NEGATIVE =
 //               request body. Kept for backends that really do honour it.
 const PRODUCT_REF_MODES = ["img2img", "reference"];
 const PRODUCT_REF_DENOISE = { min: 0.15, max: 0.75, def: 0.38 };
+// ขนาดภาพปฏิทิน Social Agency — แบนเนอร์ (ตั้งได้รายลูกค้า, ต้องหารด้วย 8 ลงตัว)
+const SA_IMAGE_SIZE = { width: 1024, height: 600, min: 256, max: 1536, step: 8 };
+// รูปสินค้าจริงที่แนบไปกับโพสต์ Facebook: ไม่แก้ไขอะไรนอกจากย่อด้านยาวสุดให้เท่ากับค่านี้
+const PRODUCT_REF_POST_EDGE = 500;
 // Statuses that mean "this backend has no img2img endpoint", as opposed to a
 // genuine generation failure. 400/422 only count when the backend says the
 // img2img-only fields are the problem, so a real bad request still surfaces.
@@ -1699,7 +1706,7 @@ class SocialAgencyRuntime {
     if (q && String(q).trim()) {
       const needle = String(q).trim().toLowerCase();
       entries = entries.filter((e) =>
-        [e.productName, e.angle, e.caption, e.brief, e.id, e.sku]
+        [e.productName, e.angle, e.caption, e.brief, e.id, e.sku, ...(e.tags || [])]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
@@ -2038,6 +2045,9 @@ class SocialAgencyRuntime {
       if (hit) entry.pillar = hit.name;
     }
     if (patch.brief !== undefined) entry.brief = String(patch.brief);
+    if (patch.tags !== undefined) {
+      entry.tags = SocialAgencyRuntime._normalizeTags(patch.tags); // ป้ายกำกับรายการ เช่น concept / pencil case
+    }
     if (patch.caption !== undefined) {
       if (entry.tiktokPost) delete entry.tiktokPost; // require renewed consent for changed content
       entry.caption = String(patch.caption); // manual override (deliberate bad-draft test path)
@@ -4903,6 +4913,9 @@ class SocialAgencyRuntime {
       if (typeof s.useProductRef === "boolean") merged.useProductRef = s.useProductRef;
       if (s.productRefMode !== undefined && PRODUCT_REF_MODES.includes(String(s.productRefMode))) merged.productRefMode = String(s.productRefMode);
       if (s.productRefDenoise !== undefined) merged.productRefDenoise = clampFloat(s.productRefDenoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
+      if (typeof s.productRefInPost === "boolean") merged.productRefInPost = s.productRefInPost;
+      if (s.imageWidth !== undefined) merged.imageWidth = SocialAgencyRuntime._normImageEdge(s.imageWidth, SA_IMAGE_SIZE.width);
+      if (s.imageHeight !== undefined) merged.imageHeight = SocialAgencyRuntime._normImageEdge(s.imageHeight, SA_IMAGE_SIZE.height);
       client.settings = merged;
     }
     this._write(state);
@@ -4970,6 +4983,32 @@ class SocialAgencyRuntime {
       c.connectors[platform].testOk = true;
     });
     return result;
+  }
+
+  // Calendar image edge must be a sane multiple of 8 (backend requirement).
+  static _normImageEdge(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    const snapped = Math.round(n / SA_IMAGE_SIZE.step) * SA_IMAGE_SIZE.step;
+    return Math.min(SA_IMAGE_SIZE.max, Math.max(SA_IMAGE_SIZE.min, snapped));
+  }
+
+  // Entry tags (ป้าย): free-form labels the operator attaches to calendar
+  // entries, e.g. "concept" / "pencil case". Strict on purpose — the UI can
+  // pre-validate, but the API is the boundary.
+  static _normalizeTags(value) {
+    if (value === null || value === undefined) return [];
+    if (!Array.isArray(value)) throw new Error("ป้ายต้องเป็นรายการข้อความ");
+    const out = [];
+    for (const raw of value) {
+      const t = String(raw ?? "").trim().replace(/\s+/g, " ");
+      if (!t) continue;
+      if (t.length > 24) throw new Error(`ป้าย "${t.slice(0, 12)}…" ยาวเกิน 24 ตัวอักษร`);
+      if (out.some((x) => x.toLowerCase() === t.toLowerCase())) continue; // dedupe, keep first spelling
+      out.push(t);
+    }
+    if (out.length > 8) throw new Error(`ป้ายได้สูงสุด 8 ป้ายต่อรายการ (ส่งมา ${out.length})`);
+    return out;
   }
 
   // Only public outbound caption links get tracking parameters. Media URLs,
@@ -5103,7 +5142,8 @@ class SocialAgencyRuntime {
       : null;
     const fullPrompt = ref ? `${prompt}\n\nReference guidance: ${PRODUCT_REF_BOOST}` : prompt;
     const backend = this._imageBackendUrl();
-    const plan = this._imageRequestPlan(fullPrompt, ref, refSettings, refInfo);
+    const imageSize = this._clientImageSize(first.client); // ขนาดภาพปฏิทินของลูกค้านี้ (default 1024×600)
+    const plan = this._imageRequestPlan(fullPrompt, ref, refSettings, refInfo, imageSize);
     this._write(first.state);
     let res;
     try {
@@ -5118,7 +5158,7 @@ class SocialAgencyRuntime {
       plan.mode = "reference";
       plan.warning = `backend ไม่รองรับ img2img (HTTP ${res.status}) — ส่งรูปอ้างอิงแบบเดิมแทน ซึ่ง backend อาจไม่ใช้รูปสินค้า`;
       try {
-        res = await this._postImageRequest(backend, "/v1/images/generations", this._imageGenBody(fullPrompt, ref));
+        res = await this._postImageRequest(backend, "/v1/images/generations", this._imageGenBody(fullPrompt, ref, imageSize));
       } catch (err) {
         throw new Error(`เชื่อมต่อ Image backend ไม่ได้ (${backend}) — เปิด Image API ก่อน (${err.message})`);
       }
@@ -5153,6 +5193,8 @@ class SocialAgencyRuntime {
       error: "",
       refMode: plan.mode, // img2img | reference | none | off — what the backend was told
       usedProductRef: Boolean(ref), // the photo was sent (not proof the backend used it)
+      width: imageSize.width, // ขนาดที่ขอจาก backend (default 1024×600 ตั้งได้รายลูกค้า)
+      height: imageSize.height,
       ...(plan.mode === "img2img" ? {
         denoise: plan.denoise,
         // steps = steps of real sampling asked for, stepsSent = what the request
@@ -5217,24 +5259,34 @@ class SocialAgencyRuntime {
     return { enabled, mode, denoise };
   }
 
+  // Calendar image size for this client (default: banner 1024×600). Overrides
+  // the global Image-API defaults for Social Agency generation only.
+  _clientImageSize(client) {
+    const s = (client && client.settings) || {};
+    return {
+      width: SocialAgencyRuntime._normImageEdge(s.imageWidth, SA_IMAGE_SIZE.width),
+      height: SocialAgencyRuntime._normImageEdge(s.imageHeight, SA_IMAGE_SIZE.height),
+    };
+  }
+
   // Decide the endpoint + body once, so the caller can retry the documented
   // fallback without rebuilding the request.
-  _imageRequestPlan(prompt, ref, refSettings, refInfo = {}) {
+  _imageRequestPlan(prompt, ref, refSettings, refInfo = {}, size = null) {
     if (!ref) {
       const warning = refSettings.enabled
         ? (refInfo.warning || "สินค้านี้ยังไม่มีรูปในระบบ — ดึงรูปสินค้าจากเว็บที่แท็บสินค้าก่อนสร้างภาพ")
         : "";
-      return { mode: refSettings.enabled ? "none" : "off", path: "/v1/images/generations", body: this._imageGenBody(prompt, null), warning };
+      return { mode: refSettings.enabled ? "none" : "off", path: "/v1/images/generations", body: this._imageGenBody(prompt, null, size), warning };
     }
     if (refSettings.mode === "reference") {
-      return { mode: "reference", path: "/v1/images/generations", body: this._imageGenBody(prompt, ref), warning: "" };
+      return { mode: "reference", path: "/v1/images/generations", body: this._imageGenBody(prompt, ref, size), warning: "" };
     }
     const init = String(ref.dataUrl || "").replace(/^data:[^;]+;base64,/, "");
     const stepPlan = this._img2imgStepPlan(refSettings.denoise);
     return {
       mode: "img2img",
       path: "/sdapi/v1/img2img",
-      body: this._imageImg2ImgBody(prompt, init, ref, refSettings.denoise, stepPlan),
+      body: this._imageImg2ImgBody(prompt, init, ref, refSettings.denoise, stepPlan, size),
       denoise: refSettings.denoise,
       // steps = what the operator asked for, stepsSent = what the request carries.
       // The job record shows both, because the backend trims the schedule.
@@ -5322,12 +5374,14 @@ class SocialAgencyRuntime {
     };
   }
 
-  _imageGenBody(prompt, ref = null) {
+  _imageGenBody(prompt, ref = null, size = null) {
     const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
     const preset = this._modelPreset(d.model);
     const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
-    const width = Math.round(num(d.width, preset.width));
-    const height = Math.round(num(d.height, preset.height));
+    // Client-specific calendar size (default 1024×600) wins over the global
+    // Image-API defaults; without one (other callers) keep the old behaviour.
+    const width = Math.round(num(size ? size.width : d.width, preset.width));
+    const height = Math.round(num(size ? size.height : d.height, preset.height));
     return {
       prompt: String(prompt || ""),
       negative_prompt: ref ? PRODUCT_REF_NEGATIVE : "",
@@ -5362,12 +5416,12 @@ class SocialAgencyRuntime {
   // floor(steps × denoising_strength) of whatever it is given, so sending the
   // plain number would quietly turn a 20-step request at denoise 0.38 into 7
   // steps — the product stays right but the prompt stops working.
-  _imageImg2ImgBody(prompt, initBase64, ref, denoise, stepPlan = null) {
+  _imageImg2ImgBody(prompt, initBase64, ref, denoise, stepPlan = null, size = null) {
     const d = (typeof this.imageDefaultsProvider === "function" && this.imageDefaultsProvider()) || {};
     const preset = this._modelPreset(d.model);
     const num = (v, fb) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fb);
-    const width = Math.round(num(d.width, preset.width));
-    const height = Math.round(num(d.height, preset.height));
+    const width = Math.round(num(size ? size.width : d.width, preset.width));
+    const height = Math.round(num(size ? size.height : d.height, preset.height));
     const strength = clampFloat(denoise, PRODUCT_REF_DENOISE.min, PRODUCT_REF_DENOISE.max, PRODUCT_REF_DENOISE.def);
     const plan = stepPlan || this._img2imgStepPlan(strength);
     return {
@@ -5624,6 +5678,14 @@ class SocialAgencyRuntime {
     if (generating) return { required: true, ok: false, status: "generating", reason: "กำลังสร้างภาพทดแทน — รอให้เสร็จแล้วตรวจภาพใหม่" };
     const fp = this._imageFingerprint(entry);
     if (fp === "unreadable") return { required: true, ok: false, status: "unreadable", reason: "อ่านไฟล์ภาพไม่ได้ — สร้างภาพใหม่หรือแนบภาพอีกครั้ง" };
+    // The operator rejected this exact image before ("ไม่ใช่ — ห้ามใช้รูปนี้").
+    // Fingerprints are remembered per entry, so a regenerated image only clears
+    // the block when its bytes actually differ from every rejected image.
+    const rejections = Array.isArray(entry.imageRejections) ? entry.imageRejections : [];
+    if (fp && rejections.some((r) => r && r.fingerprint === fp)) {
+      const last = [...rejections].reverse().find((r) => r && r.fingerprint === fp);
+      return { required: true, ok: false, status: "rejected", reason: "รูปนี้ถูกปฏิเสธไว้ — ห้ามใช้รูปนี้ ต้องสร้างภาพใหม่", rejectedAt: last.rejectedAt };
+    }
     const review = entry.imageReview;
     if (!review || review.status !== "approved") return { required: true, ok: false, status: "unreviewed", reason: "ยังไม่ได้ตรวจภาพในหน้าโพสต์" };
     if (review.fingerprint !== fp || review.sku !== entry.sku) {
@@ -5635,6 +5697,49 @@ class SocialAgencyRuntime {
   _assertImageReviewed(entry) {
     const gate = this._imageGateInfo(entry);
     if (!gate.ok) throw new Error(`ด่านตรวจภาพ: ${gate.reason} (ยังไม่ส่งจริง — dry-run ยังใช้ได้)`);
+  }
+
+  // "ไม่ใช่ — ห้ามใช้รูปนี้": the operator says this image must never go live.
+  // Remembers the image fingerprint (so the same bytes can never be re-approved),
+  // clears any existing review, and starts generating a replacement — unless the
+  // caller passes regenerate: false. Never starts a workflow and never publishes.
+  rejectEntryImage(clientId, entryId, body = {}) {
+    const { state, entry } = this._findEntry(clientId, entryId);
+    if (entry.inFlight || entry.status === "publishing" || entry.status === "published") throw new Error("รายการนี้กำลังเผยแพร่หรือเผยแพร่แล้ว — ปฏิเสธรูปไม่ได้");
+    if (entry.abTestSource) throw new Error("ต้นฉบับ A/B ถูกเก็บแล้ว — ปฏิเสธรูปที่โพสต์ A/B ในปฏิทินแทน");
+    if (entry.imageJob && entry.imageJob.status === "running") throw new Error("กำลังสร้างภาพอยู่ — รอให้เสร็จก่อนแล้วค่อยตรวจ/ปฏิเสธ");
+    const fp = this._imageFingerprint(entry);
+    if (!fp) throw new Error("รายการนี้ไม่มีภาพแนบให้ปฏิเสธ");
+    if (fp === "unreadable") throw new Error("อ่านไฟล์ภาพไม่ได้ — ใช้ปุ่มสร้างภาพใหม่แทน");
+    const now = new Date().toISOString();
+    const rejections = Array.isArray(entry.imageRejections) ? [...entry.imageRejections] : [];
+    if (!rejections.some((r) => r && r.fingerprint === fp)) {
+      rejections.push({
+        fingerprint: fp,
+        sku: entry.sku,
+        publicUrl: String((entry.image && entry.image.publicUrl) || ""),
+        imageFilename: String((entry.image && entry.image.filename) || ""),
+        rejectedAt: now,
+      });
+      entry.imageRejections = rejections.slice(-20); // keep the newest 20 rejections
+    }
+    delete entry.imageReview; // a rejected image can never keep an approval
+    entry.updatedAt = now;
+    this._write(state);
+    let regen = null;
+    if (body.regenerate !== false) {
+      try {
+        regen = this.startEntryImageGen(clientId, entryId);
+      } catch (err) {
+        regen = { status: "error", error: (err && err.message) || String(err) };
+      }
+    }
+    return {
+      entryId: entry.id,
+      imageGate: this._imageGateInfo(entry),
+      regenerated: Boolean(regen && regen.status === "running"),
+      regenError: (regen && regen.error) || "",
+    };
   }
 
   // Records the human's decision. Deliberately does NOT run the workflow,
@@ -5696,6 +5801,60 @@ class SocialAgencyRuntime {
     } catch {
       return { error: "ไม่พบไฟล์รูปสินค้า" };
     }
+  }
+
+  // The 500px derivative of the product photo that gets attached to Facebook
+  // posts. Produced by the app (browser canvas) at product-image fetch/display
+  // time — the server stays dependency-free — and cached next to the original
+  // as <sku>.ref500.jpg. Falls back to reporting the original file.
+  _resolveProductRefPostFile(client, product) {
+    const found = this._resolveProductImageFile(client, product);
+    if (found.error) return { error: found.error };
+    const dir = path.dirname(found.file);
+    const ref500 = path.join(dir, `${product.sku}.ref500.jpg`);
+    try {
+      const realDir = fs.realpathSync(dir);
+      const realRef = fs.realpathSync(ref500);
+      if (realRef !== path.join(realDir, `${product.sku}.ref500.jpg`)) return { original: found.file, ref500: null };
+      return { original: found.file, ref500: realRef };
+    } catch {
+      return { original: found.file, ref500: null };
+    }
+  }
+
+  // GET /api/social-agency/products/ref-image-500 — does the 500px derivative
+  // exist yet? The frontend asks before deriving it with canvas.
+  getProductRef500Status(clientId, sku) {
+    const { client } = this._resolveClient(clientId);
+    const product = (client.products || []).find((p) => p.sku === String(sku || ""));
+    if (!product) throw new Error(`ไม่พบสินค้า SKU ${sku} ของลูกค้านี้`);
+    const found = this._resolveProductImageFile(client, product);
+    if (found.error) return { sku: product.sku, local: false, exists: false, reason: found.error };
+    const ref = this._resolveProductRefPostFile(client, product);
+    return { sku: product.sku, local: true, exists: Boolean(ref.ref500), url: ref.ref500 ? `/sa-products/${client.id}/${product.sku}.ref500.jpg` : "" };
+  }
+
+  // POST /api/social-agency/products/ref-image-500 — store the canvas-derived
+  // 500px JPEG next to the product's own photo. JPEG only: the browser canvas
+  // produces it, and the writer never re-encodes anything.
+  saveProductRef500(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    const sku = String(body.sku || "").trim();
+    const product = (client.products || []).find((p) => p.sku === sku);
+    if (!product) throw new Error(`ไม่พบสินค้า SKU ${sku || "(ว่าง)"} ของลูกค้านี้`);
+    const found = this._resolveProductImageFile(client, product);
+    if (found.error) throw new Error(`สินค้านี้ยังไม่มีรูปในเครื่อง (${found.error})`);
+    const m = String(body.dataUrl || "").match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+    if (!m) throw new Error("ต้องส่งรูปเป็น data:image/jpeg;base64 (จาก canvas ของแอป)");
+    const buf = Buffer.from(m[1], "base64");
+    if (!buf.length) throw new Error("ไฟล์รูปว่างเปล่า");
+    if (buf.length > 3 * 1024 * 1024) throw new Error("ไฟล์รูปใหญ่เกิน 3MB");
+    const dir = path.dirname(found.file);
+    const dest = path.join(dir, `${sku}.ref500.jpg`);
+    const realDir = fs.realpathSync(dir);
+    if (path.resolve(dest) !== path.join(realDir, `${sku}.ref500.jpg`)) throw new Error("พาธปลายทางไม่ถูกต้อง");
+    fs.writeFileSync(dest, buf);
+    return { sku, url: `/sa-products/${client.id}/${sku}.ref500.jpg`, bytes: buf.length };
   }
 
   async _publicImageUrl(client, entry) {
@@ -5979,6 +6138,34 @@ class SocialAgencyRuntime {
     }
   }
 
+  // The real product photo for a Facebook multi-photo post: unmodified except
+  // for the 500px long-edge derivative. Returns { buffer: null } when the client
+  // turned the setting off, the entry's product has no local photo, or nothing
+  // could be resolved — the caller then keeps the plain single-photo post.
+  _fbProductRefAttach(client, entry) {
+    try {
+      const s = client.settings || {};
+      if (s.productRefInPost === false) return { buffer: null, note: "" };
+      const product = (client.products || []).find((p) => p.sku === entry.sku);
+      if (!product) return { buffer: null, note: "" };
+      const img = String(product.image || "");
+      if (!img.startsWith("/sa-products/")) return { buffer: null, note: "" };
+      const ref = this._resolveProductRefPostFile(client, product);
+      if (ref.error) return { buffer: null, note: "" };
+      if (ref.ref500) return { buffer: fs.readFileSync(ref.ref500), filename: `${product.sku}.ref500.jpg`, note: "" };
+      if (ref.original) {
+        return {
+          buffer: fs.readFileSync(ref.original),
+          filename: path.basename(ref.original),
+          note: `แนบรูปสินค้าต้นฉบับ (ยังไม่มีเวอร์ชัน ${PRODUCT_REF_POST_EDGE}px — เปิดหน้าโพสต์ของรายการนี้ 1 ครั้งเพื่อให้แอปสร้างให้ แล้วโพสต์ถัดไปจะใช้รูป ${PRODUCT_REF_POST_EDGE}px)`,
+        };
+      }
+      return { buffer: null, note: "" };
+    } catch {
+      return { buffer: null, note: "" };
+    }
+  }
+
   async _publishEntry(client, entry, ctx) {
     const platform = entry.platform;
     if (platform === "demo") {
@@ -6038,26 +6225,79 @@ class SocialAgencyRuntime {
       }
       let postId;
       let mediaKind = "post";
+      let attachedProductRef = false;
+      let postNotes = [];
       if (entry.image && (entry.image.publicUrl || entry.image.path)) {
         let buffer = entry.image.buffer;
         if (!buffer && entry.image.path) buffer = fs.readFileSync(entry.image.path);
-        const { body, contentType } = SocialAgencyRuntime._multipart(
-          { caption: caption, access_token: secret.accessToken },
-          "source",
-          buffer,
-          entry.image.filename || "post.jpg"
-        );
-        const res = await SocialAgencyRuntime._https({
-          method: "POST",
-          host: FB_GRAPH_HOST,
-          path: `/${version}/${encodeURIComponent(secret.pageId)}/photos`,
-          headers: { "Content-Type": contentType },
-          body,
-          timeoutMs: 60 * 1000,
-        });
-        if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
-        postId = res.json?.post_id || res.json?.id;
-        mediaKind = res.json?.post_id ? "post" : "photo-object";
+        // Multi-photo post: [1] the AI image (generated as usual), [2] the real
+        // product photo — unmodified apart from the 500px long-edge derivative.
+        // Falls back to the plain single-photo post whenever there is nothing to
+        // attach or the client turned the setting off.
+        const refAttach = this._fbProductRefAttach(client, entry);
+        if (refAttach.buffer) {
+          const uploadUnpublished = async (buf, filename) => {
+            const { body, contentType } = SocialAgencyRuntime._multipart(
+              { published: "false", access_token: secret.accessToken },
+              "source",
+              buf,
+              filename
+            );
+            const res = await SocialAgencyRuntime._https({
+              method: "POST",
+              host: FB_GRAPH_HOST,
+              path: `/${version}/${encodeURIComponent(secret.pageId)}/photos`,
+              headers: { "Content-Type": contentType },
+              body,
+              timeoutMs: 60 * 1000,
+            });
+            if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
+            if (!res.json?.id) throw new Error("Facebook ไม่ส่ง photo ID กลับมา");
+            return String(res.json.id);
+          };
+          const mediaIds = [await uploadUnpublished(buffer, entry.image.filename || "post.jpg")]; // AI image is the post's first photo
+          try {
+            mediaIds.push(await uploadUnpublished(refAttach.buffer, refAttach.filename)); // the real product photo, second
+            attachedProductRef = true;
+          } catch (err) {
+            postNotes.push(`แนบรูปสินค้าไม่สำเร็จ (${(err && err.message) || err}) — โพสต์เฉพาะภาพ AI`);
+          }
+          if (refAttach.note) postNotes.push(refAttach.note);
+          const feedRes = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${version}/${encodeURIComponent(secret.pageId)}/feed`,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: caption,
+              attached_media: mediaIds.map((id) => ({ media_fbid: id })),
+              access_token: secret.accessToken,
+            }),
+            timeoutMs: 60 * 1000,
+          });
+          if (feedRes.status >= 300 || feedRes.json?.error) throw new Error(feedRes.json?.error?.message || `Facebook ตอบ HTTP ${feedRes.status}`);
+          postId = feedRes.json?.id;
+          mediaKind = mediaIds.length > 1 ? "multi-photo" : "post";
+        } else {
+          if (refAttach.note) postNotes.push(refAttach.note);
+          const { body, contentType } = SocialAgencyRuntime._multipart(
+            { caption: caption, access_token: secret.accessToken },
+            "source",
+            buffer,
+            entry.image.filename || "post.jpg"
+          );
+          const res = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${version}/${encodeURIComponent(secret.pageId)}/photos`,
+            headers: { "Content-Type": contentType },
+            body,
+            timeoutMs: 60 * 1000,
+          });
+          if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Facebook ตอบ HTTP ${res.status}`);
+          postId = res.json?.post_id || res.json?.id;
+          mediaKind = res.json?.post_id ? "post" : "photo-object";
+        }
       } else {
         const res = await SocialAgencyRuntime._https({
           method: "POST",
@@ -6073,7 +6313,7 @@ class SocialAgencyRuntime {
       this._mutateClient(client.id, (c) => {
         c.connectors.facebook.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", publishedCaption: caption, mediaKind, postId, latencyMs: Date.now() - t0, note: `โพสต์บนเพจ ${secret.pageId}` };
+      return { platform, mode: "live", publishedCaption: caption, mediaKind, postId, latencyMs: Date.now() - t0, attachedProductRef, note: `โพสต์${mediaKind === "multi-photo" ? " " + mediaKind : ""}บนเพจ ${secret.pageId}${postNotes.length ? " · " + postNotes.join(" · ") : ""}` };
     }
 
     if (platform === "instagram") {
@@ -6856,6 +7096,33 @@ class SocialAgencyRuntime {
           return json(res, 200, { ok: true, ...this.reviewEntryImage(clientId || body.clientId, body.entryId, body) });
         } catch (error) {
           return fail(error, 409);
+        }
+      }
+      if (pathname === "/api/social-agency/entry-image/reject" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.rejectEntryImage(clientId || body.clientId, body.entryId, body) });
+        } catch (error) {
+          return fail(error, 409);
+        }
+      }
+      if (pathname === "/api/social-agency/products/ref-image-500" && method === "GET") {
+        const sku = parsed.searchParams.get("sku") || "";
+        if (!sku) return fail(new Error("ต้องระบุ sku"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.getProductRef500Status(clientId, sku) });
+        } catch (error) {
+          return fail(error, 404);
+        }
+      }
+      if (pathname === "/api/social-agency/products/ref-image-500" && method === "POST") {
+        const body = await readBody();
+        if (!body.sku) return fail(new Error("ต้องระบุ sku"), 400);
+        try {
+          return json(res, 200, { ok: true, ...this.saveProductRef500(clientId || body.clientId, body) });
+        } catch (error) {
+          return fail(error, 400);
         }
       }
       if (pathname === "/api/social-agency/entry-image" && method === "GET") {

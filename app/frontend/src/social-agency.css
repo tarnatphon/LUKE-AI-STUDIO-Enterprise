@@ -779,6 +779,43 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
   border-radius: 8px; padding: 6px 10px; font-size: 0.76rem;
 }
 
+/* ── ป้ายกำกับรายการ (entry tags) ─────────────────────────────────────── */
+.sa-tags-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 2px; }
+.sa-tags-label { font-size: 0.72rem; color: var(--sa-muted); font-weight: 600; }
+.sa-tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; flex: 1; min-width: 220px; }
+.sa-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--sa-primary-container, rgba(79, 70, 229, 0.08));
+  border: 1px solid color-mix(in srgb, var(--sa-primary, #4f46e5) 32%, transparent);
+  color: var(--sa-on-primary-container, var(--sa-text)); border-radius: 999px; padding: 1px 8px; font-size: 0.72rem; line-height: 1.5;
+}
+.sa-tag button {
+  background: none; border: 0; cursor: pointer; color: inherit; opacity: 0.55;
+  font-size: 0.8rem; line-height: 1; padding: 0;
+}
+.sa-tag button:hover { opacity: 1; }
+/* must outrank .sa-shell input { width:100%; min-height:36px } (PR #26 lesson) */
+.sa-shell .sa-tag-input {
+  border: 1px dashed var(--sa-outline-strong); background: transparent; color: var(--sa-text);
+  border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; min-height: 0; width: 160px;
+}
+.sa-shell .sa-tag-input:focus { outline: none; border-color: var(--sa-primary); }
+.sa-tag-suggest { display: flex; flex-wrap: wrap; gap: 4px; }
+.sa-tag-suggest button {
+  background: none; border: 1px solid var(--sa-outline); color: var(--sa-muted);
+  border-radius: 999px; padding: 0 7px; font-size: 0.68rem; cursor: pointer;
+}
+.sa-tag-suggest button:hover { color: var(--sa-text); border-color: var(--sa-primary); }
+.sa-chip-tags { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.sa-tag.mini {
+  padding: 0 6px; font-size: 0.64rem; border-radius: 999px;
+  background: color-mix(in srgb, var(--sa-primary, #4f46e5) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sa-primary, #4f46e5) 26%, transparent);
+  color: var(--sa-text);
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sa-tag.mini.more { opacity: 0.75; }
+
 /* ── responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .sa-wf-lower { grid-template-columns: 1fr; }

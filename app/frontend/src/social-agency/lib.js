@@ -217,3 +217,52 @@ export function clientMonthlyCounts(client, monthStr) {
     failed: entries.filter((e) => ["failed", "missed"].includes(e.status)).length,
   };
 }
+
+// ── รูปสินค้าจริงแนบไปกับโพสต์ Facebook (500px) ──
+// The server stays dependency-free, so the 500px long-edge derivative of the
+// product photo is produced here with the browser canvas and cached on disk as
+// <sku>.ref500.jpg next to the original. Nothing else about the photo changes.
+export const PRODUCT_REF_POST_EDGE = 500;
+
+export async function ensureProductRef500(clientId, product) {
+  if (!clientId || !product?.sku) return null;
+  const image = String(product.image || "");
+  if (!image.startsWith("/sa-products/")) return null; // nothing local to derive from
+  const qs = `clientId=${encodeURIComponent(clientId)}&sku=${encodeURIComponent(product.sku)}`;
+  let status = null;
+  try {
+    const res = await api(`/api/social-agency/products/ref-image-500?${qs}`);
+    status = res;
+  } catch {
+    return null; // server not reachable / product without a local photo yet
+  }
+  if (!status || status.exists) return status || null;
+  // Derive the ≤500px JPEG with canvas: scale the long edge down, keep the
+  // aspect ratio, never upscale, no other edits.
+  const img = new Image();
+  img.src = image;
+  await img.decode();
+  const long = Math.max(img.naturalWidth || 0, img.naturalHeight || 0);
+  if (!long) return null;
+  if (long <= PRODUCT_REF_POST_EDGE) return { ...status, smallOriginal: true }; // already ≤500px — server attaches the original
+  const scale = PRODUCT_REF_POST_EDGE / long;
+  const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+  const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  if (!blob) return null;
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("อ่านไฟล์รูปที่ย่อแล้วไม่ได้"));
+    reader.readAsDataURL(blob);
+  });
+  try {
+    return await postJson(`/api/social-agency/products/ref-image-500?${qs}`, { sku: product.sku, dataUrl });
+  } catch {
+    return null; // the publish path falls back to the original photo + a note
+  }
+}

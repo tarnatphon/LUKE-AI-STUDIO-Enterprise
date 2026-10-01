@@ -236,6 +236,17 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     await postJson("/api/social-agency/entry-image/review", { clientId: activeClient.id, entryId, approve, confirmed: approve });
   });
 
+  // "ไม่ใช่ — ห้ามใช้รูปนี้": lock this exact image out of every live send and
+  // start generating a replacement right away.
+  const rejectImage = withBusy(async (entryId) => {
+    await postJson("/api/social-agency/entry-image/reject", { clientId: activeClient.id, entryId, regenerate: true });
+  });
+
+  // ป้ายกำกับรายการ (เช่น concept / pencil case)
+  const saveTags = withBusy(async (entryId, tags) => {
+    await postJson(`/api/social-agency/calendar/${encodeURIComponent(entryId)}?clientId=${encodeURIComponent(activeClient.id)}`, { tags }, "PATCH");
+  });
+
   const reject = withBusy(async (entryId) => {
     await postJson("/api/social-agency/reject", { clientId: activeClient.id, entryId });
     setDrawerEntryId(null);
@@ -539,6 +550,8 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           onCreateVideo={onCreateVideo}
           onGenerateImage={handleGenerateImage}
           onReviewImage={reviewImage}
+          onRejectImage={rejectImage}
+          onSaveTags={saveTags}
           generatingImage={generatingImage}
           imageGenError={imageGenError}
           onGenerateVideo={handleGenerateVideo}
