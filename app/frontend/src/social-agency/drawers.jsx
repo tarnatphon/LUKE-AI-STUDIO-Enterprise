@@ -7,7 +7,7 @@ import {
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
   formatDateTimeTh, formatDuration, scoreClass, weekdayTh, bangkokToday,
-  PRODUCT_REF_MODE_LABEL, productRefNotice,
+  PRODUCT_REF_MODE_LABEL, productRefNotice, ensureProductRef500,
 } from "./lib.js";
 
 function Drawer({ title, onClose, children, footer }) {
@@ -143,11 +143,12 @@ const IMAGE_GATE_LABEL = {
   stale: "ภาพ / Public URL / สินค้า เปลี่ยนหลังตรวจ — ต้องตรวจใหม่",
   generating: "กำลังสร้างภาพทดแทน — ระบบจะไม่ส่งจริงจนกว่าจะตรวจภาพใหม่",
   unreadable: "อ่านไฟล์ภาพไม่ได้ — ตรวจและส่งจริงไม่ได้",
+  rejected: "รูปนี้ถูกปฏิเสธ — ห้ามใช้รูปนี้ ต้องสร้างภาพใหม่",
 };
 
 // Human image review — separate from caption approval. Recording it never
 // starts a workflow and never publishes; dry-run works without it.
-function ImageReviewGate({ entry, busy, onReviewImage }) {
+function ImageReviewGate({ entry, busy, onReviewImage, onRejectImage }) {
   const gate = entry.imageGate;
   const [confirmed, setConfirmed] = useState(false);
   useEffect(() => { setConfirmed(false); }, [entry.id, gate?.status]);
@@ -175,10 +176,18 @@ function ImageReviewGate({ entry, busy, onReviewImage }) {
           </button>
         </>
       )}
+      {gate.status === "rejected" && (
+        <p className="sa-form-hint">กด "สร้างภาพใหม่" ด้านล่างเพื่อสร้างภาพทดแทน — รูปที่ปฏิเสธไว้จะถูกจดจำไว้ ถ้าภาพใหม่ออกมาเหมือนเดิมระบบจะบล็อกซ้ำ</p>
+      )}
+      {onRejectImage && ["unreviewed", "stale", "approved"].includes(gate.status) && (
+        <button className="sa-btn ghost sm danger" disabled={busy} onClick={() => onRejectImage(entry.id)}>
+          <Ban size={13} /> ไม่ใช่ — ห้ามใช้รูปนี้
+        </button>
+      )}
       {approved && (
         <button className="sa-btn ghost sm" disabled={busy} onClick={() => onReviewImage?.(entry.id, false)}>ยกเลิกการตรวจภาพ</button>
       )}
-      <p className="sa-form-hint">การกดตรวจภาพไม่เริ่ม workflow และไม่เผยแพร่เอง · ด่านนี้ใช้กับการส่งจริงเท่านั้น dry-run ใช้งานได้ตามปกติ</p>
+      <p className="sa-form-hint">การกดตรวจภาพไม่เริ่ม workflow และไม่เผยแพร่เอง · กด "ไม่ใช่ — ห้ามใช้รูปนี้" จะล็อกรูปนี้และสร้างภาพใหม่ให้อัตโนมัติ · ด่านนี้ใช้กับการส่งจริงเท่านั้น dry-run ใช้งานได้ตามปกติ</p>
     </div>
   );
 }
@@ -203,7 +212,7 @@ function ImageRefLine({ entry }) {
   return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}{steps}</p>;
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, onRejectImage, onSaveTags, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
   const [abDate, setAbDate] = useState(() => new Date(Date.parse(`${bangkokToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10));
@@ -252,6 +261,48 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
     [client, entry]
   );
   const product = (client.products || []).find((p) => p.sku === entry.sku);
+  // ป้ายกำกับรายการ (เช่น concept / pencil case) — แก้จากหน้าโพสต์นี้
+  const tags = Array.isArray(entry.tags) ? entry.tags : [];
+  const [tagDraft, setTagDraft] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState("");
+  const knownTags = useMemo(() => {
+    const counts = new Map();
+    for (const e of client.calendar || []) {
+      for (const t of e.tags || []) {
+        if (tags.includes(t)) continue;
+        counts.set(t, (counts.get(t) || 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([t]) => t);
+  }, [client.calendar, entry.id, tags]);
+  const saveTags = async (next) => {
+    if (!onSaveTags || tagBusy) return;
+    setTagBusy(true);
+    setTagError("");
+    try {
+      await onSaveTags(entry.id, next);
+    } catch (err) {
+      setTagError(err.message);
+    } finally {
+      setTagBusy(false);
+    }
+  };
+  const addTag = async (raw) => {
+    const t = String(raw ?? "").trim().replace(/\s+/g, " ");
+    if (!t) return;
+    if (t.length > 24) { setTagError(`ป้าย "${t.slice(0, 12)}…" ยาวเกิน 24 ตัวอักษร`); return; }
+    if (tags.length >= 8) { setTagError("ป้ายได้สูงสุด 8 ป้ายต่อรายการ"); return; }
+    if (tags.some((x) => x.toLowerCase() === t.toLowerCase())) return;
+    setTagDraft("");
+    await saveTags([...tags, t]);
+  };
+  // Facebook multi-photo posts carry the real product photo as the second
+  // image; opening an entry quietly makes sure the ≤500px derivative exists.
+  useEffect(() => {
+    if (!client?.id || !product?.sku) return;
+    ensureProductRef500(client.id, product).catch(() => {});
+  }, [client?.id, product?.sku, product?.image]);
   const copy = async (text, what) => {
     try {
       await navigator.clipboard.writeText(text || "");
@@ -312,6 +363,37 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         {entry.late && <span className="sa-pill late">รันช้า</span>}
         {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "pending" ? "รอ TikTok ประมวลผล" : entry.publishMode === "failed" ? "TikTok ล้มเหลว" : entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>
+
+      {onSaveTags && (
+        <div className="sa-tags-row">
+          <span className="sa-tags-label">ป้าย</span>
+          <div className="sa-tag-list">
+            {tags.map((t) => (
+              <span key={t} className="sa-tag">
+                {t}
+                <button aria-label={`เอาป้าย ${t} ออก`} title={`เอาป้าย ${t} ออก`} disabled={tagBusy} onClick={() => saveTags(tags.filter((x) => x !== t))}>×</button>
+              </span>
+            ))}
+            <input
+              className="sa-tag-input"
+              value={tagDraft}
+              placeholder={tags.length ? "+ ป้าย" : "ติดป้าย เช่น concept / pencil case"}
+              aria-label="เพิ่มป้ายให้รายการนี้"
+              disabled={tagBusy || tags.length >= 8}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(tagDraft); } }}
+            />
+          </div>
+          {knownTags.length > 0 && (
+            <div className="sa-tag-suggest">
+              {knownTags.map((t) => (
+                <button key={t} disabled={tagBusy || tags.length >= 8} onClick={() => addTag(t)}>+{t}</button>
+              ))}
+            </div>
+          )}
+          {tagError && <p className="sa-form-error" role="alert">{tagError}</p>}
+        </div>
+      )}
 
       <div className="sa-entry-facts">
         <div><span>สินค้า</span><b>{entry.productName}</b></div>
@@ -640,6 +722,9 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       useProductRef: connectors?.settings?.useProductRef !== false,
       productRefMode: connectors?.settings?.productRefMode === "reference" ? "reference" : "img2img",
       productRefDenoise: Number.isFinite(Number(connectors?.settings?.productRefDenoise)) ? Number(connectors.settings.productRefDenoise) : 0.38,
+      productRefInPost: connectors?.settings?.productRefInPost !== false,
+      imageWidth: Number.isFinite(Number(connectors?.settings?.imageWidth)) ? Number(connectors.settings.imageWidth) : 1024,
+      imageHeight: Number.isFinite(Number(connectors?.settings?.imageHeight)) ? Number(connectors.settings.imageHeight) : 600,
     },
   }));
   const [tests, setTests] = useState({});
@@ -800,11 +885,21 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
             <span>โพสต์ต่อสัปดาห์</span>
             <input type="number" min="1" max="7" value={form.settings.postsPerWeek} onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, postsPerWeek: Number(e.target.value) } }))} />
           </label>
+          <label className="sa-field">
+            <span>ขนาดภาพปฏิทิน — กว้าง (px)</span>
+            <input type="number" min="256" max="1536" step="8" value={form.settings.imageWidth} onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, imageWidth: Number(e.target.value) } }))} />
+          </label>
+          <label className="sa-field">
+            <span>ขนาดภาพปฏิทิน — สูง (px)</span>
+            <input type="number" min="256" max="1536" step="8" value={form.settings.imageHeight} onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, imageHeight: Number(e.target.value) } }))} />
+          </label>
         </div>
+        <p className="sa-form-hint">ขนาดภาพที่ขอจาก Image backend ตอนสร้างภาพปฏิทินของลูกค้านี้ — ค่าเริ่มต้น 1024×600 (แบนเนอร์) · ปัดเป็นจำนวนที่หารด้วย 8 ลงตัว ช่วง 256–1536</p>
         <label className="sa-field"><span>เขตเวลา</span><input value="Asia/Bangkok" disabled /></label>
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
         <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
         <ConnectorToggle checked={form.settings.useProductRef} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, useProductRef: v } }))} label="ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น Reference ตอนสร้างภาพปฏิทิน" />
+        <ConnectorToggle checked={form.settings.productRefInPost} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefInPost: v } }))} label="แนบรูปสินค้าจริง (ย่อด้านยาว 500px แบบไม่แก้ไขอย่างอื่น) เป็นรูปที่ 2 ของโพสต์ Facebook — ภาพ AI เป็นรูปแรก" />
         {form.settings.useProductRef && (
           <>
             <label className="sa-field">

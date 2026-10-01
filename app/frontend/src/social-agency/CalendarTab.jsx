@@ -25,6 +25,12 @@ function Chip({ entry, onOpen, onDragStart, onDelete, onToggle, selectMode, sele
       <span className="sa-chip-time">{entry.time}</span>
       <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
       <span className="sa-chip-status">{meta.label}</span>
+      {(entry.tags?.length || 0) > 0 && (
+        <span className="sa-chip-tags">
+          {entry.tags.slice(0, 3).map((t) => <span key={t} className="sa-tag mini">{t}</span>)}
+          {entry.tags.length > 3 && <span className="sa-tag mini more">+{entry.tags.length - 3}</span>}
+        </span>
+      )}
       {!selectMode && onDelete && (
         <span
           className="sa-chip-del"
@@ -50,17 +56,23 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
   const [query, setQuery] = useState("");
   const today = bangkokToday();
   const weeks = useMemo(() => monthMatrix(month), [month]);
   const monthEntries = useMemo(() => entriesOfMonth(activeClient?.calendar || [], month), [activeClient, month]);
+  const allTags = useMemo(
+    () => [...new Set(monthEntries.flatMap((e) => e.tags || []))].sort((a, b) => a.localeCompare(b, "th")),
+    [monthEntries]
+  );
   const filteredEntries = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return monthEntries.filter((entry) => {
       if (statusFilter !== "all" && entry.status !== statusFilter) return false;
       if (platformFilter !== "all" && entry.platform !== platformFilter) return false;
+      if (tagFilter !== "all" && !(entry.tags || []).includes(tagFilter)) return false;
       if (needle) {
-        const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.pillar, entry.id, entry.sku]
+        const hay = [entry.productName, entry.angle, entry.caption, entry.brief, entry.pillar, entry.id, entry.sku, ...(entry.tags || [])]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -68,7 +80,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
       }
       return true;
     });
-  }, [monthEntries, statusFilter, platformFilter, query]);
+  }, [monthEntries, statusFilter, platformFilter, tagFilter, query]);
   const byDate = useMemo(() => {
     const map = new Map();
     for (const entry of filteredEntries) {
@@ -79,7 +91,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     for (const list of map.values()) list.sort((a, b) => a.time.localeCompare(b.time));
     return map;
   }, [filteredEntries]);
-  const filtering = statusFilter !== "all" || platformFilter !== "all" || query.trim() !== "";
+  const filtering = statusFilter !== "all" || platformFilter !== "all" || tagFilter !== "all" || query.trim() !== "";
 
   const deleteVisible = () => {
     const ids = filteredEntries.map((e) => e.id);
@@ -167,6 +179,14 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
             <option key={value} value={value}>{meta.label}</option>
           ))}
         </select>
+        {allTags.length > 0 && (
+          <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label="กรองตามป้าย">
+            <option value="all">ทุกป้าย</option>
+            {allTags.map((t) => (
+              <option key={t} value={t}>ป้าย: {t}</option>
+            ))}
+          </select>
+        )}
         <span className="sa-searchbox">
           <Search size={13} />
           <input
@@ -184,7 +204,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         {filtering && (
           <span className="sa-muted">
             แสดง {filteredEntries.length} จาก {monthEntries.length} รายการ
-            <button className="sa-btn ghost sm" onClick={() => { setStatusFilter("all"); setPlatformFilter("all"); setQuery(""); }}>
+            <button className="sa-btn ghost sm" onClick={() => { setStatusFilter("all"); setPlatformFilter("all"); setTagFilter("all"); setQuery(""); }}>
               ล้างฟิลเตอร์
             </button>
           </span>
