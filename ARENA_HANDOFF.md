@@ -1,5 +1,6 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
+> **อัปเดตล่าสุด:** 2026-10-02 (session `arena/01a0fb7f…` — **แก้ image prompt ไม่ตรงสินค้า**: `buildTemplateImagePrompt`/`buildTemplateAnimatePrompt` ดึงคำอังกฤษจาก `product.name` และ `product.detail` เพิ่มเติมจาก `product.category` เมื่อ category เป็นภาษาไทย ไม่ต้อง fallback เป็น "product" อีก · smoke 104 + ชุด Social Agency 70 = 174 passed · PR #32)
 > **อัปเดตล่าสุด:** 2026-10-01 (session `arena/01a0f582…` — **งานชุด "ป้าย + ปุ่มปฏิเสธรูป + รูปสินค้าจริงแนบโพสต์ Facebook" สร้างใหม่ทั้งชุด** เพราะงานชุดเดียวกันจาก session ก่อนหน้า**ไม่เคยถูก push ขึ้น GitHub และหายไปกับ sandbox** (ซ้ำรูปแบบเคส `5be0bd0`/`1d7d26c` — รายละเอียดการตรวจอยู่ท้ายหัวข้อ 7) · **ป้ายรายการ** (`entry.tags` ≤8 ป้าย × ≤24 ตัวอักษร ผ่าน PATCH calendar + ชิปบนการ์ดปฏิทิน + กรอง/ค้นหาตามป้าย) · **ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้"** ในด่านตรวจภาพ: ล็อก fingerprint รูปที่ปฏิเสธ + ล้างผลตรวจ + สร้างภาพใหม่อัตโนมัติ · ภาพใหม่ที่ไบต์เดิมถูกบล็อกซ้ำเอง · **โพสต์ Facebook 2 รูป**: ภาพ AI รูปแรก + รูปสินค้าจริงรูปที่สองแบบไม่แก้ไขอะไรนอกจากย่อด้านยาว 500px (canvas ในเบราว์เซอร์ แคช `<sku>.ref500.jpg` เซิร์ฟเวอร์ไม่เพิ่ม dependency) ส่งแบบ unpublished photos + `feed`+`attached_media` · **ขนาดภาพปฏิทินตั้งได้รายลูกค้า** (default 1024×600 แบนเนอร์) · เทสต์ใหม่ 3 ชุด 30 checks · run-all **147 passed · 0 failed · 0 known-failing · 1 skipped**) 
 > **อัปเดตล่าสุด:** 2026-09-30 (session `arena/01a0f037…` — **สืบหา commit `5be0bd0` / `1d7d26c` ตามคำขอ: ไม่มีอยู่จริงทั้งใน sandbox, บน GitHub และบนเครื่อง Mac** → push ไม่ได้ (ไม่มี object ให้ push) · งานเนื้อหาชุด img2img อยู่ใน `main` แล้วเป็น `5d64236` + `f83ee8d` → merge `24c2a64` · แก้ข้อมูล branch บน GitHub ในข้อ 1 ให้ตรงกับที่ `ls-remote` เห็นจริง · รายละเอียดที่มา/ที่ตรวจแล้วอยู่ท้ายข้อ 6)
 > **อัปเดตล่าสุด:** 2026-09-29 (session `arena/01a0eb60…` — รูปสินค้าอ้างอิงเปลี่ยนไปใช้ img2img จากรูปสินค้าจริง · เตือนใน UI เมื่อ backend ไม่ได้ใช้รูปอ้างอิง · แก้สไตล์เช็กบ็อกซ์ในด่านตรวจภาพ · 143 passed / 0 failed)
@@ -18,7 +19,7 @@
 
 | รายการ | ค่า |
 |---|---|
-| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-30 คือ `24c2a64` (merge ของ PR #26) |
+| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-30 คือ `24c2a64` (merge ของ PR #26) · **PR #32 รออนุมัติ** (แก้ image prompt) |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
 | PR ที่เปิดค้าง | **ไม่มี** — PR #28 (สเกล steps ของ img2img + เทสต์) merged 2026-09-30 04:34Z เป็น `66863bf`; CI `validation suites` เขียวทั้ง workflow (runs 36669042409) · ก่อนหน้า: PR #26 (รูปสินค้าอ้างอิง → img2img + เตือนใน UI + แก้เช็กบ็อกซ์) **merged แล้ว** 2026-09-29 04:33Z เป็น `24c2a64` (commits ที่ push จริง: `5d64236` + `f83ee8d`) · ก่อนหน้า: #25 = `e21eb87`, #21 = `6397105` |
 | branch บน GitHub (ตรวจด้วย `git ls-remote` 2026-09-30) | `main` `24c2a64` · `arena/01a0e089…` `2584762` · `arena/01a0e633…` `3095163` · `arena/01a0eb2c…` `6080dd5` · `arena/01a0eb60…` `24c2a64` · `arena/01a0ebd4…` `24c2a64` · `ci/validation-suites` `8274bde` — **ยังไม่ได้ลบ** (ข้อความเดิมที่ว่า "เหลือแค่ `main`" ไม่จริงแล้ว) · tag `v1.0.0-beta.16` = `fe84a3c` |
@@ -201,6 +202,10 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
 **ระบบที่สามที่จับได้ — CI (Linux บน GitHub):**
 - `actions/checkout` เช็คเอาต์แบบ **detached HEAD** เสมอ จึงไม่มี branch ให้อ่าน · `test-releases-untracked.cjs` เอา `"HEAD"` ไปสั่ง `git clone --branch` → `fatal: Remote branch HEAD not found in upstream origin` · `test-sync-script.cjs` assert ว่า branch ต้องไม่เป็น `HEAD` → ล้มที่ assert นั้น · ทั้งสองชุดตอนนี้ตั้งชื่อ branch ให้ fixture เอง แล้ว `git checkout -B` สร้างมันหลัง clone
 - ยืนยันด้วยการจำลองสภาพจริง: clone สะอาด + `git checkout --detach` แล้วรันสองชุด → ผ่านทั้งคู่ ส่วนก่อนแก้ล้มด้วยข้อความเดียวกับใน log CI
+
+**ค้างของ session `arena/01a0fb7f…` (2026-10-02) — PR #32:**
+- [ ] **merge PR #32** แล้ว `git pull` บน Mac
+- [ ] **ยืนยัน image prompt บน Mac:** สร้างภาพปฏิทิน 1 ใบ → ดู image prompt ต้องไม่เป็น `"product (SKU)"` ถ้าสินค้ามีคำอังกฤษในชื่อหรือรายละเอียด · ถ้าสินค้าเป็นภาษาไทยล้วนทุกฟิลด์ ยังคงเป็น `"product"` (ข้อจำกัดของ SD ที่อ่านภาษาไทยไม่ได้) · **แนะนำ:** เพิ่มคำอธิบายสินค้าภาษาอังกฤษใน `category` หรือ `detail` เพื่อให้ prompt แม่นขึ้น
 
 **ค้างของ session `arena/01a0f582…` (2026-10-01) — ทำบนเครื่อง Mac เท่านั้น (เช็กลิสต์ฟีเจอร์ใหม่):**
 - [ ] **อัปเดต + build:** `cd /Volumes/AI && git pull && cd app/frontend && npm install && npx vite build` แล้วรัน server ตามปกติ (`mac.sh`)
