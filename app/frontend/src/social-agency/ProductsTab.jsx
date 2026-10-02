@@ -604,6 +604,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
               placeholder="ราคา (เช่น 1290)"
             />
           </div>
+          {/[\u0E00-\u0E7F]/.test(form.category) && <p className="sa-muted" role="alert">โมเดลภาพอ่านไม่ได้ ระบบจะใช้คำว่า product แทน — แนะนำใส่ภาษาอังกฤษ</p>}
           <input
             value={form.sourceUrl}
             onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
