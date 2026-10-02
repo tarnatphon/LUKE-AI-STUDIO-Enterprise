@@ -924,8 +924,42 @@ const IMAGE_CAMERA = [
 ];
 
 function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [] } = {}) {
-  const rawItem = product?.category || "product";
-  const item = /[\u0E00-\u0E7F]/.test(rawItem) ? "product" : rawItem;
+  const rawName = product?.name ? String(product.name).trim() : "";
+  const rawCat = product?.category ? String(product.category).trim() : "";
+  // Build the best ASCII-only item description from available product fields.
+  // Priority: English category > English words from product name > English words
+  // from product detail > generic "product".
+  // SD backends cannot read Thai, so prompt must stay ASCII.
+  let item = "";
+  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) {
+    item = rawCat;                        // English category is ideal
+  } else {
+    // Extract English/ASCII words from product name (e.g. "กระเป๋าผ้า Tote Bag" → "Tote Bag")
+    const asciiWords = rawName.match(/[A-Za-z][A-Za-z0-9_-]{1,}/g);
+    if (asciiWords && asciiWords.length) {
+      // Skip bare SKUs (single token that looks like "WLB-006", "CAM-009") unless
+      // there are other descriptive words alongside.
+      const descriptive = asciiWords.filter((w) => !/^[A-Z]{2,5}-\d{2,5}$/.test(w));
+      item = descriptive.length ? descriptive.join(" ") : "";
+    }
+    // If still empty, try product detail (scraped from the product page — may contain
+    // English product descriptions, material names, etc.)
+    if (!item) {
+      const rawDetail = product?.detail ? String(product.detail).trim() : "";
+      if (rawDetail) {
+        const detailWords = rawDetail.match(/[A-Za-z][A-Za-z0-9_-]{2,}/g);
+        if (detailWords && detailWords.length) {
+          // Take first few meaningful English words (avoid overly long prompts)
+          const meaningful = detailWords.filter((w) =>
+            !/^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i.test(w)
+          );
+          item = meaningful.slice(0, 5).join(" ");
+        }
+      }
+    }
+    // Do NOT use a Thai-only category — it would break ASCII-only requirement
+  }
+  if (!item) item = "product";
   const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
@@ -998,8 +1032,33 @@ function pickAnimateCamera(seed, avoidIds) {
 }
 
 function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [] } = {}) {
-  const rawItem = product?.category || "product";
-  const item = /[\u0E00-\u0E7F]/.test(rawItem) ? "product" : rawItem;
+  const rawName = product?.name ? String(product.name).trim() : "";
+  const rawCat = product?.category ? String(product.category).trim() : "";
+  // Same ASCII-only item logic as buildTemplateImagePrompt
+  let item = "";
+  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) {
+    item = rawCat;
+  } else {
+    const asciiWords = rawName.match(/[A-Za-z][A-Za-z0-9_-]{1,}/g);
+    if (asciiWords && asciiWords.length) {
+      const descriptive = asciiWords.filter((w) => !/^[A-Z]{2,5}-\d{2,5}$/.test(w));
+      item = descriptive.length ? descriptive.join(" ") : "";
+    }
+    if (!item) {
+      const rawDetail = product?.detail ? String(product.detail).trim() : "";
+      if (rawDetail) {
+        const detailWords = rawDetail.match(/[A-Za-z][A-Za-z0-9_-]{2,}/g);
+        if (detailWords && detailWords.length) {
+          const meaningful = detailWords.filter((w) =>
+            !/^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i.test(w)
+          );
+          item = meaningful.slice(0, 5).join(" ");
+        }
+      }
+    }
+    // Do NOT use a Thai-only category — it would break ASCII-only requirement
+  }
+  if (!item) item = "product";
   const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
