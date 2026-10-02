@@ -36,7 +36,7 @@ async function main() {
   const sku = products[0].sku;
 
   const mk = (time, extra = {}) => {
-    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(1), time, platform: "facebook", sku, angle: "เปิดตัวสินค้า", ...extra } });
+    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(365), time, platform: "facebook", sku, angle: "เปิดตัวสินค้า", ...extra } });
     rt.updateCalendarEntry(clientId, e.id, { caption: "ข้อความทดสอบ" });
     return rt.updateCalendarEntry(clientId, e.id, {});
   };

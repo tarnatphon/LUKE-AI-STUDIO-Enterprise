@@ -57,7 +57,7 @@ async function main() {
   const getClient = () => rt._read().clients.find((c) => c.id === clientId);
   const getEntry = (id) => getClient().calendar.find((e) => e.id === id);
   const mk = (time) => {
-    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(1), time, platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
+    const e = rt.createCalendarEntry(clientId, { entry: { date: bangkokToday(365), time, platform: "facebook", sku, angle: "เปิดตัวสินค้า" } });
     rt.updateCalendarEntry(clientId, e.id, { caption: "ข้อความทดสอบ" });
     return e.id;
   };

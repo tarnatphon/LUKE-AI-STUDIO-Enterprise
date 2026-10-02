@@ -865,7 +865,7 @@ const CAPTION_TONES = {
 function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid = [] } = {}) {
   const name = product?.name || "สินค้าใหม่";
   const minOrder = product?.minimumOrder || "";
-  const orderLine = [minOrder ? `สั่งขั้นต่ำ ${minOrder}` : "", product?.productionTime ? `ผลิต ${product.productionTime}` : ""]
+  const orderLine = [minOrder ? `สั่งขั้นต่ำ ${minOrder}` : "", product?.productionTime ? `ผลิต ${product.productionTime}` : "", product?.price ? `ราคา ${product.price}` : ""]
     .filter(Boolean)
     .join(" · ");
   const tags = templateHashtags(product, platform);
@@ -3733,10 +3733,10 @@ class SocialAgencyRuntime {
     const notes = (researchNotes || []).map((n) => `- ${n.role}: ${n.notes}`).join("\n");
     return [
       `ลูกค้า: ${client.name} (${client.industry}) · โทน: ${client.tone}`,
-      `สินค้า: ${product?.name || ""} · หมวด: ${product?.category || ""}`,
+      `สินค้า: ${product?.name || ""} · หมวด: ${product?.category || ""}${product?.price ? ` · ราคา: ${product.price}` : ""}`,
       `ขั้นต่ำ: ${product?.minimumOrder || "-"} · เวลาผลิต: ${product?.productionTime || "-"}`,
       `มุมคอนเทนต์: ${angle}${pillar ? ` (เสา: ${pillar})` : ""} · แพลตฟอร์ม: ${platform}`,
-      `ข้อมูลที่อ้างได้ (verified): ชื่อสินค้า หมวด ขั้นต่ำ เวลาผลิต${product?.sourceUrl ? " และลิงก์แหล่งที่มา" : ""} เท่านั้น`,
+      `ข้อมูลที่อ้างได้ (verified): ชื่อสินค้า หมวด ขั้นต่ำ เวลาผลิต${product?.price ? " ราคา" : ""}${product?.sourceUrl ? " และลิงก์แหล่งที่มา" : ""} เท่านั้น`,
       `โน้ตวิจัย:\n${notes || "(ไม่มี)"}`,
     ].join("\n");
   }
