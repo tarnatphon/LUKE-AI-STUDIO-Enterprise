@@ -922,8 +922,17 @@ function App() {
     };
   }, []);
 
-  // Poll system telemetry usage statistics on interval
+  // Poll system telemetry usage statistics on interval.
+  //
+  // A hidden tab has nobody looking at the numbers, and these requests are what
+  // keep the server sampling hardware (vm_stat / nvidia-smi / a whole
+  // `llama-server --list-devices`); the server pauses half a minute after the
+  // last one. So polling in the background wakes the machine for nothing: it
+  // stops with the tab and resumes the instant the tab is visible again, which
+  // is also the moment the server starts sampling again.
   useEffect(() => {
+    let interval = null;
+
     async function updateTelemetry() {
       try {
         const stats = await getTelemetry();
@@ -942,10 +951,34 @@ function App() {
       }
     }
 
-    updateTelemetry();
-    const interval = setInterval(updateTelemetry, 1500); // Poll every 1.5 seconds
+    function stopPolling() {
+      if (interval) clearInterval(interval);
+      interval = null;
+    }
 
-    return () => clearInterval(interval);
+    function startPolling() {
+      stopPolling();
+      if (document.hidden) return;
+      interval = setInterval(updateTelemetry, 1500); // Poll every 1.5 seconds
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      updateTelemetry();
+      startPolling();
+    }
+
+    updateTelemetry();
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   // Sync active model settings default parameters

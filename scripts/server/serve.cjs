@@ -62,6 +62,7 @@ const {
   gpuMemorySummary,
   residentBytesFromPs,
 } = require("./gpu-memory-telemetry.cjs");
+const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   readConfig: readContextCompactionConfig,
   compactForChat,
@@ -86,6 +87,10 @@ let textModelPoolInstance = null;
 // Learns the real GPU/Metal working set from backend output and remembers
 // out-of-memory crashes so the budget tightens itself on small machines.
 const memoryCalibration = new MemoryCalibration({ logger: console });
+// Samples hardware only while a client is actually watching the monitor, so a
+// server left running with the browser closed stops waking vm_stat / nvidia-smi
+// / a whole `llama-server --list-devices` every five seconds.
+const telemetryDemand = new TelemetryDemand({ logger: console });
 
 // conversationId/runId → active arena run state
 const activeArenaRuns = new Map();
@@ -2769,15 +2774,20 @@ function pollNvidiaVram(force = false) {
   if (hasNvidiaSmi === false) return;
 
   const now = Date.now();
-  // If not forced, skip if backend is running (driver queries conflict & cause display lag),
-  // or if it has been polled too recently
+  // If not forced, skip if nobody is watching, if the backend is running (driver
+  // queries conflict & cause display lag), or if it has been polled too recently
   if (!force) {
+    if (!telemetryDemand.allow("nvidia-smi")) {
+      return;
+    }
     if (backendProc !== null) {
       return;
     }
     if (now - lastVramPollTime < 4500) {
       return;
     }
+  } else {
+    telemetryDemand.noteForced();
   }
 
   isPollingVram = true;
@@ -2868,8 +2878,18 @@ function pollLlamaVram(force = false) {
   if (isPollingLlamaVram) return;
 
   const now = Date.now();
-  if (!force && now - lastLlamaVramPollTime < 4500) {
-    return;
+  // The costly one: a whole backend binary is started, initialises
+  // Vulkan/CUDA/SYCL, prints two numbers and exits — every five seconds, whether
+  // or not anybody is looking at the monitor. Skipped while nobody is.
+  if (!force) {
+    if (!telemetryDemand.allow("llama.cpp --list-devices")) {
+      return;
+    }
+    if (now - lastLlamaVramPollTime < 4500) {
+      return;
+    }
+  } else {
+    telemetryDemand.noteForced();
   }
 
   const backendPath = getLlamaTelemetryBackendPath();
@@ -2949,8 +2969,15 @@ function pollMetalVram(force = false) {
   if (isPollingMetalVram) return;
 
   const now = Date.now();
-  if (!force && now - lastMetalVramPollTime < 4500) {
-    return;
+  if (!force) {
+    if (!telemetryDemand.allow("ps (unified memory)")) {
+      return;
+    }
+    if (now - lastMetalVramPollTime < 4500) {
+      return;
+    }
+  } else {
+    telemetryDemand.noteForced();
   }
   lastMetalVramPollTime = now;
 
@@ -3110,7 +3137,11 @@ function pollMacRam() {
 
 if (osPlatform === "darwin") {
   pollMacRam();
-  setInterval(pollMacRam, 5000);
+  // `vm_stat` is cheap, but it is still a spawned process every five seconds for
+  // a number that only the monitor reads, so it pauses with the rest of them.
+  setInterval(() => {
+    if (telemetryDemand.allow("vm_stat")) pollMacRam();
+  }, 5000);
 }
 
 function getHardwareSpecs() {
@@ -3293,6 +3324,26 @@ function getTelemetry() {
     vram_used_gb: Number.isFinite(Number(deviceVram?.vram_used_gb)) ? deviceVram.vram_used_gb : 0,
     vram_total_gb: deviceVram?.vram_total_gb || gpu.vram_gb || 0,
   };
+}
+
+/**
+ * Wakes the samplers the moment a client comes back, rather than letting it read
+ * the numbers from before the pause. Not awaited: the monitor asks again within
+ * a couple of seconds, and this answer must not wait on a GPU query that can
+ * take a second.
+ */
+function refreshTelemetryNow() {
+  try {
+    pollNvidiaVram(true);
+    if (osPlatform === "darwin") {
+      pollMacRam();
+      pollMetalVram(true);
+    } else {
+      pollLlamaVram(true);
+    }
+  } catch (_) {
+    /* a failed refresh only means the next scheduled sample answers instead */
+  }
 }
 
 function formatBytes(bytes) {
@@ -28954,6 +29005,13 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   // GET /api/telemetry
   if (req.url === "/api/telemetry" && req.method === "GET") {
+    // This request is the only evidence that somebody is looking at the monitor,
+    // so it is what keeps the hardware samplers running — and a client returning
+    // after a pause gets the samplers kicked immediately instead of reading the
+    // numbers from half an hour ago.
+    const wasWatching = telemetryDemand.wanted();
+    telemetryDemand.note();
+    if (!wasWatching) refreshTelemetryNow();
     return json(res, 200, getTelemetry());
   }
 
