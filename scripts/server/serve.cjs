@@ -64,6 +64,15 @@ const {
 } = require("./gpu-memory-telemetry.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
+  ENGINE_RULES,
+  assessMemoryPressure,
+  parseCompressorBytes,
+  parseMeminfo,
+  parseSwapUsage,
+  planRelease,
+  policyFor,
+} = require("./resource-governor.cjs");
+const {
   readConfig: readContextCompactionConfig,
   compactForChat,
   payloadTokens,
@@ -209,15 +218,17 @@ function normalizeArenaModelIds(modelIds, policy = {}) {
   return cleaned.slice(0, Math.max(1, maximum));
 }
 
-// Set when an arena round had to release the classic single-model chat server.
-// The model is restored automatically the next time the user chats normally,
-// so "making room" never leaves the machine without a chat model.
-let arenaReleasedMainModel = null;
+// Set when something had to release the classic single-model chat server: an
+// arena round that needs the room, or the resource governor on a machine that
+// started swapping. The model is restored automatically the next time the user
+// chats normally, so "making room" never leaves the machine without a chat
+// model — that promise is what makes releasing it safe at all.
+let releasedMainModel = null;
 
 async function restoreReleasedMainModel() {
-  if (!arenaReleasedMainModel) return false;
-  const snapshot = arenaReleasedMainModel;
-  arenaReleasedMainModel = null;
+  if (!releasedMainModel) return false;
+  const snapshot = releasedMainModel;
+  releasedMainModel = null;
   if (llmReady || llmProc) return false;
   try {
     await startLlm({
@@ -226,6 +237,10 @@ async function restoreReleasedMainModel() {
       gpuLayers: snapshot.gpuLayers,
       threads: snapshot.threads || undefined,
     });
+    console.log(
+      `  [llm] restored ${snapshot.model}, released by ${snapshot.releasedBy || "the arena"}` +
+        (snapshot.reason ? ` (${snapshot.reason})` : "") + "."
+    );
     return true;
   } catch (error) {
     console.warn(`  [llm] could not restore ${snapshot.model}: ${error.message || error}`);
@@ -255,11 +270,14 @@ async function planArenaRound(modelIds = [], policy = {}) {
   if (plan.budget.estimateGb > plan.budget.availableGb + mainGb) return { plan, notes };
 
   const mainModelName = path.basename(String(llmSettings.model || "text model"));
-  arenaReleasedMainModel = {
+  releasedMainModel = {
     model: mainModelName,
     contextSize: Number(llmSettings.contextSize) || 0,
     gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
     threads: Number(llmSettings.threads) || 0,
+    releasedBy: "arena",
+    reason: `an arena round needs ${plan.budget.estimateGb} GB and only ${plan.budget.availableGb} GB is free`,
+    releasedAt: Date.now(),
   };
   await killLlm();
   notes.push({
@@ -3015,6 +3033,272 @@ function getMetalVram() {
   return cachedMetalVramInfo;
 }
 
+// ── Resource governor ────────────────────────────────────────────────────────
+//
+// Gives a loaded engine back when the machine is genuinely short of memory, and
+// only an engine that can come back by itself. resource-governor.cjs holds the
+// rules, the per-tier thresholds and the wording of every reason; this is the
+// wiring — what is loaded, when it was last used, and what the machine says
+// about memory right now.
+//
+// It exists because nothing was ever released: a chat model stayed resident
+// until the user unloaded it by hand, so a machine used for one question an hour
+// ago was still holding its weights while macOS compressed other processes and
+// started swapping.
+const RESOURCE_GOVERNOR_STATE_PATH = process.env.LUKE_RESOURCE_GOVERNOR_FILE
+  ? path.resolve(process.env.LUKE_RESOURCE_GOVERNOR_FILE)
+  : path.join(ROOT, "app", "runtime-state", "resource-governor.json");
+
+// When each engine was last asked for something. A release is only worth its
+// reload if the engine has been sitting unused, so this is what "idle" means.
+const engineLastUsedAt = { text: 0, arena: 0, image: 0, speech: 0, tts: 0 };
+let llmRequestsInFlight = 0;
+let cachedMachineTier = null;
+let resourceGovernorStatus = {
+  enabled: true,
+  tier: null,
+  lastSweepAt: null,
+  pressure: null,
+  decision: null,
+  engines: [],
+  lastRelease: null,
+};
+
+function noteEngineUsed(engineId) {
+  if (engineId in engineLastUsedAt) engineLastUsedAt[engineId] = Date.now();
+}
+
+function machineTier() {
+  if (cachedMachineTier) return cachedMachineTier;
+  try {
+    cachedMachineTier = getHardwareSpecs().tier || "mid";
+  } catch (_) {
+    cachedMachineTier = "mid";
+  }
+  return cachedMachineTier;
+}
+
+function readResourceGovernorOverrides() {
+  // Machine-local on purpose: the tracked config folder is a seed the app must
+  // not write, and a file git tracks is a file that can block a pull.
+  try {
+    const parsed = JSON.parse(fs.readFileSync(RESOURCE_GOVERNOR_STATE_PATH, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function resourceGovernorPolicy() {
+  return policyFor({ tier: machineTier(), overrides: readResourceGovernorOverrides() });
+}
+
+function runQuietCommand(command, args) {
+  return new Promise((resolve) => {
+    execFile(
+      command,
+      args,
+      { windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 },
+      (error, stdout) => resolve(error ? "" : String(stdout || ""))
+    );
+  });
+}
+
+/**
+ * The signals that mean "this machine is short". macOS answers with swap in use
+ * and the memory compressor; Linux with MemAvailable and swap. Windows has no
+ * cheap equivalent short of spawning PowerShell, and os.freemem() there is not a
+ * distress signal, so the governor reports no signal and stays out of the way
+ * rather than guess — a wrong guess takes a model away from somebody who was
+ * about to use it.
+ */
+async function sampleMemorySignals() {
+  const totalRamBytes = os.totalmem();
+
+  if (osPlatform === "linux") {
+    try {
+      const parsed = parseMeminfo(fs.readFileSync("/proc/meminfo", "utf8"));
+      return {
+        totalRamBytes,
+        availableBytes: parsed.availableBytes,
+        swapUsedBytes: parsed.swapUsedBytes,
+        compressorBytes: null,
+      };
+    } catch (_) {
+      return { totalRamBytes, availableBytes: null, swapUsedBytes: null, compressorBytes: null };
+    }
+  }
+
+  if (osPlatform === "darwin") {
+    const [swapText, vmStatText] = await Promise.all([
+      runQuietCommand("sysctl", ["-n", "vm.swapusage"]),
+      runQuietCommand("vm_stat", []),
+    ]);
+    return {
+      totalRamBytes,
+      // free + inactive on macOS is file cache, not headroom, so it is not
+      // offered as a signal: it would call a healthy machine tight all day.
+      availableBytes: null,
+      swapUsedBytes: parseSwapUsage(swapText),
+      compressorBytes: parseCompressorBytes(vmStatText),
+    };
+  }
+
+  return { totalRamBytes, availableBytes: null, swapUsedBytes: null, compressorBytes: null };
+}
+
+/**
+ * Everything that currently holds memory, governed or not. The ungoverned ones
+ * are listed with the reason they are left alone, so the status endpoint shows
+ * what the governor saw and declined to touch instead of looking idle.
+ */
+function governedEngines() {
+  const poolInstances = textModelPoolInstance
+    ? Array.from(textModelPoolInstance.instances.values())
+    : [];
+  const arenaBytes = poolInstances.reduce((sum, instance) => sum + (Number(instance.sizeBytes) || 0), 0);
+
+  return [
+    {
+      id: "text",
+      label: `Chat model ${modelName(llmSettings.model) || "(none)"}`,
+      resident: Boolean((llmReady || llmProc) && llmSettings.model),
+      restorable: ENGINE_RULES.text.restorable,
+      // Never take a model away mid-answer, and never during an arena round,
+      // which releases the chat model itself and restores it afterwards.
+      busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel),
+      sizeGb: roundGb(mainChatModelBytes()),
+      lastUsedAt: engineLastUsedAt.text || null,
+    },
+    {
+      id: "arena",
+      label: `Arena pool (${poolInstances.length} model${poolInstances.length === 1 ? "" : "s"})`,
+      resident: poolInstances.length > 0,
+      restorable: ENGINE_RULES.arena.restorable,
+      busy: activeArenaRuns.size > 0,
+      sizeGb: roundGb(arenaBytes),
+      lastUsedAt: engineLastUsedAt.arena || null,
+    },
+    {
+      id: "image",
+      label: `Image model ${modelName(currentSettings.model) || "(none)"}`,
+      resident: Boolean((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model),
+      restorable: ENGINE_RULES.image.restorable,
+      notRestorableBecause: ENGINE_RULES.image.reason,
+      busy: Boolean(backendLoadState.active),
+      sizeGb: roundGb(Number(imageModelResidentBytes) || 0),
+      lastUsedAt: engineLastUsedAt.image || null,
+    },
+    {
+      id: "speech",
+      label: `Speech ${modelName(speechSettings.model) || "(none)"}`,
+      resident: Boolean(speechReady && speechSettings.model),
+      restorable: ENGINE_RULES.speech.restorable,
+      notRestorableBecause: ENGINE_RULES.speech.reason,
+      busy: false,
+      sizeGb: 0,
+      lastUsedAt: engineLastUsedAt.speech || null,
+    },
+    {
+      id: "tts",
+      label: `TTS ${modelName(ttsSettings.model) || "(none)"}`,
+      resident: Boolean(ttsReady && ttsSettings.model),
+      restorable: ENGINE_RULES.tts.restorable,
+      notRestorableBecause: ENGINE_RULES.tts.reason,
+      busy: false,
+      sizeGb: 0,
+      lastUsedAt: engineLastUsedAt.tts || null,
+    },
+  ];
+}
+
+async function releaseEngine(engineId, decision) {
+  if (engineId === "text") {
+    // Snapshot first: this is what makes the release reversible, and the chat
+    // route restores it before answering the next message.
+    releasedMainModel = {
+      model: modelName(llmSettings.model),
+      contextSize: Number(llmSettings.contextSize) || 0,
+      gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
+      threads: Number(llmSettings.threads) || 0,
+      releasedBy: "governor",
+      reason: decision.reason,
+      releasedAt: Date.now(),
+    };
+    await runExclusiveLlmOperation(() => killLlm());
+    return true;
+  }
+
+  if (engineId === "arena") {
+    await unloadArenaPool();
+    return true;
+  }
+
+  return false;
+}
+
+async function sweepResourceGovernor() {
+  try {
+    const policy = resourceGovernorPolicy();
+    if (policy.enabled === false) {
+      resourceGovernorStatus = { ...resourceGovernorStatus, enabled: false, lastSweepAt: Date.now() };
+      return;
+    }
+
+    const signals = await sampleMemorySignals();
+    const pressure = assessMemoryPressure({ platform: osPlatform, policy, ...signals });
+    const engines = governedEngines();
+    const decision = planRelease({ now: Date.now(), engines, pressure, policy });
+
+    resourceGovernorStatus = {
+      enabled: true,
+      tier: policy.tier,
+      lastSweepAt: Date.now(),
+      pressure,
+      decision: {
+        code: decision.code || null,
+        engine: decision.engine ? decision.engine.id : null,
+        reason: decision.reason,
+      },
+      engines: engines.map((engine) => ({
+        id: engine.id,
+        label: engine.label,
+        resident: engine.resident,
+        restorable: engine.restorable,
+        busy: engine.busy,
+        sizeGb: engine.sizeGb,
+        idleMinutes: engine.lastUsedAt ? Math.round((Date.now() - engine.lastUsedAt) / 60000) : null,
+        notRestorableBecause: engine.notRestorableBecause || null,
+      })),
+      lastRelease: resourceGovernorStatus.lastRelease,
+    };
+
+    if (!decision.engine) return;
+
+    const released = await releaseEngine(decision.engine.id, decision);
+    if (!released) return;
+    console.log(`  [governor] ${decision.reason}`);
+    resourceGovernorStatus.lastRelease = {
+      engine: decision.engine.id,
+      code: decision.code,
+      sizeGb: decision.engine.sizeGb,
+      at: Date.now(),
+    };
+  } catch (error) {
+    // A governor that throws would be worse than no governor: it runs on a
+    // timer, so one bad sweep must not become an unhandled rejection.
+    console.warn(`  [governor] sweep failed: ${error?.message || error}`);
+  }
+}
+
+// Not gated on telemetry demand: this protects the machine while it works, not
+// while somebody watches it work. One sweep a minute, and a sweep costs two
+// small commands on macOS and one file read on Linux.
+const resourceGovernorSweepMs = Math.max(15000, Number(resourceGovernorPolicy().sweepMs) || 60000);
+setInterval(() => {
+  sweepResourceGovernor();
+}, resourceGovernorSweepMs);
+
 function readJsonFile(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
@@ -4571,6 +4855,7 @@ async function waitForLlmReady(maxAttempts = 240, expectedProc = llmProc, expect
     if (!expectedProc || llmProc !== expectedProc) throw new Error(llmError || "llama.cpp exited during startup.");
     if (await pingLlmReady(expectedModel)) {
       llmReady = true;
+      noteEngineUsed("text");
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -25867,6 +26152,7 @@ const handleRequest = async (req, res) => {
         ...evaluateModelMemoryBudget({ targetPaths: [], targetType: "status" }),
         calibration: memoryCalibration.status(),
       },
+      resourceGovernor: resourceGovernorStatus,
       port: PORT_BACKEND,
       preferredPort: PREFERRED_BACKEND_PORT,
       error: backendError,
@@ -26111,6 +26397,7 @@ const handleRequest = async (req, res) => {
   if (req.url === "/api/llm/arena/generate-stream" && req.method === "POST") {
     const body = await readJsonBody(req, res);
     if (!body) return;
+    noteEngineUsed("arena");
     await streamArenaGeneration(req, res, body);
     return;
   }
@@ -27051,7 +27338,16 @@ async function routeWorkTurnToCloud(req, res, body) {
         console.log("  [llm] restored the chat model that the arena released.");
       }
     }
-    await doLlmChat(req, res, body);
+    noteEngineUsed("text");
+    llmRequestsInFlight += 1;
+    try {
+      await doLlmChat(req, res, body);
+    } finally {
+      // Counted down before the stamp so a sweep that lands here sees an engine
+      // that is free but was just used.
+      llmRequestsInFlight -= 1;
+      noteEngineUsed("text");
+    }
     return;
   }
 

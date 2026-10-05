@@ -256,6 +256,22 @@ Ensure you have a modern web browser installed. Follow the quick guide below for
   <p>This indicates that the local backend engine process terminated. Check your launch terminal (where you executed <code>windows.bat</code>, <code>./linux.sh</code>, or <code>./mac.sh</code>) for the exact console error. Common causes include glibc version mismatches, missing Vulkan drivers, or system out-of-memory (OOM) issues.</p>
 </details>
 
+<details>
+  <summary><strong> My chat model unloaded itself — what happened?</strong></summary>
+  <p>The <strong>resource governor</strong> gave it back to the operating system. When the machine is genuinely short of memory — swap in use on macOS, the memory compressor above the limit for your machine, or <code>MemAvailable</code> down to a few percent on Linux — an engine that has been idle for a while is released, and the launch terminal says so with the numbers behind the decision (<code>[governor] swap in use: 1.5 GB …</code>). A released chat model <strong>reloads by itself</strong> the next time you send a message; nothing is lost, the first message just takes as long as a load.</p>
+  <p>Two things it will never do: it never releases a model while a request is being answered, and it never releases the image backend, because image generation is driven from your browser straight to the backend — the server would not see the request that needs it back. How patient the governor is follows your hardware tier (10 minutes idle on a small machine, 45 on a large one). To tune or switch it off, write <code>app/runtime-state/resource-governor.json</code>, for example <code>{ "enabled": false }</code> or <code>{ "idleMinutes": 120, "tightSwapGb": 2 }</code>. Current state, including what it declined to touch and why, is in <code>GET /api/backend-status</code> under <code>resourceGovernor</code>.</p>
+</details>
+
+<details>
+  <summary><strong> macOS: the VRAM chip shows less than my total RAM</strong></summary>
+  <p>That is the correct number. Apple Silicon has no separate video memory, so the ceiling shown is Metal's <em>recommended working set</em> (about 14.3 GB on an 18 GB M3 Pro) — the part of unified memory a model may actually address, learned from <code>ggml_metal_device_init</code> at first load — and the "used" figure is the resident memory of the engines holding your weights. It is also the budget a load is refused against, so the chip and the load-time decision agree. Before this, macOS could not be queried at all and the chip read <code>0.0 / &lt;total RAM&gt; GB</code> forever.</p>
+</details>
+
+<details>
+  <summary><strong> Idle CPU and disk activity while the app is open but unused</strong></summary>
+  <p>Hardware is only sampled while you are looking at it: the monitor polls while its tab is visible, and the server samples <code>vm_stat</code> / <code>nvidia-smi</code> / <code>ps</code> only within 30 seconds of such a request. A hidden tab or a closed browser stops the sampling entirely, and the terminal logs the pause and the resume once each. The AWS SDK used by cloud storage is likewise loaded on first use rather than at start-up, which keeps roughly 14 MB of resident memory and 40% of the server's heap out of an offline run.</p>
+</details>
+
 ---
 
 ## <a id="building-from-source"></a>🔨 Building From Source
