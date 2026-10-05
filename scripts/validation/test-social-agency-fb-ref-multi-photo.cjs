@@ -186,7 +186,8 @@ async function main() {
 
     test("no local product photo at all keeps the single-photo path silently", async () => {
       setProductImage("https://cdn.example.com/somewhere-else.png");
-      const id = mk("11:00");
+      // Use a slot distinct from the demo seed's published weekend entry (11:00).
+      const id = mk("11:15");
       attachImage(id);
       resetFbClock();
       freshCalls();
