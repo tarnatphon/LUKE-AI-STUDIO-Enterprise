@@ -57,6 +57,12 @@ const {
 } = require("./text-arena-evaluator.cjs");
 const { MemoryCalibration } = require("./memory-calibration.cjs");
 const {
+  DEFAULT_UNIFIED_WORKING_SET_RATIO,
+  PS_ARGS,
+  gpuMemorySummary,
+  residentBytesFromPs,
+} = require("./gpu-memory-telemetry.cjs");
+const {
   readConfig: readContextCompactionConfig,
   compactForChat,
   payloadTokens,
@@ -2840,6 +2846,10 @@ function parseLlamaDeviceMemory(output) {
 }
 
 function getLlamaTelemetryBackendPath() {
+  // No darwin branch on purpose: a spawned `--list-devices` process reports the
+  // Metal working set as its total and *its own* allocations as free, so it
+  // would read ~0 used no matter what the running backend holds. macOS is
+  // served by pollMetalVram() below, which measures the backends themselves.
   if (osPlatform === "win32") {
     if (fs.existsSync(LLM_BACKEND_PATHS.winVulkan)) return LLM_BACKEND_PATHS.winVulkan;
     if (fs.existsSync(LLM_BACKEND_PATHS.winSycl)) return LLM_BACKEND_PATHS.winSycl;
@@ -2887,6 +2897,95 @@ pollLlamaVram(true);
 
 function getLlamaVram() {
   return cachedLlamaVramInfo;
+}
+
+// ── Apple Silicon: the VRAM chip's only real source ──────────────────────────
+//
+// Neither poll above can read a Mac (no nvidia-smi, and Metal answers a
+// `--list-devices` process with that process's own ~0 allocations), so before
+// this the chip showed `0.0 / <total RAM> GB` forever. gpu-memory-telemetry.cjs
+// has the full account; in short, used is the resident set of the backends that
+// actually hold weights, and total is the learned Metal working set.
+let cachedMetalVramInfo = null;
+let isPollingMetalVram = false;
+let lastMetalVramPollTime = 0;
+
+/** Every live child that can hold model weights in the shared pool. */
+function gpuBackendPids() {
+  const pids = [];
+  const push = (proc) => {
+    const pid = Number(proc && proc.pid);
+    if (Number.isFinite(pid) && pid > 0) pids.push(pid);
+  };
+  push(llmProc);
+  push(backendProc);
+  push(openvinoProc);
+  if (textModelPoolInstance) {
+    for (const instance of textModelPoolInstance.instances.values()) {
+      push(instance && instance.child);
+    }
+  }
+  return Array.from(new Set(pids));
+}
+
+function metalVramSummary(residentBytes) {
+  const gpuConfig = readModelMemoryBudget().gpu || {};
+  let gpuName = "";
+  try {
+    gpuName = getGpuInfo().name || "";
+  } catch (_) {}
+  return gpuMemorySummary({
+    platform: osPlatform,
+    gpuName,
+    totalRamBytes: os.totalmem(),
+    workingSetGb: memoryCalibration.workingSetGb(),
+    ratio: Number(gpuConfig.unifiedWorkingSetRatio ?? DEFAULT_UNIFIED_WORKING_SET_RATIO),
+    residentBytes,
+  });
+}
+
+function pollMetalVram(force = false) {
+  if (osPlatform !== "darwin") return;
+  if (isPollingMetalVram) return;
+
+  const now = Date.now();
+  if (!force && now - lastMetalVramPollTime < 4500) {
+    return;
+  }
+  lastMetalVramPollTime = now;
+
+  const pids = gpuBackendPids();
+  if (pids.length === 0) {
+    // Nothing is loaded, so there is nothing to measure: report the ceiling and
+    // an honest zero without spawning `ps` to learn it.
+    cachedMetalVramInfo = metalVramSummary(0);
+    return;
+  }
+
+  isPollingMetalVram = true;
+  // One fixed argv for the whole listing: pids stay out of the command line and
+  // one backend more or less (the arena pool loads and unloads) changes nothing.
+  execFile(
+    "ps",
+    PS_ARGS,
+    { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 },
+    (error, stdout) => {
+      isPollingMetalVram = false;
+      // Keep the previous reading rather than flashing a zero: a failed `ps`
+      // says nothing about the model that is still resident.
+      if (error) return;
+      cachedMetalVramInfo = metalVramSummary(residentBytesFromPs(stdout, pids));
+    }
+  );
+}
+
+if (osPlatform === "darwin") {
+  setInterval(() => pollMetalVram(false), 5000);
+  pollMetalVram(true);
+}
+
+function getMetalVram() {
+  return cachedMetalVramInfo;
 }
 
 function readJsonFile(filePath, fallback) {
@@ -3177,7 +3276,10 @@ function getHardwareSpecs() {
 
 function getTelemetry() {
   const vram = getNvidiaVram();
-  const llamaVram = vram || getLlamaVram();
+  // Order of authority per platform: the driver's own numbers first
+  // (nvidia-smi), then — on macOS only, where no such number exists — the
+  // unified-memory reading, then llama.cpp's device list (CUDA/Vulkan/SYCL).
+  const deviceVram = vram || (osPlatform === "darwin" ? getMetalVram() : null) || getLlamaVram();
   let ram_used_gb = roundGb(os.totalmem() - os.freemem());
   if (osPlatform === "darwin" && cachedMacRamUsedGb !== null) {
     ram_used_gb = cachedMacRamUsedGb;
@@ -3187,9 +3289,9 @@ function getTelemetry() {
     cpu_usage: getCpuUsagePercent(),
     ram_used_gb,
     ram_total_gb: roundGb(os.totalmem()),
-    gpu_name: llamaVram?.gpu_name || gpu.name,
-    vram_used_gb: Number.isFinite(Number(llamaVram?.vram_used_gb)) ? llamaVram.vram_used_gb : 0,
-    vram_total_gb: llamaVram?.vram_total_gb || gpu.vram_gb || 0,
+    gpu_name: deviceVram?.gpu_name || gpu.name,
+    vram_used_gb: Number.isFinite(Number(deviceVram?.vram_used_gb)) ? deviceVram.vram_used_gb : 0,
+    vram_total_gb: deviceVram?.vram_total_gb || gpu.vram_gb || 0,
   };
 }
 
