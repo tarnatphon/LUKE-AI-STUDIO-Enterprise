@@ -409,6 +409,13 @@ function Generator({
     try {
       const status = await getBackendStatus();
       if (status && status.settings) {
+        // Settings survive a stop — the server keeps them so a restart can reuse
+        // them — so matching settings alone do not mean the engine is there.
+        // Ask whether it is actually running: this is what brings back a model
+        // the server released to free memory, and one that crashed.
+        if (!status.running && !status.ready && !status.loading?.active) {
+          needsRestart = true;
+        }
         const settings = status.settings;
         const currentModelName = settings.model ? settings.model.split(/[\\/]/).pop() : null;
         const targetModelName = activeModel ? activeModel.split(/[\\/]/).pop() : null;

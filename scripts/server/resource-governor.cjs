@@ -325,29 +325,114 @@ function planRelease({ now = Date.now(), engines = [], pressure = null, policy =
 }
 
 /**
+ * Load-time make-room.
+ *
+ * The sweep above only touches engines whose use the server can see, so it can
+ * tell how long they have been idle. A load that is about to be refused is a
+ * different situation: the user asked for something right now, and the refusal
+ * tells them to go and unload a model by hand. If an engine that starts again on
+ * demand is holding exactly that room, taking it turns a dead end into a load.
+ *
+ * All or nothing: if what may be released would not cover the gap, nothing is
+ * released, because a killed engine plus a refused load is worse than the
+ * refusal alone.
+ */
+function planMakeRoom({ shortfallGb = 0, engines = [], policy = DEFAULT_POLICY } = {}) {
+  const refuse = (code, reason) => ({ engines: [], code, reason, freedGb: 0 });
+
+  if (policy.enabled === false) return refuse("DISABLED", "the resource governor is switched off");
+
+  const gap = Number(shortfallGb) || 0;
+  if (!(gap > 0)) return refuse("NO_SHORTFALL", "the load already fits");
+
+  const candidates = engines.filter(
+    (engine) => engine && engine.resident && engine.makeRoom && !engine.busy && Number(engine.sizeGb) > 0
+  );
+  if (candidates.length === 0) {
+    const resident = engines.filter((engine) => engine && engine.resident);
+    return refuse(
+      "NOTHING_TO_RELEASE",
+      resident.length === 0
+        ? "nothing else is loaded"
+        : `loaded but not releasable to make room: ${resident.map((engine) => engine.id).join(", ")}`
+    );
+  }
+
+  // Biggest first, so the fewest engines give up their memory for one load.
+  const ranked = [...candidates].sort((left, right) => Number(right.sizeGb) - Number(left.sizeGb));
+  const chosen = [];
+  let freedGb = 0;
+  for (const engine of ranked) {
+    if (freedGb >= gap) break;
+    chosen.push(engine);
+    freedGb += Number(engine.sizeGb) || 0;
+  }
+
+  if (freedGb < gap) {
+    return refuse(
+      "CANNOT_MAKE_ROOM",
+      `${ranked.map((engine) => engine.label || engine.id).join(" + ")} would free about ${round(freedGb)} GB, ` +
+        `still short of the ${round(gap)} GB this load needs`
+    );
+  }
+
+  return {
+    engines: chosen,
+    code: "MAKE_ROOM",
+    freedGb: round(freedGb),
+    reason:
+      `${chosen.map((engine) => engine.label || engine.id).join(" + ")} gives up ${round(freedGb)} GB ` +
+      `so a load short by ${round(gap)} GB can start; each of them starts again on demand`,
+  };
+}
+
+/**
  * Why each engine is or is not governed. Kept here rather than in serve.cjs so
  * the reasoning is in one place and the suite can hold it true.
+ *
+ * `holdsProcess` is the fact the rest follows from: an engine only has memory to
+ * give back if something of it stays alive between requests.
+ * `restorable` is what the idle sweep may act on; `makeRoom` is what a load that
+ * would otherwise be refused may act on — a narrower question with a stricter
+ * answer, so image is false for one and true for the other.
  */
 const ENGINE_RULES = {
   text: {
+    holdsProcess: true,
     restorable: true,
+    makeRoom: true,
     reason: "a chat request reaches the server, which restores a released model before answering",
   },
   arena: {
+    holdsProcess: true,
     restorable: true,
+    makeRoom: true,
     reason: "the pool unloads and reloads its own models",
   },
   image: {
+    holdsProcess: true,
     restorable: false,
-    reason: "generation is driven from the browser straight to the backend, so the server never sees the request that would need it back",
+    makeRoom: true,
+    reason:
+      "generation is driven from the browser straight to the backend, so the server never sees an interactive " +
+      "generation and cannot tell how long the engine has been idle — only a load that would otherwise be " +
+      "refused may take it, and the Generator starts it again on the next generation",
   },
   speech: {
+    holdsProcess: false,
     restorable: false,
-    reason: "the transcription route does not start the backend itself",
+    makeRoom: false,
+    reason:
+      "nothing stays resident to give back: transcription spawns whisper-cli per request and it exits with the text, " +
+      "so the ready flag is bookkeeping rather than memory",
   },
   tts: {
+    holdsProcess: false,
     restorable: false,
-    reason: "/api/tts/speak reloads on demand but /api/tts/system-speak does not, so a release would break the second path",
+    makeRoom: false,
+    reason:
+      "nothing stays resident to give back: synthesis spawns the Kokoro worker per request and it exits with the audio, " +
+      "and system-speak uses the macOS voices instead",
   },
 };
 
@@ -360,6 +445,7 @@ module.exports = {
   parseCompressorBytes,
   parseMeminfo,
   parseSwapUsage,
+  planMakeRoom,
   planRelease,
   policyFor,
   round,

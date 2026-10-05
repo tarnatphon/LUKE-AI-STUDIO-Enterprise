@@ -69,6 +69,7 @@ const {
   parseCompressorBytes,
   parseMeminfo,
   parseSwapUsage,
+  planMakeRoom,
   planRelease,
   policyFor,
 } = require("./resource-governor.cjs");
@@ -3152,6 +3153,12 @@ async function sampleMemorySignals() {
  * are listed with the reason they are left alone, so the status endpoint shows
  * what the governor saw and declined to touch instead of looking idle.
  */
+// The Generator polls /api/generation-progress once a second for the whole of a
+// generation, and generation itself runs browser-to-backend: that poll is the
+// only window the server has into the work, so a poll inside this grace means an
+// image may still be in flight and the engine must not be taken.
+const IMAGE_POLL_GRACE_MS = 5000;
+
 function governedEngines() {
   const poolInstances = textModelPoolInstance
     ? Array.from(textModelPoolInstance.instances.values())
@@ -3164,6 +3171,7 @@ function governedEngines() {
       label: `Chat model ${modelName(llmSettings.model) || "(none)"}`,
       resident: Boolean((llmReady || llmProc) && llmSettings.model),
       restorable: ENGINE_RULES.text.restorable,
+      makeRoom: ENGINE_RULES.text.makeRoom,
       // Never take a model away mid-answer, and never during an arena round,
       // which releases the chat model itself and restores it afterwards.
       busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel),
@@ -3175,6 +3183,7 @@ function governedEngines() {
       label: `Arena pool (${poolInstances.length} model${poolInstances.length === 1 ? "" : "s"})`,
       resident: poolInstances.length > 0,
       restorable: ENGINE_RULES.arena.restorable,
+      makeRoom: ENGINE_RULES.arena.makeRoom,
       busy: activeArenaRuns.size > 0,
       sizeGb: roundGb(arenaBytes),
       lastUsedAt: engineLastUsedAt.arena || null,
@@ -3182,13 +3191,28 @@ function governedEngines() {
     {
       id: "image",
       label: `Image model ${modelName(currentSettings.model) || "(none)"}`,
-      resident: Boolean((backendReady || backendProc || openvinoReady || openvinoProc) && currentSettings.model),
+      // The OpenVINO worker is not started by its own generate route, so a
+      // release there would make the user load the model again by hand: only the
+      // SD backend, which the Generator restarts on demand, may be given up.
+      resident: Boolean((backendReady || backendProc) && currentSettings.model) && !openvinoProc,
       restorable: ENGINE_RULES.image.restorable,
+      makeRoom: ENGINE_RULES.image.makeRoom,
       notRestorableBecause: ENGINE_RULES.image.reason,
-      busy: Boolean(backendLoadState.active),
+      // Generation runs browser-to-backend, so all the server can see is its own
+      // consumers: a load in flight, a server-side generation, or Social Agency
+      // with its scheduler armed for a calendar post.
+      busy:
+        Boolean(backendLoadState.active) ||
+        Boolean(generationState.active) ||
+        Date.now() - Number(engineLastUsedAt.image || 0) < IMAGE_POLL_GRACE_MS ||
+        imageWantedByScheduler(),
       sizeGb: roundGb(Number(imageModelResidentBytes) || 0),
       lastUsedAt: engineLastUsedAt.image || null,
     },
+    // Speech and TTS hold no process between requests — transcription spawns
+    // whisper-cli, synthesis spawns the Kokoro worker, and each exits with its
+    // result. Their flags are bookkeeping, so there is no memory here to give
+    // back and no release that could ever help.
     {
       id: "speech",
       label: `Speech ${modelName(speechSettings.model) || "(none)"}`,
@@ -3212,7 +3236,7 @@ function governedEngines() {
   ];
 }
 
-async function releaseEngine(engineId, decision) {
+async function releaseEngine(engineId, decision, { insideLlmLock = false } = {}) {
   if (engineId === "text") {
     // Snapshot first: this is what makes the release reversible, and the chat
     // route restores it before answering the next message.
@@ -3225,7 +3249,11 @@ async function releaseEngine(engineId, decision) {
       reason: decision.reason,
       releasedAt: Date.now(),
     };
-    await runExclusiveLlmOperation(() => killLlm());
+    // The sweep runs outside the LLM lock and must queue behind whatever the
+    // model is doing. A load that is making room is already inside that lock,
+    // and the lock is a promise queue: queueing there would wait for itself.
+    if (insideLlmLock) await killLlm();
+    else await runExclusiveLlmOperation(() => killLlm());
     return true;
   }
 
@@ -3234,7 +3262,84 @@ async function releaseEngine(engineId, decision) {
     return true;
   }
 
+  if (engineId === "image") {
+    // Reversible from the browser: the Generator reads /api/backend-status
+    // before generating and restarts a backend that is not running, and
+    // killBackend() keeps the settings it restarts with. governedEngines()
+    // checked first that no server-side consumer wants it.
+    await killBackend();
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * Social Agency generates its own images through the backend, so a calendar post
+ * is a consumer the governor must not starve. The scheduler itself is armed at
+ * boot, so "the scheduler is running" says nothing: what matters is work already
+ * in flight, or a post coming due inside the reserve below — a tick starts a
+ * workflow at the post's own time, and stopping plus reloading the backend takes
+ * longer than the 60 s tick. If the state cannot be read, assume something wants
+ * the engine.
+ */
+const IMAGE_SCHEDULER_RESERVE_MS = 10 * 60000;
+function imageWantedByScheduler() {
+  if (!socialAgencyRuntime || typeof socialAgencyRuntime.getSchedulerStatus !== "function") return false;
+  try {
+    const status = socialAgencyRuntime.getSchedulerStatus();
+    if (!status) return false;
+    if (Number(status.activeCount) > 0) return true;
+    const nextPostAt = Date.parse(status.nextPostAt || "");
+    return Number.isFinite(nextPostAt) && nextPostAt - Date.now() <= IMAGE_SCHEDULER_RESERVE_MS;
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * Load-time make-room: both load paths refuse a model that cannot fit, and the
+ * refusal tells the user to unload something by hand. Before refusing, ask
+ * whether an engine that starts again on demand is holding exactly that room.
+ * This is the only path allowed to give up the image engine, because generation
+ * runs browser-to-backend and the server cannot tell how long it has been idle.
+ */
+async function makeRoomForLoad({ budget = null, wanted = "this model", insideLlmLock = false } = {}) {
+  const shortfallGb = roundGb(
+    Math.max(0, (Number(budget?.estimateGb) || 0) - (Number(budget?.availableGb) || 0))
+  );
+  const plan = planMakeRoom({ shortfallGb, engines: governedEngines(), policy: resourceGovernorPolicy() });
+
+  if (plan.code !== "MAKE_ROOM") {
+    // Only the interesting failure is worth a line: "nothing else is loaded" is
+    // already what the blocking message says.
+    if (plan.code === "CANNOT_MAKE_ROOM") console.log(`  [governor] ${plan.reason}`);
+    return { released: [], code: plan.code, reason: plan.reason };
+  }
+
+  const released = [];
+  for (const engine of plan.engines) {
+    const done = await releaseEngine(
+      engine.id,
+      { code: "MEMORY_MAKE_ROOM", reason: plan.reason },
+      { insideLlmLock }
+    );
+    if (done) released.push(engine.label || engine.id);
+  }
+  if (released.length === 0) return { released: [], code: plan.code, reason: plan.reason };
+
+  console.log(
+    `  [governor] released ${released.join(" + ")} (${plan.freedGb} GB) so ${wanted} can load; ` +
+      `it starts again on demand`
+  );
+  resourceGovernorStatus.lastRelease = {
+    engine: plan.engines.map((engine) => engine.id).join("+"),
+    code: "MEMORY_MAKE_ROOM",
+    sizeGb: plan.freedGb,
+    at: Date.now(),
+    for: wanted,
+  };
+  return { released, code: "MEMORY_MAKE_ROOM", reason: plan.reason };
 }
 
 async function sweepResourceGovernor() {
@@ -3265,6 +3370,7 @@ async function sweepResourceGovernor() {
         label: engine.label,
         resident: engine.resident,
         restorable: engine.restorable,
+        makeRoom: Boolean(engine.makeRoom),
         busy: engine.busy,
         sizeGb: engine.sizeGb,
         idleMinutes: engine.lastUsedAt ? Math.round((Date.now() - engine.lastUsedAt) / 60000) : null,
@@ -5506,6 +5612,8 @@ function stripAnsi(value) {
 function markBackendReady() {
   if (backendReady) return;
   backendReady = true;
+  // A model that just became ready is not "idle since never".
+  noteEngineUsed("image");
   backendLoadState = {
     ...backendLoadState,
     active: false,
@@ -6427,11 +6535,29 @@ async function startLlmWithBackend(settings = {}, backend) {
   const effectiveEnableThinking = isSyclBackend && effectiveGpuLayers === 0 ? false : (loadProfile.enableThinking ?? (settings.enableThinking === true));
 
   // Automatic memory budget: refuse only when the model cannot possibly fit.
-  const textBudget = evaluateModelMemoryBudget({
+  let textBudget = evaluateModelMemoryBudget({
     targetPaths: [modelPath],
     targetType: "text",
     gpuLayers: effectiveGpuLayers,
   });
+  if (textBudget.blocking) {
+    // Before refusing: if an engine that reloads on demand holds the room, take
+    // it and measure again.
+    const madeRoom = await makeRoomForLoad({
+      budget: textBudget,
+      wanted: modelName(filename) || filename,
+      // startLlm() runs inside runExclusiveLlmOperation, so a chat model given
+      // up here is stopped directly rather than queued behind this very load.
+      insideLlmLock: true,
+    });
+    if (madeRoom.released.length > 0) {
+      textBudget = evaluateModelMemoryBudget({
+        targetPaths: [modelPath],
+        targetType: "text",
+        gpuLayers: effectiveGpuLayers,
+      });
+    }
+  }
   for (const warning of textBudget.warnings) console.warn(`  [llm] ${warning.message}`);
   if (textBudget.blocking) throw new Error(textBudget.blocking.message);
 
@@ -6711,11 +6837,29 @@ async function startBackend(settings = {}) {
   const imageModelPath = path.isAbsolute(String(currentSettings.model))
     ? String(currentSettings.model)
     : path.join(MODELS, String(currentSettings.model));
-  const imageBudget = evaluateModelMemoryBudget({
+  let imageBudget = evaluateModelMemoryBudget({
     targetPaths: [imageModelPath],
     targetType: "image",
     gpuLayers: currentSettings.useGpu ? -1 : 0,
   });
+  if (imageBudget.blocking) {
+    // The same trade in the other direction: a chat model reloads the moment the
+    // next message arrives, so it may give up its room to an image load.
+    const madeRoom = await makeRoomForLoad({
+      budget: imageBudget,
+      wanted: modelName(currentSettings.model) || "the image model",
+      // Not inside the LLM lock, so a chat model given up here queues behind
+      // whatever it is doing instead of being stopped mid-answer.
+      insideLlmLock: false,
+    });
+    if (madeRoom.released.length > 0) {
+      imageBudget = evaluateModelMemoryBudget({
+        targetPaths: [imageModelPath],
+        targetType: "image",
+        gpuLayers: currentSettings.useGpu ? -1 : 0,
+      });
+    }
+  }
   for (const warning of imageBudget.warnings) console.warn(`  [backend] ${warning.message}`);
   if (imageBudget.blocking) throw new Error(imageBudget.blocking.message);
 
@@ -29547,6 +29691,10 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   // GET /api/generation-progress
   if (req.url === "/api/generation-progress" && req.method === "GET") {
+    // Polled once a second while the browser generates straight against the
+    // backend, so this is the server's only view of that work: it timestamps the
+    // image engine and keeps a make-room release from taking it mid-image.
+    noteEngineUsed("image");
     return json(res, 200, {
       ...generationState,
       backendMode: generationState.backendMode || currentSettings.backendMode || "",

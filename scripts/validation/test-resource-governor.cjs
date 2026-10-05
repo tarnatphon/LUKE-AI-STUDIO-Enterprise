@@ -37,12 +37,20 @@ const {
   parseCompressorBytes,
   parseMeminfo,
   parseSwapUsage,
+  planMakeRoom,
   planRelease,
   policyFor,
 } = require("../server/resource-governor.cjs");
 
 const serveSource = fs.readFileSync(
   path.resolve(__dirname, "..", "..", "scripts", "server", "serve.cjs"),
+  "utf8"
+);
+
+// Generation is driven from the browser, so the half of the image engine's
+// recovery that matters lives in the Generator, not in the server.
+const generatorSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "..", "app", "frontend", "src", "components", "Generator.jsx"),
   "utf8"
 );
 
@@ -315,9 +323,140 @@ check(
   /app", "runtime-state", "resource-governor\.json"/.test(serveSource)
 );
 
-section("6. The engines the governor declines to touch say why");
+section("6. Making room for a load that would otherwise be refused");
+{
+  const policy = policyFor({ tier: "mid" });
+  const roomy = engine({ id: "image", label: "Image model sd_xl.safetensors", makeRoom: true, sizeGb: 4 });
+
+  const covered = planMakeRoom({ shortfallGb: 3, engines: [roomy], policy });
+  check("a gap the resident engine covers is covered", covered.code === "MAKE_ROOM" && covered.engines.length === 1, covered.code);
+  check("and it says how much comes back", covered.freedGb === 4, String(covered.freedGb));
+  check("the reason names the engine and the amount", /Image model/.test(covered.reason) && /4 GB/.test(covered.reason), covered.reason);
+
+  const two = [
+    engine({ id: "text", label: "Chat model small.gguf", makeRoom: true, sizeGb: 2 }),
+    engine({ id: "image", label: "Image model big.safetensors", makeRoom: true, sizeGb: 4 }),
+  ];
+  const biggest = planMakeRoom({ shortfallGb: 3, engines: two, policy });
+  check("the biggest engine goes first, so one release is enough", biggest.engines.length === 1 && biggest.engines[0].id === "image", JSON.stringify(biggest.engines.map((e) => e.id)));
+  const both = planMakeRoom({ shortfallGb: 5, engines: two, policy });
+  check("and a second one is taken when the first is not enough", both.engines.length === 2 && both.freedGb === 6, String(both.freedGb));
+
+  const hopeless = planMakeRoom({ shortfallGb: 20, engines: two, policy });
+  check("a gap nothing can cover releases nothing", hopeless.code === "CANNOT_MAKE_ROOM" && hopeless.engines.length === 0, hopeless.code);
+  check("because a killed engine plus a refused load is worse than the refusal alone", /still short of the 20 GB/.test(hopeless.reason), hopeless.reason);
+
+  const busy = planMakeRoom({ shortfallGb: 1, engines: [engine({ makeRoom: true, busy: true, sizeGb: 4 })], policy });
+  check("an engine in use is never taken, however big the gap", busy.code === "NOTHING_TO_RELEASE", busy.code);
+  const notMarked = planMakeRoom({ shortfallGb: 1, engines: [engine({ makeRoom: false, sizeGb: 4 })], policy });
+  check("nor is one the rules do not allow a load to take", notMarked.code === "NOTHING_TO_RELEASE", notMarked.code);
+  const flags = planMakeRoom({
+    shortfallGb: 1,
+    engines: [engine({ id: "tts", resident: true, makeRoom: false, sizeGb: 0 }), engine({ id: "speech", resident: false, makeRoom: false, sizeGb: 0 })],
+    policy,
+  });
+  check("and a ready flag with no process behind it is not memory", flags.code === "NOTHING_TO_RELEASE", flags.code);
+  check("it names what is loaded but may not be taken", /not releasable to make room: tts/.test(flags.reason), flags.reason);
+  const empty = planMakeRoom({ shortfallGb: 1, engines: [], policy });
+  check("with nothing loaded it says so", empty.code === "NOTHING_TO_RELEASE" && /nothing else is loaded/.test(empty.reason), empty.reason);
+
+  check("a load that already fits releases nothing", planMakeRoom({ shortfallGb: 0, engines: [roomy], policy }).code === "NO_SHORTFALL");
+  check("and the governor being switched off switches this off too", planMakeRoom({ shortfallGb: 3, engines: [roomy], policy: { ...policy, enabled: false } }).code === "DISABLED");
+}
+
+section("7. What the server gives up for a load, and what it never gives up");
+check("serve.cjs asks the module to plan the trade", serveSource.includes("planMakeRoom,") && /const plan = planMakeRoom\(\{ shortfallGb, engines: governedEngines\(\)/.test(serveSource));
+check(
+  "the shortfall is the gap the budget measured, not a guess",
+  /Math\.max\(0, \(Number\(budget\?\.estimateGb\) \|\| 0\) - \(Number\(budget\?\.availableGb\) \|\| 0\)\)/.test(serveSource)
+);
+check(
+  "a text load that would be refused tries to make room first",
+  /if \(textBudget\.blocking\) \{[\s\S]{0,400}await makeRoomForLoad\(\{\s*\n\s*budget: textBudget/.test(serveSource)
+);
+check(
+  "and an image load may take a chat model's room, the same trade in reverse",
+  /if \(imageBudget\.blocking\) \{[\s\S]{0,400}await makeRoomForLoad\(\{\s*\n\s*budget: imageBudget/.test(serveSource)
+);
+check(
+  "the budget is measured again after the release, because resident bytes changed",
+  (serveSource.match(/textBudget = evaluateModelMemoryBudget\(\{/g) || []).length === 2 &&
+    (serveSource.match(/imageBudget = evaluateModelMemoryBudget\(\{/g) || []).length === 2
+);
+check(
+  "and if it still does not fit, the load is refused exactly as before",
+  /if \(textBudget\.blocking\) throw new Error\(textBudget\.blocking\.message\);/.test(serveSource) &&
+    /if \(imageBudget\.blocking\) throw new Error\(imageBudget\.blocking\.message\);/.test(serveSource)
+);
+check("a release for a load is recorded as one, with what it was for", /code: "MEMORY_MAKE_ROOM",[\s\S]{0,200}for: wanted,/.test(serveSource));
+check(
+  "the LLM lock is a promise queue, so a text load making room stops the model directly instead of waiting for itself",
+  /if \(insideLlmLock\) await killLlm\(\);\s*\n\s*else await runExclusiveLlmOperation\(\(\) => killLlm\(\)\);/.test(serveSource) &&
+    /wanted: modelName\(filename\) \|\| filename,[\s\S]{0,220}insideLlmLock: true,/.test(serveSource)
+);
+check(
+  "an image load is outside that lock, so a chat model it takes queues behind any answer in flight",
+  /wanted: modelName\(currentSettings\.model\) \|\| "the image model",[\s\S]{0,220}insideLlmLock: false,/.test(serveSource)
+);
+check("only a failure worth reading is logged", /if \(plan\.code === "CANNOT_MAKE_ROOM"\) console\.log/.test(serveSource));
+check(
+  "releasing the image engine means stopping the backend, which keeps the settings a restart needs",
+  /if \(engineId === "image"\) \{[\s\S]{0,500}await killBackend\(\);\s*\n\s*return true;/.test(serveSource)
+);
+check(
+  "the OpenVINO worker is never the engine that gets released — its own route does not start it",
+  /resident: Boolean\(\(backendReady \|\| backendProc\) && currentSettings\.model\) && !openvinoProc,/.test(serveSource)
+);
+check(
+  "the image engine is busy while the browser may still be generating: the Generator's progress poll is the server's only view of that work",
+  /const IMAGE_POLL_GRACE_MS = 5000;/.test(serveSource) &&
+    /Date\.now\(\) - Number\(engineLastUsedAt\.image \|\| 0\) < IMAGE_POLL_GRACE_MS/.test(serveSource) &&
+    /noteEngineUsed\("image"\);\s*\n\s*return json\(res, 200, \{/.test(serveSource)
+);
+check("and a backend that just became ready is not 'idle since never'", /backendReady = true;\s*\n\s*\/\/ A model that just became ready[\s\S]{0,80}noteEngineUsed\("image"\);/.test(serveSource));
+check(
+  "an image release waits for a server-side generation to finish",
+  /busy:\s*\n\s*Boolean\(backendLoadState\.active\) \|\|\s*\n\s*Boolean\(generationState\.active\) \|\|/.test(serveSource)
+);
+check(
+  "and for a Social Agency run already in flight, which generates its own images through the backend",
+  /if \(Number\(status\.activeCount\) > 0\) return true;/.test(serveSource)
+);
+check(
+  "a calendar post keeps the engine only while it is coming due — the scheduler is armed at boot, so 'running' would mean never",
+  /const IMAGE_SCHEDULER_RESERVE_MS = 10 \* 60000;/.test(serveSource) &&
+    /nextPostAt - Date\.now\(\) <= IMAGE_SCHEDULER_RESERVE_MS/.test(serveSource) &&
+    !/Boolean\(status\?\.running\) &&/.test(serveSource)
+);
+check(
+  "a scheduler that cannot be read is treated as armed, not as absent",
+  /catch \(_\) \{\s*\n\s*return true;\s*\n\s*\}\s*\n\}/.test(serveSource)
+);
+check(
+  "the image engine stays out of the idle sweep: the server never sees a browser generation",
+  ENGINE_RULES.image.restorable === false && ENGINE_RULES.image.makeRoom === true && /browser/.test(ENGINE_RULES.image.reason)
+);
+check(
+  "speech and TTS hold no process, so neither a sweep nor a load can take memory from them",
+  ENGINE_RULES.speech.holdsProcess === false && ENGINE_RULES.tts.holdsProcess === false &&
+    ENGINE_RULES.speech.makeRoom === false && ENGINE_RULES.tts.makeRoom === false &&
+    /nothing stays resident/.test(ENGINE_RULES.speech.reason) && /nothing stays resident/.test(ENGINE_RULES.tts.reason)
+);
+check("the three engines that do hold a process are named as such", ENGINE_RULES.text.holdsProcess && ENGINE_RULES.arena.holdsProcess && ENGINE_RULES.image.holdsProcess);
+check("the status says which engines a load may take, not just which a sweep may", /makeRoom: Boolean\(engine\.makeRoom\),/.test(serveSource));
+check(
+  "the Generator restarts a backend that is not running, which is what makes an image release recoverable",
+  /if \(!status\.running && !status\.ready && !status\.loading\?\.active\) \{\s*\n\s*needsRestart = true;/.test(generatorSource)
+);
+check(
+  "and it does so before comparing settings, because a stopped backend keeps its last ones",
+  generatorSource.indexOf("!status.running && !status.ready") < generatorSource.indexOf("const currentModelName = settings.model")
+);
+
+section("8. The engines the governor declines to touch say why");
 for (const [id, rule] of Object.entries(ENGINE_RULES)) {
   check(`${id} is ${rule.restorable ? "restorable" : "left alone, with a reason"}`, typeof rule.reason === "string" && rule.reason.length > 20, rule.reason);
+  check(`${id} says whether a load may take it`, typeof rule.makeRoom === "boolean" && typeof rule.holdsProcess === "boolean");
 }
 check(
   "serve.cjs passes those reasons through to the status, not just a boolean",
@@ -325,7 +464,7 @@ check(
     /notRestorableBecause: engine\.notRestorableBecause \|\| null/.test(serveSource)
 );
 
-section("7. One real sweep decision on this machine");
+section("9. One real sweep decision on this machine");
 {
   const policy = policyFor({ tier: "mid" });
   let signals = { availableBytes: null, swapUsedBytes: null };
