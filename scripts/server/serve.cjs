@@ -3708,6 +3708,11 @@ function getTelemetry() {
   const gpu = getGpuInfo();
   return {
     cpu_usage: getCpuUsagePercent(),
+    // The RAM figure above is machine-wide, and on a desktop with a browser
+    // open most of it is other people's work. The share this app is actually
+    // responsible for — this server process — travels with it, so the chip can
+    // show both instead of inviting the reader to blame the app for macOS.
+    server_rss_gb: roundGb(process.memoryUsage().rss),
     ram_used_gb,
     ram_total_gb: roundGb(os.totalmem()),
     gpu_name: deviceVram?.gpu_name || gpu.name,

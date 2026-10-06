@@ -236,6 +236,7 @@ function App() {
 
   const [telemetry, setTelemetry] = useState({
     cpu_usage: 0,
+    server_rss_gb: null,
     ram_used_gb: 0,
     ram_total_gb: 0,
     gpu_name: "Detecting...",
@@ -938,6 +939,7 @@ function App() {
         const stats = await getTelemetry();
         setTelemetry((prev) => (
           prev.cpu_usage === stats.cpu_usage &&
+          prev.server_rss_gb === stats.server_rss_gb &&
           prev.ram_used_gb === stats.ram_used_gb &&
           prev.ram_total_gb === stats.ram_total_gb &&
           prev.gpu_name === stats.gpu_name &&

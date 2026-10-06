@@ -36,6 +36,16 @@ const {
   residentBytesFromPs,
 } = require("../server/gpu-memory-telemetry.cjs");
 
+const appSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "..", "app", "frontend", "src", "App.jsx"),
+  "utf8"
+);
+
+const topStatusBarSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "..", "app", "frontend", "src", "components", "TopStatusBar.jsx"),
+  "utf8"
+);
+
 const serveSource = fs.readFileSync(
   path.resolve(__dirname, "..", "..", "scripts", "server", "serve.cjs"),
   "utf8"
@@ -274,6 +284,36 @@ check(
   "and the ceiling shown is the one loads are refused against, not total RAM",
   reported.vram_total_gb < Number((TOTAL_RAM_BYTES / GIB).toFixed(2)) &&
     reported.vram_total_gb === WORKING_SET_GB
+);
+
+section("The RAM chip says whose memory it is showing");
+check(
+  "macOS 'used' excludes what can be reclaimed, so the chip is not counting file cache as an app",
+  /const totalFreeBytes = \(freePages \+ inactivePages \+ speculativePages\) \* pageSize;/.test(serveSource) &&
+    /cachedMacRamUsedGb = roundGb\(os\.totalmem\(\) - totalFreeBytes\);/.test(serveSource)
+);
+check(
+  "the server reports its own footprint next to the machine-wide figure",
+  /server_rss_gb: roundGb\(process\.memoryUsage\(\)\.rss\),/.test(serveSource)
+);
+check(
+  "and the chip shows LUKE's share — server process plus loaded model processes — beside the machine's",
+  /\{hasServerRss && <> · LUKE \{formatGb\(lukeGb, \{ allowZero: true \}\)\} GB<\/>\}/.test(topStatusBarSource) &&
+    /const lukeGb = \(serverRssGb \|\| 0\) \+ modelsGb;/.test(topStatusBarSource)
+);
+check(
+  "the tooltip says the machine-wide figure is Activity Monitor's, and that the browser tab is the browser's",
+  /the same figure Activity Monitor calls/.test(topStatusBarSource) &&
+    /belongs to the browser/.test(topStatusBarSource) &&
+    /title=\{ramTitle\}/.test(topStatusBarSource)
+);
+check(
+  "a machine reading that has not arrived yet is not shown as zero LUKE",
+  /const hasServerRss = serverRssGb !== null;/.test(topStatusBarSource)
+);
+check(
+  "the app keeps the footprint in its telemetry state and change detection, so the LUKE share actually refreshes",
+  /server_rss_gb: null,/.test(appSource) && /prev\.server_rss_gb === stats\.server_rss_gb &&/.test(appSource)
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
