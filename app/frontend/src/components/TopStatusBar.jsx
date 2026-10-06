@@ -58,9 +58,10 @@ function TopStatusBar({
   const hasServerRss = serverRssGb !== null;
   const lukeGb = (serverRssGb || 0) + modelsGb;
   const ramTitle =
-    "Memory in use across the whole machine — the same figure Activity Monitor calls " +
-    `"Memory Used". A browser with tabs open, other apps and macOS itself account for ` +
-    "most of it, before any model is loaded. " +
+    "Memory in use across the whole machine — comparable to what Activity Monitor shows " +
+    `as "Memory Used": everything except free, speculative and cached pages, so a browser ` +
+    "with tabs open, other apps and macOS itself account for most of it before any model " +
+    "is loaded. " +
     (hasServerRss
       ? `LUKE's own share: ${serverRssGb.toFixed(2)} GB for the server process` +
         ` + ${modelsGb.toFixed(1)} GB of loaded models in their own processes` +

@@ -303,7 +303,7 @@ check(
 );
 check(
   "the tooltip says the machine-wide figure is Activity Monitor's, and that the browser tab is the browser's",
-  /the same figure Activity Monitor calls/.test(topStatusBarSource) &&
+  /comparable to what Activity Monitor shows/.test(topStatusBarSource) &&
     /belongs to the browser/.test(topStatusBarSource) &&
     /title=\{ramTitle\}/.test(topStatusBarSource)
 );
