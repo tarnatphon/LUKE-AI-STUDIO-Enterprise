@@ -297,13 +297,21 @@ check(
   /server_rss_gb: roundGb\(process\.memoryUsage\(\)\.rss\),/.test(serveSource)
 );
 check(
-  "and the chip shows LUKE's share — server process plus loaded model processes — beside the machine's",
-  /\{hasServerRss && <> · LUKE \{formatGb\(lukeGb, \{ allowZero: true \}\)\} GB<\/>\}/.test(topStatusBarSource) &&
+  "and the chip leads with LUKE's own share — server process plus loaded model processes — the machine-wide reading kept as a dimmed tail",
+  /LUKE: \{formatGb\(lukeGb, \{ allowZero: true \}\)\} GB/.test(topStatusBarSource) &&
+    /· machine \{formatGb\(telemetry\.ram_used_gb\)\} \/ \{formatGb\(telemetry\.ram_total_gb\)\} GB/.test(topStatusBarSource) &&
+    /style=\{\{ opacity: 0\.65 \}\}/.test(topStatusBarSource) &&
     /const lukeGb = \(serverRssGb \|\| 0\) \+ modelsGb;/.test(topStatusBarSource)
 );
 check(
-  "the tooltip says the machine-wide figure is Activity Monitor's, and that the browser tab is the browser's",
-  /comparable to what Activity Monitor shows/.test(topStatusBarSource) &&
+  "a server that has not reported its footprint still gets the machine reading, not an empty chip",
+  /RAM: \{formatGb\(telemetry\.ram_used_gb\)\} \/ \{formatGb\(telemetry\.ram_total_gb\)\} GB<\/span>/.test(topStatusBarSource)
+);
+check(
+  "the tooltip opens with LUKE's footprint, then explains the dimmed machine tail and the browser tab",
+  /LUKE's own footprint: /.test(topStatusBarSource) &&
+    /The dimmed tail is the whole machine/.test(topStatusBarSource) &&
+    /comparable to what Activity Monitor shows/.test(topStatusBarSource) &&
     /belongs to the browser/.test(topStatusBarSource) &&
     /title=\{ramTitle\}/.test(topStatusBarSource)
 );
