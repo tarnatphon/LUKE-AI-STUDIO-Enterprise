@@ -100,13 +100,13 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     if (typeof onApply === "function") onApply();
   };
 
-  const copyToInternalDisk = async (modelPath) => {
+  const copyToInternalDisk = async (modelPath, scope) => {
     setCopying(modelPath);
     try {
       const response = await fetch("/api/model-cache/prime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelPath, useInternalDisk }),
+        body: JSON.stringify({ model: modelPath, scope, useInternalDisk }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The model could not be copied.");
@@ -136,7 +136,10 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const currentThreads = Number(pendingTextSettings?.threads) || 0;
   const currentBatch = Number(pendingTextSettings?.batchSize) || 0;
   const alreadyApplied = Boolean(recommended) && recommended.threads === currentThreads && recommended.batchSize === currentBatch;
-  const modelOptions = (cache?.plans || []).map((entry) => entry.source);
+  // A draft model has to be a GGUF llama.cpp can run, so the cache list is
+  // filtered back to text models here even though the cache itself now also
+  // holds image models.
+  const modelOptions = (cache?.plans || []).filter((entry) => entry.kind !== "image").map((entry) => entry.source);
   const externalModels = (cache?.plans || []).filter((entry) => entry.external && !entry.cached);
   const draftFit = plan?.draft;
 
@@ -226,14 +229,16 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         <>
           <span style={descStyle}>
             Copying {externalModels.length === 1 ? "this model" : "these models"} to the internal disk turns a slow load into a few seconds.
-            The copy is disposable: delete it any time and the model on your external disk is untouched.
+            The copy is disposable: delete it any time and the model on your external disk is untouched. An image model is a folder of
+            tens of thousands of small files, which is the slowest thing an external disk can be asked to read, so it gains the most.
           </span>
           <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "grid", gap: 6 }}>
             {externalModels.map((entry) => (
               <li key={entry.source} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".7rem" }}>
                 <code style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.source.split("/").pop()}</code>
+                <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.label || (entry.kind === "image" ? "Image model" : "Text model")}</span>
                 <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.sizeGb} GB</span>
-                <button type="button" style={buttonStyle} onClick={() => copyToInternalDisk(entry.source)} disabled={copying === entry.source}>
+                <button type="button" style={buttonStyle} onClick={() => copyToInternalDisk(entry.source, entry.kind)} disabled={copying === entry.source}>
                   <HardDriveDownload size={13} />
                   {copying === entry.source ? "Copying…" : "Copy"}
                 </button>

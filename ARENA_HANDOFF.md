@@ -1,5 +1,6 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
+> **อัปเดตล่าสุด:** 2026-10-06 (session `arena/ccbe7be3…` — **โมเดลภาพเข้า model cache + โหลดจากสำเนาบนดิสก์ภายในเมื่อมีสำเนาอยู่จริง** — งานชุดนี้ session ก่อนทำไว้แต่ **ไม่เคยถูก push → หายไปกับ sandbox อีกครั้ง (เคสที่ 4)** จึงถูก**เขียนใหม่ทั้งชุดจากโค้ดจริงใน `main`** ไม่ใช่จากข้อความส่งต่อ · cache รองรับ **โฟลเดอร์** (Core ML bundle หลายหมื่นไฟล์) · แก้ **บั๊กที่ทำให้ cache ไม่เคยถูกใช้เลย**: loader มองหาในโฟลเดอร์คนละที่กับที่ปุ่ม "Copy" เขียนไว้ ทั้งโมเดลภาพและโมเดลข้อความ · `/api/model-cache/status` ตอบ `POST` ตามที่ panel เรียกจริง (เดิม GET อย่างเดียว → panel อ่าน 404 แล้วไม่แสดงอะไรเลย) และลิสต์โมเดลภาพด้วย · `coreml_server.py` อ่าน reference config จากสำเนาในเครื่องก่อนเน็ต (`app/runtime-state/huggingface-cache`, ตั้งค่าใหม่ด้วย `LUKE_IMAGE_MODEL_CACHE`) · เทสต์ใหม่ `test-image-model-cache.cjs` 72 checks + probe Python · **วิธีนำขึ้น Mac ดูหัวข้อ 7.6** · งานนี้ยังไม่ merge — เปิด PR ค้างไว้ ดูหัวข้อ 1)
 > **อัปเดตล่าสุด:** 2026-10-02 (session `arena/01a0fb7f…` — **แก้ image prompt ไม่ตรงสินค้า**: `buildTemplateImagePrompt`/`buildTemplateAnimatePrompt` ดึงคำอังกฤษจาก `product.name` และ `product.detail` เพิ่มเติมจาก `product.category` เมื่อ category เป็นภาษาไทย ไม่ต้อง fallback เป็น "product" อีก · smoke 104 + ชุด Social Agency 70 = 174 passed · PR #32)
 > **อัปเดตล่าสุด:** 2026-10-01 (session `arena/01a0f582…` — **งานชุด "ป้าย + ปุ่มปฏิเสธรูป + รูปสินค้าจริงแนบโพสต์ Facebook" สร้างใหม่ทั้งชุด** เพราะงานชุดเดียวกันจาก session ก่อนหน้า**ไม่เคยถูก push ขึ้น GitHub และหายไปกับ sandbox** (ซ้ำรูปแบบเคส `5be0bd0`/`1d7d26c` — รายละเอียดการตรวจอยู่ท้ายหัวข้อ 7) · **ป้ายรายการ** (`entry.tags` ≤8 ป้าย × ≤24 ตัวอักษร ผ่าน PATCH calendar + ชิปบนการ์ดปฏิทิน + กรอง/ค้นหาตามป้าย) · **ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้"** ในด่านตรวจภาพ: ล็อก fingerprint รูปที่ปฏิเสธ + ล้างผลตรวจ + สร้างภาพใหม่อัตโนมัติ · ภาพใหม่ที่ไบต์เดิมถูกบล็อกซ้ำเอง · **โพสต์ Facebook 2 รูป**: ภาพ AI รูปแรก + รูปสินค้าจริงรูปที่สองแบบไม่แก้ไขอะไรนอกจากย่อด้านยาว 500px (canvas ในเบราว์เซอร์ แคช `<sku>.ref500.jpg` เซิร์ฟเวอร์ไม่เพิ่ม dependency) ส่งแบบ unpublished photos + `feed`+`attached_media` · **ขนาดภาพปฏิทินตั้งได้รายลูกค้า** (default 1024×600 แบนเนอร์) · เทสต์ใหม่ 3 ชุด 30 checks · run-all **147 passed · 0 failed · 0 known-failing · 1 skipped**) 
 > **อัปเดตล่าสุด:** 2026-09-30 (session `arena/01a0f037…` — **สืบหา commit `5be0bd0` / `1d7d26c` ตามคำขอ: ไม่มีอยู่จริงทั้งใน sandbox, บน GitHub และบนเครื่อง Mac** → push ไม่ได้ (ไม่มี object ให้ push) · งานเนื้อหาชุด img2img อยู่ใน `main` แล้วเป็น `5d64236` + `f83ee8d` → merge `24c2a64` · แก้ข้อมูล branch บน GitHub ในข้อ 1 ให้ตรงกับที่ `ls-remote` เห็นจริง · รายละเอียดที่มา/ที่ตรวจแล้วอยู่ท้ายข้อ 6)
@@ -19,17 +20,33 @@
 
 | รายการ | ค่า |
 |---|---|
-| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-09-30 คือ `24c2a64` (merge ของ PR #26) · **PR #32 รออนุมัติ** (แก้ image prompt) |
+| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-10-06 คือ `446d113` (merge ของ PR #33) · **PR #34 รออนุมัติ** (โมเดลภาพเข้า model cache — หัวข้อ 2) |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เปิดค้าง | **ไม่มี** — PR #28 (สเกล steps ของ img2img + เทสต์) merged 2026-09-30 04:34Z เป็น `66863bf`; CI `validation suites` เขียวทั้ง workflow (runs 36669042409) · ก่อนหน้า: PR #26 (รูปสินค้าอ้างอิง → img2img + เตือนใน UI + แก้เช็กบ็อกซ์) **merged แล้ว** 2026-09-29 04:33Z เป็น `24c2a64` (commits ที่ push จริง: `5d64236` + `f83ee8d`) · ก่อนหน้า: #25 = `e21eb87`, #21 = `6397105` |
-| branch บน GitHub (ตรวจด้วย `git ls-remote` 2026-09-30) | `main` `24c2a64` · `arena/01a0e089…` `2584762` · `arena/01a0e633…` `3095163` · `arena/01a0eb2c…` `6080dd5` · `arena/01a0eb60…` `24c2a64` · `arena/01a0ebd4…` `24c2a64` · `ci/validation-suites` `8274bde` — **ยังไม่ได้ลบ** (ข้อความเดิมที่ว่า "เหลือแค่ `main`" ไม่จริงแล้ว) · tag `v1.0.0-beta.16` = `fe84a3c` |
-| งานค้างที่ทราบ | **ยืนยันฟีเจอร์ใหม่ (ป้าย/ปุ่มปฏิเสธ/โพสต์ 2 รูป/ขนาด 1024×600) บนเครื่อง Mac จริง — เช็กลิสต์ท้ายหัวข้อ 6** · งานยืนยัน img2img/steps ของ PR #26–#28 ยังอยู่ (ข้อถัดไปในหัวข้อ 6) · สร้างภาพ WSB-019 ใหม่ · หัวข้อ 6 เก่า **ปิดครบแล้ว** · งานที่จงใจทิ้งไว้อยู่ท้ายหัวข้อ 6 · **ไม่มี commit ค้างให้กู้** (เคสล่าสุดจบแล้วที่หัวข้อ 7.5) |
+| PR ที่เปิดค้าง | **PR #34** — `feat(model-cache): cache image models + actually load the internal-disk copy` · branch `arena/ccbe7be3…` ที่ `5748573` (push แล้ว 2026-10-06) · CI `validation suites` รันอยู่ · **ถ้า PR นี้ merge แล้วให้ลบแถวนี้** · local: run-all **148 passed / 1 failed / 1 skipped** — ตัวที่ fail คือ `validate-release.sh` ต้องการ `imageio_ffmpeg` (CI ติดตั้งให้, ดูหัวข้อ 6) |
+| branch บน GitHub (ตรวจด้วย `git ls-remote` 2026-10-06) | ⚠️ **พบงานชุดใหม่ที่ยังไม่ merge:** `arena/01a10a92…` = `a65ccfa` (7 commits, 2026-10-05→06 — GPU/VRAM telemetry + resource governor + ชิป RAM บน status bar, 2,737 insertions, เทสต์ 4 ชุดใหม่) **push แล้วแต่ไม่มี PR** — handoff ของ branch นั้นเขียนไว้เองว่า "push branch แล้ว ยังไม่ merge" ทั้ง 6 รอบ · merge เข้า `main` สะอาดยกเว้น `ARENA_HANDOFF.md` ที่ชนกันแบบแก้ง่าย (`serve.cjs` auto-merge ได้) → **ต้องตัดสินใจก่อนว่าเอาอะไรก่อน หลัง เพราะ PR #34 ก็แก้ `serve.cjs` เช่นกัน** · branch อื่นที่ค้างอยู่ (ตามเอกสารรอบก่อน): `arena/01a0e089…` `2584762` · `arena/01a0e633…` `3095163` · `arena/01a0eb2c…` `6080dd5` · `arena/01a0eb60…`/`01a0ebd4…` `24c2a64` · `arena/01a0f086…` `0ec34bd` · `arena/01a0fb4e…` `e4ca933` · `arena/01a0fb7f…` `9f7668f` · `arena/01a0fba6…` `2984f23` · `ci/validation-suites` `8274bde` — ทุกตัวที่ merge แล้วควรลบ · tag `v1.0.0-beta.16` = `fe84a3c` |
+| งานค้างที่ทราบ | **PR #34 ยังไม่ merge → งานยังไปไม่ถึง Mac** · เช็กลิสต์ยืนยันบน Mac ของงาน cache รูปอยู่หัวข้อ 7.6 (4 ข้อ) · **ตัดสินใจเรื่อง branch `arena/01a10a92…`** (งาน telemetry/governor ที่ค้างบน GitHub ไม่มี PR — ข้อถัดไปในตาราง branch) · สร้างภาพ WSB-019 ใหม่ · หัวข้อ 6 เก่า **ปิดครบแล้ว** · **ไม่มี commit ค้างให้กู้จาก sandbox ของ session ก่อน** — ตรวจครบทุกทางแล้วที่หัวข้อ 7.6 (เคสที่ 4 ของการทำงานหาย เพราะไม่ได้ push ภายใน session นั้น)
 
 ---
 
 ## 2. งานล่าสุดที่เข้า `main`
 
-### PR นี้ (session `arena/01a0f582…`, 2026-10-01) — ป้ายรายการ + ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้" + โพสต์ Facebook 2 รูป (ภาพ AI + รูปสินค้า 500px) + ขนาดภาพ 1024×600
+### PR นี้ (session `arena/ccbe7be3…`, 2026-10-06) — โมเดลภาพเข้า model cache + โหลดจากสำเนาบนดิสก์ภายในเมื่อมีสำเนา
+> ⚠️ **เขียนใหม่ทั้งชุด** — session ก่อนทำไว้แล้วแต่ไม่เคย push จึงหายไปกับ sandbox (ดูหัวข้อ 7.6) สเปกชุดนี้จึงถูกสร้างใหม่จากการอ่านโค้ดจริงใน `main` ไม่ใช่จากการคาดเดา
+
+- **`scripts/server/model-cache.cjs` รองรับ "โฟลเดอร์"** — เมื่อก่อน `cachePlan` ปฏิเสธทุกอย่างไม่ใช่ไฟล์ (`stat.isFile()`) ซึ่งโมเดลภาพที่ติดตั้งจริงเป็น **โฟลเดอร์ Core ML** (`unet.mlmodelc/`, `text_encoder.mlpackage/`, …) ทั้งโฟลเดอร์ → ไม่เคยเข้าเกณฑ์จะแคชเลย · เพิ่ม `treeFingerprint()` (นับไฟล์ + รวมไบต์ + mtime ล่าสุด, ข้าม `.DS_Store`, ตาม symlink แบบถอดเป็นไฟล์จริงเพราะ HF snapshot ใช้ symlink) และ `fingerprintMatches()` ที่ใช้กับทั้งไฟล์และโฟลเดอร์ · `primeCache` คัดลอกโฟลเดอร์เข้าชื่อ `.partial` ก่อนแล้วค่อย rename = โฟลเดอร์ที่ค้างครึ่งเดียวจะไม่ถูกเสนอเป็นแคช · ตรวจจำนวนไฟล์+ไบต์ของสำเนากับต้นฉบับ**ก่อน**เขียน manifest เสมอ
+- **แก้บั๊กที่ทำให้ cache ไม่เคยถูกใช้** — ตัวโหลด (`startLlmWithBackend`) เรียก `cachePlan(modelPath)` แบบไม่บอกดิสก์ ซึ่งชี้ไปที่ `app/runtime-state/model-cache` (โฟลเดอร์ของแอป = อยู่ Volume เดียวกับโมเดล ซึ่ง `primeCache` ปฏิเสธการคัดลอก) ขณะที่ปุ่ม Copy ใน `Settings > Performance` เขียนสำเนาไว้ที่ `internalCacheRoot()` (`~/Library/Application Support/LUKE AI STUDIO/model-cache` บน Mac) → **มีสำเนาอยู่บนดิสก์ภายในอยู่แล้วแต่ไม่มีใครหาเจอ** · เพิ่ม `cachedCopyFor()` ที่ค้น **ทั้งสองที่** (ดิสก์ภายในก่อน) โดยยืนยัน fingerprint ทุกครั้ง แล้วให้ทั้งตัวโหลดโมเดลข้อความและตัวโหลดโมเดลภาพใช้ร่วมกัน
+- **โมเดลภาพได้ path จากสำเนาแล้วจริง** — ใน `startBackend`:คำนวณ `imageLoadPath` จาก `cachedCopyFor(imageModelPath)` แล้วส่งค่านี้ให้ `--model` **ทั้งสอง backend** (Core ML และ stable-diffusion.cpp) แทน `currentSettings.model` · ใช้เฉพาะตอน `pathInside(cachedPath, cacheDir)` ผ่าน · memory budget ยังวัดจาก path จริงของผู้ใช้ · log บอกว่าโหลดจากดิสก์ภายในกี่ GB / กี่ไฟล์
+- **`/api/model-cache/status` ตอบ `POST`** — panel เรียก POST มานานแล้วแต่ route รับเฉพาะ GET → ได้ 404 เงียบ ๆ แล้วไม่แสดงข้อมูลแคชเลย และ `useInternalDisk` ที่ panel ส่งไปใน body ถูกทิ้ง (hardcode `false`) ตอนนี้รับทั้ง GET/POST และเคารพค่าที่ส่งมา · ลิสต์**ทั้งโมเดลข้อความและโมเดลภาพ** (ใหม่: `cacheableModelPaths()`, ติด `kind`/`label`/`name`/`fileCount` ให้ UI แสดงด้วย) · ส่วน dropdown "Draft model" กรองเหลือเฉพาะ `kind !== "image"` เพราะ llama.cpp ใช้ได้แต่ GGUF
+- **`/api/model-cache/prime` รับโมเดลภาพ** — ยังไม่รับ path จาก request (basename แล้ว lookup กลับเข้าไปในโฟลเดอร์โมเดลเหมือนเดิม) แต่เพิ่ม `scope: "text"|"image"` กันชื่อชนกันระหว่างสองโฟลเดอร์ · refuse case เดิม (`../../etc/passwd`, `/etc/hosts`) ยัง 400 · *"คัดลอกไปก็ไม่มีประโยชน์"* (ดิสก์เดียวกัน) เดิมตอบ **500** ตอนนี้ตอบ **400 พร้อมเหตุผล** (ตั้ง `statusCode` ใน `model-cache.cjs`)
+- **`coreml_server.py` อ่านจากสำเนาก่อน** — `load_reference_pipeline()` เรียก `from_pretrained(..., local_files_only=True, cache_dir=app/runtime-state/huggingface-cache)` ก่อน ถ้าไม่มีสำเนาจึงดาวน์โหลด**ครั้งเดียว**แล้ว stays on disk · `use_auth_token` ยังส่งตามเดิม (ไม่พังกับ repo ที่ต้อง login) แต่ fallback เป็น `token=`/ไม่มีเมื่อ diffusers เวอร์ชันใหม่เปลี่ยนชื่อ kwarg · ไม่มี `use_auth_token=True` เดี่ยว ๆ อีก · error สุดท้ายบอกชัดว่าขาดแค่ config ไม่ใช่ weight · `LUKE_IMAGE_MODEL_CACHE` ย้ายโฟลเดอร์ได้ · `/health` ตอบ `reference_cache` ด้วย
+- **worker ยังระบุรุ่นโมเดลได้แม้โฟลเดอร์ชื่อเป็น hash** — `serve.cjs` ส่ง `--model-version <สิ่งที่ผู้ใช้เลือก>` เพิ่ม และ `infer_model_version()` พับ `_`/ช่องว่างเป็น `-` ด้วย (ชื่อที่ cache สร้างคือ `<sha12>-Stable_Diffusion_v1-5` ซึ่งเดิมหาไม่เจอแล้ว fallback เป็น v1-5 = โหลด scheduler/tokenizer ผิดตัวกับโมเดล XL)
+- **UI** (`PerformancePanel.jsx`) — รายการที่ต้องคัดลอกบอกชนิด (Text model / Image model) + อธิบายว่าโมเดลภาพได้ประโยชน์มากที่สุด · ส่ง `scope` ตามชนิด
+- **เทสต์**: `scripts/validation/test-image-model-cache.cjs` (72 checks: fingerprint โฟลเดอร์, คัดลอก/ยืนยัน/คัดลอกใหม่เมื่อโมเดลเปลี่ยน, symlink, `cachedCopyFor` หาเจอทั้งสองดิสก์, asserts ว่า `--model` เป็น path ที่ resolve แล้ว, route ตอบ POST/ลิสต์โมเดลภาพ/ปฏิเสธ path outside folder) + `scripts/validation/helpers/coreml-reference-cache-probe.py` (17 checks บนตัว `coreml_server.py` จริงโดย stub torch/numpy/diffusers — พิสูจน์**ลำดับ**การเรียก คือมีสำเนาแล้วไม่แตะเน็ต) · suite นี้ skip ตัวเองถ้าเครื่องไม่มี python3
+- **`validate-release.sh`** — เพิ่ม `py_compile` ให้ `coreml_server.py` และ probe · เดิมไม่มีอะไรคอมไพล์ worker ตัวนี้เลย ทั้งที่เป็นไฟล์เดียวที่รันเฉพาะบน Apple Silicon
+- **รันแล้วบน Linux:** ชุดใหม่ 72 passed / 0 failed · `test-llm-performance` 56/0 · `test-api-route-methods` PASS · `test-api-cors-policy` / `test-frontend-bundle-budgets` / `test-static-file-containment` / `test-frontend-dist-freshness` / `test-runtime-state-not-in-git` PASS หลัง build frontend · `run-all` ทั้งชุด 145 ผ่าน (เหลือเฉพาะที่ต้อง `imageio_ffmpeg` ซึ่ง CI ติดตั้งให้ — ดูหัวข้อ 6)
+- **ยังไม่ได้ยืนยันบน Mac (เช็กลิสต์อยู่หัวข้อ 7.6):** โหลด Core ML จริงจากสำเนาดิสก์ภายใน · สำเนาโฟลเดอร์ Core ML ขนาดจริง · เริ่มงานแบบ offline ไม่มีเน็ต
+
+### PR #30 (session `arena/01a0f582…`, 2026-10-01 — merged แล้ว) — ป้ายรายการ + ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้" + โพสต์ Facebook 2 รูป (ภาพ AI + รูปสินค้า 500px) + ขนาดภาพ 1024×600
 > สร้างใหม่ทั้งชุด: session ก่อนทำงานชุดนี้ไว้แล้วแต่**ไม่เคย push** → หายทั้งชุด (ดูท้ายหัวข้อ 7) — สเปกมาจากการคุยกับเจ้าของงานใหม่ทั้งหมดใน session นี้
 - **ป้ายรายการ (tags)** — `entry.tags` เก็บถาวรใน runtime-state · ผ่าน `PATCH /api/social-agency/calendar/:entryId` ฟิลด์ `tags` (แทนที่ทั้งชุด) · `_normalizeTags`: trim/ยุบช่องว่าง/dedupe ไม่สนตัวพิมพ์ ≤ **8 ป้าย/รายการ × ≤24 ตัวอักษร** (ไทยได้) ผิดกฎ throw ทันที · `listCalendar` ค้นหา `q` เจอจากป้าย · UI: แถว "ป้าย" ในหน้าโพสต์ (ชิปกด × เอาออก + พิมพ์เพิ่ม + เสนอป้ายที่เคยใช้ในลูกค้าเดียวกัน 6 อัน) + ชิปป้ายเล็กบนการ์ดปฏิทิน (3 อัน เกินขึ้น `+N`) + ตัวกรอง "ป้าย" บนแถบฟิลเตอร์
 - **ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้"** — `POST /api/social-agency/entry-image/reject` · จด fingerprint ลง `entry.imageRejections[]` (เก็บ 20 รายการล่าสุด) + **ล้าง `imageReview` ทันที** + ด่านตรวจเป็นสถานะ `rejected` → ส่งจริงไม่ได้เด็ดขาด (dry-run ใช้ได้) · **สร้างภาพใหม่อัตโนมัติ** หลังปฏิเสธ (ส่ง `regenerate:false` เพื่อปิด) · ภาพใหม่ที่ไบต์ตรงกับรูปที่เคยปฏิเสธ → ด่านตรวจคืนสถานะ `rejected` เอง · แม้กด "ตรวจภาพแล้ว" ทับก็ไม่ปลดล็อก (เช็ก fingerprint ก่อนผลตรวจเสมอ) · ปุ่มแดงอยู่ในด่านตรวจภาพทั้งหน้าโพสต์ และ `RunsTab` แสดงเหตุผลตามเดิม
@@ -267,3 +284,46 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
 **บทเรียนสำหรับรอบหน้า:** งานที่ทำใน sandbox ต้อง **commit + push + merge เข้า `main` ทันทีใน session เดียวกัน** · ห้ามอ้างอิง sha จาก session ก่อนแบบลอยๆ ในบทสนทนา — ให้อ้าง sha ที่อยู่ใน `main` แล้วเท่านั้น (บทสนทนาเก่าไม่ตามมา, sandbox เก่าถูกล้าง) · SHA ที่ไม่เคย push จะกู้จาก GitHub ไม่ได้แม้จะรู้ sha ก็ตาม
 
 **กับดักของ zsh บนเครื่อง Mac (เจอซ้ำ 2 ครั้งใน session นี้):** คำสั่งที่ยกมาให้คัดลอกมักมีคำอธิบายภาษาไทยต่อท้ายด้วย `#` — zsh แบบ interactive ที่ **ไม่ได้เปิด** `interactivecomments` จะถือ `#` เป็นตัวอักษรธรรมดา แล้วส่งข้อความที่ตามหลังเป็น argument ของคำสั่ง (อาการ: `rm: #: No such file or directory`, `fatal: couldn't find remote ref #`, `git cat-file: too many arguments`) → แก้ถาวรครั้งเดียวด้วย `echo 'setopt interactivecomments' >> ~/.zshrc` แล้ว**เปิด terminal ใหม่** (ค่า `setopt` สั่งในหน้าต่างเดิมไม่ติดไปหน้าต่างใหม่ — คนละ shell)
+
+---
+
+## 7.6 บันทึกเคสงานหายรอบที่ 4 (session `arena/ccbe7be3…`, 2026-10-06) — "cache สำหรับโมเดลภาพ + โหลดจากสำเนาดิสก์ภายใน"
+
+**คำขอที่เข้ามา:** ข้อความส่งต่อจาก session ที่ปิดไปแล้วระบุว่า *"การแก้ไขบันทึกอยู่ใน working tree ของ repo นี้แล้ว … แต่ไม่ได้อยู่บน GitHub"* และบอกให้ session ใหม่ "ส่งต่อการแก้ไขขึ้น GitHub"
+
+**ผลสรุป: ไม่มีอะไรให้ส่งต่อ — งานนั้นไม่มีอยู่ใน sandbox ของ session นี้ และกู้คืนไม่ได้** (นี่คือเคสที่ 4 ของรูปแบบเดียวกัน: `5be0bd0`/`1d7d26c` → `01a0f086…`→`01a0f582…` → `01a0fba7…` (PR #32/#33 ซึ่งรอดเพราะถูก push) → เคสนี้)
+
+| ที่ที่ตรวจ | วิธีตรวจ | ผล |
+|---|---|---|
+| working tree ของ session นี้ | `git status --porcelain` (รวม `--ignored`) | **ว่าง** — ไม่มีการแก้ไขใด ๆ |
+| stash | `git stash list` | ว่าง |
+| object ทั้งหมด + reflog | `git fsck --lost-found --no-reflogs` · `git reflog` · `git for-each-ref` | ไม่มี dangling object · ประวัติเริ่มที่ `clone: from github.com/...` เท่านั้น |
+| refs บน GitHub | `git branch -a` · `gh pr list --state all` | `main` = `446d113` (merge PR #33) · **PR ล่าสุดคือ #33** ไม่มี PR เรื่อง image cache |
+| ที่อื่นบน sandbox | `find / -maxdepth 2 -name .git` · `/tmp/arena-workspace` | มี repo เดียวคือ checkout ที่ clone ใหม่ · ไฟล์ว่าง/ไม่มี patch |
+
+**สาเหตุ (ยืนยันแล้วทุกเคสที่ผ่านมา):** sandbox ของแต่ละ session เป็นเครื่องชั่วคราวที่ clone จาก `main` ใหม่เสมอ — ไฟล์ที่ไม่ได้ commit+push **ภายใน session นั้น** จะถูกล้างไปพร้อม sandbox การที่ข้อความส่งต่อพูดว่า "บันทึกอยู่ใน working tree แล้ว" จึงจริงตอนที่ session นั้นยังเปิดอยู่ และไม่เป็นจริงทันทีที่ session ปิด (ถ้อยคำนี้ทำให้เข้าใจว่ามีของให้กู้ ทั้งที่ไม่มี object อยู่เลย)
+
+**สิ่งที่ทำแทนการกู้:** อ่านโค้ดจริงใน `main` แล้ว**เขียนงานชุดนั้นขึ้นใหม่** (หัวข้อ 2 "PR นี้") — ระหว่างไล่โค้ดเจอบั๊กที่ยังไม่มีใครสังเกต 2 ตัว ซึ่งงานชุดเก้าน่าจะเขียนทับไว้โดยไม่เจตนา: (1) cache เคยใช้ได้กับไฟล์เดี่ยวเท่านั้น โมเดลภาพเป็นโฟลเดอร์จึงไม่เข้าเกณฑ์เลย (2) **ตัวโหลดมองหาสำเนาคนละโฟลเดอร์กับที่ระบบเขียนสำเนาไว้** ทำให้อาการ "มีสำเนาบนดิสก์ภายในแต่ไม่เคยถูกใช้" ยังอยู่ทั้งที่มีไฟล์ครบ — ทั้งคู่ถูกแก้และเขียนเทสต์คุมไว้ใน PR นี้
+
+**กติกาซ้ำที่ต้องไม่พลาดอีก:** งานในทุก session ต้อง `commit → push → เปิด PR → merge เข้า `main` ให้จบใน session เดียวกัน` ถ้าจะปิด session โดย merge ไม่ทัน ให้ push branch ไว้ **และ** เขียน sha ที่ push จริงลงหัวข้อ 1 (sha ที่ยังไม่ push ห้ามเขียนลงเอกสาร)
+
+### วิธีเอางานชุดนี้ไปใช้บน Mac (หลังจาก PR merge แล้วเท่านั้น)
+
+```bash
+cd <โฟลเดอร์ repo บน Mac>          # ตามปกติคือ /Volumes/AI/LUKE-AI-STUDIO-Enterprise
+git fetch origin
+git checkout main
+git pull --ff-only
+cd app/frontend && npm install && npx vite build
+cd ../.. && ./mac.sh
+```
+
+> ⚠️ **ต้อง build ใหม่** เพราะ `app/dist/` ไม่อยู่ใน git (หัวข้อ 3) ถ้าข้ามขั้นนี้ UI จะยังเป็นแบบเก่าและจะไม่เห็นรายการโมเดลภาพใน `Settings > Performance` เลย
+> ⚠️ zsh บน Mac ไม่เปิด `interactivecomments` โดยค่าเริ่มต้น — ห้ามวางบรรทัดที่มี `#` ต่อท้ายคำสั่ง (ดูท้ายหัวข้อ 7.5)
+
+### เช็กลิสต์ยืนยันบน Mac (ยังไม่มีใครทำ)
+
+1. `Settings > Performance` → เปิด "Use the internal disk…" → ต้องเห็น **both** ไฟล์ GGUF *และ*โฟลเดอร์ Core ML พร้อมคำว่า `Image model` (เดิมไม่แสดงอะไรเลย เพราะ POST ถูก 404)
+2. กด Copy ที่โมเดลภาพ → รอเสร็จ → log ของ server ต้องมี `[backend] Loading <ชื่อโมเดล> from the internal disk cache (… GB, … files)` ตอนโหลดครั้งถัดไป (ถ้ายังขึ้นว่ามาจาก external volume แปลว่า `cachedCopyFor` มองไม่เห็นสำเนา — ให้ grep `manifest.json` ใน `~/Library/Application Support/LUKE AI STUDIO/model-cache/`)
+3. โหลดโมเดลภาพตอน **ปิดเน็ต**: log ต้องมี `[coreml-npu] Reference config for … read from the local copy in …` ไม่ใช่ข้อความ "No usable local copy"
+4. ขนาดโฟลเดอร์ cache บนดิสก์ภายใน (`du -sh ~/Library/Application\ Support/LUKE\ AI\ STUDIO/model-cache`) ต้องเท่ากับขนาดโมเดลที่เลือก และ **ต้นฉบับบน external volume ต้องยังอยู่** (ข้อนี้คือเหตุผลที่ copy ไม่ใช่ move)

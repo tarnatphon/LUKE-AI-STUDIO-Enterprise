@@ -103,15 +103,100 @@ def find_coreml_resource_dir(model_path: Path) -> Path:
     )
 
 
-def infer_model_version(model_path: Path) -> str:
+def infer_model_version(model_path: Path, hint: str = "") -> str:
+    """
+    Which PyTorch repo a Core ML bundle's config has to come from.
+
+    Names are compared with separators folded away, and a `hint` (the model the
+    user picked, before the loader was pointed at a cache copy whose folder name
+    is hash-prefixed and underscore-sanitised) wins over the path itself. Without
+    that, "Stable Diffusion v1-5" and its cache copy "1a2b…-Stable_Diffusion_v1-5"
+    would disagree about which model this is, and the wrong scheduler would be
+    loaded for weights that are perfectly fine.
+    """
     override = os.environ.get("COREML_MODEL_VERSION")
     if override:
         return override
-    lower = model_path.name.lower()
-    for needle, version in MODEL_VERSION_BY_NAME.items():
-        if needle in lower:
-            return version
+
+    def fold(value: str) -> str:
+        return str(value or "").lower().replace("_", "-").replace(" ", "-")
+
+    haystacks = [fold(hint), fold(model_path.name), fold(model_path.parent.name)]
+    folded = {fold(needle): version for needle, version in MODEL_VERSION_BY_NAME.items()}
+    for needle, version in folded.items():
+        for candidate in haystacks:
+            if needle in candidate:
+                return version
     return "runwayml/stable-diffusion-v1-5"
+
+
+def reference_cache_dir() -> Path:
+    """
+    Where the reference config (tokenizer, scheduler, feature extractor) for a
+    model version is kept, so it is downloaded once instead of at every start.
+
+    The Core ML bundle in app/models holds the weights that actually run; the
+    pipeline still needs the matching PyTorch config, and asking Hugging Face for
+    it on a machine that already has it is what makes an offline start fail.
+    """
+    override = os.environ.get("LUKE_IMAGE_MODEL_CACHE")
+    if override:
+        return Path(override).expanduser()
+    repo_root = Path(__file__).resolve().parents[2]
+    return repo_root / "app" / "runtime-state" / "huggingface-cache"
+
+
+def load_reference_pipeline(pipeline_class, model_version: str, cache_dir: Path):
+    """
+    Read the reference config from the local copy when there is one, and only
+    then fall back to downloading it into the same folder.
+
+    The local attempt is deliberately first and deliberately quiet: on the user's
+    Mac this is a folder that has been on disk since the model was installed, and
+    a network round trip there is pure startup delay.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or ""
+    kwargs = {"cache_dir": str(cache_dir), "use_auth_token": token if token else True}
+
+    def load(**extra):
+        try:
+            return pipeline_class.from_pretrained(model_version, **kwargs, **extra)
+        except TypeError as exc:
+            # `use_auth_token` was renamed `token` and later dropped; the config
+            # is public for these models, so a version that rejects the keyword
+            # should still load rather than die on an argument name.
+            if "use_auth_token" not in str(exc):
+                raise
+            retry = dict(kwargs)
+            retry.pop("use_auth_token")
+            retry["token"] = token if token else None
+            try:
+                return pipeline_class.from_pretrained(model_version, **retry, **extra)
+            except TypeError:
+                clean = dict(kwargs)
+                clean.pop("use_auth_token")
+                return pipeline_class.from_pretrained(model_version, **clean, **extra)
+
+    try:
+        pipe = load(local_files_only=True)
+        print(f"[coreml-npu] Reference config for {model_version} read from the local copy in {cache_dir}.", flush=True)
+        return pipe
+    except Exception as exc:
+        print(
+            f"[coreml-npu] No usable local copy of {model_version} ({type(exc).__name__}); "
+            "downloading the config once, then it stays on disk.",
+            flush=True,
+        )
+
+    try:
+        return load()
+    except Exception as exc:
+        raise RuntimeError(
+            f"The reference config for {model_version} was neither in {cache_dir} nor downloadable ({exc}). "
+            "The Core ML weights are on disk; only the matching tokenizer/scheduler is missing. "
+            "Connect once so it can be cached, or set LUKE_IMAGE_MODEL_CACHE to a folder that already has it."
+        ) from exc
 
 
 def infer_model_sources(resource_dir: Path) -> str:
@@ -137,10 +222,10 @@ def latest_png(root: Path) -> Path:
 
 
 class CoreMLServerState:
-    def __init__(self, model: Path, steps: int, cfg_scale: float):
+    def __init__(self, model: Path, steps: int, cfg_scale: float, model_hint: str = ""):
         self.model = model
         self.resources = find_coreml_resource_dir(model)
-        self.model_version = infer_model_version(model)
+        self.model_version = infer_model_version(model, model_hint)
         self.steps = steps
         self.cfg_scale = cfg_scale
         self.started_at = time.time()
@@ -149,10 +234,7 @@ class CoreMLServerState:
         # Load CoreML pipeline components on startup
         print(f"[coreml-npu] Loading PyTorch reference configuration for model version: {self.model_version}", flush=True)
         SDP = StableDiffusionXLPipeline if 'xl' in self.model_version else StableDiffusionPipeline
-        pytorch_pipe = SDP.from_pretrained(
-            self.model_version,
-            use_auth_token=True,
-        )
+        pytorch_pipe = load_reference_pipeline(SDP, self.model_version, reference_cache_dir())
 
         compute_unit = os.environ.get("COREML_COMPUTE_UNIT", "CPU_AND_NE")
         sources = infer_model_sources(self.resources)
@@ -189,6 +271,7 @@ def make_handler(state: CoreMLServerState):
                     "model": str(state.model),
                     "resources": str(state.resources),
                     "model_version": state.model_version,
+                    "reference_cache": str(reference_cache_dir()),
                     "uptime_sec": round(time.time() - state.started_at, 1),
                 })
                 return
@@ -288,11 +371,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen-port", required=True, type=int)
     parser.add_argument("--model", required=True, type=Path)
+    parser.add_argument("--model-version", default="", help="The model the user picked, used to name the reference config when --model is a cache copy.")
     parser.add_argument("--steps", type=int, default=30)
     parser.add_argument("--cfg-scale", type=float, default=7.0)
     args = parser.parse_args()
 
-    state = CoreMLServerState(args.model, args.steps, args.cfg_scale)
+    state = CoreMLServerState(args.model, args.steps, args.cfg_scale, args.model_version)
     print(f"[coreml-npu] Model: {state.model}", flush=True)
     print(f"[coreml-npu] Resources: {state.resources}", flush=True)
     print(f"[coreml-npu] Model version: {state.model_version}", flush=True)

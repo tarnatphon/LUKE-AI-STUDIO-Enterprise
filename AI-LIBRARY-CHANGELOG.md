@@ -45,3 +45,39 @@ The production frontend bundle was not rebuilt in the Linux validation environme
   concurrent loads are still allowed, but a model that cannot fit in RAM or
   VRAM is refused with a clear message instead of crashing the runtime.
   Warnings appear in the log above warnRatio; loading stops above blockRatio.
+
+## Phase 4 — the model cache covers image models
+- `scripts/server/model-cache.cjs` now caches a **folder** as well as a single
+  file. An installed Core ML image model is a bundle of tens of thousands of
+  small `.mlmodelc`/`.mlpackage` resources, which is the slowest thing an
+  external disk can be asked to read; the cache fingerprints a tree (file count,
+  total bytes, newest mtime), copies it through a temporary name, and verifies
+  the copy against the model before it is ever listed as cached.
+- **A cached copy is now actually used.** The loaders were looking in one cache
+  folder while `Settings > Performance` writes the copy to the other, so the
+  copy existed and the model still loaded off the slow disk every time. Both
+  folders are searched now, internal disk first, for text models and image models
+  alike, and a copy is only trusted when it matches the model byte for byte.
+- `/api/model-cache/status` answers the `POST` the panel sends (it was `GET`
+  only, so the panel read a 404 and showed nothing) and honours the disk choice
+  in the request. It lists image models too, labelled `Image model`, so an image
+  model can be copied from the UI at all.
+- `/api/model-cache/prime` accepts image models, still resolves nothing from the
+  request path itself (the model is looked up inside the model folders), and a
+  "copying this gains you nothing" refusal now answers 400 with its reason
+  instead of a 500.
+- `scripts/workers/coreml_server.py` reads the reference config (tokenizer,
+  scheduler) from a local copy under `app/runtime-state/huggingface-cache`
+  before going to the network, so an offline start is no longer held up by a
+  download it does not need — and it says which of the two it did. A model whose
+  config is neither cached nor downloadable gets a message naming the missing
+  piece instead of a stack trace. `LUKE_IMAGE_MODEL_CACHE` points that folder
+  somewhere else.
+- The worker is told which model the user picked (`--model-version`), because a
+  cache copy's folder name is hash-prefixed and would otherwise not identify the
+  model whose scheduler belongs to it.
+- New suite `scripts/validation/test-image-model-cache.cjs` (72 checks) plus
+  `scripts/validation/helpers/coreml-reference-cache-probe.py`, which exercises
+  the worker's load order without torch, network, or a Mac. The release contract
+  now compiles the Core ML worker — until now a syntax error in the one file that
+  only runs on Apple Silicon would have shipped unnoticed.
