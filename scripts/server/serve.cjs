@@ -5931,14 +5931,15 @@ async function startLlmWithBackend(settings = {}, backend) {
   if (!filename.toLowerCase().endsWith(".gguf")) {
     throw clientError("Text generation requires a .gguf model.");
   }
-  // A model kept on an external disk is copied to the internal disk once and
-  // loaded from there — tens of seconds become a couple of seconds.
+  // A model kept on an external disk is copied once and loaded from the copy —
+  // tens of seconds become a couple of seconds. The copy may sit on either
+  // disk, so neither location is assumed here.
   let loadPath = modelPath;
   try {
-    const plan = await modelCache.cachePlan(modelPath);
-    if (plan.cached) {
+    const plan = await modelCache.cachedCopyFor(modelPath);
+    if (plan.cached && pathInside(plan.cachedPath, plan.cacheDir)) {
       loadPath = plan.cachedPath;
-      console.log(`  [llm] Loading ${filename} from the internal disk cache (${plan.sizeGb} GB).`);
+      console.log(`  [llm] Loading ${filename} from the ${plan.onInternalDisk ? "internal disk" : "app"} cache (${plan.sizeGb} GB).`);
     } else if (plan.shouldCache) {
       console.log(`  [llm] ${filename} is on an external volume — cache it in Settings > Performance to load it faster.`);
     }
@@ -6281,6 +6282,26 @@ async function startBackend(settings = {}) {
   for (const warning of imageBudget.warnings) console.warn(`  [backend] ${warning.message}`);
   if (imageBudget.blocking) throw new Error(imageBudget.blocking.message);
 
+  // Load the image model off the internal disk when a copy is already there —
+  // the same thing startLlmWithBackend does for a GGUF. A Core ML bundle is tens
+  // of thousands of small files, which a spinning external disk reads very
+  // slowly, so this is where an image model's "it takes a minute every time"
+  // usually comes from. Only the *verified* copy is used: same file count, same
+  // bytes, same newest mtime as the model the user manages, and the original is
+  // never moved or edited.
+  let imageLoadPath = imageModelPath;
+  try {
+    const imageCachePlan = await modelCache.cachedCopyFor(imageModelPath);
+    if (imageCachePlan.cached && pathInside(imageCachePlan.cachedPath, imageCachePlan.cacheDir)) {
+      imageLoadPath = imageCachePlan.cachedPath;
+      const where = imageCachePlan.onInternalDisk ? "internal disk" : "app";
+      const shape = imageCachePlan.isDirectory ? `${imageCachePlan.fileCount} files, ${imageCachePlan.sizeGb} GB` : `${imageCachePlan.sizeGb} GB`;
+      console.log(`  [backend] Loading ${path.basename(imageModelPath)} from the ${where} cache (${shape}).`);
+    } else if (imageCachePlan.shouldCache) {
+      console.log(`  [backend] ${path.basename(imageModelPath)} is on an external volume — cache it in Settings > Performance to load it faster.`);
+    }
+  } catch (_) {}
+
   const backendPath = selectBackendPath(currentSettings.useGpu, currentSettings.backendType, currentSettings.model);
   if (!backendPath) {
     const setupHint = resolvedBackendType === "apple-npu"
@@ -6322,14 +6343,18 @@ async function startBackend(settings = {}) {
     args = [
       path.join(ROOT, "scripts", "workers", "coreml_server.py"),
       "--listen-port", String(PORT_BACKEND),
-      "--model",       currentSettings.model,
+      // The cache copy's folder name is hash-prefixed, so the model the user
+      // picked is named separately: the worker still knows which reference
+      // config (tokenizer/scheduler) these weights belong to.
+      "--model-version", String(currentSettings.model || "").trim() || path.basename(imageModelPath),
+      "--model",       imageLoadPath,
       "--steps",       String(currentSettings.steps),
       "--cfg-scale",   String(currentSettings.cfgScale),
     ];
   } else {
     args = [
       "--listen-port", String(PORT_BACKEND),
-      "--model",       currentSettings.model,
+      "--model",       imageLoadPath,
       "--steps",       String(currentSettings.steps),
       "--cfg-scale",   String(currentSettings.cfgScale),
       "--sampling-method", currentSettings.sampler,
@@ -7267,6 +7292,53 @@ const MIME = {
   ".ico":  "image/x-icon", ".json": "application/json", ".wav": "audio/wav", ".txt": "text/plain",
   ".woff2":"font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
 };
+
+/**
+ * Models the internal-disk cache can hold, listed per folder.
+ *
+ * Text models are single .gguf files; image models are either a .safetensors /
+ * .ckpt checkpoint or a Core ML *folder* of .mlmodelc / .mlpackage resources.
+ * Both shapes are cacheable, so both have to be offered to the user — an image
+ * model nobody can select is an image model that always loads off the external
+ * disk, however good the cache is.
+ */
+function cacheableModelPaths() {
+  const listed = [];
+  const scans = [
+    { kind: "text", label: "Text model", dir: LLM_MODELS, allowDirectories: false },
+    { kind: "image", label: "Image model", dir: MODELS, allowDirectories: true },
+  ];
+  for (const scan of scans) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(scan.dir);
+    } catch {
+      continue;
+    }
+    for (const filename of entries) {
+      const fullPath = path.join(scan.dir, filename);
+      if (!pathInside(fullPath, scan.dir)) continue;
+      let stat = null;
+      try {
+        stat = fs.statSync(fullPath);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        // Only the image folder accepts a folder, and only when it really holds
+        // Core ML resources — a half-downloaded import must not be offered.
+        if (scan.allowDirectories && isModelFile(filename)) {
+          listed.push({ kind: scan.kind, label: scan.label, name: filename, path: fullPath });
+        }
+        continue;
+      }
+      if (stat.isFile() && /\.(safetensors|ckpt|gguf)$/i.test(filename)) {
+        listed.push({ kind: scan.kind, label: scan.label, name: filename, path: fullPath });
+      }
+    }
+  }
+  return listed;
+}
 
 function isModelFile(filename) {
   const lower = String(filename || "").toLowerCase();
@@ -28799,14 +28871,25 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     }
   }
 
-  // GET /api/model-cache/status — is the model on the internal disk yet?
-  if (req.url === "/api/model-cache/status" && req.method === "GET") {
+  // GET|POST /api/model-cache/status — is the model on the internal disk yet?
+  //
+  // POST is answered as well as GET because that is what the panel sends, and
+  // with a GET-only route here it read a 404, kept the cache section empty, and
+  // silently ignored the internal-disk choice in its body. Text models *and*
+  // image models are listed, so an image model can be cached too.
+  if (req.url === "/api/model-cache/status" && (req.method === "GET" || req.method === "POST")) {
     try {
-      const modelPaths = fs.readdirSync(LLM_MODELS)
-        .filter(isModelFile)
-        .map((filename) => path.join(LLM_MODELS, filename));
-      const useInternalDisk = false;
-      const status = await modelCache.cacheStatus(modelPaths, { useInternalDisk });
+      const body = req.method === "GET" ? {} : await readJsonRequestBody(req);
+      const useInternalDisk = body.useInternalDisk === true;
+      const listed = cacheableModelPaths();
+      const byPath = new Map(listed.map((entry) => [entry.path, entry]));
+      const status = await modelCache.cacheStatus(listed.map((entry) => entry.path), { useInternalDisk });
+      for (const plan of status.plans || []) {
+        const found = byPath.get(plan.source);
+        plan.kind = found?.kind || "text";
+        plan.label = found?.label || "Model";
+        plan.name = found?.name || path.basename(String(plan.source || ""));
+      }
       status.internalCacheAvailable = true;
       status.note = "Everything stays on the disk the app runs from unless you switch the temporary cache on.";
       return json(res, 200, { ok: true, result: status });
@@ -28820,11 +28903,20 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
       const filename = path.basename(String(body.model || ""));
-      const modelPath = path.join(LLM_MODELS, filename);
-      if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
-        return json(res, 400, { ok: false, error: "That model is not in the text model folder." });
+      const scope = String(body.scope || "").toLowerCase();
+      // The path is never taken from the request — it is looked up in the model
+      // folders, so a request cannot point the copier at a file the user did
+      // not offer. `scope` only decides which folder a shared name came from.
+      const found = cacheableModelPaths().find(
+        (entry) => entry.name === filename && (!scope || entry.kind === scope),
+      );
+      if (!found) {
+        return json(res, 400, { ok: false, error: "That model is not in the text or image model folder." });
       }
-      const result = await modelCache.primeCache(modelPath, { useInternalDisk: body.useInternalDisk === true });
+      if (!fs.existsSync(found.path)) {
+        return json(res, 400, { ok: false, error: "That model file could not be found." });
+      }
+      const result = await modelCache.primeCache(found.path, { useInternalDisk: body.useInternalDisk === true });
       return json(res, 200, { ok: true, result });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });

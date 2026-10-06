@@ -14,6 +14,11 @@ node --check "$ROOT/scripts/server/img2img-steps.cjs" || fail "img2img step rule
 node --check "$ROOT/scripts/updater/update.cjs" || fail "updater syntax"
 python3 -m py_compile "$ROOT/scripts/workers/image_to_video_worker.py" || fail "image-to-video worker"
 python3 -m py_compile "$ROOT/scripts/workers/install_image_to_video_runtime.py" || fail "image-to-video installer"
+# The Core ML worker only ever runs on an Apple Silicon Mac, so nothing else on
+# this contract would notice a syntax error in it — the app would just fail to
+# start the image backend on the user's machine, with the error hidden in a log.
+python3 -m py_compile "$ROOT/scripts/workers/coreml_server.py" || fail "Core ML worker syntax"
+python3 -m py_compile "$ROOT/scripts/validation/helpers/coreml-reference-cache-probe.py" || fail "Core ML reference-cache probe syntax"
 [ -f "$ROOT/app/capabilities/image-to-video/manifest.json" ] || fail "capability manifest missing"
 [ -f "$ROOT/app/frontend/src/components/ImageToVideo.jsx" ] || fail "ImageToVideo UI missing"
 # The two cleanup walks below used to start at the root of the repository, which
