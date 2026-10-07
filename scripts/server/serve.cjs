@@ -57,6 +57,23 @@ const {
 } = require("./text-arena-evaluator.cjs");
 const { MemoryCalibration } = require("./memory-calibration.cjs");
 const {
+  DEFAULT_UNIFIED_WORKING_SET_RATIO,
+  PS_ARGS,
+  gpuMemorySummary,
+  residentBytesFromPs,
+} = require("./gpu-memory-telemetry.cjs");
+const { TelemetryDemand } = require("./telemetry-demand.cjs");
+const {
+  ENGINE_RULES,
+  assessMemoryPressure,
+  parseCompressorBytes,
+  parseMeminfo,
+  parseSwapUsage,
+  planMakeRoom,
+  planRelease,
+  policyFor,
+} = require("./resource-governor.cjs");
+const {
   readConfig: readContextCompactionConfig,
   compactForChat,
   payloadTokens,
@@ -80,6 +97,10 @@ let textModelPoolInstance = null;
 // Learns the real GPU/Metal working set from backend output and remembers
 // out-of-memory crashes so the budget tightens itself on small machines.
 const memoryCalibration = new MemoryCalibration({ logger: console });
+// Samples hardware only while a client is actually watching the monitor, so a
+// server left running with the browser closed stops waking vm_stat / nvidia-smi
+// / a whole `llama-server --list-devices` every five seconds.
+const telemetryDemand = new TelemetryDemand({ logger: console });
 
 // conversationId/runId → active arena run state
 const activeArenaRuns = new Map();
@@ -198,15 +219,17 @@ function normalizeArenaModelIds(modelIds, policy = {}) {
   return cleaned.slice(0, Math.max(1, maximum));
 }
 
-// Set when an arena round had to release the classic single-model chat server.
-// The model is restored automatically the next time the user chats normally,
-// so "making room" never leaves the machine without a chat model.
-let arenaReleasedMainModel = null;
+// Set when something had to release the classic single-model chat server: an
+// arena round that needs the room, or the resource governor on a machine that
+// started swapping. The model is restored automatically the next time the user
+// chats normally, so "making room" never leaves the machine without a chat
+// model — that promise is what makes releasing it safe at all.
+let releasedMainModel = null;
 
 async function restoreReleasedMainModel() {
-  if (!arenaReleasedMainModel) return false;
-  const snapshot = arenaReleasedMainModel;
-  arenaReleasedMainModel = null;
+  if (!releasedMainModel) return false;
+  const snapshot = releasedMainModel;
+  releasedMainModel = null;
   if (llmReady || llmProc) return false;
   try {
     await startLlm({
@@ -215,6 +238,10 @@ async function restoreReleasedMainModel() {
       gpuLayers: snapshot.gpuLayers,
       threads: snapshot.threads || undefined,
     });
+    console.log(
+      `  [llm] restored ${snapshot.model}, released by ${snapshot.releasedBy || "the arena"}` +
+        (snapshot.reason ? ` (${snapshot.reason})` : "") + "."
+    );
     return true;
   } catch (error) {
     console.warn(`  [llm] could not restore ${snapshot.model}: ${error.message || error}`);
@@ -244,11 +271,14 @@ async function planArenaRound(modelIds = [], policy = {}) {
   if (plan.budget.estimateGb > plan.budget.availableGb + mainGb) return { plan, notes };
 
   const mainModelName = path.basename(String(llmSettings.model || "text model"));
-  arenaReleasedMainModel = {
+  releasedMainModel = {
     model: mainModelName,
     contextSize: Number(llmSettings.contextSize) || 0,
     gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
     threads: Number(llmSettings.threads) || 0,
+    releasedBy: "arena",
+    reason: `an arena round needs ${plan.budget.estimateGb} GB and only ${plan.budget.availableGb} GB is free`,
+    releasedAt: Date.now(),
   };
   await killLlm();
   notes.push({
@@ -2763,15 +2793,20 @@ function pollNvidiaVram(force = false) {
   if (hasNvidiaSmi === false) return;
 
   const now = Date.now();
-  // If not forced, skip if backend is running (driver queries conflict & cause display lag),
-  // or if it has been polled too recently
+  // If not forced, skip if nobody is watching, if the backend is running (driver
+  // queries conflict & cause display lag), or if it has been polled too recently
   if (!force) {
+    if (!telemetryDemand.allow("nvidia-smi")) {
+      return;
+    }
     if (backendProc !== null) {
       return;
     }
     if (now - lastVramPollTime < 4500) {
       return;
     }
+  } else {
+    telemetryDemand.noteForced();
   }
 
   isPollingVram = true;
@@ -2840,6 +2875,10 @@ function parseLlamaDeviceMemory(output) {
 }
 
 function getLlamaTelemetryBackendPath() {
+  // No darwin branch on purpose: a spawned `--list-devices` process reports the
+  // Metal working set as its total and *its own* allocations as free, so it
+  // would read ~0 used no matter what the running backend holds. macOS is
+  // served by pollMetalVram() below, which measures the backends themselves.
   if (osPlatform === "win32") {
     if (fs.existsSync(LLM_BACKEND_PATHS.winVulkan)) return LLM_BACKEND_PATHS.winVulkan;
     if (fs.existsSync(LLM_BACKEND_PATHS.winSycl)) return LLM_BACKEND_PATHS.winSycl;
@@ -2858,8 +2897,18 @@ function pollLlamaVram(force = false) {
   if (isPollingLlamaVram) return;
 
   const now = Date.now();
-  if (!force && now - lastLlamaVramPollTime < 4500) {
-    return;
+  // The costly one: a whole backend binary is started, initialises
+  // Vulkan/CUDA/SYCL, prints two numbers and exits — every five seconds, whether
+  // or not anybody is looking at the monitor. Skipped while nobody is.
+  if (!force) {
+    if (!telemetryDemand.allow("llama.cpp --list-devices")) {
+      return;
+    }
+    if (now - lastLlamaVramPollTime < 4500) {
+      return;
+    }
+  } else {
+    telemetryDemand.noteForced();
   }
 
   const backendPath = getLlamaTelemetryBackendPath();
@@ -2888,6 +2937,473 @@ pollLlamaVram(true);
 function getLlamaVram() {
   return cachedLlamaVramInfo;
 }
+
+// ── Apple Silicon: the VRAM chip's only real source ──────────────────────────
+//
+// Neither poll above can read a Mac (no nvidia-smi, and Metal answers a
+// `--list-devices` process with that process's own ~0 allocations), so before
+// this the chip showed `0.0 / <total RAM> GB` forever. gpu-memory-telemetry.cjs
+// has the full account; in short, used is the resident set of the backends that
+// actually hold weights, and total is the learned Metal working set.
+let cachedMetalVramInfo = null;
+let isPollingMetalVram = false;
+let lastMetalVramPollTime = 0;
+
+/** Every live child that can hold model weights in the shared pool. */
+function gpuBackendPids() {
+  const pids = [];
+  const push = (proc) => {
+    const pid = Number(proc && proc.pid);
+    if (Number.isFinite(pid) && pid > 0) pids.push(pid);
+  };
+  push(llmProc);
+  push(backendProc);
+  push(openvinoProc);
+  if (textModelPoolInstance) {
+    for (const instance of textModelPoolInstance.instances.values()) {
+      push(instance && instance.child);
+    }
+  }
+  return Array.from(new Set(pids));
+}
+
+function metalVramSummary(residentBytes) {
+  const gpuConfig = readModelMemoryBudget().gpu || {};
+  let gpuName = "";
+  try {
+    gpuName = getGpuInfo().name || "";
+  } catch (_) {}
+  return gpuMemorySummary({
+    platform: osPlatform,
+    gpuName,
+    totalRamBytes: os.totalmem(),
+    workingSetGb: memoryCalibration.workingSetGb(),
+    ratio: Number(gpuConfig.unifiedWorkingSetRatio ?? DEFAULT_UNIFIED_WORKING_SET_RATIO),
+    residentBytes,
+  });
+}
+
+function pollMetalVram(force = false) {
+  if (osPlatform !== "darwin") return;
+  if (isPollingMetalVram) return;
+
+  const now = Date.now();
+  if (!force) {
+    if (!telemetryDemand.allow("ps (unified memory)")) {
+      return;
+    }
+    if (now - lastMetalVramPollTime < 4500) {
+      return;
+    }
+  } else {
+    telemetryDemand.noteForced();
+  }
+  lastMetalVramPollTime = now;
+
+  const pids = gpuBackendPids();
+  if (pids.length === 0) {
+    // Nothing is loaded, so there is nothing to measure: report the ceiling and
+    // an honest zero without spawning `ps` to learn it.
+    cachedMetalVramInfo = metalVramSummary(0);
+    return;
+  }
+
+  isPollingMetalVram = true;
+  // One fixed argv for the whole listing: pids stay out of the command line and
+  // one backend more or less (the arena pool loads and unloads) changes nothing.
+  execFile(
+    "ps",
+    PS_ARGS,
+    { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 },
+    (error, stdout) => {
+      isPollingMetalVram = false;
+      // Keep the previous reading rather than flashing a zero: a failed `ps`
+      // says nothing about the model that is still resident.
+      if (error) return;
+      cachedMetalVramInfo = metalVramSummary(residentBytesFromPs(stdout, pids));
+    }
+  );
+}
+
+if (osPlatform === "darwin") {
+  setInterval(() => pollMetalVram(false), 5000);
+  pollMetalVram(true);
+}
+
+function getMetalVram() {
+  return cachedMetalVramInfo;
+}
+
+// ── Resource governor ────────────────────────────────────────────────────────
+//
+// Gives a loaded engine back when the machine is genuinely short of memory, and
+// only an engine that can come back by itself. resource-governor.cjs holds the
+// rules, the per-tier thresholds and the wording of every reason; this is the
+// wiring — what is loaded, when it was last used, and what the machine says
+// about memory right now.
+//
+// It exists because nothing was ever released: a chat model stayed resident
+// until the user unloaded it by hand, so a machine used for one question an hour
+// ago was still holding its weights while macOS compressed other processes and
+// started swapping.
+const RESOURCE_GOVERNOR_STATE_PATH = process.env.LUKE_RESOURCE_GOVERNOR_FILE
+  ? path.resolve(process.env.LUKE_RESOURCE_GOVERNOR_FILE)
+  : path.join(ROOT, "app", "runtime-state", "resource-governor.json");
+
+// When each engine was last asked for something. A release is only worth its
+// reload if the engine has been sitting unused, so this is what "idle" means.
+const engineLastUsedAt = { text: 0, arena: 0, image: 0, speech: 0, tts: 0 };
+let llmRequestsInFlight = 0;
+let cachedMachineTier = null;
+let resourceGovernorStatus = {
+  enabled: true,
+  tier: null,
+  lastSweepAt: null,
+  pressure: null,
+  decision: null,
+  engines: [],
+  lastRelease: null,
+};
+
+function noteEngineUsed(engineId) {
+  if (engineId in engineLastUsedAt) engineLastUsedAt[engineId] = Date.now();
+}
+
+function machineTier() {
+  if (cachedMachineTier) return cachedMachineTier;
+  try {
+    cachedMachineTier = getHardwareSpecs().tier || "mid";
+  } catch (_) {
+    cachedMachineTier = "mid";
+  }
+  return cachedMachineTier;
+}
+
+function readResourceGovernorOverrides() {
+  // Machine-local on purpose: the tracked config folder is a seed the app must
+  // not write, and a file git tracks is a file that can block a pull.
+  try {
+    const parsed = JSON.parse(fs.readFileSync(RESOURCE_GOVERNOR_STATE_PATH, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function resourceGovernorPolicy() {
+  return policyFor({ tier: machineTier(), overrides: readResourceGovernorOverrides() });
+}
+
+function runQuietCommand(command, args) {
+  return new Promise((resolve) => {
+    execFile(
+      command,
+      args,
+      { windowsHide: true, timeout: 8000, maxBuffer: 1024 * 1024 },
+      (error, stdout) => resolve(error ? "" : String(stdout || ""))
+    );
+  });
+}
+
+/**
+ * The signals that mean "this machine is short". macOS answers with swap in use
+ * and the memory compressor; Linux with MemAvailable and swap. Windows has no
+ * cheap equivalent short of spawning PowerShell, and os.freemem() there is not a
+ * distress signal, so the governor reports no signal and stays out of the way
+ * rather than guess — a wrong guess takes a model away from somebody who was
+ * about to use it.
+ */
+async function sampleMemorySignals() {
+  const totalRamBytes = os.totalmem();
+
+  if (osPlatform === "linux") {
+    try {
+      const parsed = parseMeminfo(fs.readFileSync("/proc/meminfo", "utf8"));
+      return {
+        totalRamBytes,
+        availableBytes: parsed.availableBytes,
+        swapUsedBytes: parsed.swapUsedBytes,
+        compressorBytes: null,
+      };
+    } catch (_) {
+      return { totalRamBytes, availableBytes: null, swapUsedBytes: null, compressorBytes: null };
+    }
+  }
+
+  if (osPlatform === "darwin") {
+    const [swapText, vmStatText] = await Promise.all([
+      runQuietCommand("sysctl", ["-n", "vm.swapusage"]),
+      runQuietCommand("vm_stat", []),
+    ]);
+    return {
+      totalRamBytes,
+      // free + inactive on macOS is file cache, not headroom, so it is not
+      // offered as a signal: it would call a healthy machine tight all day.
+      availableBytes: null,
+      swapUsedBytes: parseSwapUsage(swapText),
+      compressorBytes: parseCompressorBytes(vmStatText),
+    };
+  }
+
+  return { totalRamBytes, availableBytes: null, swapUsedBytes: null, compressorBytes: null };
+}
+
+/**
+ * Everything that currently holds memory, governed or not. The ungoverned ones
+ * are listed with the reason they are left alone, so the status endpoint shows
+ * what the governor saw and declined to touch instead of looking idle.
+ */
+// The Generator polls /api/generation-progress once a second for the whole of a
+// generation, and generation itself runs browser-to-backend: that poll is the
+// only window the server has into the work, so a poll inside this grace means an
+// image may still be in flight and the engine must not be taken.
+const IMAGE_POLL_GRACE_MS = 5000;
+
+function governedEngines() {
+  const poolInstances = textModelPoolInstance
+    ? Array.from(textModelPoolInstance.instances.values())
+    : [];
+  const arenaBytes = poolInstances.reduce((sum, instance) => sum + (Number(instance.sizeBytes) || 0), 0);
+
+  return [
+    {
+      id: "text",
+      label: `Chat model ${modelName(llmSettings.model) || "(none)"}`,
+      resident: Boolean((llmReady || llmProc) && llmSettings.model),
+      restorable: ENGINE_RULES.text.restorable,
+      makeRoom: ENGINE_RULES.text.makeRoom,
+      // Never take a model away mid-answer, and never during an arena round,
+      // which releases the chat model itself and restores it afterwards.
+      busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel),
+      sizeGb: roundGb(mainChatModelBytes()),
+      lastUsedAt: engineLastUsedAt.text || null,
+    },
+    {
+      id: "arena",
+      label: `Arena pool (${poolInstances.length} model${poolInstances.length === 1 ? "" : "s"})`,
+      resident: poolInstances.length > 0,
+      restorable: ENGINE_RULES.arena.restorable,
+      makeRoom: ENGINE_RULES.arena.makeRoom,
+      busy: activeArenaRuns.size > 0,
+      sizeGb: roundGb(arenaBytes),
+      lastUsedAt: engineLastUsedAt.arena || null,
+    },
+    {
+      id: "image",
+      label: `Image model ${modelName(currentSettings.model) || "(none)"}`,
+      // The OpenVINO worker is not started by its own generate route, so a
+      // release there would make the user load the model again by hand: only the
+      // SD backend, which the Generator restarts on demand, may be given up.
+      resident: Boolean((backendReady || backendProc) && currentSettings.model) && !openvinoProc,
+      restorable: ENGINE_RULES.image.restorable,
+      makeRoom: ENGINE_RULES.image.makeRoom,
+      notRestorableBecause: ENGINE_RULES.image.reason,
+      // Generation runs browser-to-backend, so all the server can see is its own
+      // consumers: a load in flight, a server-side generation, or Social Agency
+      // with its scheduler armed for a calendar post.
+      busy:
+        Boolean(backendLoadState.active) ||
+        Boolean(generationState.active) ||
+        Date.now() - Number(engineLastUsedAt.image || 0) < IMAGE_POLL_GRACE_MS ||
+        imageWantedByScheduler(),
+      sizeGb: roundGb(Number(imageModelResidentBytes) || 0),
+      lastUsedAt: engineLastUsedAt.image || null,
+    },
+    // Speech and TTS hold no process between requests — transcription spawns
+    // whisper-cli, synthesis spawns the Kokoro worker, and each exits with its
+    // result. Their flags are bookkeeping, so there is no memory here to give
+    // back and no release that could ever help.
+    {
+      id: "speech",
+      label: `Speech ${modelName(speechSettings.model) || "(none)"}`,
+      resident: Boolean(speechReady && speechSettings.model),
+      restorable: ENGINE_RULES.speech.restorable,
+      notRestorableBecause: ENGINE_RULES.speech.reason,
+      busy: false,
+      sizeGb: 0,
+      lastUsedAt: engineLastUsedAt.speech || null,
+    },
+    {
+      id: "tts",
+      label: `TTS ${modelName(ttsSettings.model) || "(none)"}`,
+      resident: Boolean(ttsReady && ttsSettings.model),
+      restorable: ENGINE_RULES.tts.restorable,
+      notRestorableBecause: ENGINE_RULES.tts.reason,
+      busy: false,
+      sizeGb: 0,
+      lastUsedAt: engineLastUsedAt.tts || null,
+    },
+  ];
+}
+
+async function releaseEngine(engineId, decision, { insideLlmLock = false } = {}) {
+  if (engineId === "text") {
+    // Snapshot first: this is what makes the release reversible, and the chat
+    // route restores it before answering the next message.
+    releasedMainModel = {
+      model: modelName(llmSettings.model),
+      contextSize: Number(llmSettings.contextSize) || 0,
+      gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
+      threads: Number(llmSettings.threads) || 0,
+      releasedBy: "governor",
+      reason: decision.reason,
+      releasedAt: Date.now(),
+    };
+    // The sweep runs outside the LLM lock and must queue behind whatever the
+    // model is doing. A load that is making room is already inside that lock,
+    // and the lock is a promise queue: queueing there would wait for itself.
+    if (insideLlmLock) await killLlm();
+    else await runExclusiveLlmOperation(() => killLlm());
+    return true;
+  }
+
+  if (engineId === "arena") {
+    await unloadArenaPool();
+    return true;
+  }
+
+  if (engineId === "image") {
+    // Reversible from the browser: the Generator reads /api/backend-status
+    // before generating and restarts a backend that is not running, and
+    // killBackend() keeps the settings it restarts with. governedEngines()
+    // checked first that no server-side consumer wants it.
+    await killBackend();
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Social Agency generates its own images through the backend, so a calendar post
+ * is a consumer the governor must not starve. The scheduler itself is armed at
+ * boot, so "the scheduler is running" says nothing: what matters is work already
+ * in flight, or a post coming due inside the reserve below — a tick starts a
+ * workflow at the post's own time, and stopping plus reloading the backend takes
+ * longer than the 60 s tick. If the state cannot be read, assume something wants
+ * the engine.
+ */
+const IMAGE_SCHEDULER_RESERVE_MS = 10 * 60000;
+function imageWantedByScheduler() {
+  if (!socialAgencyRuntime || typeof socialAgencyRuntime.getSchedulerStatus !== "function") return false;
+  try {
+    const status = socialAgencyRuntime.getSchedulerStatus();
+    if (!status) return false;
+    if (Number(status.activeCount) > 0) return true;
+    const nextPostAt = Date.parse(status.nextPostAt || "");
+    return Number.isFinite(nextPostAt) && nextPostAt - Date.now() <= IMAGE_SCHEDULER_RESERVE_MS;
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * Load-time make-room: both load paths refuse a model that cannot fit, and the
+ * refusal tells the user to unload something by hand. Before refusing, ask
+ * whether an engine that starts again on demand is holding exactly that room.
+ * This is the only path allowed to give up the image engine, because generation
+ * runs browser-to-backend and the server cannot tell how long it has been idle.
+ */
+async function makeRoomForLoad({ budget = null, wanted = "this model", insideLlmLock = false } = {}) {
+  const shortfallGb = roundGb(
+    Math.max(0, (Number(budget?.estimateGb) || 0) - (Number(budget?.availableGb) || 0))
+  );
+  const plan = planMakeRoom({ shortfallGb, engines: governedEngines(), policy: resourceGovernorPolicy() });
+
+  if (plan.code !== "MAKE_ROOM") {
+    // Only the interesting failure is worth a line: "nothing else is loaded" is
+    // already what the blocking message says.
+    if (plan.code === "CANNOT_MAKE_ROOM") console.log(`  [governor] ${plan.reason}`);
+    return { released: [], code: plan.code, reason: plan.reason };
+  }
+
+  const released = [];
+  for (const engine of plan.engines) {
+    const done = await releaseEngine(
+      engine.id,
+      { code: "MEMORY_MAKE_ROOM", reason: plan.reason },
+      { insideLlmLock }
+    );
+    if (done) released.push(engine.label || engine.id);
+  }
+  if (released.length === 0) return { released: [], code: plan.code, reason: plan.reason };
+
+  console.log(
+    `  [governor] released ${released.join(" + ")} (${plan.freedGb} GB) so ${wanted} can load; ` +
+      `it starts again on demand`
+  );
+  resourceGovernorStatus.lastRelease = {
+    engine: plan.engines.map((engine) => engine.id).join("+"),
+    code: "MEMORY_MAKE_ROOM",
+    sizeGb: plan.freedGb,
+    at: Date.now(),
+    for: wanted,
+  };
+  return { released, code: "MEMORY_MAKE_ROOM", reason: plan.reason };
+}
+
+async function sweepResourceGovernor() {
+  try {
+    const policy = resourceGovernorPolicy();
+    if (policy.enabled === false) {
+      resourceGovernorStatus = { ...resourceGovernorStatus, enabled: false, lastSweepAt: Date.now() };
+      return;
+    }
+
+    const signals = await sampleMemorySignals();
+    const pressure = assessMemoryPressure({ platform: osPlatform, policy, ...signals });
+    const engines = governedEngines();
+    const decision = planRelease({ now: Date.now(), engines, pressure, policy });
+
+    resourceGovernorStatus = {
+      enabled: true,
+      tier: policy.tier,
+      lastSweepAt: Date.now(),
+      pressure,
+      decision: {
+        code: decision.code || null,
+        engine: decision.engine ? decision.engine.id : null,
+        reason: decision.reason,
+      },
+      engines: engines.map((engine) => ({
+        id: engine.id,
+        label: engine.label,
+        resident: engine.resident,
+        restorable: engine.restorable,
+        makeRoom: Boolean(engine.makeRoom),
+        busy: engine.busy,
+        sizeGb: engine.sizeGb,
+        idleMinutes: engine.lastUsedAt ? Math.round((Date.now() - engine.lastUsedAt) / 60000) : null,
+        notRestorableBecause: engine.notRestorableBecause || null,
+      })),
+      lastRelease: resourceGovernorStatus.lastRelease,
+    };
+
+    if (!decision.engine) return;
+
+    const released = await releaseEngine(decision.engine.id, decision);
+    if (!released) return;
+    console.log(`  [governor] ${decision.reason}`);
+    resourceGovernorStatus.lastRelease = {
+      engine: decision.engine.id,
+      code: decision.code,
+      sizeGb: decision.engine.sizeGb,
+      at: Date.now(),
+    };
+  } catch (error) {
+    // A governor that throws would be worse than no governor: it runs on a
+    // timer, so one bad sweep must not become an unhandled rejection.
+    console.warn(`  [governor] sweep failed: ${error?.message || error}`);
+  }
+}
+
+// Not gated on telemetry demand: this protects the machine while it works, not
+// while somebody watches it work. One sweep a minute, and a sweep costs two
+// small commands on macOS and one file read on Linux.
+const resourceGovernorSweepMs = Math.max(15000, Number(resourceGovernorPolicy().sweepMs) || 60000);
+setInterval(() => {
+  sweepResourceGovernor();
+}, resourceGovernorSweepMs);
 
 function readJsonFile(filePath, fallback) {
   try {
@@ -3011,7 +3527,11 @@ function pollMacRam() {
 
 if (osPlatform === "darwin") {
   pollMacRam();
-  setInterval(pollMacRam, 5000);
+  // `vm_stat` is cheap, but it is still a spawned process every five seconds for
+  // a number that only the monitor reads, so it pauses with the rest of them.
+  setInterval(() => {
+    if (telemetryDemand.allow("vm_stat")) pollMacRam();
+  }, 5000);
 }
 
 function getHardwareSpecs() {
@@ -3177,7 +3697,10 @@ function getHardwareSpecs() {
 
 function getTelemetry() {
   const vram = getNvidiaVram();
-  const llamaVram = vram || getLlamaVram();
+  // Order of authority per platform: the driver's own numbers first
+  // (nvidia-smi), then — on macOS only, where no such number exists — the
+  // unified-memory reading, then llama.cpp's device list (CUDA/Vulkan/SYCL).
+  const deviceVram = vram || (osPlatform === "darwin" ? getMetalVram() : null) || getLlamaVram();
   let ram_used_gb = roundGb(os.totalmem() - os.freemem());
   if (osPlatform === "darwin" && cachedMacRamUsedGb !== null) {
     ram_used_gb = cachedMacRamUsedGb;
@@ -3185,12 +3708,37 @@ function getTelemetry() {
   const gpu = getGpuInfo();
   return {
     cpu_usage: getCpuUsagePercent(),
+    // The RAM figure above is machine-wide, and on a desktop with a browser
+    // open most of it is other people's work. The share this app is actually
+    // responsible for — this server process — travels with it, so the chip can
+    // show both instead of inviting the reader to blame the app for macOS.
+    server_rss_gb: roundGb(process.memoryUsage().rss),
     ram_used_gb,
     ram_total_gb: roundGb(os.totalmem()),
-    gpu_name: llamaVram?.gpu_name || gpu.name,
-    vram_used_gb: Number.isFinite(Number(llamaVram?.vram_used_gb)) ? llamaVram.vram_used_gb : 0,
-    vram_total_gb: llamaVram?.vram_total_gb || gpu.vram_gb || 0,
+    gpu_name: deviceVram?.gpu_name || gpu.name,
+    vram_used_gb: Number.isFinite(Number(deviceVram?.vram_used_gb)) ? deviceVram.vram_used_gb : 0,
+    vram_total_gb: deviceVram?.vram_total_gb || gpu.vram_gb || 0,
   };
+}
+
+/**
+ * Wakes the samplers the moment a client comes back, rather than letting it read
+ * the numbers from before the pause. Not awaited: the monitor asks again within
+ * a couple of seconds, and this answer must not wait on a GPU query that can
+ * take a second.
+ */
+function refreshTelemetryNow() {
+  try {
+    pollNvidiaVram(true);
+    if (osPlatform === "darwin") {
+      pollMacRam();
+      pollMetalVram(true);
+    } else {
+      pollLlamaVram(true);
+    }
+  } catch (_) {
+    /* a failed refresh only means the next scheduled sample answers instead */
+  }
 }
 
 function formatBytes(bytes) {
@@ -4418,6 +4966,7 @@ async function waitForLlmReady(maxAttempts = 240, expectedProc = llmProc, expect
     if (!expectedProc || llmProc !== expectedProc) throw new Error(llmError || "llama.cpp exited during startup.");
     if (await pingLlmReady(expectedModel)) {
       llmReady = true;
+      noteEngineUsed("text");
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -5068,6 +5617,8 @@ function stripAnsi(value) {
 function markBackendReady() {
   if (backendReady) return;
   backendReady = true;
+  // A model that just became ready is not "idle since never".
+  noteEngineUsed("image");
   backendLoadState = {
     ...backendLoadState,
     active: false,
@@ -5990,11 +6541,29 @@ async function startLlmWithBackend(settings = {}, backend) {
   const effectiveEnableThinking = isSyclBackend && effectiveGpuLayers === 0 ? false : (loadProfile.enableThinking ?? (settings.enableThinking === true));
 
   // Automatic memory budget: refuse only when the model cannot possibly fit.
-  const textBudget = evaluateModelMemoryBudget({
+  let textBudget = evaluateModelMemoryBudget({
     targetPaths: [modelPath],
     targetType: "text",
     gpuLayers: effectiveGpuLayers,
   });
+  if (textBudget.blocking) {
+    // Before refusing: if an engine that reloads on demand holds the room, take
+    // it and measure again.
+    const madeRoom = await makeRoomForLoad({
+      budget: textBudget,
+      wanted: modelName(filename) || filename,
+      // startLlm() runs inside runExclusiveLlmOperation, so a chat model given
+      // up here is stopped directly rather than queued behind this very load.
+      insideLlmLock: true,
+    });
+    if (madeRoom.released.length > 0) {
+      textBudget = evaluateModelMemoryBudget({
+        targetPaths: [modelPath],
+        targetType: "text",
+        gpuLayers: effectiveGpuLayers,
+      });
+    }
+  }
   for (const warning of textBudget.warnings) console.warn(`  [llm] ${warning.message}`);
   if (textBudget.blocking) throw new Error(textBudget.blocking.message);
 
@@ -6274,11 +6843,29 @@ async function startBackend(settings = {}) {
   const imageModelPath = path.isAbsolute(String(currentSettings.model))
     ? String(currentSettings.model)
     : path.join(MODELS, String(currentSettings.model));
-  const imageBudget = evaluateModelMemoryBudget({
+  let imageBudget = evaluateModelMemoryBudget({
     targetPaths: [imageModelPath],
     targetType: "image",
     gpuLayers: currentSettings.useGpu ? -1 : 0,
   });
+  if (imageBudget.blocking) {
+    // The same trade in the other direction: a chat model reloads the moment the
+    // next message arrives, so it may give up its room to an image load.
+    const madeRoom = await makeRoomForLoad({
+      budget: imageBudget,
+      wanted: modelName(currentSettings.model) || "the image model",
+      // Not inside the LLM lock, so a chat model given up here queues behind
+      // whatever it is doing instead of being stopped mid-answer.
+      insideLlmLock: false,
+    });
+    if (madeRoom.released.length > 0) {
+      imageBudget = evaluateModelMemoryBudget({
+        targetPaths: [imageModelPath],
+        targetType: "image",
+        gpuLayers: currentSettings.useGpu ? -1 : 0,
+      });
+    }
+  }
   for (const warning of imageBudget.warnings) console.warn(`  [backend] ${warning.message}`);
   if (imageBudget.blocking) throw new Error(imageBudget.blocking.message);
 
@@ -25786,6 +26373,7 @@ const handleRequest = async (req, res) => {
         ...evaluateModelMemoryBudget({ targetPaths: [], targetType: "status" }),
         calibration: memoryCalibration.status(),
       },
+      resourceGovernor: resourceGovernorStatus,
       port: PORT_BACKEND,
       preferredPort: PREFERRED_BACKEND_PORT,
       error: backendError,
@@ -26030,6 +26618,7 @@ const handleRequest = async (req, res) => {
   if (req.url === "/api/llm/arena/generate-stream" && req.method === "POST") {
     const body = await readJsonBody(req, res);
     if (!body) return;
+    noteEngineUsed("arena");
     await streamArenaGeneration(req, res, body);
     return;
   }
@@ -26970,7 +27559,16 @@ async function routeWorkTurnToCloud(req, res, body) {
         console.log("  [llm] restored the chat model that the arena released.");
       }
     }
-    await doLlmChat(req, res, body);
+    noteEngineUsed("text");
+    llmRequestsInFlight += 1;
+    try {
+      await doLlmChat(req, res, body);
+    } finally {
+      // Counted down before the stamp so a sweep that lands here sees an engine
+      // that is free but was just used.
+      llmRequestsInFlight -= 1;
+      noteEngineUsed("text");
+    }
     return;
   }
 
@@ -28944,6 +29542,13 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   // GET /api/telemetry
   if (req.url === "/api/telemetry" && req.method === "GET") {
+    // This request is the only evidence that somebody is looking at the monitor,
+    // so it is what keeps the hardware samplers running — and a client returning
+    // after a pause gets the samplers kicked immediately instead of reading the
+    // numbers from half an hour ago.
+    const wasWatching = telemetryDemand.wanted();
+    telemetryDemand.note();
+    if (!wasWatching) refreshTelemetryNow();
     return json(res, 200, getTelemetry());
   }
 
@@ -29183,6 +29788,10 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
 
   // GET /api/generation-progress
   if (req.url === "/api/generation-progress" && req.method === "GET") {
+    // Polled once a second while the browser generates straight against the
+    // backend, so this is the server's only view of that work: it timestamps the
+    // image engine and keeps a make-room release from taking it mid-image.
+    noteEngineUsed("image");
     return json(res, 200, {
       ...generationState,
       backendMode: generationState.backendMode || currentSettings.backendMode || "",

@@ -256,6 +256,33 @@ Ensure you have a modern web browser installed. Follow the quick guide below for
   <p>This indicates that the local backend engine process terminated. Check your launch terminal (where you executed <code>windows.bat</code>, <code>./linux.sh</code>, or <code>./mac.sh</code>) for the exact console error. Common causes include glibc version mismatches, missing Vulkan drivers, or system out-of-memory (OOM) issues.</p>
 </details>
 
+<details>
+  <summary><strong> My chat model unloaded itself — what happened?</strong></summary>
+  <p>The <strong>resource governor</strong> gave it back to the operating system. When the machine is genuinely short of memory — swap in use on macOS, the memory compressor above the limit for your machine, or <code>MemAvailable</code> down to a few percent on Linux — an engine that has been idle for a while is released, and the launch terminal says so with the numbers behind the decision (<code>[governor] swap in use: 1.5 GB …</code>). A released chat model <strong>reloads by itself</strong> the next time you send a message; nothing is lost, the first message just takes as long as a load.</p>
+  <p>Two things it will never do: it never releases a model while a request is being answered, and it never releases the image backend on the idle timer — generation is driven from your browser straight to the backend, so the server never sees an interactive generation and cannot tell how long the engine has been idle. (A load that would otherwise be refused may still take it; see the next question.) Speech and TTS hold nothing between requests either: transcription spawns <code>whisper-cli</code> per request and synthesis spawns the Kokoro worker per request, and each exits with its result, so their "ready" flags are bookkeeping rather than memory. How patient the governor is follows your hardware tier (10 minutes idle on a small machine, 45 on a large one). To tune or switch it off, write <code>app/runtime-state/resource-governor.json</code>, for example <code>{ "enabled": false }</code> or <code>{ "idleMinutes": 120, "tightSwapGb": 2 }</code>. Current state, including what it declined to touch and why, is in <code>GET /api/backend-status</code> under <code>resourceGovernor</code>.</p>
+</details>
+
+<details>
+  <summary><strong> The app shows 10 / 18 GB of RAM before I load a single model — is it really that heavy?</strong></summary>
+  <p>No — that number is the whole machine, not the app. On macOS it is close to what Activity Monitor shows as <em>Memory Used</em>: everything except free, inactive and speculative pages, so the reclaimable file cache is excluded while your browser tabs, other apps and macOS itself are in it before LUKE loads anything. The chip therefore leads with LUKE's own share — <code>LUKE: 0.1 GB · machine 10 / 18 GB</code>, the tail dimmed — where the server process is measured from its own resident set (about 60 MB at idle) and loaded models from the processes that actually hold them. The interface you are looking at runs in a browser tab, so its memory belongs to the browser and is deliberately not counted. Hover the chip for the sentence version of the same breakdown, and load a model: the machine number barely moves while the LUKE number and the VRAM chip tell you what the model costs.</p>
+</details>
+
+<details>
+  <summary><strong> A load was refused for memory — did the app unload something to make room?</strong></summary>
+  <p>It tries to, before refusing you. Every load is measured against the memory your engines already hold, and if it does not fit the app first asks whether an engine that <em>starts again on demand</em> is holding exactly that room: a chat model (which reloads the moment you send a message), the arena pool (which reloads its own models), or the image backend (which the Generator restarts on your next Generate). If what may be released covers the gap, it is released and the load is measured again — the terminal says <code>[governor] released Image model sd_xl.safetensors (4 GB) so qwen3-8b.gguf can load; it starts again on demand</code>. The same trade runs in reverse: loading an image model may take a chat model's room.</p>
+  <p>If nothing can cover the gap, nothing is released and you get the refusal you would have got anyway, because a stopped engine plus a refused load is worse than the refusal alone. What is never taken for a load: an engine that is answering a request, the image backend while the Generator is still polling progress (it polls once a second for the whole of a generation, which is how the server can see browser-driven work at all), the OpenVINO worker (its own generate route does not start it, so releasing it would need a manual reload), or the image backend while a Social Agency run is in flight or a calendar post is due within 10 minutes. Switching the whole governor off — the idle timer and this trade — is one file: <code>{ "enabled": false }</code> in <code>app/runtime-state/resource-governor.json</code>.</p>
+</details>
+
+<details>
+  <summary><strong> macOS: the VRAM chip shows less than my total RAM</strong></summary>
+  <p>That is the correct number. Apple Silicon has no separate video memory, so the ceiling shown is Metal's <em>recommended working set</em> (about 14.3 GB on an 18 GB M3 Pro) — the part of unified memory a model may actually address, learned from <code>ggml_metal_device_init</code> at first load — and the "used" figure is the resident memory of the engines holding your weights. It is also the budget a load is refused against, so the chip and the load-time decision agree. Before this, macOS could not be queried at all and the chip read <code>0.0 / &lt;total RAM&gt; GB</code> forever.</p>
+</details>
+
+<details>
+  <summary><strong> Idle CPU and disk activity while the app is open but unused</strong></summary>
+  <p>Hardware is only sampled while you are looking at it: the monitor polls while its tab is visible, and the server samples <code>vm_stat</code> / <code>nvidia-smi</code> / <code>ps</code> only within 30 seconds of such a request. A hidden tab or a closed browser stops the sampling entirely, and the terminal logs the pause and the resume once each. The AWS SDK used by cloud storage is likewise loaded on first use rather than at start-up, which keeps roughly 14 MB of resident memory and 40% of the server's heap out of an offline run.</p>
+</details>
+
 ---
 
 ## <a id="building-from-source"></a>🔨 Building From Source
