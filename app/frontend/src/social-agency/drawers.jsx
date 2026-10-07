@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
+import PostPreview from "./PostPreview.jsx";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
   MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock, Share2,
@@ -441,16 +442,18 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         )}
       </section>
 
-      {entry.caption && (
-        <section className="sa-drawer-section">
-          <h4>คอนเทนต์ {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
-          <pre className="sa-caption">{entry.caption}</pre>
-          {entry.publishedCaption && entry.publishedCaption !== entry.caption && <p className="sa-form-hint">ข้อความที่เผยแพร่จริง (ลิงก์ติด UTM):<br /><span style={{ overflowWrap: "anywhere" }}>{entry.publishedCaption}</span></p>}
-          <button className="sa-btn ghost sm" onClick={() => copy(entry.caption, "caption")}>
-            <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอก"}
-          </button>
-        </section>
-      )}
+      <section className="sa-drawer-section sa-post-preview-section">
+        <div className="sa-post-preview-section-head">
+          <h4>พรีวิวโพสต์เต็ม {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
+          {(entry.publishedCaption || entry.caption) && (
+            <button className="sa-btn ghost sm" onClick={() => copy(entry.publishedCaption || entry.caption, "caption")}>
+              <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอกข้อความ"}
+            </button>
+          )}
+        </div>
+        <PostPreview entry={entry} client={client} product={product} />
+        <p className="sa-form-hint">ตัวอย่างนี้แสดงข้อความเต็มและสื่อที่เตรียมไว้ เลย์เอาต์จริงอาจต่างกันเล็กน้อยตามแอปและบัญชีปลายทาง</p>
+      </section>
 
       {(entry.viralScore || (entry.hookVariants && entry.hookVariants.length > 0)) && (
         <section className="sa-drawer-section">

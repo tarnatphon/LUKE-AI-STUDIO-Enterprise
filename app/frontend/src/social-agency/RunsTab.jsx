@@ -4,6 +4,7 @@ import {
   PLATFORM_META, STATUS_META, formatDateTimeTh, formatDuration, scoreClass, currentMonth,
   productRefNotice,
 } from "./lib.js";
+import PostPreview from "./PostPreview.jsx";
 
 const RUN_STATUS_TH = {
   success: { label: "สำเร็จ", cls: "published" },
@@ -45,6 +46,7 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
           const run = (activeClient.workflowRuns || []).find((r) => r.id === entry.workflowRunId);
           const check = run?.check;
           const refNotice = productRefNotice(entry);
+          const product = (activeClient?.products || []).find((item) => item.sku === entry.sku);
           return (
             <article key={entry.id} className="sa-approval-card">
               <header>
@@ -59,6 +61,11 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
                 )}
               </header>
               <pre className="sa-caption">{entry.caption || "(ยังไม่มีคอนเทนต์)"}</pre>
+              <details className="sa-approval-preview">
+                <summary>พรีวิวข้อความและเลย์เอาต์โพสต์เต็ม</summary>
+                <PostPreview entry={entry} client={activeClient} product={product} compact />
+                <p className="sa-form-hint">เลย์เอาต์จริงอาจต่างกันตามแอปและบัญชีปลายทาง</p>
+              </details>
               {check?.issues?.length > 0 && (
                 <ul className="sa-issues">
                   {check.issues.slice(0, 5).map((issue, i) => <li key={i}>{issue}</li>)}
