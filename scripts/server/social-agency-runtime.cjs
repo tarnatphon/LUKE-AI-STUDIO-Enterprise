@@ -887,6 +887,74 @@ function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid
   }
   return last;
 }
+
+// ── ready-made caption examples (ตัวอย่างสำเร็จรูป) ──────────────────────────
+// The few-shot library keeps text the client wrote; these three are complete
+// first drafts filled with this entry's own product evidence, so a brand-new
+// client never has to start from an empty box. An operator edits one and
+// applies it, which replaces the caption and nothing else: no image, no date,
+// no time, no status, and no publish. Every line stays inside what the evidence
+// actually says (price/ขั้นต่ำ/เวลาผลิต appear only when the product carries
+// them) so the draft survives the same AI Check the workflow runs later.
+function presetOrderLine(product) {
+  return [
+    product?.minimumOrder ? `สั่งขั้นต่ำ ${product.minimumOrder}` : "",
+    product?.productionTime ? `ผลิต ${product.productionTime}` : "",
+    product?.price ? `ราคา ${product.price}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function presetDetail(product, max = 90) {
+  const detail = String(product?.detail || "").replace(/\s+/g, " ").trim();
+  if (!detail || detail.length > max) return "";
+  return detail;
+}
+
+const CAPTION_PRESETS = [
+  {
+    id: "product-intro",
+    label: "แนะนำสินค้า",
+    hint: "ชูจุดขายของสินค้าจากข้อมูลจริง พร้อมข้อมูลสั่งซื้อเท่าที่มีในระบบ",
+    build: ({ product, platform }) => {
+      const name = product?.name || "สินค้าใหม่";
+      const order = presetOrderLine(product);
+      const tags = templateHashtags(product, platform).join(" ");
+      const lines = platform === "line"
+        ? [`${name} นะครับ 😊`, presetDetail(product), order, "สนใจพิมพ์ถามรายละเอียดได้เลยครับ ยินดีช่วยเลือกให้", tags]
+        : [`อยากแนะนำ ${name} ให้รู้จักครับ ✨`, presetDetail(product), order, "สนใจทักมาถามรายละเอียดได้เลยครับ ช่วยดูให้ว่าแบบไหนเหมาะกับงานของคุณ", tags];
+      return lines.filter(Boolean).join("\n");
+    },
+  },
+  {
+    id: "use-case-prompt",
+    label: "ชวนคิดจากโจทย์ใช้งาน",
+    hint: "ตั้งคำถามจากโจทย์การใช้งานจริง ให้ลูกค้านึกถึงงานของตัวเองก่อนทัก",
+    build: ({ product, platform }) => {
+      const name = product?.name || "สินค้าใหม่";
+      const order = presetOrderLine(product);
+      const tags = templateHashtags(product, platform).join(" ");
+      const lines = platform === "line"
+        ? ["ชวนคิดครับ 🤔", `${name} เหมาะกับงานแบบไหนของคุณมากที่สุด?`, order, "พิมพ์เล่าโจทย์มาได้เลยครับ เดี๋ยวช่วยดูให้ว่าเริ่มแบบไหนคุ้มที่สุด", tags]
+        : ["ชวนคิดจากโจทย์ใช้งานครับ 🤔", `ถ้าต้องเอา ${name} ไปใช้จริงในงานของคุณ เลือกแบบไหนถึงจะตอบโจทย์ที่สุด?`, order, "คอมเมนต์เล่าโจทย์ของคุณมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้ว่าควรเริ่มแบบไหน", tags];
+      return lines.filter(Boolean).join("\n");
+    },
+  },
+  {
+    id: "conversation-starter",
+    label: "ชวนเริ่มพูดคุย",
+    hint: "เปิดบทสนทนาแบบสบาย ๆ ให้ลูกค้าอยากคอมเมนต์หรือทักแชท",
+    build: ({ product, platform }) => {
+      const name = product?.name || "สินค้าใหม่";
+      const order = presetOrderLine(product);
+      const tags = templateHashtags(product, platform).join(" ");
+      const lines = platform === "line"
+        ? ["ทักทายกันครับ 👋", `ถ้าได้ ${name} ไปใช้ อยากให้เพิ่มแบบหรือสีอะไรอีกไหมครับ?`, order, "พิมพ์บอกกันได้เลยครับ", tags]
+        : ["ชวนคุยเล่น ๆ ครับ 💬", `ถ้าได้ ${name} ไปใช้ อยากให้มีแบบหรือสีอะไรเพิ่มอีกไหมครับ?`, order, "คอมเมนต์บอกกันได้เลย หรือทักแชทมาคุยก็ได้ครับ", tags];
+      return lines.filter(Boolean).join("\n");
+    },
+  },
+];
+
 // Image prompts are machine instructions for Stable Diffusion, which cannot
 // read Thai — so they are authored in English natively (no round-trip
 // translation). Audience-facing captions stay in Thai.
@@ -1918,6 +1986,71 @@ class SocialAgencyRuntime {
       angle,
       ...this.buildPlatformVersions({ caption, product, angle, tone: client.tone }),
     };
+  }
+
+  // ── ready-made caption examples (ตัวอย่างสำเร็จรูป) ───────────────────────
+  // Which calendar entries may take one of the three drafts. An entry is only
+  // editable while its caption can still become the published text, so entries
+  // that are already out (published), already sent to TikTok, frozen inside an
+  // A/B comparison, or running right now are refused with the reason the UI
+  // shows instead of the apply button.
+  _captionPresetBlockReason(entry) {
+    if (entry.abTest) return "โพสต์ A/B ต้องคงข้อความเดิมเพื่อเทียบผล — สร้างชุดทดสอบใหม่ถ้าต้องแก้ข้อความ";
+    if (entry.abTestSource) return "ต้นฉบับ A/B ถูกเก็บไว้แล้ว ไม่แก้ข้อความ";
+    if (entry.inFlight || entry.status === "publishing") return "รายการกำลังรันอยู่ — รอเสร็จแล้วค่อยแก้ข้อความ";
+    if (entry.tiktokPost || entry.tiktokInitAttemptedAt || entry.tiktokPublishId) {
+      return "รายการ TikTok นี้ยืนยัน/ส่งไปแล้ว — แก้แคปชันที่ช่อง TikTok แล้วยืนยันความยินยอมใหม่";
+    }
+    if (entry.status === "published") return "เผยแพร่แล้ว — ข้อความที่เผยแพร่จริงแก้ย้อนหลังไม่ได้";
+    return "";
+  }
+
+  // The three drafts for one entry, already filled with that entry's product.
+  // Read-only: this never writes state and never starts anything.
+  listCaptionPresets(clientId, entryId) {
+    const { client, entry } = this._findEntry(clientId, entryId);
+    const product = (client.products || []).find((p) => p.sku === entry.sku) || null;
+    const blocked = this._captionPresetBlockReason(entry);
+    const rules = PLATFORM_VERSION_RULES[entry.platform] || PLATFORM_VERSION_RULES.demo;
+    return {
+      entryId: entry.id,
+      platform: entry.platform,
+      editable: !blocked,
+      reason: blocked,
+      limit: rules.maxChars,
+      postMedia: Boolean(entry.video?.url || entry.video?.publicUrl || entry.image?.url || entry.image?.publicUrl),
+      productImage: Boolean(product?.image),
+      drafts: CAPTION_PRESETS.map((preset) => ({
+        id: preset.id,
+        label: preset.label,
+        hint: preset.hint,
+        limit: rules.maxChars,
+        text: preset.build({ product, platform: entry.platform, entry, client }),
+      })),
+    };
+  }
+
+  // Replace the caption with a preset draft (or the operator's edit of it).
+  // Deliberately narrower than updateCalendarEntry: it reads exactly one field
+  // from the body and writes exactly the caption, so a preset can never move a
+  // date, swap an image, change a status, or publish anything.
+  applyCaptionPreset(clientId, entryId, body = {}) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    const preset = CAPTION_PRESETS.find((p) => p.id === String(body.presetId || ""));
+    if (!preset) throw new Error("ไม่รู้จักตัวอย่างนี้");
+    const blocked = this._captionPresetBlockReason(entry);
+    if (blocked) throw new Error(blocked);
+    const product = (client.products || []).find((p) => p.sku === entry.sku) || null;
+    const edited = body.caption === undefined || body.caption === null ? "" : String(body.caption).trim();
+    const text = edited || preset.build({ product, platform: entry.platform, entry, client });
+    const limit = (PLATFORM_VERSION_RULES[entry.platform] || PLATFORM_VERSION_RULES.demo).maxChars;
+    if (text.length > limit) throw new Error(`ข้อความยาว ${text.length} ตัวอักษร เกินสำหรับ ${entry.platform} (ไม่เกิน ${limit}) — ย่อข้อความก่อนใช้`);
+    entry.caption = text;
+    entry.captionManual = true; // the workflow keeps a manual caption instead of writing a new one
+    entry.captionSource = `preset:${preset.id}`;
+    entry.updatedAt = new Date().toISOString();
+    this._write(state);
+    return entry;
   }
 
   // ── few-shot style examples (group 4) ──
@@ -4038,14 +4171,28 @@ class SocialAgencyRuntime {
     { re: /ประสบการณ์ระดับพรีเมียม|สุดยอดประสบการณ์/, label: "buzzword พรีเมียม" },
   ];
 
+  // A price claim is backed when the number the caption quotes is the number on
+  // the product record. The catalog stores a price as a bare value ("199",
+  // "1,200 บาท"), so comparing digits with product.price is the honest test.
+  // The old check only asked whether the word "บาท" appeared somewhere in the
+  // product's other fields, which both rejected real prices stored as numbers
+  // (every caption that quotes product.price, templates included) and accepted
+  // any number at all once some field happened to say บาท.
+  _priceQuoteIsBacked(quote, product) {
+    const digits = String(quote || "").replace(/[^\d]/g, "");
+    if (!digits) return false;
+    if (String(product?.price || "").replace(/[^\d]/g, "") === digits) return true;
+    const fields = [product?.name, product?.category, product?.minimumOrder, product?.productionTime, product?.decoration]
+      .filter(Boolean)
+      .join(" ");
+    return (fields.match(/\d[\d,]*/g) || []).some((n) => n.replace(/[^\d]/g, "") === digits);
+  }
+
   _localEvidenceIssues(caption, product) {
     const text = String(caption || "");
     const issues = [];
-    const evidenceText = [product?.name, product?.category, product?.minimumOrder, product?.productionTime, product?.decoration]
-      .filter(Boolean)
-      .join(" ");
     const priceMatch = text.match(/฿\s*\d|\d[\d,]*\s*บาท|ราคา[\s:]*[\d,]+/);
-    if (priceMatch && !/บาท/.test(evidenceText)) issues.push(`อ้างราคา "${priceMatch[0].trim()}" ที่ไม่มีในหลักฐานสินค้า`);
+    if (priceMatch && !this._priceQuoteIsBacked(priceMatch[0], product)) issues.push(`อ้างราคา "${priceMatch[0].trim()}" ที่ไม่มีในหลักฐานสินค้า`);
     const dimMatch = text.match(/\d+(?:\.\d+)?\s*(?:ซม\.?|เซนติเมตร|cm|มม\.?|mm|นิ้ว|inch)/i);
     if (dimMatch) issues.push(`อ้างขนาด "${dimMatch[0]}" ที่ไม่มีในหลักฐานสินค้า`);
     const stockMatch = text.match(/สต๊อก|คลังสินค้า|พร้อมส่งทันที|เหลือ\s*\d+|มีสินค้าพร้อมส่ง|ส่งฟรี/);
@@ -7030,6 +7177,18 @@ class SocialAgencyRuntime {
         const body = await readBody();
         return json(res, 200, { ok: true, preview: this.previewPlatformVersions(clientId || body.clientId, body) });
       }
+      // ready-made caption examples: GET the three drafts for an entry, POST one
+      // back (edited or as-is) to replace the caption and nothing else.
+      if (pathname === "/api/social-agency/caption-presets" && method === "GET") {
+        const entryId = parsed.searchParams.get("entryId") || "";
+        if (!entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        return json(res, 200, { ok: true, ...this.listCaptionPresets(clientId, entryId) });
+      }
+      if (pathname === "/api/social-agency/entry-caption/preset" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        return json(res, 200, { ok: true, entry: this.applyCaptionPreset(clientId || body.clientId, body.entryId, body) });
+      }
       if (pathname === "/api/social-agency/few-shots" && method === "GET") {
         return json(res, 200, { ok: true, fewShots: this.listFewShots(clientId) });
       }
@@ -7387,5 +7546,6 @@ SocialAgencyRuntime._templateHooks = buildTemplateHooks;
 SocialAgencyRuntime._pickPillar = pickPillar;
 SocialAgencyRuntime._extractProducts = extractProductsFromHtml;
 SocialAgencyRuntime._templateCaption = buildTemplateCaption;
+SocialAgencyRuntime._captionPresets = CAPTION_PRESETS;
 
 module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };

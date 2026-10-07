@@ -1,5 +1,7 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
+> **อัปเดตล่าสุด:** 2026-10-07 (session `arena/c363a091-luke-ai-studio-enterprise` — **สร้างใหม่ทั้งชุดจากข้อความส่งต่อ (เคสที่ 5 ของงานหาย)**: งาน "พรีวิวโพสต์จริงบนสุดของรายละเอียด + สัญลักษณ์รูปตาในรายการปฏิทิน + ตัวอย่างแคปชันสำเร็จรูป 3 แบบ" ที่ session ก่อนบันทึกว่าเสร็จใน local commit `86f6cf2` **ไม่เคยถูก push** จึงไม่มีอยู่จริงใน `main`/origin (ตรวจด้วย `git fsck`, `git ls-remote`, `gh pr list` แล้ว — ดูหัวข้อ 7.7) · สร้างใหม่จาก `main` ณ `494c158` · เพิ่มไฟล์ใหม่ `app/frontend/src/social-agency/CaptionPresets.jsx` + เมธอด `listCaptionPresets`/`applyCaptionPreset` ใน runtime พร้อมเส้นทาง `GET /api/social-agency/caption-presets` และ `POST /api/social-agency/entry-caption/preset` (เขียนเฉพาะ `caption` + `captionManual` + `captionSource` เท่านั้น) · เทสต์ใหม่ `test-social-agency-caption-presets.cjs` 14 checks (Social Agency ครบ 9 ชุด) · แก้บั๊กจริงที่เจอระหว่างทาง: ด่านหลักฐานราคาตี "ราคา 199" ว่าไม่มีหลักฐานทั้งที่ `product.price` มีค่านั้น (ดูหัวข้อ 2) · eslint 292 ไฟล์ 0 problems · Vite build ผ่าน · run-all **155 passed · 0 failed · 1 skipped** (ติดตั้ง `imageio_ffmpeg` แล้ว `validate-release.sh` ผ่านด้วย) · PR #38)
+
 > **อัปเดตล่าสุด:** 2026-10-07 (session `arena/bd08f753-luke-ai-studio-enterprise` — รับช่วงงาน GPU/VRAM telemetry + resource governor จาก remote branch `arena/01a10a92…` (7 commits, tip `a65ccfa`) แล้วรวมลงใน session branch ที่ตั้งต้นจาก `main` ณ `bab9e33` โดยเก็บการเปลี่ยน model-cache ของ PR #34 และ post preview ของ PR #36 ไว้ครบ · frontend build ผ่าน · `run-all` 154 passed / 0 failed / 1 skipped (Python suite เป็น opt-in; รันแยกแล้วผ่าน) · ยังต้องยืนยันบน Mac จริง: Metal telemetry, governor unload/restore, sampling pause/resume และ cloud storage lazy-load · รายละเอียดงานและเช็กลิสต์อยู่หัวข้อ 2 และ 6)
 
 > **อัปเดตล่าสุด:** 2026-10-06 (session `arena/ccbe7be3…` — **โมเดลภาพเข้า model cache + โหลดจากสำเนาบนดิสก์ภายในเมื่อมีสำเนาอยู่จริง** — งานชุดนี้ session ก่อนทำไว้แต่ **ไม่เคยถูก push → หายไปกับ sandbox อีกครั้ง (เคสที่ 4)** จึงถูก**เขียนใหม่ทั้งชุดจากโค้ดจริงใน `main`** ไม่ใช่จากข้อความส่งต่อ · cache รองรับ **โฟลเดอร์** (Core ML bundle หลายหมื่นไฟล์) · แก้ **บั๊กที่ทำให้ cache ไม่เคยถูกใช้เลย**: loader มองหาในโฟลเดอร์คนละที่กับที่ปุ่ม "Copy" เขียนไว้ ทั้งโมเดลภาพและโมเดลข้อความ · `/api/model-cache/status` ตอบ `POST` ตามที่ panel เรียกจริง (เดิม GET อย่างเดียว → panel อ่าน 404 แล้วไม่แสดงอะไรเลย) และลิสต์โมเดลภาพด้วย · `coreml_server.py` อ่าน reference config จากสำเนาในเครื่องก่อนเน็ต (`app/runtime-state/huggingface-cache`, ตั้งค่าใหม่ด้วย `LUKE_IMAGE_MODEL_CACHE`) · เทสต์ใหม่ `test-image-model-cache.cjs` 72 checks + probe Python · **วิธีนำขึ้น Mac ดูหัวข้อ 7.6** · **merge เข้า `main` แล้วเป็น `58c8b9d` (PR #34) CI `validation suites` เขียว** — งานจึงไปอยู่บน GitHub แล้ว เหลือแค่ pull+build บน Mac)
@@ -22,15 +24,28 @@
 
 | รายการ | ค่า |
 |---|---|
-| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ จุดเริ่ม session 2026-10-07 คือ `bab9e33` (merge PR #36 — full post previews) · ก่อนหน้า `58c8b9d` = PR #34 (model cache). ไฟล์นี้อาจ lag หนึ่ง commit ตามหมายเหตุด้านบน |
+| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ จุดเริ่ม session 2026-10-07 (session นี้) คือ `494c158` = merge PR #37 · ก่อนหน้า `bab9e33` = PR #36 (full post previews) · `58c8b9d` = PR #34 (model cache). ไฟล์นี้อาจ lag หนึ่ง commit ตามหมายเหตุด้านบน |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เกี่ยวข้อง | PR #37 (GPU/VRAM telemetry + resource governor; session branch `arena/bd08f753-luke-ai-studio-enterprise`) · PR #36 (full post previews) merged 2026-10-07 เป็น `bab9e33` · PR #34 (model cache) merged 2026-10-06 เป็น `58c8b9d` และ CI เขียว |
+| PR ที่เกี่ยวข้อง | PR #38 (พรีวิวโพสต์บนสุด + สัญลักษณ์รูปตาในปฏิทิน + ตัวอย่างแคปชันสำเร็จรูป 3 แบบ; session branch `arena/c363a091-luke-ai-studio-enterprise`) · PR #37 (GPU/VRAM telemetry + resource governor) merged 2026-10-07 เป็น `494c158` · PR #36 merged 2026-10-07 เป็น `bab9e33` · PR #34 merged 2026-10-06 เป็น `58c8b9d` และ CI เขียว |
 | branch บน GitHub (ตรวจ 2026-10-07) | `arena/01a10a92-luke-ai-studio-enterprise` = `a65ccfa` (7 commits: GPU telemetry + resource governor) ถูก fetch และ integrate ใน session branch นี้; branch ต้นทางยังคงอยู่บน origin เป็นสำเนาประวัติ — อย่า push งานใหม่ไป branch นั้น · branch เก่าที่เหลือตามบันทึกเดิมยังไม่ได้ตรวจซ้ำใน session นี้ · tag `v1.0.0-beta.16` = `fe84a3c` |
-| งานค้างที่ทราบ | ยืนยันบน Mac จริง: model-cache 4 ข้อ (หัวข้อ 7.6) · GPU/VRAM telemetry + resource governor + telemetry pause/resume + lazy cloud-SDK (เช็กลิสต์หัวข้อ 6) — Linux sandbox พิสูจน์ส่วน Metal/การปล่อยและโหลดคืนโมเดลไม่ได้ · สร้างภาพ WSB-019 ใหม่และทำ Mac-only checks ของ Social Agency ที่ยังเหลือในหัวข้อ 6 · branch telemetry เดิม integrate แล้วใน session branch นี้ |
+| งานค้างที่ทราบ | ยืนยันบน Mac จริง: model-cache 4 ข้อ (หัวข้อ 7.6) · GPU/VRAM telemetry + resource governor + telemetry pause/resume + lazy cloud-SDK (เช็กลิสต์หัวข้อ 6) — Linux sandbox พิสูจน์ส่วน Metal/การปล่อยและโหลดคืนโมเดลไม่ได้ · สร้างภาพ WSB-019 ใหม่และทำ Mac-only checks ของ Social Agency ที่ยังเหลือในหัวข้อ 6 · **ของ session นี้: พรีวิวบนสุด/ตาในปฏิทิน/ตัวอย่างแคปชันสำเร็จรูป — เช็กลิสต์ใหม่ท้ายหัวข้อ 6** · branch telemetry เดิม integrate แล้ว |
 
 ---
 
 ## 2. งานล่าสุดที่เข้า `main`
+
+### PR #38 (session `arena/c363a091…`, 2026-10-07) — พรีวิวโพสต์บนสุด + สัญลักษณ์รูปตาในปฏิทิน + ตัวอย่างแคปชันสำเร็จรูป 3 แบบ
+> ⚠️ **เขียนใหม่ทั้งชุด** — session ก่อนบันทึกว่าเสร็จใน local commit `86f6cf2` แต่ไม่เคย push จึงไม่มี object อยู่จริง (เคสที่ 5 — ดูหัวข้อ 7.7) สเปกชุดนี้สร้างใหม่จากข้อความส่งต่อ + โค้ดจริงใน `main` ณ `494c158`
+
+- **พรีวิวโพสต์จริงขึ้นบนสุดของรายละเอียด** — ใน `drawers.jsx` ย้าย section "พรีวิวโพสต์เต็ม" (`PostPreview` = ภาพ/วิดีโอ + แคปชันเต็มตามเลย์เอาต์แพลตฟอร์ม) ไปไว้ใต้แถวสถานะทันที จึงเปิดรายการแล้วเห็นภาพกับข้อความก่อนอนุมัติโดยไม่ต้องเลื่อน · เทสต์กันไม่ให้มีพรีวิวสองที่ (assert ว่ามีสำเนาเดียว)
+- **สัญลักษณ์รูปตาในรายการปฏิทิน** — `CalendarTab.jsx` ชิปแต่ละใบมีไอคอน `Eye` เมื่อรายการนั้นมีอะไรให้ตรวจ (มีแคปชัน/ภาพ/วิดีโอ) พร้อม tooltip "เปิดดูพรีวิวภาพและข้อความก่อนอนุมัติ" — คลิกชิปเปิดหน้าที่มีพรีวิวอยู่บนสุดแล้ว
+- **ตัวอย่างสำเร็จรูป 3 แบบ** (`CAPTION_PRESETS` ใน `social-agency-runtime.cjs` + `CaptionPresets.jsx`): **แนะนำสินค้า** (`product-intro`), **ชวนคิดจากโจทย์ใช้งาน** (`use-case-prompt`), **ชวนเริ่มพูดคุย** (`conversation-starter`) — แต่ละแบบเติมข้อความจากข้อมูลสินค้าจริงของรายการนั้น (ชื่อสินค้า, `detail` ที่สั้นพอ, ขั้นต่ำ, เวลาผลิต, ราคา **เฉพาะเมื่อมีในระบบ**), ปรับแฮชแท็ก/ความยาวตามแพลตฟอร์ม (LINE กระชับ ≤2 แฮชแท็ก, FB/IG/TikTok 3–8 หรือ ≤5), และแถบตัวอย่างใช้ `PostPreview` ตัวเดียวกับพรีวิวหลัก (แก้ข้อความแล้วพรีวิวเปลี่ยนตามทันที)
+- **การใช้ตัวอย่างแทนที่เฉพาะแคปชัน** — เส้นทางใหม่ `GET /api/social-agency/caption-presets` (อ่านอย่างเดียว) และ `POST /api/social-agency/entry-caption/preset`: `applyCaptionPreset()` อ่านจาก body แค่ `presetId`/`caption` แล้วเขียน `entry.caption` + `captionManual = true` + `captionSource = "preset:<id>"` เท่านั้น — ไม่แตะรูป วัน เวลา แพลตฟอร์ม สถานะ ไม่เริ่ม workflow และไม่เผยแพร่ (ต่างจาก `PATCH /calendar/:id` ที่แก้ได้หลายฟิลด์) · ข้อความที่แก้เองชนะข้อความตัวอย่าง; ยาวเกินเพดานแพลตฟอร์ม/ไม่รู้จักตัวอย่าง → ปฏิเสธพร้อมเหตุผลและไม่เขียนอะไร
+- **รายการที่แก้ไม่ได้ถูกล็อกพร้อมเหตุผล** — `abTest`, `abTestSource`, `inFlight`/`publishing`, `tiktokPost`/`tiktokInitAttemptedAt`/`tiktokPublishId`, `published` → UI แสดงแบนเนอร์เหตุผลแทนปุ่มใช้ (แคปชัน TikTok ที่ยืนยันแล้วต้องไปยืนยันใหม่ในช่อง TikTok) · การใช้ตัวอย่างบนรายการ `needs_review` ยังต้องอนุมัติตามปกติ
+- **รูปอ้างอิงเมื่อยังไม่มีภาพโพสต์** — พรีวิวของตัวอย่างใช้ `PostPreview` ที่มี fallback อยู่แล้ว (รูปสินค้าต้นฉบับ + ป้าย "รูปอ้างอิง · ยังไม่ใช่สื่อโพสต์") และเพิ่มบรรทัดอธิบายชัดเจนในแผงตัวอย่างว่าเป็นรูปอ้างอิงและ "ระบบจะไม่ส่งรูปนี้แทนสื่อโพสต์"
+- **แก้บั๊กที่เจอระหว่างทาง (ด่านหลักฐานราคา)** — `_localEvidenceIssues()` เดิมตัดสินว่าแคปชันอ้างราคาได้ไหมจากเงื่อนไข "มีคำว่า บาท ในชื่อ/หมวด/ขั้นต่ำ/เวลาผลิต" ซึ่งไม่เคยนับ `product.price` เป็นหลักฐาน → แคปชันที่อ้างราคาจากข้อมูลจริง (ทั้งเทมเพลตและตัวอย่างใหม่) ถูกตีเป็น "อ้างราคาที่ไม่มีในหลักฐานสินค้า" ทุกครั้ง · เพิ่ม `_priceQuoteIsBacked()` เปรียบเลขในคำอ้างกับ `product.price` (และเลขที่มีในฟิลด์อื่น) — ราคาที่มีจริงผ่าน, เลขที่ไม่มีในระบบยังถูกจับเหมือนเดิม ( demo bad draft ของ `needs_review` ยังถูกจับตามเดิม)
+- เทสต์ใหม่ `scripts/validation/test-social-agency-caption-presets.cjs` **14 checks** (mocked ทั้งหมด): 3 ตัวอย่าง/ป้ายชื่อ, ข้อความอยู่ในกติกาแพลตฟอร์มทุกแพลตฟอร์ม, ราคามี/ไม่มีในหลักฐาน, การอ่านไม่เขียน state, การใช้ตัวอย่างไม่แตะฟิลด์อื่น/ไม่เริ่ม run/ไม่อนุมัติ, ข้อความที่แก้ชนะ, ปฏิเสธเกินเพดาน/ตัวอย่างไม่รู้จัก, รายการที่ถูกล็อกทั้ง 7 แบบ, และฝั่ง UI (ไอคอนตา, ลำดับพรีวิวบนสุด, การเรียกเส้นทางใหม่, ข้อความ fallback รูปสินค้า)
+- ตรวจผ่าน: Social Agency **9 ชุด**, `eslint` ทั้งทรี **292 ไฟล์ 0 problems**, `check-api-contracts` (frontend 293 ↔ backend 366 endpoints), `test-api-route-methods` (ไม่ 500), frontend bundle budgets (entry JS 293,712 ≤ 307,200 bytes), Vite build, `git diff --check`, และ `run-all` **155 passed · 0 failed · 1 skipped** · **ยังต้องยืนยันบน Mac จริง** — เช็กลิสต์ท้ายหัวข้อ 6
 
 ### PR #36 (2026-10-07 — merged เป็น `bab9e33`) — full post previews ใน Luke Social Agency
 - preview แบบเต็มและแยกตามแพลตฟอร์ม แสดงแคปชันเต็มและ media layout ใน Style & Editions, post details และ approval queue
@@ -253,6 +268,17 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
   `grep -o '"refMode": "[a-z]*"\|"usedProductRef": [a-z]*\|"denoise": [0-9.]*\|"steps": [0-9]*\|"stepsSent": [0-9]*\|"stepsCapped": true\|"warning": "[^"]*"' /Volumes/AI/app/runtime-state/social-agency/thai-modern-bags.json | tail`
   ก่อนสร้างใหม่รายการเก่าจะไม่มี `refMode` (ดูในแอปจะขึ้นเตือนให้ตรวจภาพเทียบสินค้าเอง) · หลังสร้างใหม่ต้องเป็น `"refMode": "img2img"` + `"usedProductRef": true` และไม่มี `warning` เมื่อรูปสินค้าอยู่ครบ
 
+**ค้างของ session `arena/c363a091…` — Social Agency: พรีวิวบนสุด / ตาในปฏิทิน / ตัวอย่างแคปชันสำเร็จรูป (ทำบนเครื่อง Mac เท่านั้น):**
+- [ ] **อัปเดต + build:** `git pull --ff-only` แล้ว `cd app/frontend && npm install && npx vite build` (UI จะไม่เปลี่ยนถ้าไม่ build — `app/dist/` ไม่อยู่ใน git) แล้วเปิดแอปตามปกติ
+- [ ] **ตาในปฏิทิน:** แท็บ "ปฏิทิน" → ชิปที่มีแคปชัน/ภาพอยู่แล้วต้องมีไอคอนรูปตาก่อนเวลาของโพสต์ · ชิปที่ยังไม่มีอะไรเลยต้องไม่มีตา · tooltip ต้องบอกว่ามีพรีวิวให้ตรวจ
+- [ ] **พรีวิวบนสุด:** คลิกชิป → เปิดหน้ารายการแล้วต้องเห็น "พรีวิวโพสต์เต็ม" เป็น section แรกใต้แถวสถานะ (ไม่ต้องเลื่อน) · ตรวจว่ามีสำเนาเดียว (ด้านล่างต้องไม่มีพรีวิวซ้ำ)
+- [ ] **ตัวอย่าง 3 แบบ:** ในหน้ารายการ เห็นหัวข้อ "ตัวอย่างสำเร็จรูป (3 แบบ)" → สลับทั้ง 3 แท็บ ต้องเห็นพรีวิวเปลี่ยนตามข้อความและแพลตฟอร์มของรายการนั้น (FB/IG/LINE/TikTok เลย์เอาต์ต่างกัน) · แก้ข้อความในกล่องแล้วพรีวิวต้องเปลี่ยนตามทันที · ปุ่ม "ย้อนกลับเป็นข้อความตัวอย่าง" คืนข้อความเดิม
+- [ ] **การใช้ตัวอย่างต้องแทนที่เฉพาะแคปชัน:** กดใช้บนรายการที่ยังเป็น `planned`/`needs_review` → หัวข้อพรีวิวขึ้น "(แก้เอง)" และ `grep -o '"captionManual": true\|"captionSource": "preset:[a-z-]*"' /Volumes/AI/app/runtime-state/social-agency/<ลูกค้า>.json` ต้องเห็นค่าทั้งสอง · **วัน/เวลา/รูป/สถานะต้องไม่เปลี่ยน** และ **ห้ามมีโพสต์เกิดขึ้นเอง** (ไม่มี run ใหม่, ไม่มี `publishedAt`)
+- [ ] **รายการที่ถูกล็อก:** เปิดรายการ TikTok ที่ยืนยัน/ส่งไปแล้ว, รายการที่กำลังรัน, รายการที่เผยแพร่แล้ว และโพสต์ A/B → ต้องเห็นแบนเนอร์เหตุผลสีเหลืองแทนปุ่มใช้ และไม่มีทางกดใช้ได้
+- [ ] **ยังไม่มีภาพโพสต์:** เปิดรายการที่ยังไม่สร้างภาพ → พรีวิวของตัวอย่างต้องแสดง **รูปสินค้าต้นฉบับ** พร้อมป้าย "รูปอ้างอิง · ยังไม่ใช่สื่อโพสต์" และบรรทัดอธิบายในแผงตัวอย่าง · ไม่มีรูปสินค้าเลย → ขึ้นข้อความ "ยังไม่ได้แนบภาพหรือวิดีโอ"
+- [ ] **แคปชันที่ใช้แล้วต้องรอดถึงตอนรัน:** กด "รันเลยตอนนี้" หลังใช้ตัวอย่าง → workflow ต้องใช้ข้อความนั้น ไม่เขียนแคปชันใหม่ทับ (โค้ดเช็ค `captionManual` อยู่แล้ว) · ถ้ารันผ่าน LLM ให้ดูว่า AI Check ไม่ฟ้องเรื่องราคาเมื่อราคามาจาก `product.price`
+- [ ] **LINE/TikTok ที่ข้อความยาว:** แก้ข้อความในตัวอย่างให้เกินเพดาน (LINE ~400 ตัวอักษร) → ต้องขึ้น error สีแดงและปุ่มใช้ถูกปิด
+
 **ค้างของ session `arena/bd08f753…` — telemetry / resource governor (Linux CI ผ่าน; ต้องยืนยันบน Mac):**
 - [ ] หลัง PR merge บนเครื่อง Mac ให้ `git pull --ff-only` แล้ว build ใหม่ (`cd app/frontend && npm install && npx vite build`); `app/dist/` ไม่อยู่ใน git
 - [ ] โหลดโมเดลบน Apple Silicon → RAM chip ต้องแสดงส่วนที่ LUKE รับผิดชอบแยกจาก memory ทั้งเครื่อง และ VRAM used ต้องเพิ่มจากศูนย์; total ควรตาม learned Metal working set (เช่น ~14.3 GB บนเครื่อง 18 GB) ไม่ใช่ total RAM
@@ -350,3 +376,24 @@ cd ../.. && ./mac.sh
 2. กด Copy ที่โมเดลภาพ → รอเสร็จ → log ของ server ต้องมี `[backend] Loading <ชื่อโมเดล> from the internal disk cache (… GB, … files)` ตอนโหลดครั้งถัดไป (ถ้ายังขึ้นว่ามาจาก external volume แปลว่า `cachedCopyFor` มองไม่เห็นสำเนา — ให้ grep `manifest.json` ใน `~/Library/Application Support/LUKE AI STUDIO/model-cache/`)
 3. โหลดโมเดลภาพตอน **ปิดเน็ต**: log ต้องมี `[coreml-npu] Reference config for … read from the local copy in …` ไม่ใช่ข้อความ "No usable local copy"
 4. ขนาดโฟลเดอร์ cache บนดิสก์ภายใน (`du -sh ~/Library/Application\ Support/LUKE\ AI\ STUDIO/model-cache`) ต้องเท่ากับขนาดโมเดลที่เลือก และ **ต้นฉบับบน external volume ต้องยังอยู่** (ข้อนี้คือเหตุผลที่ copy ไม่ใช่ move)
+
+---
+
+## 7.7 บันทึกเคสงานหายรอบที่ 5 (session `arena/c363a091…`, 2026-10-07) — "พรีวิวบนสุด + ตาในปฏิทิน + ตัวอย่างแคปชันสำเร็จรูป"
+
+**คำขอที่เข้ามา:** ข้อความส่งต่อจาก session ที่ปิดไปแล้วระบุว่า *"บันทึกใน local commit `86f6cf2` แล้ว แต่ session นี้ปิดหลัง PR #37 merge จึงยังไม่ได้ push"* และให้ "เริ่ม Arena coding session ใหม่เพื่อเผยแพร่"
+
+**ผลสรุป: ไม่มีอะไรให้ push — commit นั้นไม่มีอยู่จริงในที่ใดที่ session นี้มองเห็น** (เคสที่ 5 ของรูปแบบเดิม: `5be0bd0`/`1d7d26c` → `01a0f086…` → `01a0f582…` → `ccbe7be3…` → เคสนี้)
+
+| ที่ที่ตรวจ | วิธีตรวจ | ผล |
+|---|---|---|
+| ปลายทางที่จะ push | `git ls-remote --heads origin` | ไม่มี branch ใดชี้ไปที่งานชุดนี้ · `main` = `494c158` (merge PR #37) |
+| วัตถุในเครื่อง | `git cat-file -e 86f6cf2` · `git log --all --oneline` | `fatal: ambiguous argument '86f6cf2'` — ไม่มี object นี้ (clone เป็น shallow, history มีแค่ `494c158`) |
+| PR บน GitHub | `gh pr list --state all --limit 15` | PR ล่าสุดคือ #37 (merged) — ไม่มี PR เรื่องพรีวิว/ตัวอย่างแคปชัน |
+| working tree | `git status --porcelain` | สะอาด — ไม่มีการแก้ไขค้าง |
+
+**สาเหตุ:** เหมือนทุกเคส — sandbox เป็นเครื่องชั่วคราวที่ clone จาก `main`; commit ที่ไม่ได้ push ภายใน session นั้นหายไปพร้อม sandbox · ข้อความ "บันทึกใน local commit แล้ว" จึงจริงเฉพาะตอน session ยังเปิดอยู่ และ "session นี้ปิดหลัง PR merge" คือเงื่อนไขที่ทำให้ไม่มีการ push เกิดขึ้นเลย
+
+**สิ่งที่ทำแทนการกู้:** อ่านข้อความส่งต่อ (ซึ่งเป็นสเปกที่ละเอียดพอ) + อ่านโค้ดจริงใน `main` แล้ว**เขียนฟีเจอร์ชุดนี้ขึ้นใหม่ทั้งหมด** (หัวข้อ 2 "PR #38") — รวมถึงเทสต์ใหม่ 1 ชุด และบั๊กจริง 1 ตัวที่เจอระหว่างทาง (ด่านหลักฐานราคาไม่เคยนับ `product.price` เป็นหลักฐาน ทำให้แคปชันที่อ้างราคาจากข้อมูลจริงถูกตีว่าอ้างเกินทุกครั้ง) · **สิ่งที่เขียนใหม่ได้ตรงตามสเปก แต่ไม่ใช่ไบต์เดิมของ commit ที่หาย** — ถ้าเจ้าของงานมีสำเนา `86f6cf2` อยู่จริงบนเครื่อง Mac (เช่นใน reflog ของ repo ที่ `/Volumes/AI`) การเทียบ diff กับ PR #38 จะบอกได้ว่าของเดิมต่างตรงไหน
+
+**กติกาซ้ำ:** ทุก session ต้อง `commit → push → เปิด PR → merge เข้า main` ให้จบใน session เดียวกัน · ถ้า merge ไม่ทัน ให้ push branch **และ** เขียน sha ที่ push จริงลงหัวข้อ 1 (sha ที่ยังไม่ push ห้ามเขียนลงเอกสาร — เอกสารที่อ้าง commit ที่ไม่มีอยู่ทำให้ session ถัดไปต้องเสียเวลาไล่หาของที่ไม่มี)

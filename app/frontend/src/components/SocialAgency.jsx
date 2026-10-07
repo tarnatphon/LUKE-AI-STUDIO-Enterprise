@@ -552,6 +552,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           onReviewImage={reviewImage}
           onRejectImage={rejectImage}
           onSaveTags={saveTags}
+          onCaptionApplied={refresh}
           generatingImage={generatingImage}
           imageGenError={imageGenError}
           onGenerateVideo={handleGenerateVideo}

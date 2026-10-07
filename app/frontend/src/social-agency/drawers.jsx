@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import PostPreview from "./PostPreview.jsx";
+import CaptionPresets from "./CaptionPresets.jsx";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
   MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock, Share2,
@@ -213,7 +214,7 @@ function ImageRefLine({ entry }) {
   return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}{steps}</p>;
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, onRejectImage, onSaveTags, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, onRejectImage, onSaveTags, onCaptionApplied, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
   const [abDate, setAbDate] = useState(() => new Date(Date.parse(`${bangkokToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10));
@@ -365,6 +366,24 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "pending" ? "รอ TikTok ประมวลผล" : entry.publishMode === "failed" ? "TikTok ล้มเหลว" : entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>
 
+      {/* The real post comes first: image and full caption are what has to be
+          checked before approving, so they sit at the top of the details
+          instead of below the scheduling and prompt sections. */}
+      <section className="sa-drawer-section sa-post-preview-section">
+        <div className="sa-post-preview-section-head">
+          <h4>พรีวิวโพสต์เต็ม {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
+          {(entry.publishedCaption || entry.caption) && (
+            <button className="sa-btn ghost sm" onClick={() => copy(entry.publishedCaption || entry.caption, "caption")}>
+              <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอกข้อความ"}
+            </button>
+          )}
+        </div>
+        <PostPreview entry={entry} client={client} product={product} />
+        <p className="sa-form-hint">ตัวอย่างนี้แสดงข้อความเต็มและสื่อที่เตรียมไว้ เลย์เอาต์จริงอาจต่างกันเล็กน้อยตามแอปและบัญชีปลายทาง</p>
+      </section>
+
+      <CaptionPresets entry={entry} client={client} product={product} busy={busy} onApplied={onCaptionApplied} />
+
       {onSaveTags && (
         <div className="sa-tags-row">
           <span className="sa-tags-label">ป้าย</span>
@@ -440,19 +459,6 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         {entry.status === "missed" && (
           <p className="sa-form-hint">พลาดโพสต์ไปแล้ว — เลื่อนไปวัน/เวลาใหม่เพื่อให้ระบบจัดคิวใหม่ หรือกด "รันเลยตอนนี้"</p>
         )}
-      </section>
-
-      <section className="sa-drawer-section sa-post-preview-section">
-        <div className="sa-post-preview-section-head">
-          <h4>พรีวิวโพสต์เต็ม {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
-          {(entry.publishedCaption || entry.caption) && (
-            <button className="sa-btn ghost sm" onClick={() => copy(entry.publishedCaption || entry.caption, "caption")}>
-              <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอกข้อความ"}
-            </button>
-          )}
-        </div>
-        <PostPreview entry={entry} client={client} product={product} />
-        <p className="sa-form-hint">ตัวอย่างนี้แสดงข้อความเต็มและสื่อที่เตรียมไว้ เลย์เอาต์จริงอาจต่างกันเล็กน้อยตามแอปและบัญชีปลายทาง</p>
       </section>
 
       {(entry.viralScore || (entry.hookVariants && entry.hookVariants.length > 0)) && (
