@@ -24,7 +24,7 @@
 |---|---|
 | `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ จุดเริ่ม session 2026-10-07 คือ `bab9e33` (merge PR #36 — full post previews) · ก่อนหน้า `58c8b9d` = PR #34 (model cache). ไฟล์นี้อาจ lag หนึ่ง commit ตามหมายเหตุด้านบน |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เกี่ยวข้อง | PR #36 (full post previews) merged 2026-10-07 เป็น `bab9e33` · PR #34 (model cache) merged 2026-10-06 เป็น `58c8b9d` และ CI เขียว · งาน GPU/VRAM telemetry + resource governor จาก branch `arena/01a10a92…` ถูกรวมเข้ากับ session branch นี้และส่ง PR จาก branch `arena/bd08f753-luke-ai-studio-enterprise` (ตรวจสถานะปัจจุบันด้วย `gh pr list`) |
+| PR ที่เกี่ยวข้อง | PR #37 (GPU/VRAM telemetry + resource governor; session branch `arena/bd08f753-luke-ai-studio-enterprise`) · PR #36 (full post previews) merged 2026-10-07 เป็น `bab9e33` · PR #34 (model cache) merged 2026-10-06 เป็น `58c8b9d` และ CI เขียว |
 | branch บน GitHub (ตรวจ 2026-10-07) | `arena/01a10a92-luke-ai-studio-enterprise` = `a65ccfa` (7 commits: GPU telemetry + resource governor) ถูก fetch และ integrate ใน session branch นี้; branch ต้นทางยังคงอยู่บน origin เป็นสำเนาประวัติ — อย่า push งานใหม่ไป branch นั้น · branch เก่าที่เหลือตามบันทึกเดิมยังไม่ได้ตรวจซ้ำใน session นี้ · tag `v1.0.0-beta.16` = `fe84a3c` |
 | งานค้างที่ทราบ | ยืนยันบน Mac จริง: model-cache 4 ข้อ (หัวข้อ 7.6) · GPU/VRAM telemetry + resource governor + telemetry pause/resume + lazy cloud-SDK (เช็กลิสต์หัวข้อ 6) — Linux sandbox พิสูจน์ส่วน Metal/การปล่อยและโหลดคืนโมเดลไม่ได้ · สร้างภาพ WSB-019 ใหม่และทำ Mac-only checks ของ Social Agency ที่ยังเหลือในหัวข้อ 6 · branch telemetry เดิม integrate แล้วใน session branch นี้ |
 
@@ -37,7 +37,7 @@
 - แยกรูปสินค้าแบบ reference-only และใช้ layout สำหรับ Facebook, Instagram, LINE และ TikTok
 - เทสต์ `test-social-agency-post-preview.cjs` 6 checks; `test-social-agency-image-gate-ui.cjs` 10 checks; smoke 104 checks
 
-### งาน GPU/VRAM telemetry + resource governor (session `arena/bd08f753…`, รับช่วง tip `a65ccfa` จาก `arena/01a10a92…`)
+### PR #37 — งาน GPU/VRAM telemetry + resource governor (session `arena/bd08f753…`, รับช่วง tip `a65ccfa` จาก `arena/01a10a92…`)
 - `gpu-memory-telemetry.cjs` + `pollMetalVram()` วัด resident set ของ backend ที่ถือโมเดลจริงบน macOS ผ่าน `ps -axo pid=,rss=`; ใช้ Metal working set เป็นเพดาน แทนการแสดง `0.0 / total RAM` และไม่อ้าง RAM ของโปรเซสอื่นว่าเป็น VRAM ของ LUKE
 - `resource-governor.cjs` อ่าน memory pressure จาก macOS compressor/swap หรือ Linux `MemAvailable`/swap, ปรับเกณฑ์ตาม machine tier, และปลดเฉพาะ engine ที่โหลดคืนเองได้; การปลดก่อนโหลดเป็น all-or-nothing และปกป้องงานที่กำลังใช้อยู่ / Social Agency / image generation
 - `telemetry-demand.cjs` หยุด polling ฮาร์ดแวร์เมื่อไม่มี client ดู monitor เกิน 30 วินาที; hidden browser tab หยุด poll ด้วย · AWS SDK ถูก defer จนกว่าจะเรียก cloud storage จริงเพื่อลด RSS ตอน idle
