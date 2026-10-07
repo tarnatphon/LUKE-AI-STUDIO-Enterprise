@@ -47,6 +47,30 @@ function TopStatusBar({
     return number.toFixed(number >= 10 ? 0 : 1);
   };
 
+  // The RAM chip is machine-wide — the same figure Activity Monitor prints as
+  // "Memory Used" — so with a browser open it is never small, and none of that
+  // is this app's fault or this app's number. Show the share LUKE is actually
+  // responsible for next to it: this server process plus the model processes it
+  // spawned. The interface itself runs in a browser tab, so that memory belongs
+  // to the browser and is deliberately not counted here.
+  const serverRssGb = Number.isFinite(Number(telemetry.server_rss_gb)) ? Number(telemetry.server_rss_gb) : null;
+  const modelsGb = Number.isFinite(Number(telemetry.vram_used_gb)) ? Number(telemetry.vram_used_gb) : 0;
+  const hasServerRss = serverRssGb !== null;
+  const lukeGb = (serverRssGb || 0) + modelsGb;
+  const machineUsedGb = Number.isFinite(Number(telemetry.ram_used_gb)) ? Number(telemetry.ram_used_gb) : null;
+  const machineTotalGb = Number.isFinite(Number(telemetry.ram_total_gb)) ? Number(telemetry.ram_total_gb) : null;
+  const ramTitle = hasServerRss
+    ? `LUKE's own footprint: ${serverRssGb.toFixed(2)} GB for the server process + ` +
+      `${modelsGb.toFixed(1)} GB of loaded models in their own processes = ${lukeGb.toFixed(2)} GB. ` +
+      "The interface you are looking at runs in a browser tab, so its memory belongs to the browser. " +
+      (machineUsedGb !== null
+        ? `The dimmed tail is the whole machine: ${machineUsedGb.toFixed(1)} of ` +
+          `${String(machineTotalGb?.toFixed(0))} GB in use — comparable to what Activity Monitor shows ` +
+          `as "Memory Used", so other apps and macOS itself are in it before any model is loaded.`
+        : "The machine-wide reading has not arrived yet.")
+    : "Memory in use across the whole machine — comparable to what Activity Monitor shows " +
+      `as "Memory Used". The server has not reported its own footprint yet.`;
+
   // Several runtimes can be loaded at the same time, so the status bar shows
   // how many models are resident instead of only the first one.
   const loadedCount = (activeModel ? 1 : 0) + (typeof isLlmLoaded === "string" && isLlmLoaded ? 1 : 0);
@@ -164,9 +188,23 @@ function TopStatusBar({
           <span>CPU: {Number.isFinite(Number(telemetry.cpu_usage)) ? telemetry.cpu_usage : "--"}%</span>
         </div>
 
-        {/* RAM Telemetry Chip */}
-        <div className="telemetry-chip" title="System Memory Usage">
-          <span>RAM: {formatGb(telemetry.ram_used_gb)} / {formatGb(telemetry.ram_total_gb)} GB</span>
+        {/* RAM Telemetry Chip.
+            The number the eye lands on is the one this app is responsible for:
+            the server process plus the model processes it spawned. The
+            machine-wide reading stays as a dimmed tail — still one glance away,
+            because it is the context the governor works in, but no longer the
+            headline a reader blames the app for. */}
+        <div className="telemetry-chip" title={ramTitle}>
+          {hasServerRss ? (
+            <span>
+              LUKE: {formatGb(lukeGb, { allowZero: true })} GB
+              <span style={{ opacity: 0.65 }}>
+                {" "}· machine {formatGb(telemetry.ram_used_gb)} / {formatGb(telemetry.ram_total_gb)} GB
+              </span>
+            </span>
+          ) : (
+            <span>RAM: {formatGb(telemetry.ram_used_gb)} / {formatGb(telemetry.ram_total_gb)} GB</span>
+          )}
         </div>
 
         {/* GPU VRAM Telemetry Chip */}

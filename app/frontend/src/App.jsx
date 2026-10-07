@@ -236,6 +236,7 @@ function App() {
 
   const [telemetry, setTelemetry] = useState({
     cpu_usage: 0,
+    server_rss_gb: null,
     ram_used_gb: 0,
     ram_total_gb: 0,
     gpu_name: "Detecting...",
@@ -922,13 +923,23 @@ function App() {
     };
   }, []);
 
-  // Poll system telemetry usage statistics on interval
+  // Poll system telemetry usage statistics on interval.
+  //
+  // A hidden tab has nobody looking at the numbers, and these requests are what
+  // keep the server sampling hardware (vm_stat / nvidia-smi / a whole
+  // `llama-server --list-devices`); the server pauses half a minute after the
+  // last one. So polling in the background wakes the machine for nothing: it
+  // stops with the tab and resumes the instant the tab is visible again, which
+  // is also the moment the server starts sampling again.
   useEffect(() => {
+    let interval = null;
+
     async function updateTelemetry() {
       try {
         const stats = await getTelemetry();
         setTelemetry((prev) => (
           prev.cpu_usage === stats.cpu_usage &&
+          prev.server_rss_gb === stats.server_rss_gb &&
           prev.ram_used_gb === stats.ram_used_gb &&
           prev.ram_total_gb === stats.ram_total_gb &&
           prev.gpu_name === stats.gpu_name &&
@@ -942,10 +953,34 @@ function App() {
       }
     }
 
-    updateTelemetry();
-    const interval = setInterval(updateTelemetry, 1500); // Poll every 1.5 seconds
+    function stopPolling() {
+      if (interval) clearInterval(interval);
+      interval = null;
+    }
 
-    return () => clearInterval(interval);
+    function startPolling() {
+      stopPolling();
+      if (document.hidden) return;
+      interval = setInterval(updateTelemetry, 1500); // Poll every 1.5 seconds
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      updateTelemetry();
+      startPolling();
+    }
+
+    updateTelemetry();
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   // Sync active model settings default parameters

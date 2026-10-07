@@ -1,5 +1,7 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
+> **อัปเดตล่าสุด:** 2026-10-07 (session `arena/bd08f753-luke-ai-studio-enterprise` — รับช่วงงาน GPU/VRAM telemetry + resource governor จาก remote branch `arena/01a10a92…` (7 commits, tip `a65ccfa`) แล้วรวมลงใน session branch ที่ตั้งต้นจาก `main` ณ `bab9e33` โดยเก็บการเปลี่ยน model-cache ของ PR #34 และ post preview ของ PR #36 ไว้ครบ · frontend build ผ่าน · `run-all` 154 passed / 0 failed / 1 skipped (Python suite เป็น opt-in; รันแยกแล้วผ่าน) · ยังต้องยืนยันบน Mac จริง: Metal telemetry, governor unload/restore, sampling pause/resume และ cloud storage lazy-load · รายละเอียดงานและเช็กลิสต์อยู่หัวข้อ 2 และ 6)
+
 > **อัปเดตล่าสุด:** 2026-10-06 (session `arena/ccbe7be3…` — **โมเดลภาพเข้า model cache + โหลดจากสำเนาบนดิสก์ภายในเมื่อมีสำเนาอยู่จริง** — งานชุดนี้ session ก่อนทำไว้แต่ **ไม่เคยถูก push → หายไปกับ sandbox อีกครั้ง (เคสที่ 4)** จึงถูก**เขียนใหม่ทั้งชุดจากโค้ดจริงใน `main`** ไม่ใช่จากข้อความส่งต่อ · cache รองรับ **โฟลเดอร์** (Core ML bundle หลายหมื่นไฟล์) · แก้ **บั๊กที่ทำให้ cache ไม่เคยถูกใช้เลย**: loader มองหาในโฟลเดอร์คนละที่กับที่ปุ่ม "Copy" เขียนไว้ ทั้งโมเดลภาพและโมเดลข้อความ · `/api/model-cache/status` ตอบ `POST` ตามที่ panel เรียกจริง (เดิม GET อย่างเดียว → panel อ่าน 404 แล้วไม่แสดงอะไรเลย) และลิสต์โมเดลภาพด้วย · `coreml_server.py` อ่าน reference config จากสำเนาในเครื่องก่อนเน็ต (`app/runtime-state/huggingface-cache`, ตั้งค่าใหม่ด้วย `LUKE_IMAGE_MODEL_CACHE`) · เทสต์ใหม่ `test-image-model-cache.cjs` 72 checks + probe Python · **วิธีนำขึ้น Mac ดูหัวข้อ 7.6** · **merge เข้า `main` แล้วเป็น `58c8b9d` (PR #34) CI `validation suites` เขียว** — งานจึงไปอยู่บน GitHub แล้ว เหลือแค่ pull+build บน Mac)
 > **อัปเดตล่าสุด:** 2026-10-02 (session `arena/01a0fb7f…` — **แก้ image prompt ไม่ตรงสินค้า**: `buildTemplateImagePrompt`/`buildTemplateAnimatePrompt` ดึงคำอังกฤษจาก `product.name` และ `product.detail` เพิ่มเติมจาก `product.category` เมื่อ category เป็นภาษาไทย ไม่ต้อง fallback เป็น "product" อีก · smoke 104 + ชุด Social Agency 70 = 174 passed · PR #32)
 > **อัปเดตล่าสุด:** 2026-10-01 (session `arena/01a0f582…` — **งานชุด "ป้าย + ปุ่มปฏิเสธรูป + รูปสินค้าจริงแนบโพสต์ Facebook" สร้างใหม่ทั้งชุด** เพราะงานชุดเดียวกันจาก session ก่อนหน้า**ไม่เคยถูก push ขึ้น GitHub และหายไปกับ sandbox** (ซ้ำรูปแบบเคส `5be0bd0`/`1d7d26c` — รายละเอียดการตรวจอยู่ท้ายหัวข้อ 7) · **ป้ายรายการ** (`entry.tags` ≤8 ป้าย × ≤24 ตัวอักษร ผ่าน PATCH calendar + ชิปบนการ์ดปฏิทิน + กรอง/ค้นหาตามป้าย) · **ปุ่ม "ไม่ใช่ — ห้ามใช้รูปนี้"** ในด่านตรวจภาพ: ล็อก fingerprint รูปที่ปฏิเสธ + ล้างผลตรวจ + สร้างภาพใหม่อัตโนมัติ · ภาพใหม่ที่ไบต์เดิมถูกบล็อกซ้ำเอง · **โพสต์ Facebook 2 รูป**: ภาพ AI รูปแรก + รูปสินค้าจริงรูปที่สองแบบไม่แก้ไขอะไรนอกจากย่อด้านยาว 500px (canvas ในเบราว์เซอร์ แคช `<sku>.ref500.jpg` เซิร์ฟเวอร์ไม่เพิ่ม dependency) ส่งแบบ unpublished photos + `feed`+`attached_media` · **ขนาดภาพปฏิทินตั้งได้รายลูกค้า** (default 1024×600 แบนเนอร์) · เทสต์ใหม่ 3 ชุด 30 checks · run-all **147 passed · 0 failed · 0 known-failing · 1 skipped**) 
@@ -20,15 +22,27 @@
 
 | รายการ | ค่า |
 |---|---|
-| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ 2026-10-06 คือ `58c8b9d` (merge ของ PR #34 — โมเดลภาพเข้า model cache) · ก่อนหน้า `446d113` = PR #33 |
+| `main` | ดู sha ล่าสุดด้วย `git log -1 --oneline main` — ณ จุดเริ่ม session 2026-10-07 คือ `bab9e33` (merge PR #36 — full post previews) · ก่อนหน้า `58c8b9d` = PR #34 (model cache). ไฟล์นี้อาจ lag หนึ่ง commit ตามหมายเหตุด้านบน |
 | เวอร์ชัน | `1.0.0-beta.16` (`app/version.json`, tag `v1.0.0-beta.16`) |
-| PR ที่เปิดค้าง | **ไม่มี** — PR #34 (โมเดลภาพเข้า model cache + โหลดจากสำเนาดิสก์ภายในเมื่อมีสำเนา) **merged 2026-10-06 เป็น `58c8b9d`** · CI `validation suites` เขียวทั้ง workflow (run 37418831055, ทุก step ✓) · local run-all ก่อน push: **148 passed / 1 failed / 1 skipped** — ตัวที่ fail คือ `validate-release.sh` ที่ต้อง `imageio_ffmpeg` (CI ติดตั้งให้) · branch `arena/ccbe7be3…` ยังไม่ลบ (session นี้ยังผูกอยู่ — ลบได้หลังปิดงาน) · ⚠️ **ที่เหลืออยู่จริงคือ `arena/01a10a92…` (งาน GPU telemetry + resource governor) ซึ่งยังไม่มี PR — ดูแถว branch ด้านล่าง** |
-| branch บน GitHub (ตรวจด้วย `git ls-remote` 2026-10-06) | ⚠️ **พบงานชุดใหม่ที่ยังไม่ merge:** `arena/01a10a92…` = `a65ccfa` (7 commits, 2026-10-05→06 — GPU/VRAM telemetry + resource governor + ชิป RAM บน status bar, 2,737 insertions, เทสต์ 4 ชุดใหม่) **push แล้วแต่ไม่มี PR** — handoff ของ branch นั้นเขียนไว้เองว่า "push branch แล้ว ยังไม่ merge" ทั้ง 6 รอบ · merge เข้า `main` สะอาดยกเว้น `ARENA_HANDOFF.md` ที่ชนกันแบบแก้ง่าย (`serve.cjs` auto-merge ได้) → **ต้องตัดสินใจก่อนว่าเอาอะไรก่อน หลัง เพราะ PR #34 ก็แก้ `serve.cjs` เช่นกัน** · branch อื่นที่ค้างอยู่ (ตามเอกสารรอบก่อน): `arena/01a0e089…` `2584762` · `arena/01a0e633…` `3095163` · `arena/01a0eb2c…` `6080dd5` · `arena/01a0eb60…`/`01a0ebd4…` `24c2a64` · `arena/01a0f086…` `0ec34bd` · `arena/01a0fb4e…` `e4ca933` · `arena/01a0fb7f…` `9f7668f` · `arena/01a0fba6…` `2984f23` · `ci/validation-suites` `8274bde` — ทุกตัวที่ merge แล้วควรลบ · tag `v1.0.0-beta.16` = `fe84a3c` |
-| งานค้างที่ทราบ | **pull + build บน Mac แล้วรันเช็กลิสต์ 4 ข้อ (หัวข้อ 7.6)** เพื่อยืนยันว่าภาพโหลดจากสำเนาดิสก์ภายในจริง — โค้ดขึ้น `main` แล้ว but ยังไม่มีอะไรถูกยืนยันบนเครื่องจริง · **ตัดสินใจเรื่อง branch `arena/01a10a92…`** (งาน telemetry/governor 7 commits ที่ push แล้วค้างอยู่บน GitHub ไม่มี PR — ชนแค่ `ARENA_HANDOFF.md`) · สร้างภาพ WSB-019 ใหม่ · หัวข้อ 6 เก่า **ปิดครบแล้ว** · sandbox ของ session ก่อนไม่มีอะไรให้กู้ (ตรวจครบทุกทางแล้ว — หัวข้อ 7.6)
+| PR ที่เกี่ยวข้อง | PR #37 (GPU/VRAM telemetry + resource governor; session branch `arena/bd08f753-luke-ai-studio-enterprise`) · PR #36 (full post previews) merged 2026-10-07 เป็น `bab9e33` · PR #34 (model cache) merged 2026-10-06 เป็น `58c8b9d` และ CI เขียว |
+| branch บน GitHub (ตรวจ 2026-10-07) | `arena/01a10a92-luke-ai-studio-enterprise` = `a65ccfa` (7 commits: GPU telemetry + resource governor) ถูก fetch และ integrate ใน session branch นี้; branch ต้นทางยังคงอยู่บน origin เป็นสำเนาประวัติ — อย่า push งานใหม่ไป branch นั้น · branch เก่าที่เหลือตามบันทึกเดิมยังไม่ได้ตรวจซ้ำใน session นี้ · tag `v1.0.0-beta.16` = `fe84a3c` |
+| งานค้างที่ทราบ | ยืนยันบน Mac จริง: model-cache 4 ข้อ (หัวข้อ 7.6) · GPU/VRAM telemetry + resource governor + telemetry pause/resume + lazy cloud-SDK (เช็กลิสต์หัวข้อ 6) — Linux sandbox พิสูจน์ส่วน Metal/การปล่อยและโหลดคืนโมเดลไม่ได้ · สร้างภาพ WSB-019 ใหม่และทำ Mac-only checks ของ Social Agency ที่ยังเหลือในหัวข้อ 6 · branch telemetry เดิม integrate แล้วใน session branch นี้ |
 
 ---
 
 ## 2. งานล่าสุดที่เข้า `main`
+
+### PR #36 (2026-10-07 — merged เป็น `bab9e33`) — full post previews ใน Luke Social Agency
+- preview แบบเต็มและแยกตามแพลตฟอร์ม แสดงแคปชันเต็มและ media layout ใน Style & Editions, post details และ approval queue
+- แยกรูปสินค้าแบบ reference-only และใช้ layout สำหรับ Facebook, Instagram, LINE และ TikTok
+- เทสต์ `test-social-agency-post-preview.cjs` 6 checks; `test-social-agency-image-gate-ui.cjs` 10 checks; smoke 104 checks
+
+### PR #37 — งาน GPU/VRAM telemetry + resource governor (session `arena/bd08f753…`, รับช่วง tip `a65ccfa` จาก `arena/01a10a92…`)
+- `gpu-memory-telemetry.cjs` + `pollMetalVram()` วัด resident set ของ backend ที่ถือโมเดลจริงบน macOS ผ่าน `ps -axo pid=,rss=`; ใช้ Metal working set เป็นเพดาน แทนการแสดง `0.0 / total RAM` และไม่อ้าง RAM ของโปรเซสอื่นว่าเป็น VRAM ของ LUKE
+- `resource-governor.cjs` อ่าน memory pressure จาก macOS compressor/swap หรือ Linux `MemAvailable`/swap, ปรับเกณฑ์ตาม machine tier, และปลดเฉพาะ engine ที่โหลดคืนเองได้; การปลดก่อนโหลดเป็น all-or-nothing และปกป้องงานที่กำลังใช้อยู่ / Social Agency / image generation
+- `telemetry-demand.cjs` หยุด polling ฮาร์ดแวร์เมื่อไม่มี client ดู monitor เกิน 30 วินาที; hidden browser tab หยุด poll ด้วย · AWS SDK ถูก defer จนกว่าจะเรียก cloud storage จริงเพื่อลด RSS ตอน idle
+- RAM chip นำเสนอ footprint ที่ LUKE รับผิดชอบแยกจาก memory ของทั้งเครื่อง; `Generator.jsx` ตรวจสถานะ process ก่อนจะ skip การ restart backend ที่ถูก governor unload ไป
+- เทสต์ใหม่ 4 ชุด: GPU telemetry 44, lazy cloud SDK 12, resource governor 120, telemetry demand 32 checks · Vite build ผ่าน · run-all **154 passed / 0 failed / 1 skipped** (Python suite รันแยกและผ่าน) · **ยังต้องยืนยันบน Mac จริง** — ดูเช็กลิสต์หัวข้อ 6
 
 ### PR #34 (session `arena/ccbe7be3…`, 2026-10-06 — **merged เป็น `58c8b9d`, CI เขียว**) — โมเดลภาพเข้า model cache + โหลดจากสำเนาบนดิสก์ภายในเมื่อมีสำเนา
 > ⚠️ **เขียนใหม่ทั้งชุด** — session ก่อนทำไว้แล้วแต่ไม่เคย push จึงหายไปกับ sandbox (ดูหัวข้อ 7.6) สเปกชุดนี้จึงถูกสร้างใหม่จากการอ่านโค้ดจริงใน `main` ไม่ใช่จากการคาดเดา
@@ -221,7 +235,7 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
 - ยืนยันด้วยการจำลองสภาพจริง: clone สะอาด + `git checkout --detach` แล้วรันสองชุด → ผ่านทั้งคู่ ส่วนก่อนแก้ล้มด้วยข้อความเดียวกับใน log CI
 
 **ค้างของ session `arena/01a0fb7f…` (2026-10-02) — PR #32:**
-- [ ] **merge PR #32** แล้ว `git pull` บน Mac
+- [x] PR #32 merged; prompt fix is on `main` (follow-up PR #33 translated Thai product names).
 - [ ] **ยืนยัน image prompt บน Mac:** สร้างภาพปฏิทิน 1 ใบ → ดู image prompt ต้องไม่เป็น `"product (SKU)"` ถ้าสินค้ามีคำอังกฤษในชื่อหรือรายละเอียด · ถ้าสินค้าเป็นภาษาไทยล้วนทุกฟิลด์ ยังคงเป็น `"product"` (ข้อจำกัดของ SD ที่อ่านภาษาไทยไม่ได้) · **แนะนำ:** เพิ่มคำอธิบายสินค้าภาษาอังกฤษใน `category` หรือ `detail` เพื่อให้ prompt แม่นขึ้น
 
 **ค้างของ session `arena/01a0f582…` (2026-10-01) — ทำบนเครื่อง Mac เท่านั้น (เช็กลิสต์ฟีเจอร์ใหม่):**
@@ -238,6 +252,15 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
 - [ ] **ตรวจไฟล์สถานะด้วย grep** (ใช้ได้ทั้งก่อน/หลังสร้างภาพใหม่):
   `grep -o '"refMode": "[a-z]*"\|"usedProductRef": [a-z]*\|"denoise": [0-9.]*\|"steps": [0-9]*\|"stepsSent": [0-9]*\|"stepsCapped": true\|"warning": "[^"]*"' /Volumes/AI/app/runtime-state/social-agency/thai-modern-bags.json | tail`
   ก่อนสร้างใหม่รายการเก่าจะไม่มี `refMode` (ดูในแอปจะขึ้นเตือนให้ตรวจภาพเทียบสินค้าเอง) · หลังสร้างใหม่ต้องเป็น `"refMode": "img2img"` + `"usedProductRef": true` และไม่มี `warning` เมื่อรูปสินค้าอยู่ครบ
+
+**ค้างของ session `arena/bd08f753…` — telemetry / resource governor (Linux CI ผ่าน; ต้องยืนยันบน Mac):**
+- [ ] หลัง PR merge บนเครื่อง Mac ให้ `git pull --ff-only` แล้ว build ใหม่ (`cd app/frontend && npm install && npx vite build`); `app/dist/` ไม่อยู่ใน git
+- [ ] โหลดโมเดลบน Apple Silicon → RAM chip ต้องแสดงส่วนที่ LUKE รับผิดชอบแยกจาก memory ทั้งเครื่อง และ VRAM used ต้องเพิ่มจากศูนย์; total ควรตาม learned Metal working set (เช่น ~14.3 GB บนเครื่อง 18 GB) ไม่ใช่ total RAM
+- [ ] ทดสอบ governor: ให้แชทโหลดโมเดลแล้วปล่อย idle; เมื่อ memory pressure จริงสูง ให้ log/status แสดง decision + `lastRelease`; ส่งแชทใหม่แล้วโมเดลต้องโหลดคืนเองพร้อม log `[llm] restored …, released by governor`. ภาวะปกติและ swap เก่าที่ค้างหลัง spike ต้องไม่ปลดโมเดล
+- [ ] ทดสอบเส้นทาง load ที่ไม่พอ RAM: governor ต้องคืนพื้นที่เฉพาะเมื่อมี engine ที่ restorable ครอบคลุม shortfall; ถ้ายังไม่พอหลังปลดต้องปฏิเสธ load ตามเดิมและไม่ปลดแบบครึ่งทาง
+- [ ] ระหว่างสร้างภาพจริง/งาน Social Agency ที่กำลังรัน ต้องไม่ปลด image backend; เช็คว่า progress/run จบได้ และ generator restart backend ที่ถูก unload หลังงานเสร็จได้
+- [ ] ซ่อนแท็บ/ปิด browser มากกว่า 30 วินาที → log `[telemetry] … sampling paused`; กลับมาเปิด monitor → sampling resumed และ chip ได้ตัวเลขใหม่ภายในประมาณ 5 วินาที
+- [ ] ลอง list/upload/download ผ่าน cloud storage provider เพื่อยืนยันว่า AWS SDK โหลดเมื่อเรียกใช้จริง ไม่ใช่ตอน server boot
 
 **สิ่งที่ควรรู้ก่อนรอบหน้า:**
 - `ci-baseline.json` ว่าง → **ชุดที่ล้มอีกครั้งคือของใหม่จริง** · อย่าใส่รายการกลับเพื่อให้ CI เขียว ให้แก้ที่ต้นเหตุ
