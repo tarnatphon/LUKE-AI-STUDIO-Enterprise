@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Trash2, Copy, Check, Plus } from "lucide-react";
 import { api, postJson, STATUS_META, PLATFORM_META, ANGLES } from "./lib.js";
+import PostPreview from "./PostPreview.jsx";
 
 const PLATFORM_ORDER = ["facebook", "instagram", "line", "tiktok", "demo"];
 
@@ -29,6 +30,8 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
       ),
     [activeClient]
   );
+  const previewEntry = entries.find((entry) => entry.id === (preview?.entryId || entryId)) || null;
+  const previewProduct = (activeClient?.products || []).find((item) => item.sku === (preview?.sku || previewEntry?.sku)) || null;
 
   useEffect(() => {
     if (!clientId) return;
@@ -281,11 +284,11 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
         <header>
           <Copy size={15} />
           <b>ฉบับต่อแพลตฟอร์ม</b>
-          <span className="sa-muted">Facebook / IG / LINE / TikTok / Demo</span>
+          <span className="sa-muted">ดูข้อความเต็มพร้อมตัวอย่างการจัดวางของแต่ละแพลตฟอร์ม</span>
         </header>
         {previewError && <p className="sa-error-banner">{previewError}</p>}
         <div className="sa-style-form">
-          <select value={entryId} onChange={(e) => setEntryId(e.target.value)} aria-label="เลือกรายการในปฏิทิน">
+          <select value={entryId} onChange={(e) => { setEntryId(e.target.value); setPreview(null); }} aria-label="เลือกรายการในปฏิทิน">
             <option value="">— เขียนจากแคปชันด้านล่าง —</option>
             {entries.map((e) => {
               const meta = STATUS_META[e.status] || { label: e.status };
@@ -299,7 +302,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
           </select>
           <textarea
             value={captionOverride}
-            onChange={(e) => setCaptionOverride(e.target.value)}
+            onChange={(e) => { setCaptionOverride(e.target.value); setPreview(null); }}
             placeholder="วางแคปชันต้นฉบับตรงนี้ (ถ้าไม่เลือกจากปฏิทิน)…"
             rows={3}
           />
@@ -318,15 +321,20 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
               return (
                 <div key={platform} className="sa-style-version">
                   <div className="sa-style-shot-head">
-                    <span className={`sa-platform-chip ${pf.cls}`}>{pf.short}</span>
-                    <b>{pf.label}</b>
                     <span className="sa-muted">{meta.chars} ตัวอักษร{meta.truncated ? " · ตัดทอนแล้ว" : ""} · #{meta.hashtags}</span>
                     <span style={{ flex: 1 }} />
                     <button className="sa-icon-btn sm" title={`คัดลอกฉบับ ${pf.label}`} onClick={() => copy(text, platform)}>
                       {copied === platform ? <Check size={13} /> : <Copy size={13} />}
                     </button>
                   </div>
-                  <p>{text}</p>
+                  <PostPreview
+                    platform={platform}
+                    caption={text}
+                    client={activeClient}
+                    entry={previewEntry}
+                    product={previewProduct}
+                    compact
+                  />
                 </div>
               );
             })}
