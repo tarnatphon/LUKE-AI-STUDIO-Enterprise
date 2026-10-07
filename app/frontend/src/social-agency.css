@@ -901,6 +901,37 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
 }
 .sa-tag.mini.more { opacity: 0.75; }
 
+/* ── chip: "there is a preview to check" eye ─────────────────────────────── */
+.sa-chip-eye {
+  display: inline-flex; align-items: center; flex: none;
+  color: var(--sa-muted);
+}
+.sa-chip:hover .sa-chip-eye { color: var(--sa-primary); }
+
+/* ── ready-made caption examples (CaptionPresets) ────────────────────────── */
+.sa-caption-presets .sa-preset-tabs {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+}
+.sa-preset-tab {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 8px 9px; text-align: left;
+  border: 1px solid var(--sa-outline); border-radius: 10px;
+  background: var(--sa-card-1);
+}
+.sa-preset-tab b { font-size: 0.76rem; }
+.sa-preset-tab span { font-size: 0.64rem; line-height: 1.4; color: var(--sa-muted); }
+.sa-preset-tab:hover { border-color: var(--sa-outline-strong); }
+.sa-preset-tab.active {
+  border-color: var(--sa-primary);
+  background: var(--sa-primary-container);
+  box-shadow: inset 0 0 0 1px var(--sa-primary);
+}
+.sa-preset-tab.active span { color: var(--sa-on-primary-container); }
+.sa-preset-tab:disabled { opacity: 0.6; cursor: default; }
+.sa-preset-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sa-preset-actions .sa-muted { margin-right: auto; }
+.sa-caption-presets .sa-post-preview { margin-top: 2px; }
+
 /* ── responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .sa-wf-lower { grid-template-columns: 1fr; }
@@ -910,4 +941,5 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
   .sa-shell { flex-direction: column; }
   .sa-rail { width: 100%; min-width: 0; max-height: 210px; border-right: 0; border-bottom: 1px solid var(--sa-outline); }
   .sa-legend { display: none; }
+  .sa-caption-presets .sa-preset-tabs { grid-template-columns: 1fr; }
 }

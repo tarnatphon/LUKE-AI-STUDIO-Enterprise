@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2, ListChecks } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2, ListChecks, Eye } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
   bangkokToday, currentMonth, entriesOfMonth,
@@ -11,6 +11,10 @@ const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 function Chip({ entry, onOpen, onDragStart, onDelete, onToggle, selectMode, selected }) {
   const meta = STATUS_META[entry.status] || { label: entry.status, cls: "" };
   const platform = PLATFORM_META[entry.platform] || PLATFORM_META.demo;
+  // An eye on the card means there is something to look at before approving:
+  // the entry already carries a caption and/or prepared media, and opening it
+  // lands on the full post preview (it sits at the top of the details).
+  const previewable = Boolean(entry.caption || entry.publishedCaption || entry.image?.url || entry.video?.url);
   return (
     <button
       className={`sa-chip ${meta.cls} ${entry.inFlight ? "running" : ""}${selected ? " selected" : ""}`}
@@ -20,9 +24,14 @@ function Chip({ entry, onOpen, onDragStart, onDelete, onToggle, selectMode, sele
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => (selectMode && onToggle ? onToggle(entry.id) : onOpen(entry.id))}
-      title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}`}
+      title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}${previewable ? " · มีพรีวิวให้ตรวจก่อนอนุมัติ" : ""}`}
     >
       <span className="sa-chip-time">{entry.time}</span>
+      {previewable && (
+        <span className="sa-chip-eye" aria-hidden="true" title="เปิดดูพรีวิวภาพและข้อความก่อนอนุมัติ">
+          <Eye size={11} />
+        </span>
+      )}
       <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
       <span className="sa-chip-status">{meta.label}</span>
       {(entry.tags?.length || 0) > 0 && (
