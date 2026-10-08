@@ -418,3 +418,25 @@ cd ../.. && ./mac.sh
 **สิ่งที่รอเจ้าของงานตัดสิน (2 ข้อ):** เป้าหมายคุณภาพ (สูงสุดเท่าที่เครื่องไหว vs เบา/เร็ว) และนโยบาย license (Apache-2.0/commercial-safe vs ยอมรับ non-commercial ของ FLUX.1) — ประเด็นเครื่องถูกตอบแล้วข้างบน
 
 **บทเรียนเชิงปฏิบัติของ session นี้ (เกี่ยวกับ sandbox/git):** commit ของเทิร์นก่อน (`b67a8c5`) ถูก push ขึ้น remote สำเร็จ แต่**object ไม่อยู่ใน sandbox อีกในเทิร์นถัดมา** (`git cat-file -t b67a8c5` → Not a valid object name · reflog มีแค่ clone + checkout + commit ล่าสุด) → วิธีซ่อมที่ใช้ได้: `git fetch origin <branch>` แล้ว `git reset --soft FETCH_HEAD` + commit ใหม่ (ได้ parent ที่ถูกต้องและ push แบบ fast-forward) ⇒ **ทุก session ควร commit + push ให้จบในเทิร์นเดียวกัน และอย่าอ้าง sha ที่ยังไม่ push ลงเอกสาร**
+
+---
+
+## 7.9 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A1+A2 ลงมือจริง
+
+**คำตอบผู้ใช้ที่ยืนยันแล้ว (ผ่าน ask_user):** เครื่องเป้าหมาย = **Mac Apple Silicon 18 GB** (ตรงกับหลักฐานในหัวข้อ 7.8) · เริ่ม **Phase A ก่อน แล้วต่อ IP-Adapter** · license: **ยอมรับ non-commercial ได้** (เปิดทาง FLUX.1-Kontext)
+
+**งานที่ทำ (commit `bd9addc`, push แล้ว):**
+- `app/frontend/src/lib/reference-storage.mjs` (ใหม่) — `toPersistedReferences`, `referencesNeedingHydration`, `referenceUrlFromAsset`, `referenceFileUrl`, `blobToDataUrl` (โมดูล pure, reader inject ได้เพื่อเทสต์ใน node)
+- `api.js` — `generateImage` ไม่ส่ง `reference_images` / `reference_settings` / `reference_mode` อีก (backend ไม่อ่าน); ลบ `normalizeReferenceMode`
+- `Generator.jsx` — persist ผ่าน `toPersistedReferences` + `REFERENCE_STORAGE_KEY`; เพิ่ม effect hydrate `src` จากดิสก์ (รองรับ record เก่าที่มีแค่ `assetId` ผ่าน `getAsset`); `referencePayload` เก็บ `assetId` + `url` (ไม่มี base64); เตือนจำนวน reference ที่ไม่มีต้นฉบับ
+- `ReferenceManager.jsx` — เก็บ `url` จากผลอัปโหลด; `normalizeReference` คง `url`/`assetId`/`sourceMissing`; การ์ดไม่มีต้นฉบับแสดง "Source missing"
+- `serve.cjs` — `REFERENCE_OUTPUTS`, `GET /api/reference-file?filename=` (pathInside + immutable cache), ผลอัปโหลดคืน `reference.url`
+- เทสต์ใหม่: `test-image-reference-storage.mjs` (35 checks) · `test-image-reference-payload.cjs` (29 checks)
+
+**ผลตรวจ (sandbox นี้ รันจริง):** `vite build` ผ่าน · eslint 294 ไฟล์ 0 problems · `run-all.cjs` **156 passed · 1 failed · 1 skipped** — ที่ fail คือ `validate-release.sh` เพราะไม่มี Python `imageio_ffmpeg` (ต้อง `--include-python` / ติดตั้งใน CI) · `test-frontend-api-contract.cjs` 307/307 URL (route ใหม่รวมอยู่ด้วย)
+
+**หมายเหตุสภาพแวดล้อมของ sandbox:** ต้อง `npm ci --prefix scripts/server` และ `cd app/frontend && npm ci && npx vite build` ก่อน เทสต์กลุ่มที่ต้อง boot เซิร์ฟเวอร์/читают `app/dist` จึงจะรันได้ (5 ชุด fail แบบ ENOENT/404 ถ้าไม่ build)
+
+**Phase A ที่ยังเหลือ:** (1) Hires fix 2 จังหวะ — ต้องสลับ txt2img ไป `/sdapi/v1/txt2img` (`enable_hr`) หรือ `<sd_cpp_extra_args>` + UI toggle + ระวังเส้นทาง CoreML ที่ไม่รองรับ (2) recipe ต่อโมเดล (3) ทำสไลเดอร์ใน `ReferenceManager.jsx:646-653` ให้สัจจริงหรือซ่อน
+
+**ยังต้องยืนยันบน Mac จริง:** การ hydrate reference หลัง reload (ต้องมีไฟล์ใน `app/outputs/references/`), ภาพที่เจนด้วย reference หลังอัปเดตยังเหมือนเดิม, และ `GET /api/reference-file` ตอบผ่านเซิร์ฟเวอร์จริงบนพอร์ตของแอป
