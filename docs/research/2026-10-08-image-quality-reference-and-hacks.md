@@ -103,7 +103,9 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 | FLUX.1-Kontext GGUF | Q4_K_M 6.93 GB · Q5_K_M 8.42 GB |
 | t5xxl (encoder ของ FLUX) | fp16 ~9.8 GB (หรือ fp8/Q8 ~5 GB) · clip_l 246 MB · ae.safetensors 335 MB |
 | Z-Image Turbo GGUF | Q4_K_M 4.5 GB · Q8_0 7.22 GB |
-| Qwen3-4B (encoder ของ Z-Image) | safetensors 8.04 GB · GGUF Q5_K_M 2.89 GB |
+| Qwen3-4B (encoder ของ Z-Image และ FLUX.2-klein) | safetensors 8.04 GB · GGUF Q5_K_M 2.89 GB · Q4_K_M 2.5 GB |
+| **FLUX.2-klein 4B** GGUF | Q4_K_M **2.6 GB** · Q5_0 2.92 GB · BF16 7.75 GB (Apache-2.0, 4 steps, แก้ภาพด้วย `ref_images` ได้) |
+| t5xxl (encoder ของ FLUX.1) | f16 9.53 GB · Q8_0 5.06 GB · Q5_K_M 3.39 GB · **Q4_K_M 2.9 GB** |
 
 **Tier เครื่องที่แนะนำ (ค่าประมาณจากแหล่งอ้างอิงในหัวข้อ 9)**
 
@@ -133,22 +135,29 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
    * native: `POST /sdcpp/v1/img_gen` body มี `ref_images: [dataURL…]`, `ref_image_args`, `increase_ref_index`
    * ทางลัดบน 721: ฝัง `<sd_cpp_extra_args>{"ref_images":[…]}</sd_cpp_extra_args>` ต่อท้าย prompt แล้วยิง `/v1/images/generations` (สคีมาเดียวกัน — `routes_openai.cpp` อ่านคีย์นี้)
    * multipart: `POST /v1/images/edits` ด้วย `image[]` (721 มีแล้ว)
-8. **เลือกโมเดลเริ่มต้น**: Z-Image Turbo (สายเร็ว/เครื่องเล็ก) หรือ Qwen-Image-Edit 2509 (สาย reference/แก้ภาพ) — FLUX.1-Kontext เป็นตัวเลือกที่ 3 (license non-commercial)
+8. **เลือกโมเดลเริ่มต้น** (ปรับตามเครื่อง 18 GB ตามหัวข้อ 11): **FLUX.2-klein 4B** (Apache-2.0, 4 steps, ref edit, ~5.9 GB) หรือ **Z-Image Turbo** (สายเร็ว/เครื่องเล็ก, ~7.7 GB) — FLUX.1-Kontext Q4 (~10.4 GB) เป็นตัวเลือกที่ 3 ถ้ายอมรับ license non-commercial; **Qwen-Image-Edit / Qwen-Image-2.1 อย่าใส่ในแผนเครื่องนี้**
 
 **Recipe ที่เสนอ** (ค่าเริ่มต้นต่อตระกูล — ใช้เป็น primitive ของ "ไม่ต้องตั้งอะไร")
 
 ```json
 {
   "z-image-turbo":   { "kind": "txt2img", "steps": 8, "cfg": 1.0, "sampler": "euler_a", "size": "1024x1024",
-                       "files": ["diffusion", "vae", "llm"], "preprocess": "resize_longest_1536" },
+                       "files": ["diffusion", "vae", "llm"], "preprocess": "resize_longest_1536", "vram": "~7.7GB" },
+  "flux2-klein-4b":  { "kind": "edit", "steps": 4, "cfg": 1.0, "sampler": "euler",
+                       "files": ["diffusion", "vae", "llm"], "ref_mode": "flux2", "vram": "~5.9GB",
+                       "note": "Apache-2.0 · ตัวแรกที่แนะนำสำหรับเครื่อง 18 GB" },
+  "flux-kontext":    { "kind": "edit", "steps": 20, "cfg": 1.0, "sampler": "euler",
+                       "preprocess": "ref:exact_max_1024", "vram": "~10.4GB + offload",
+                       "note": "cfg ต้อง = 1 · license non-commercial" },
   "qwen-image-edit": { "kind": "edit", "ref_mode": "vae+vlm", "ref_args": "resize_before_vae=true",
                        "steps": 20, "cfg": 2.5, "sampler": "euler", "flow_shift": 3,
-                       "preprocess": "ref:exact_max_1024", "increase_ref_index": true },
-  "flux-kontext":    { "kind": "edit", "steps": 20, "cfg": 1.0, "sampler": "euler",
-                       "preprocess": "ref:exact_max_1024", "note": "cfg ต้อง = 1" },
+                       "preprocess": "ref:exact_max_1024", "increase_ref_index": true,
+                       "vram": "~15.8GB", "note": "เกินงบ 14.3 GB ของเครื่อง 18 GB — เก็บไว้ใช้กับเครื่อง 24 GB" },
   "sdxl-lightning":  { "kind": "txt2img", "steps": 6, "cfg": 1.5, "sampler": "dpm++2m", "size": "1024x1024",
                        "hires": { "scale": 1.5, "denoise": 0.45 } },
-  "sdxl-ipa":        { "kind": "txt2img+identity", "ipa_strength": 0.75, "steps": 28, "cfg": 6.0, "hires": { "scale": 1.5 } }
+  "sdxl-ipa":        { "kind": "txt2img+identity", "ipa_strength": 0.75, "steps": 28, "cfg": 6.0,
+                       "files": ["checkpoint", "clip_vision", "ip_adapter"], "vram": "~10GB",
+                       "hires": { "scale": 1.5 } }
 }
 ```
 
@@ -211,15 +220,17 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 | 6 | Auto-crop ใบหน้าเป็น ref เสริม | ความเหมือนหน้าดีขึ้นกับทุกเส้นทาง | 1 วัน | ต่ำ |
 | 7 | Two-pass (เจน → hires) ในตัว | งานพร้อมพิมพ์ | 1 วัน | ต่ำ |
 | 8 | Face-detail pass (ADetailer บน L2 / crop+img2img บน L0) | หน้าไม่พัง = ความรู้สึก "โปร" | 1–2 วัน | ต้องจูน 0.25–0.4 |
-| 9 | IP-Adapter Plus (SDXL) | identity จากรูปเดียวบนเช็คพอยต์เดิม | 3–5 วัน (พร้อมอัป backend) | ต้องโหลด clip_vision + adapter (license OK) |
-| 10 | โหลด edit model (Qwen-Edit/Kontext/Z-Image) | กระโดดคุณภาพข้ามรุ่น | 1–2 สัปดาห์ | RAM/ดิสก์ 10–20 GB/โมเดล |
-| 11 | Qwen-Image-2.1 | เพดานคุณภาพใหม่ (10 refs, RGBA, 2K) | ต่อจาก 10 | ต้อง 16–24 GB |
+| 9 | **IP-Adapter Plus (SDXL)** — ⭐ คุ้มสุดของเครื่อง 18 GB | identity จากรูปเดียวบนเช็คพอยต์เดิมที่ใช้อยู่ (~10 GB รวม) | 3–5 วัน (แค่อัป tag แล้ว build Metal) | ต้องโหลด clip_vision (~2.5 GB) + adapter (~0.85 GB) |
+| 10 | โหลด edit model ยุคใหม่: **FLUX.2-klein 4B** (~5.9 GB) หรือ **Z-Image Turbo** (~7.7 GB) | กระโดดคุณภาพข้ามรุ่น + แก้ภาพจาก ref | 1–2 สัปดาห์ | ต้องมี multi-file model support; Kontext Q4 (~10.4 GB) ผ่านแต่ต้อง offload |
+| 11 | Qwen-Image-2.1 | เพดานคุณภาพใหม่ (10 refs, RGBA, 2K) | ❌ **ไม่ผ่านเครื่องนี้** (~>20 GB) | ต้อง GPU 24 GB |
 | 12 | **เทรน LoRA ตัวตน** จากรูป 10–20 ใบ (Qwen-Edit 2511 / SDXL) | ความเหมือนระดับ "คนนี้แน่นอน" และเจนซ้ำได้ทุกฉาก | 2–4 วันต่อคน + GPU | ต้องมีชุดข้อมูล + สิทธิ์ในภาพ |
 | 13 | `cache_mode` (conditioning cache) + `--diffusion-fa` | เร็วขึ้นในรอบถัดไปของภาพเดียวกัน | ครึ่งวัน (หลังอัป 945) | คุณภาพเปลี่ยนเล็กน้อย |
 | 14 | ใช้ `/sdcpp/v1/img_gen` async + preview + cancel | progress จริง, ยกเลิกได้, ได้ภาพพรีวิว | 3–5 วัน | ต้องแก้ทั้ง frontend/backend |
 | 15 | "Reference หลายใบแบบมีลำดับ" (`increase_ref_index` + ลำดับภาพที่ส่ง) | จัดวางสินค้า/คนหลายตัวได้ | 1 วัน | ต้องมี edit model |
 
 > คำเตือนที่ควรพูดตรง ๆ: **แฮ็กที่ 12 (LoRA) คือทางเดียวที่ทำให้ "เหมือนต้นฉบับ 100%" ได้จริง** บน GPU บ้าน ๆ ส่วน 9–11 ทำให้ "ใกล้มาก" โดยไม่ต้องเทรนอะไร
+
+> **อัปเดต 2026-10-08 (หลังตรวจเครื่องเป้าหมาย):** หลักฐานใน repo ชี้ว่าเครื่องจริงคือ **Apple Silicon 18 GB** (Metal working set ~14.3 GB) → **แฮ็ก #11 (Qwen-Image-2.1) ตกไป** และ **#10 ต้องเปลี่ยนโมเดลเป้าหมายจาก Qwen-Image-Edit 2511 → FLUX.2-klein 4B / Z-Image Turbo** ส่วน **#9 (IP-Adapter Plus บน SDXL) กลายเป็นแฮ็กที่คุ้มที่สุดของเครื่องนี้** — รายละเอียดและการคำนวณหน่วยความจำอยู่ที่ **หัวข้อ 11**
 
 ---
 
@@ -231,14 +242,17 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 * เทสต์ใหม่ตามแบบ repo: `scripts/validation/test-image-reference-payload-contract.cjs` (payload ต้องไม่มี base64), `test-frontend-reference-storage.cjs` (localStorage ต้องไม่โตเกิน X), `test-image-hires-plan.cjs`
 * เกณฑ์ผ่าน: payload ≤ 50 KB/ครั้ง, reference 20 รูปไม่หาย, Hires เปิดได้โดยไม่พัง CoreML path
 
-**Phase B — Reference ของจริง (2–3 สัปดาห์)**
-* งาน: multi-file model support + `ref_images` จริง (เลือกทางใดทางหนึ่งจากหัวข้อ 4) + Reference Router + auto-preprocess + face-detail pass
-* เทสต์: `test-image-multifile-model-load.cjs`, `test-image-reference-sd-cpp-extra-args.cjs`, `test-image-reference-router.cjs`
-* เกณฑ์ผ่าน: ส่งรูปคน 1 ใบ + prompt เปลี่ยนฉาก → หน้าเหมือนเดิมระดับที่คนทั่วไปแยกไม่ออก (วัดด้วย cosine similarity ของ embedding ใบหน้า ≥ 0.6) และเวลาเจนต่อภาพอยู่ใน ±30% ของเดิม
+**Phase B — Reference ของจริง บนงบหน่วยความจำของเครื่อง (2–3 สัปดาห์)**
+* งาน: **(B1)** IP-Adapter Plus บน SDXL (อัป tag ของ Metal build + `--clip_vision/--ip-adapter/--ip-adapter-image/--ip-adapter-strength`) **(B2)** multi-file model support + `ref_images` จริง **(B3)** Reference Router + auto-preprocess + face-detail pass
+* โมเดลเป้าหมายของ Phase B (เครื่อง 18 GB): **FLUX.2-klein 4B** (~5.9 GB) และ **Z-Image Turbo** (~7.7 GB)
+* เทสต์: `test-image-multifile-model-load.cjs`, `test-image-reference-sd-cpp-extra-args.cjs`, `test-image-reference-router.cjs`, `test-image-ip-adapter-flags.cjs`
+* เกณฑ์ผ่าน: ส่งรูปคน 1 ใบ + prompt เปลี่ยนฉาก → หน้าเหมือนเดิมระดับที่คนทั่วไปแยกไม่ออก (วัดด้วย cosine similarity ของ embedding ใบหน้า ≥ 0.6) และ VRAM peak ต้องไม่ชนเพดาน Metal working set ของเครื่อง
 
-**Phase C — อัป backend + identity + ของแถม (3–4 สัปดาห์)**
-* งาน: อัปเป็น `master-945` (พร้อม cudart), IP-Adapter Plus, ADetailer, Qwen-Image-2.1, async job API, cache
-* ความเสี่ยงที่ต้องเฝ้า: ชื่อ asset ใหม่, cudart แยกไฟล์, Linux ต้อง glibc ใหม่, ขนาด zip CUDA ~338 MB + cudart 563 MB
+**Phase C — ของแถม + ประสบการณ์ใช้งาน (3–4 สัปดาห์)**
+* งาน: ADetailer (ซ่อมหน้า), async job API + preview + cancel, conditioning cache, ESRGAN upscale ในขั้นเจน
+* บน Mac ไม่ต้องทำขั้นตอน cudart แบบ Windows — แค่อัป `PINNED_TAG` ใน `scripts/build/build_from_source.sh` แล้ว build Metal ใหม่
+* ความเสี่ยงที่ต้องเฝ้า: ชื่อ asset เปลี่ยนในรุ่นใหม่, Linux ต้อง glibc ใหม่ (ถ้าอัป tag ของ Linux ด้วย), ขนาด zip CUDA+cudart (เฉพาะ Windows)
+* **ไม่ทำในเครื่องนี้**: Qwen-Image-2.1, Qwen-Image-Edit 2511 (เกินงบ ~14.3 GB)
 
 ---
 
@@ -277,10 +291,55 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 
 ---
 
-## 10) สิ่งที่ต้องให้เจ้าของงานตัดสิน (3 ข้อ)
+## 10) สิ่งที่ต้องให้เจ้าของงานตัดสิน
 
-1. **เป้าหมายคุณภาพ**: "ใกล้ GPT Image 2 ให้ได้มากที่สุดบนเครื่องตัวเอง" (→ เดิน L1/L2 เต็มทาง) หรือ "พอใช้ เร็ว ไม่หนักเครื่อง" (→ L0 + Z-Image Turbo)
-2. **เครื่องเป้าหมายจริง**: CPU/GPU/VRAM/RAM/ดิสก์ว่าง — เป็นตัวกำหนดว่า Qwen-Image-2.1 (24 GB) คุ้มหรือควรหยุดที่ Z-Image/FLUX-Kontext
-3. **นโยบายโมเดล**: ยอมรับ license แบบ non-commercial (FLUX.1) หรือต้อง Apache-2.0 เท่านั้น (Qwen/Z-Image) — และยอมให้แอปดาวน์โหลดชุดโมเดล 10–20 GB ต่อโมเดลได้หรือไม่
+| # | คำถาม | สถานะ |
+|---|---|---|
+| 1 | **เป้าหมายคุณภาพ**: "ใกล้ GPT Image 2 ให้ได้มากที่สุดบนเครื่องตัวเอง" หรือ "พอใช้ เร็ว ไม่หนักเครื่อง" | ⬜ ยังต้องเลือก → เอกสารนี้เสนอ **เส้นกลาง**: ทำ L0 + ของที่ผ่านเกณฑ์หน่วยความจำของเครื่องจริง (หัวข้อ 11) |
+| 2 | **เครื่องเป้าหมายจริง** | ✅ **ตอบจากหลักฐานใน repo แล้ว: Apple Silicon 18 GB (Metal working set ~14.3 GB)** — ดูหัวข้อ 11 |
+| 3 | **นโยบายโมเดล**: ยอมรับ license แบบ non-commercial (FLUX.1) หรือต้อง Apache-2.0 / commercial-safe เท่านั้น (FLUX.2-klein, Z-Image, Qwen) — และยอมให้แอปดาวน์โหลดชุดโมเดลหลาย GB ต่อโมเดลได้หรือไม่ | ⬜ ยังต้องเลือก (กระทบตัวเลือก Kontext vs klein) |
 
-> ข้อเสนอของผม: เริ่ม **Phase A ทันที** (แก้ของเสียเปล่า + hires + recipe ใช้เวลาไม่ถึง 2 วัน และวัดผลได้เลย) แล้วทำ **Phase B ทาง "Qwen-Image-Edit 2509 + ref_images"** เป็นตัวหลัก ส่วน Phase C ค่อยตามหลังเมื่อเครื่องเป้าหมายชัด
+> ข้อเสนอของผม (ปรับตามเครื่อง 18 GB แล้ว): เริ่ม **Phase A ทันที** (แก้ของเสียเปล่า + hires + recipe — ไม่ต้องโหลดโมเดลอะไรเพิ่ม และวัดผลได้เลย) → ต่อด้วย **IP-Adapter Plus บน SDXL ที่มีอยู่** (ได้ identity จริง ใช้หน่วยความจำน้อยที่สุด) → แล้วค่อยเพิ่ม **FLUX.2-klein 4B** เป็นโมเดลยุคใหม่ตัวแรก ส่วน Qwen-Image-Edit 2509 / Qwen-Image-2.1 ให้ **ตัดออกจากแผนของเครื่องนี้** (ไม่ผ่านงบหน่วยความจำ) เว้นแต่จะอัปเครื่อง
+
+---
+
+## 11) เครื่องเป้าหมาย — หลักฐานจาก repo และ shortlist ที่แก้ใหม่ (2026-10-08)
+
+### 11.1 หลักฐาน (ทุกอย่างอยู่ใน repo นี้)
+
+| หลักฐาน | ที่มา | บอกอะไร |
+|---|---|---|
+| `LUKE: 0.1 GB · machine 10 / 18 GB` + `Metal's recommended working set (about 14.3 GB on an 18 GB M3 Pro)` + `learned from ggml_metal_device_init` | `README.md:266-278` (FAQ ที่เขียนจากเครื่องจริง) | **Apple Silicon unified memory 18 GB → เพดานที่โหลดได้จริง ~14.3 GB** (ไม่ใช่ 18) |
+| `scripts/workers/coreml_server.py` + `--model-version` + CoreML reference cache | `scripts/server/serve.cjs:6930-6941` | ใช้เส้นทาง Core ML (Apple NPU) อยู่ด้วย |
+| `BACKEND_PATH="$APP_DIR/backend/mac/sd"` + `PINNED_TAG="master-685-19bdfe2"` | `mac.sh:26`, `scripts/build/build_from_source.sh:22,39-56` | **บน Mac อัปเกรด engine = เปลี่ยน tag แล้ว `cmake -DSD_METAL=ON` เอง** → ไม่ต้องรอ release asset และไม่ต้องจัดการ cudart แบบ Windows |
+| repo จริงอยู่บน `/Volumes/AI/LUKE-AI-STUDIO-Enterprise` | `ARENA_HANDOFF.md:362` | ดิสก์ภายนอก = ที่เก็บโมเดล (ขนาดโมเดลหลาย GB ไม่ใช่ปัญหาเรื่องดิสก์ภายใน) |
+
+### 11.2 คำนวณ: อะไร "ผ่าน" บนงบ ~14.3 GB (น้ำหนักโมเดล + encoder + VAE)
+
+| ชุด | น้ำหนักรวม (ประมาณ) | ผล |
+|---|---|---|
+| SDXL ที่มีอยู่ + **IP-Adapter Plus (vit-h)** + clip_vision ViT-H | 6.6 + 0.85 + ~2.5 = **~10 GB** | ✅ ผ่านสบาย (เหลือ headroom ให้ hires/ESRGAN) |
+| **FLUX.2-klein 4B** (Q4_K_M 2.6) + Qwen3-4B Q5 (2.9) + ae (0.34) | **~5.9 GB** | ✅ ผ่านมาก · Apache-2.0 · 4 steps · แก้ภาพด้วย `ref_images` ได้ |
+| **Z-Image Turbo** Q4 (4.5) + Qwen3-4B Q5 (2.9) + ae (0.34) | **~7.7 GB** | ✅ ผ่าน · 8 steps · txt2img ล้วน |
+| FLUX.1-Kontext Q4_K_M (6.93) + t5xxl Q4_K_M (2.9) + clip_l (0.25) + ae (0.34) | **~10.4 GB** | ⚠️ ผ่านแต่ต้อง `--offload-to-cpu`/`--clip-on-cpu` · license **non-commercial** |
+| Qwen-Image-Edit 2509 Q3_K_M (9.76) + Qwen2.5-VL-7B Q4_K_M (~4.7) + mmproj (1.1) + vae (0.25) | **~15.8 GB** | ❌ เกิน 14.3 GB และ RAM 18 GB ต้องแบ่งให้ macOS |
+| Qwen-Image-Edit 2511 Q4_K_M (13.1) + encoder | **~19 GB** | ❌ |
+| Qwen-Image-2.1 (7B DiT + 8B VL) | **>20 GB** | ❌ |
+
+> เครื่องหมาย ⚠️ ยังต้องทดลองจริงเพราะ sd.cpp โหลด encoder/VAE แยกและปล่อยคืนได้ (`--offload-to-cpu`, `--vae-on-cpu`, `--clip-on-cpu`) — ตัวเลขนี้คือ "น้ำหนักที่ต้องอยู่ในหน่วยความจำพร้อมกัน" ไม่ใช่ RAM ทั้งหมด
+
+### 11.3 ผลต่อแผน
+
+* **Phase B เปลี่ยนเป้าหมาย**: ไม่ใช่ Qwen-Image-Edit แต่เป็น **(ก) FLUX.2-klein 4B** (Apache-2.0, 4 steps, ref edit) และ **(ข) Z-Image Turbo** (txt2img เร็ว) — ทั้งคู่น้ำหนักรวม < 8 GB
+* **IP-Adapter Plus ย้ายขึ้นมาเป็น Phase B** (แทนที่จะเป็น Phase C): งานน้อยกว่า multi-file model มาก (เพิ่มไฟล์ 2 ไฟล์ + flag 3 ตัว) แต่ให้ "identity จากรูปเดียว" ซึ่งเป็นโจทย์ข้อ 2 ของผู้ใช้โดยตรง — และทำได้ทันทีหลังอัป tag ของ Metal build
+* **Phase C ที่เหลือ**: ADetailer (ซ่อมหน้า — ตัวช่วยคุณภาพที่ถูกที่สุด), async job/preview/cancel, conditioning cache
+* **Qwen-Image-2.1 / Qwen-Image-Edit 2511**: เก็บไว้สำหรับเครื่อง GPU 24 GB หรือ cloud — ไม่ใส่ในแผนเครื่องนี้
+
+### 11.4 บันไดที่เสนอสำหรับเครื่อง 18 GB (เรียงตาม "ได้เท่าไหร่ ÷ ใช้หน่วยความจำเท่าไหร่")
+
+1. **Phase A** (ไม่ใช้หน่วยความจำเพิ่มเลย) — ล้าง payload, reference ไปดิสก์, hires fix, recipe, prompt lock
+2. **IP-Adapter Plus บน SDXL** (~3.4 GB เพิ่ม, identity จริง, ใช้เช็คพอยต์เดิม 6.6 GB)
+3. **FLUX.2-klein 4B** (~5.9 GB) — โมเดลยุคใหม่ Apache-2.0 ตัวแรก, ref edit, 4 steps
+4. **Z-Image Turbo** (~7.7 GB) — สำหรับเจนใหม่เร็ว ๆ / สายภาพสวย
+5. **ADetailer** — ทำให้หน้าคมทุกเส้นทางข้างบน
+
