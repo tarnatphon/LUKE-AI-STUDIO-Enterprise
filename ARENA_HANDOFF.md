@@ -397,3 +397,24 @@ cd ../.. && ./mac.sh
 **สิ่งที่ทำแทนการกู้:** อ่านข้อความส่งต่อ (ซึ่งเป็นสเปกที่ละเอียดพอ) + อ่านโค้ดจริงใน `main` แล้ว**เขียนฟีเจอร์ชุดนี้ขึ้นใหม่ทั้งหมด** (หัวข้อ 2 "PR #38") — รวมถึงเทสต์ใหม่ 1 ชุด และบั๊กจริง 1 ตัวที่เจอระหว่างทาง (ด่านหลักฐานราคาไม่เคยนับ `product.price` เป็นหลักฐาน ทำให้แคปชันที่อ้างราคาจากข้อมูลจริงถูกตีว่าอ้างเกินทุกครั้ง) · **สิ่งที่เขียนใหม่ได้ตรงตามสเปก แต่ไม่ใช่ไบต์เดิมของ commit ที่หาย** — ถ้าเจ้าของงานมีสำเนา `86f6cf2` อยู่จริงบนเครื่อง Mac (เช่นใน reflog ของ repo ที่ `/Volumes/AI`) การเทียบ diff กับ PR #38 จะบอกได้ว่าของเดิมต่างตรงไหน
 
 **กติกาซ้ำ:** ทุก session ต้อง `commit → push → เปิด PR → merge เข้า main` ให้จบใน session เดียวกัน · ถ้า merge ไม่ทัน ให้ push branch **และ** เขียน sha ที่ push จริงลงหัวข้อ 1 (sha ที่ยังไม่ push ห้ามเขียนลงเอกสาร — เอกสารที่อ้าง commit ที่ไม่มีอยู่ทำให้ session ถัดไปต้องเสียเวลาไล่หาของที่ไม่มี)
+
+---
+
+## 7.8 บันทึก session `arena/68f04c57…` (2026-10-08) — วิจัย: คุณภาพการเจนภาพ / Reference Image / แฮ็ก
+
+**คำขอที่เข้ามา:** ผู้ใช้ถาม 3 เรื่องก่อนให้ลงมือแก้โค้ด — (1) ทำ Create Image ให้มีประสิทธิภาพใกล้ ChatGPT Image 2 พร้อมหา reference ที่ไวรัสบนเว็บ/YouTube (2) ทำ Reference Image ให้ได้ผลใกล้ต้นฉบับและ "ใช้งานง่ายโดยไม่ต้องตั้งอะไร" (3) ขอให้แนะนำแฮ็กที่ทำแล้วดีขึ้น
+
+**สิ่งที่ทำใน session นี้ (ยังไม่แก้โค้ดแอป — เป็นการวิจัยก่อนตัดสินใจ):**
+- เขียนเอกสารวิจัยใหม่ `docs/research/2026-10-08-image-quality-reference-and-hacks.md`
+- เปิด PR #39 (base `main`) · branch `arena/68f04c57-luke-ai-studio-enterprise` · **sha ที่ push จริง: `a3c35f3`** (commit ก่อนหน้าใน branch เดียวกัน: `b67a8c5`)
+
+**ข้อค้นพบสำคัญ (มีหลักฐานไฟล์:บรรทัดในเอกสาร):**
+1. ฟิลด์ `reference_images` / `reference_settings` / `reference_mode` ที่ frontend ส่งไป backend **ถูกเมินทั้งหมด** (upstream `/v1/images/generations` และ `/sdapi/v1/img2img` ไม่มีฟิลด์เหล่านี้) — ตรงกับคอมเมนต์ใน `scripts/server/social-agency-runtime.cjs:379-382`
+2. ทางเดียวที่ทำงานจริงวันนี้คือใช้รูปอ้างอิงเป็น `init_image` (img2img) → ได้โครงเดิม ไม่ได้ identity เดิม และสไลเดอร์ 3 ตัว + เช็กบ็อกซ์ 4 ตัวใน `ReferenceManager.jsx:646-653` ไม่มีผลถึง backend
+3. backend ที่แอปใช้ (`master-721` / Linux `master-685`) ยังไม่มี IP-Adapter (เข้า upstream 24 ก.ค. 2026), ADetailer (14 ก.ค. 2026), ref-image presets + `image_preprocess` (ก.ย. 2026) — แต่ **มี** Hires fix, `/v1/images/edits`, `ref_images`, `sd_cpp_extra_args` แล้ว
+4. กำแพงคุณภาพคือแอปโหลดได้แค่เช็คพอยต์ไฟล์เดียว (SD1.5/SDXL) ทั้งที่ engine รองรับ Qwen-Image-Edit / Kontext / Z-Image / FLUX.2 แล้ว
+5. **เครื่องเป้าหมายยืนยันจากหลักฐานใน repo: Apple Silicon 18 GB (Metal working set ~14.3 GB)** — `README.md:266-278`, `mac.sh:26`, `scripts/build/build_from_source.sh:22,39-56` ⇒ Qwen-Image-Edit 2509/2511 (~15.8–19 GB) และ Qwen-Image-2.1 (>20 GB) **ไม่ผ่าน**; ตัวที่ผ่านคือ IP-Adapter Plus บน SDXL (~10 GB), FLUX.2-klein 4B (~5.9 GB), Z-Image Turbo (~7.7 GB), FLUX.1-Kontext Q4 (~10.4 GB แบบ offload)
+
+**สิ่งที่รอเจ้าของงานตัดสิน (2 ข้อ):** เป้าหมายคุณภาพ (สูงสุดเท่าที่เครื่องไหว vs เบา/เร็ว) และนโยบาย license (Apache-2.0/commercial-safe vs ยอมรับ non-commercial ของ FLUX.1) — ประเด็นเครื่องถูกตอบแล้วข้างบน
+
+**บทเรียนเชิงปฏิบัติของ session นี้ (เกี่ยวกับ sandbox/git):** commit ของเทิร์นก่อน (`b67a8c5`) ถูก push ขึ้น remote สำเร็จ แต่**object ไม่อยู่ใน sandbox อีกในเทิร์นถัดมา** (`git cat-file -t b67a8c5` → Not a valid object name · reflog มีแค่ clone + checkout + commit ล่าสุด) → วิธีซ่อมที่ใช้ได้: `git fetch origin <branch>` แล้ว `git reset --soft FETCH_HEAD` + commit ใหม่ (ได้ parent ที่ถูกต้องและ push แบบ fast-forward) ⇒ **ทุก session ควร commit + push ให้จบในเทิร์นเดียวกัน และอย่าอ้าง sha ที่ยังไม่ push ลงเอกสาร**
