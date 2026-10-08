@@ -1,5 +1,5 @@
 import React, { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus } from "lucide-react";
+import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus, Wand2 } from "lucide-react";
 import ReferenceManager from "./ReferenceManager";
 import {
   REFERENCE_SOURCE_BUDGET_BYTES,
@@ -9,6 +9,11 @@ import {
   referencesNeedingHydration,
   toPersistedReferences,
 } from "../lib/reference-storage.mjs";
+import {
+  describeReferencePlan,
+  planReferenceFit,
+  planReferenceRoute,
+} from "../lib/reference-router.mjs";
 import { 
   generateImage, 
   planImageSteps,
@@ -30,6 +35,67 @@ import {
   cleanEnhancedPrompt
 } from "../services/api";
 import "./Generator.css";
+
+/**
+ * Prepare a reference (or a chosen base image) to be used as the init image.
+ *
+ * What the canvas does, and why each part is there:
+ *
+ *   1. Measure the real file. A reference smaller than the canvas can only make
+ *      the result softer, and one with a different aspect ratio fights the shape
+ *      the user asked for — both are decided by `planReferenceFit`, not guessed.
+ *   2. Fill the whole canvas with a blurred, cover-drawn copy of the same photo,
+ *      so the area around the subject is plausible instead of a hard bar.
+ *   3. Draw the reference itself, uncropped, on top (contain), so no part of a
+ *      face or outfit is cut off on the way in.
+ *
+ * Any failure returns the original source untouched: preparing the image is an
+ * improvement, never a new way for generation to break.
+ */
+async function prepareInitImage(src, constraints = {}) {
+  if (!src) return { src: null, fit: null };
+  try {
+    const image = await loadImageElement(src);
+    const fit = planReferenceFit(
+      { width: image.naturalWidth, height: image.naturalHeight },
+      { width: constraints.width, height: constraints.height }
+    );
+    if (fit.mode !== "fit") return { src, fit };
+
+    const canvas = document.createElement("canvas");
+    canvas.width = fit.width;
+    canvas.height = fit.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { src, fit: null };
+
+    // 2) blurred cover background
+    if (typeof ctx.filter === "string") ctx.filter = "blur(24px)";
+    const coverScale = Math.max(fit.width / image.naturalWidth, fit.height / image.naturalHeight) * 1.06;
+    const coverW = image.naturalWidth * coverScale;
+    const coverH = image.naturalHeight * coverScale;
+    ctx.drawImage(image, (fit.width - coverW) / 2, (fit.height - coverH) / 2, coverW, coverH);
+    if (typeof ctx.filter === "string") ctx.filter = "none";
+
+    // 3) the reference itself, whole and undistorted
+    ctx.drawImage(image, fit.contain.x, fit.contain.y, fit.contain.width, fit.contain.height);
+
+    const prepared = canvas.toDataURL("image/jpeg", 0.92);
+    return { src: prepared, fit };
+  } catch (err) {
+    console.warn("Could not prepare the init image; sending the reference as-is", err);
+    return { src, fit: null };
+  }
+}
+
+/** The reference as an <img>, so its real pixel size can be measured. */
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not read the reference image"));
+    image.src = src;
+  });
+}
 
 const GalleryItem = memo(({ img, idx, isSelected, onClick }) => {
   const handleClick = (e) => {
@@ -316,6 +382,17 @@ function Generator({
   }, [normalizedReferenceSettings]);
 
   const activeReferences = referenceImages.filter((item) => item.enabled);
+
+  // Which route the enabled references will take, and whether the model itself
+  // could do better (multi-file architectures). Shown to the user and saved into
+  // the output metadata, so "what did the reference actually do?" has an answer
+  // that does not require reading this file.
+  const referenceRoute = planReferenceRoute({
+    modelName: activeModel,
+    referenceCount: activeReferences.length,
+    hasBaseImage: Boolean(baseImage),
+  });
+  const referenceRouteLine = describeReferencePlan(referenceRoute, null);
 
   const referencePayload = activeReferences.map((item) => ({
     id: item.id,
@@ -756,12 +833,16 @@ function Generator({
     try {
       abortControllerRef.current = new AbortController();
       const primaryReferenceSource = baseImage || getBestReferenceSource();
+      // Fit the init image to the canvas before it is sent (see prepareInitImage):
+      // a small or differently-shaped reference otherwise drags the result down
+      // no matter how good the prompt is.
+      const preparedInit = await prepareInitImage(primaryReferenceSource, constraints);
       const result = await generateImage(
         effectivePrompt,
         negativePrompt,
         constraints,
         activeModel,
-        primaryReferenceSource,
+        preparedInit.src,
         (prog) => setGenerationProgress((prev) => Math.max(prev, prog)),
         abortControllerRef.current.signal,
         referencePayload,
@@ -791,7 +872,15 @@ function Generator({
         sampler: constraints.sampler,
         model: activeModel,
         mode: (baseImage || getBestReferenceSource()) ? "img2img-reference" : "txt2img-reference",
-        denoisingStrength: (baseImage || getBestReferenceSource()) ? constraints.denoisingStrength : null,
+        // What the sampler actually used: planImageSteps takes its denoise from
+        // referenceSettings.denoiseGuidance, not from constraints.denoisingStrength,
+        // so logging the constraint would record a number that never ran.
+        denoisingStrength: preparedInit.src ? (generationStepPlan?.strength ?? null) : null,
+        referenceRoute: { id: referenceRoute.id, label: referenceRoute.label, stopgap: referenceRoute.stopgap },
+        referencePlan: describeReferencePlan(referenceRoute, preparedInit.fit),
+        initImageFit: preparedInit.fit
+          ? { mode: preparedInit.fit.mode, upscaled: preparedInit.fit.upscaled, reason: preparedInit.fit.reason }
+          : null,
         referenceStatus: buildReferenceStatusText(),
         references: referencePayload,
         referenceSettings: normalizedReferenceSettings,
@@ -1200,6 +1289,13 @@ function Generator({
                 <Sparkles size={18} />
                 <span>{isEnhancing ? "Enhancing..." : "Enhance Prompt"}</span>
               </button>
+
+              {referenceRoute.id !== "txt2img" && (
+                <div className="reference-route-line" title={referenceRoute.why}>
+                  <Wand2 size={14} />
+                  <span>{referenceRouteLine}</span>
+                </div>
+              )}
 
               {/* Generate Trigger Button */}
               <button
