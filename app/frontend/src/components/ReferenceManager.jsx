@@ -662,26 +662,38 @@ function ReferenceManager({
       <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple style={{ display: "none" }} onChange={(e) => addFiles(e.target.files)} />
       <input ref={importInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => importJson(e.target.files?.[0])} />
 
-      <div className="appearance-master-controls">
-        <label>
-          Face Similarity <span>{Number(referenceSettings.similarityBoost ?? 1).toFixed(2)}</span>
-          <input type="range" min="0" max="1" step="0.05" value={referenceSettings.similarityBoost ?? 1} onChange={(e) => updateSetting({ similarityBoost: Number(e.target.value) })} />
-        </label>
-        <label>
-          Reference Strength <span>{Number(referenceSettings.strength ?? 1.35).toFixed(2)}</span>
-          <input type="range" min="0" max="1.5" step="0.05" value={referenceSettings.strength ?? 1.35} onChange={(e) => updateSetting({ strength: Number(e.target.value) })} />
-        </label>
-        <label>
-          Denoise Guidance <span>{Number(referenceSettings.denoiseGuidance ?? 0.38).toFixed(2)}</span>
-          <input type="range" min="0.15" max="0.85" step="0.05" value={referenceSettings.denoiseGuidance ?? 0.38} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
-        </label>
-        <div className="appearance-lock-toggles">
-          <label><input type="checkbox" checked={referenceSettings.faceLock !== false} onChange={(e) => updateSetting({ faceLock: e.target.checked })} /> Face</label>
-          <label><input type="checkbox" checked={referenceSettings.hairLock !== false} onChange={(e) => updateSetting({ hairLock: e.target.checked })} /> Hair</label>
-          <label><input type="checkbox" checked={referenceSettings.clothingLock !== false} onChange={(e) => updateSetting({ clothingLock: e.target.checked })} /> Clothing</label>
-          <label><input type="checkbox" checked={referenceSettings.bodyLock !== false} onChange={(e) => updateSetting({ bodyLock: e.target.checked })} /> Body</label>
+      <details className="appearance-pro-controls">
+        <summary>
+          <SlidersHorizontal size={15} />
+          <span>ปรับละเอียด (Pro)</span>
+          <em>ปิดไว้แล้วค่าเริ่มต้นใช้ได้เลย</em>
+        </summary>
+        <div className="appearance-master-controls">
+          <label>
+            Face Similarity <span>{Number(referenceSettings.similarityBoost ?? 1).toFixed(2)}</span>
+            <input type="range" min="0" max="1" step="0.05" value={referenceSettings.similarityBoost ?? 1} onChange={(e) => updateSetting({ similarityBoost: Number(e.target.value) })} />
+          </label>
+          <label>
+            Reference Strength <span>{Number(referenceSettings.strength ?? 1.35).toFixed(2)}</span>
+            <input type="range" min="0" max="1.5" step="0.05" value={referenceSettings.strength ?? 1.35} onChange={(e) => updateSetting({ strength: Number(e.target.value) })} />
+          </label>
+          <label>
+            Denoise Guidance <span>{Number(referenceSettings.denoiseGuidance ?? 0.38).toFixed(2)}</span>
+            <input type="range" min="0.15" max="0.85" step="0.05" value={referenceSettings.denoiseGuidance ?? 0.38} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
+          </label>
+          <div className="appearance-lock-toggles">
+            <label><input type="checkbox" checked={referenceSettings.faceLock !== false} onChange={(e) => updateSetting({ faceLock: e.target.checked })} /> Face</label>
+            <label><input type="checkbox" checked={referenceSettings.hairLock !== false} onChange={(e) => updateSetting({ hairLock: e.target.checked })} /> Hair</label>
+            <label><input type="checkbox" checked={referenceSettings.clothingLock !== false} onChange={(e) => updateSetting({ clothingLock: e.target.checked })} /> Clothing</label>
+            <label><input type="checkbox" checked={referenceSettings.bodyLock !== false} onChange={(e) => updateSetting({ bodyLock: e.target.checked })} /> Body</label>
+          </div>
         </div>
-      </div>
+        <p className="appearance-pro-note">
+          บนเอนจินรุ่นที่ปักหมุดไว้ <strong>Denoise Guidance</strong> คือค่าเดียวในกลุ่มนี้ที่ถึง sampler จริง —
+          ที่เหลือมีผลกับข้อความ prompt ที่ส่งไปเท่านั้น (ซึ่งก็ช่วยล็อกหน้า/ทรงผม/เสื้อผ้าได้ในระดับหนึ่ง)
+          ค่าเหล่านี้จะคุม IP-Adapter และ <code>ref_images</code> โดยตรงเมื่ออัปเกรดเอนจินใน Phase B
+        </p>
+      </details>
 
       <div className="reference-controls-bar appearance-controls-bar">
         <div className="reference-search">

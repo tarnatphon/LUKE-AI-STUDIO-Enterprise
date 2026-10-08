@@ -671,3 +671,62 @@
   flex-shrink: 0;
   color: var(--md-sys-color-primary);
 }
+
+/* The Pro disclosure: the reference panel works with its defaults, and the
+   controls that only reach the prompt are one click away instead of in the face
+   of someone who just wants a likeness. Denoise Guidance is the exception the
+   note spells out, because it is the one value in there the sampler reads. */
+.appearance-pro-controls {
+  margin: 12px 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.appearance-pro-controls > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--md-sys-color-on-surface);
+  list-style: none;
+}
+
+.appearance-pro-controls > summary::-webkit-details-marker {
+  display: none;
+}
+
+.appearance-pro-controls > summary em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.74rem;
+  color: var(--md-sys-color-outline);
+}
+
+.appearance-pro-controls[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.appearance-pro-controls .appearance-master-controls {
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.appearance-pro-note {
+  margin: 0;
+  padding: 0 12px 12px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.appearance-pro-note code {
+  font-size: 0.72rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
