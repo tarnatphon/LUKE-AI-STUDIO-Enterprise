@@ -435,8 +435,25 @@ cd ../.. && ./mac.sh
 
 **ผลตรวจ (sandbox นี้ รันจริง):** `vite build` ผ่าน · eslint 294 ไฟล์ 0 problems · `run-all.cjs` **156 passed · 1 failed · 1 skipped** — ที่ fail คือ `validate-release.sh` เพราะไม่มี Python `imageio_ffmpeg` (ต้อง `--include-python` / ติดตั้งใน CI) · `test-frontend-api-contract.cjs` 307/307 URL (route ใหม่รวมอยู่ด้วย)
 
-**หมายเหตุสภาพแวดล้อมของ sandbox:** ต้อง `npm ci --prefix scripts/server` และ `cd app/frontend && npm ci && npx vite build` ก่อน เทสต์กลุ่มที่ต้อง boot เซิร์ฟเวอร์/читают `app/dist` จึงจะรันได้ (5 ชุด fail แบบ ENOENT/404 ถ้าไม่ build)
+**หมายเหตุสภาพแวดล้อมของ sandbox:** ต้อง `npm ci --prefix scripts/server` และ `cd app/frontend && npm ci && npx vite build` ก่อน เทสต์กลุ่มที่ต้อง boot เซิร์ฟเวอร์/อ่าน `app/dist` จึงจะรันได้ (5 ชุด fail แบบ ENOENT/404 ถ้าไม่ build)
 
-**Phase A ที่ยังเหลือ:** (1) Hires fix 2 จังหวะ — ต้องสลับ txt2img ไป `/sdapi/v1/txt2img` (`enable_hr`) หรือ `<sd_cpp_extra_args>` + UI toggle + ระวังเส้นทาง CoreML ที่ไม่รองรับ (2) recipe ต่อโมเดล (3) ทำสไลเดอร์ใน `ReferenceManager.jsx:646-653` ให้สัจจริงหรือซ่อน
+**Phase A ที่ยังเหลือ (เรียงตามลำดับที่จะทำ):** (1) Reference Router — role/จำนวนภาพอ้างอิงเลือก denoise/strength เอง ผู้ใช้ไม่ต้องตั้งค่า (2) ทำสไลเดอร์ใน `ReferenceManager.jsx:646-653` ให้สัจจริงหรือซ่อน (3) Hires fix 2 จังหวะ + UI toggle + ระวังเส้นทาง CoreML ที่ไม่รองรับ (4) ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด
 
 **ยังต้องยืนยันบน Mac จริง:** การ hydrate reference หลัง reload (ต้องมีไฟล์ใน `app/outputs/references/`), ภาพที่เจนด้วย reference หลังอัปเดตยังเหมือนเดิม, และ `GET /api/reference-file` ตอบผ่านเซิร์ฟเวอร์จริงบนพอร์ตของแอป
+
+---
+
+## 7.10 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A3 (recipe ต่อโมเดล) ลงแล้ว
+
+**งานที่ทำ (commit `e336498`, push แล้ว):**
+- `app/frontend/src/lib/image-recipes.mjs` (ใหม่) — ตารางสูตร 8 ตระกูลโมเดล (`z-image` → `qwen-image` → `flux-schnell`/`klein` → `flux-dev`/`kontext` → `lcm` → `sdxl-lightning`/`turbo`/`hyper` → `sdxl` → `sd15`) พร้อม `steps`/`cfgScale`/`sampler` ที่โมเดลนั้นถูกเทรนมา · `normalizeModelKey` (รองรับ path Windows/POSIX แต่ไม่ตัด `v1.5` ทิ้งเพราะเป็นเวอร์ชัน) · `matchImageRecipe` (ตระกูลที่ใช้คำซ้ำอย่าง `turbo` ใช้ `exclude` ให้เจ้าของชื่อชนะ) · `recipePlan` (แตะได้แค่ 3 คีย์ + บอก `changedKeys`/`note`) · `describeRecipePatch`
+- `Settings.jsx` + `Settings.css` — ชิป "สูตรที่แนะนำ: <ชื่อตระกูล>" เหนือสไลเดอร์ Detail Steps แสดงค่าที่จะเปลี่ยนและปุ่ม "ใช้ค่าที่แนะนำ (steps 26 · CFG 6)" — **ไม่มีอะไรถูกเขียนทับเอง** ผู้ใช้ต้องกด และเมื่อกดจะอัปเดต `standardSteps`/`npuSteps` เหมือนสไลเดอร์ทำ
+- `scripts/validation/test-image-recipes.mjs` (ใหม่) — 47 checks
+
+**เหตุผล:** แอปมีค่า default ชุดเดียว (4 steps / CFG 1 สำหรับ Flux-schnell) → SDXL ปกติที่โหลดมาจะได้ภาพไหม้ และ SD1.5 จะได้ภาพแบน ซึ่งเป็นสาเหตุอันดับต้นของ "ภาพออกมาไม่ดี" ที่ไม่ได้มาจากโมเดล
+
+**ผลตรวจ (sandbox นี้ รันจริง):** `test-image-recipes.mjs` 47/47 · eslint 295 ไฟล์ 0 problems · `run-all.cjs` **157 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`) · รายงาน `validation-reports/run-all-20261008-062340.txt`
+
+**กับดักที่เจอ:** `test-frontend-dist-freshness.cjs` จะ fail ถ้าแก้ `app/frontend/src/**` แล้วไม่รัน `cd app/frontend && npx vite build` — ตัวเทสต์สร้างบิลด์สะอาดแล้วเทียบกับ `app/dist` ในเครื่อง (`app/dist` ถูก `.gitignore` ไม่ได้ track ใน git จึงเป็นเรื่องของ local build เท่านั้น)
+
+**ก้าวต่อไปทันที:** Reference Router (§5 ของเอกสารวิจัย) — ทำให้ผลลัพธ์ "ใกล้ต้นฉบับโดยไม่ต้องตั้งค่าอะไร" ตามเกณฑ์ข้อ 2 ของผู้ใช้ ก่อนไปแตะ hires fix
