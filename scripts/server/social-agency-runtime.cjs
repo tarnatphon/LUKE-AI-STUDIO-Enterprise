@@ -6445,9 +6445,20 @@ class SocialAgencyRuntime {
       const product = (client.products || []).find((p) => p.sku === entry.sku);
       if (!product) return { buffer: null, note: "" };
       const img = String(product.image || "");
-      if (!img.startsWith("/sa-products/")) return { buffer: null, note: "" };
+      if (!img.startsWith("/sa-products/")) {
+        // Say so instead of quietly posting one photo: with a remote product
+        // photo the second image can never be attached, and the operator only
+        // clue was that the post looked like every other post.
+        const remote = /^https?:\/\//i.test(img);
+        return {
+          buffer: null,
+          note: remote
+            ? `ยังไม่แนบรูปสินค้าจริง: รูปของ ${product.sku} ยังเป็นลิงก์ภายนอก — ไปแท็บ สินค้า กด "ดึงรูปจากเว็บ (ตาม SKU)" เพื่อเก็บรูปเข้าเครื่อง แล้วโพสต์ถัดไปจะแนบรูปที่ 2 ให้`
+            : `ยังไม่แนบรูปสินค้าจริง: ${product.sku} ยังไม่มีรูปในระบบ — ดึงรูปจากเว็บที่แท็บ สินค้า กด ดึงรูปจากเว็บ (ตาม SKU)`
+        };
+      }
       const ref = this._resolveProductRefPostFile(client, product);
-      if (ref.error) return { buffer: null, note: "" };
+      if (ref.error) return { buffer: null, note: `ยังไม่แนบรูปสินค้าจริง: ${ref.error}` };
       if (ref.ref500) return { buffer: fs.readFileSync(ref.ref500), filename: `${product.sku}.ref500.jpg`, note: "" };
       if (ref.original) {
         return {
