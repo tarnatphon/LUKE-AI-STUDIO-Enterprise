@@ -1,9 +1,18 @@
 import React, { memo, useState, useRef, useCallback, useEffect } from "react";
 import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus } from "lucide-react";
 import ReferenceManager from "./ReferenceManager";
+import {
+  REFERENCE_SOURCE_BUDGET_BYTES,
+  REFERENCE_STORAGE_KEY,
+  blobToDataUrl,
+  referenceUrlFromAsset,
+  referencesNeedingHydration,
+  toPersistedReferences,
+} from "../lib/reference-storage.mjs";
 import { 
   generateImage, 
   planImageSteps,
+  getAsset,
   startServer, 
   stopServer, 
   waitForServerReady, 
@@ -89,7 +98,7 @@ function Generator({
       const parsed =
         JSON.parse(
           localStorage.getItem(
-            "image-generator-references"
+            REFERENCE_STORAGE_KEY
           ) || "[]"
         );
 
@@ -223,13 +232,79 @@ function Generator({
   const timerRef = useRef(null);
   const abortControllerRef = useRef(null);
   const hasRealGenerationStepRef = useRef(false);
+  // Ids whose disk source has already been fetched once, so a failed restore is
+  // attempted once per session instead of on every state change.
+  const hydrationAttemptsRef = useRef([]);
 
+  // Persist the references without their image bytes.
+  //
+  // Every reference was written to localStorage as a base64 data URL, which is
+  // how twenty photos turned into a silent quota failure: `setItem` throws, the
+  // catch below only logs, and the whole panel is gone after the next reload.
+  // The upload route already stores each file on disk, so the browser keeps the
+  // URL (+ `assetId`) and fetches the bytes back on load — see the hydration
+  // effect. References that never reached the disk (upload failed, server
+  // offline) still keep their source inline, under a shared budget.
   useEffect(() => {
     try {
-      localStorage.setItem("image-generator-references", JSON.stringify(referenceImages));
+      const persisted = toPersistedReferences(referenceImages);
+      localStorage.setItem(REFERENCE_STORAGE_KEY, JSON.stringify(persisted.items));
+      if (persisted.droppedSourceIds.length > 0) {
+        console.warn(
+          `[references] ${persisted.droppedSourceIds.length} reference image(s) exceeded the local ` +
+          `storage budget of ${REFERENCE_SOURCE_BUDGET_BYTES} bytes and were kept as metadata only. ` +
+          "Re-attach the file to use it again."
+        );
+      }
     } catch (err) {
+      // Quota can still be exhausted by other keys in the same origin. Say so
+      // out loud: a reference list that quietly disappears is worse than a
+      // warning the user can act on.
       console.warn("Could not persist reference images", err);
     }
+  }, [referenceImages]);
+
+  // Fetch the bytes of references that are remembered by URL only, and put the
+  // full-resolution source back where generation expects it. A reference that
+  // cannot be fetched (file deleted, different server) keeps its metadata and
+  // stays visible, so the user sees the problem instead of generating from
+  // nothing.
+  useEffect(() => {
+    const pending = referencesNeedingHydration(referenceImages, { attempted: hydrationAttemptsRef.current });
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const restored = new Map();
+      for (const item of pending) {
+        hydrationAttemptsRef.current.push(item.id);
+        try {
+          let url = referenceUrlFromAsset(item);
+          // A record written before references were disk-backed knows the asset
+          // id but not the file name: ask the registry once for both.
+          if (!url && item.assetId) {
+            const record = await getAsset(item.assetId);
+            url = referenceUrlFromAsset(record?.asset || record);
+          }
+          if (!url) throw new Error("no stored file for this reference");
+          const res = await fetch(url, { cache: "force-cache" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const src = await blobToDataUrl(await res.blob());
+          if (src) restored.set(item.id, { src, url });
+        } catch (err) {
+          console.warn(`[references] Could not restore "${item.name || item.id}" from disk:`, err?.message || err);
+        }
+      }
+      if (cancelled || restored.size === 0) return;
+      setReferenceImages((prev) =>
+        prev.map((item) => {
+          const hit = restored.get(item.id);
+          if (!hit) return item;
+          const { sourceMissing, ...rest } = item;
+          return { ...rest, src: hit.src, url: hit.url };
+        })
+      );
+    })();
+    return () => { cancelled = true; };
   }, [referenceImages]);
 
   useEffect(() => {
@@ -256,7 +331,11 @@ function Generator({
     preserveHair: item.preserveHair !== false,
     preserveClothing: item.preserveClothing !== false,
     preserveBody: item.preserveBody !== false,
-    src: item.src,
+    // Provenance only. This lands in the output's metadata JSON, so it must not
+    // carry the image bytes: `assetId` + `url` say which photo was used and
+    // where it lives, which is what a later session needs to find it again.
+    assetId: item.assetId || null,
+    url: referenceUrlFromAsset(item) || null,
   }));
 
   const handleUseReferenceAsBase = useCallback((src) => {
@@ -275,6 +354,13 @@ function Generator({
       });
     return candidates[0]?.src || null;
   }, [activeReferences]);
+
+  // References whose stored file is gone (a reference kept as metadata only, or
+  // one this session failed to fetch back). The panel names them: a reference
+  // that silently generates nothing is the failure mode this is here to end.
+  const referencesMissingSource = activeReferences.filter(
+    (item) => !item.src && Boolean(referenceUrlFromAsset(item) || item.assetId || item.sourceMissing)
+  );
 
   const buildReferenceStatusText = useCallback(() => {
     if (activeReferences.length === 0) return "No active reference images";
@@ -1063,6 +1149,14 @@ function Generator({
               <div className="reference-generation-note">
                 <strong>Reference guidance active:</strong> {buildReferenceStatusText()}
                 <span> Single Face / Appearance Lock mode is active. Pin the clearest face photo as Primary for closest likeness.</span>
+                {referencesMissingSource.length > 0 && (
+                  <span className="reference-generation-warning">
+                    {" "}
+                    {referencesMissingSource.length} reference{referencesMissingSource.length === 1 ? "" : "s"} kept as
+                    metadata only: the stored file could not be found, so nothing is generated from it. Re-attach the
+                    image to use it again.
+                  </span>
+                )}
               </div>
 
               <ReferenceManager

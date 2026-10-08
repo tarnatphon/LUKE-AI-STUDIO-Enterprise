@@ -597,3 +597,54 @@
   gap: 6px;
   margin: 10px 0;
 }
+
+/* Reference panel status line. The class was rendered but never styled, so the
+   line that says which references are actually in play looked like body copy. */
+.reference-generation-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.04));
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.reference-generation-note strong {
+  color: var(--md-sys-color-primary);
+  font-weight: 800;
+}
+
+.reference-generation-note span {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.reference-generation-warning {
+  color: var(--md-sys-color-error, #ff8a80) !important;
+  font-weight: 700;
+}
+
+/* A reference whose stored file is gone keeps its card, so the panel can say
+   what happened instead of showing a broken image. */
+.reference-card-missing {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface-variant);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(255, 255, 255, 0.05) 8px,
+    rgba(255, 255, 255, 0.05) 16px
+  );
+}

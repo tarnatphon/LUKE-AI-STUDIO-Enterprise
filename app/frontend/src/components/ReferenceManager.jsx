@@ -2,6 +2,7 @@ import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 
 // LUKE_AI_REFERENCE_UPLOAD_IMPORT_V1
 import { uploadReferenceAsset } from "../services/api";
+import { referenceUrlFromAsset } from "../lib/reference-storage.mjs";
 import {
   UploadCloud,
   ImagePlus,
@@ -50,6 +51,15 @@ function normalizeReference(item, index = 0) {
     id: item.id || uid(),
     name: item.name || `Appearance Reference ${index + 1}`,
     src: item.src || "",
+    // Disk-backed reference: the Generator persists only this URL and fetches
+    // the bytes back on load (see lib/reference-storage.mjs). Copying it here
+    // matters because every item in this panel goes through normalizeReference,
+    // which otherwise rebuilt the record without it.
+    url: item.url || referenceUrlFromAsset(item) || "",
+    assetId: item.assetId || null,
+    sourceMissing: item.sourceMissing === true,
+    metadata: item.metadata && typeof item.metadata === "object" ? { ...item.metadata } : {},
+    mimeType: item.mimeType || item.fileType || "",
     role: APPEARANCE_ROLE,
     weight: clampNumber(item.weight ?? (index === 0 ? 1.25 : 1), 0, 2, 1),
     startAt: 0,
@@ -80,7 +90,14 @@ const ReferenceCard = memo(function ReferenceCard({
   return (
     <div className={`reference-card appearance-reference-card ${selected ? "selected" : ""} ${!item.enabled ? "disabled" : ""}`}>
       <div className="reference-card-media appearance-card-media">
-        <img src={item.src} alt={item.name || `Reference ${index + 1}`} loading="lazy" decoding="async" />
+        {item.src ? (
+          <img src={item.src} alt={item.name || `Reference ${index + 1}`} loading="lazy" decoding="async" />
+        ) : (
+          <div className="reference-card-missing" title="The stored file for this reference could not be found">
+            <ImagePlus size={18} />
+            <span>Source missing</span>
+          </div>
+        )}
         <button className="reference-index" type="button" onClick={() => onSelect(item.id)} title="Select reference">
           {selected ? <CheckSquare size={14} /> : <Square size={14} />}
           <span>{index + 1}</span>
@@ -416,6 +433,18 @@ function ReferenceManager({
                 assetId:
                   uploaded?.asset
                     ?.assetId ||
+                  null,
+
+                // Where the uploaded bytes live on disk. The Generator persists
+                // this instead of the base64 `src`, which is what keeps twenty
+                // references inside the localStorage quota.
+                url:
+                  referenceUrlFromAsset(
+                    uploaded?.reference
+                  ) ||
+                  referenceUrlFromAsset(
+                    uploaded?.asset
+                  ) ||
                   null,
 
                 role:

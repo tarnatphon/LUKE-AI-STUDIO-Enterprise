@@ -343,3 +343,41 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 4. **Z-Image Turbo** (~7.7 GB) — สำหรับเจนใหม่เร็ว ๆ / สายภาพสวย
 5. **ADetailer** — ทำให้หน้าคมทุกเส้นทางข้างบน
 
+
+---
+
+## 12) บันทึกการลงมือทำ — Phase A (อัปเดต 2026-10-08)
+
+เริ่ม Phase A แล้ว: **A1 (เลิกลาก base64 ทั้งก้อนไปกับทุกคำขอ) + A2 (reference อยู่บนดิสก์, localStorage เก็บแค่ URL) + A4 (route เสิร์ฟไฟล์ reference)**
+
+### สิ่งที่เปลี่ยน
+
+| ไฟล์ | เปลี่ยนอะไร |
+|---|---|
+| `app/frontend/src/lib/reference-storage.mjs` (ใหม่) | ตรรกะ pure: `toPersistedReferences` (ตัด `src` ทิ้งเมื่อมีสำเนาบนดิสก์, จำกัด budget เมื่อไม่มี), `referencesNeedingHydration`, `referenceUrlFromAsset`, `referenceFileUrl`, `blobToDataUrl` |
+| `app/frontend/src/services/api.js` | `generateImage` **ไม่ส่ง** `reference_images` / `reference_settings` / `reference_mode` อีก — เป็นฟิลด์ที่ backend ไม่อ่าน แล้วลบ `normalizeReferenceMode` ที่ตายแล้ว |
+| `app/frontend/src/components/Generator.jsx` | เขียน localStorage ผ่าน `toPersistedReferences` + `REFERENCE_STORAGE_KEY`; เพิ่ม effect ดึงไฟล์จากดิสก์กลับมาเป็น `src` ตอนโหลด (รองรับ record เก่าที่มีแค่ `assetId`); `referencePayload` เก็บแค่ `assetId` + `url`; เตือนเมื่อมี reference ที่ไม่มีต้นฉบับ |
+| `app/frontend/src/components/ReferenceManager.jsx` | เก็บ `url` จากผลอัปโหลด, `normalizeReference` คง `url`/`assetId`/`sourceMissing` ไว้ (เดิมสร้างใหม่แล้วทิ้ง), การ์์ดแสดง "Source missing" แทนรูปพัง |
+| `scripts/server/serve.cjs` | `REFERENCE_OUTPUTS` ค่าคงที่เดียว, **`GET /api/reference-file?filename=`** (มี `pathInside` guard + `Cache-Control: immutable` เพราะชื่อไฟล์เป็น content-addressed), ผลอัปโหลดคืน `reference.url` |
+| `scripts/validation/test-image-reference-storage.mjs` (ใหม่) | 35 checks บนโมดูล pure (budget, ตัดสินใจ disk vs inline, hydration, การสร้าง URL) |
+| `scripts/validation/test-image-reference-payload.cjs` (ใหม่) | 29 checks ระดับ source: ไม่มีฟิลด์ตายบน wire, metadata ไม่มี base64, route ฝั่งเซิร์ฟเวอร์ + guard, panel เก็บ URL |
+
+### ผลตรวจ (รันจริงใน sandbox นี้)
+
+* `vite build` ผ่าน (app/dist สร้างได้)
+* eslint correctness ทั้งต้นไม้: **294 ไฟล์ 0 problems**
+* `node scripts/validation/run-all.cjs` → **156 passed · 1 failed · 1 skipped** (ที่ fail คือ `validate-release.sh` เพราะ sandbox ไม่มี Python `imageio_ffmpeg` — สภาพแวดล้อม ไม่ใช่งานของเรา)
+* `test-frontend-api-contract.cjs`: frontend เรียก 307 URL · เสิร์ฟครบ 307 · ไม่มีอันไหนตกไปที่ "Unknown API endpoint" (route ใหม่ถูกตรวจแล้ว)
+
+### ผลที่ผู้ใช้จะเห็น
+
+* localStorage ไม่บวมอีกต่อไป (เก็บ URL ไม่ใช่ base64) → reference ไม่หายทั้งแผงเมื่อ quota เต็ม
+* คำขอเจนแต่ละครั้งเล็กลงจาก ~MB–หลายสิบ MB เหลือ KB ต่อการ์ด
+* metadata ของภาพที่บันทึกไม่ฝัง base64 ของรูปอ้างอิงอีก
+* ถ้าไฟล์ต้นฉบับหาย ผู้ใช้**เห็นคำเตือน**พร้อมชื่อการ์ดที่ไม่มีต้นฉบับ แทนที่จะเจนออกมาเฉย ๆ โดยไม่มี reference
+
+### ยังเหลือใน Phase A (ลำดับถัดไป)
+
+1. **Hires fix 2 จังหวะ** — ต้องสลับเส้นทาง txt2img ไป `/sdapi/v1/txt2img` (`enable_hr`, `hr_upscaler`, `hr_scale`) หรือใช้ `<sd_cpp_extra_args>` + ต้องมี UI toggle และต้องไม่พังเส้นทาง CoreML (apple-npu) ที่ไม่รองรับ
+2. **Recipe ต่อโมเดล** — เสนอค่า steps/CFG/sampler แนะนำต่อตระกูลโมเดล (Lightning 4–8 steps CFG 1–2, SDXL 25–30 steps CFG 5–7) พร้อมปุ่ม "ใช้ค่าที่แนะนำ" (ไม่บังคับทับค่าผู้ใช้เอง)
+3. **ทำสไลเดอร์ให้สัจจริง** — `Face Similarity` / `Reference Strength` / checkbox 4 ตัวใน `ReferenceManager.jsx` ยังไม่มีผลถึง backend (มีผลแค่ข้อความ prompt) ต้องติดป้าย "มีผลกับ backend รุ่น X" หรือซ่อนจนกว่าจะต่อสายจริง
