@@ -473,3 +473,13 @@ cd ../.. && ./mac.sh
 **ยังเหลือใน Phase A:** (1) สไลเดอร์ Face Similarity / Reference Strength + เช็กบ็อกซ์ 4 ตัวใน `ReferenceManager.jsx:646-653` — มีผลแค่ข้อความ prompt ต้องทำให้จริงหรือซ่อน (2) Hires fix 2 จังหวะ (ต้องไม่พังเส้นทาง CoreML) (3) ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด (4) ส่วน denoise/strength อัตโนมัติต่อ role ของ Router — ทำได้หลังมี `ref_images`/IP-Adapter จริง
 
 **สิ่งที่ต้องยืนยันบน Mac จริง:** ภาพที่เจนจาก reference หลังอัปเดต A5 — ควรได้โครงภาพใกล้ต้นฉบับมากขึ้นและไม่ถูกบีบสัดส่วน (เทียบก่อน/หลังด้วยรูปเดียวกัน + seed เดียวกัน)
+
+---
+
+## 7.12 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A6 (พาเนล Reference แบบไม่ต้องตั้งค่า) ลงแล้ว
+
+**งานที่ทำ (commit `146a60e`, push แล้ว):** `ReferenceManager.jsx` — สไลเดอร์ `Face Similarity` / `Reference Strength` / `Denoise Guidance` + เช็กบ็อกซ์ 4 ตัว ย้ายเข้า `<details className="appearance-pro-controls">` ที่**ปิดไว้เป็นค่าเริ่มต้น** พร้อมหมายเหตุตรงไปตรงมาว่า Denoise Guidance เป็นค่าเดียวที่ถึง sampler จริง ส่วนที่เหลือมีผลแค่ข้อความ prompt และจะคุม IP-Adapter/`ref_images` จริงใน Phase B · `Generator.css` เพิ่ม `.appearance-pro-controls`/`.appearance-pro-note`
+
+**ผลตรวจ:** reference suites 5/5 (payload 29 · storage 35 · router 46 · asset schema · upload registration) · eslint 0 problems · `run-all.cjs` **158 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`)
+
+**สถานะ Phase A:** ✅ A1/A2/A4 (`bd9addc`) · ✅ A3 (`e336498`) · ✅ A5 (`cf32e7f`) · ✅ A6 (`146a60e`) — **เหลือ Hires fix 2 จังหวะ** (ต้องแตะเส้นทาง txt2img ร่วมกับ CoreML — ทำแบบมี toggle และต้องถอยกลับได้) กับ **ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด** แล้วจึงเข้า Phase B (IP-Adapter Plus)

@@ -348,7 +348,7 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 
 ## 12) บันทึกการลงมือทำ — Phase A (อัปเดต 2026-10-08)
 
-ลงแล้ว 5 ชิ้น: **A1 (เลิกลาก base64 ทั้งก้อนไปกับทุกคำขอ) + A2 (reference อยู่บนดิสก์, localStorage เก็บแค่ URL) + A4 (route เสิร์ฟไฟล์ reference)** — commit `bd9addc` · **A3 (สูตร steps/CFG/sampler ต่อตระกูลโมเดล)** — commit `e336498` · **A5 (Reference Router + ปรับภาพตั้งต้นให้พอดีอัตโนมัติ)** — commit `cf32e7f`
+ลงแล้ว 6 ชิ้น: **A1 (เลิกลาก base64 ทั้งก้อนไปกับทุกคำขอ) + A2 (reference อยู่บนดิสก์, localStorage เก็บแค่ URL) + A4 (route เสิร์ฟไฟล์ reference)** — commit `bd9addc` · **A3 (สูตร steps/CFG/sampler ต่อตระกูลโมเดล)** — commit `e336498` · **A5 (Reference Router + ปรับภาพตั้งต้นให้พอดีอัตโนมัติ)** — commit `cf32e7f` · **A6 (พาเนล Reference แบบไม่ต้องตั้งค่า)** — commit `146a60e`
 
 ### สิ่งที่เปลี่ยน
 
@@ -364,6 +364,7 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 | `scripts/validation/test-image-recipes.mjs` (ใหม่ — A3) | 47 checks: การจับคู่ (รวมชื่อซ้ำอย่าง `turbo`, path Windows, ไม่ตัด `v1.5`), patch แตะแค่ 3 คีย์, sampler ต้องมีจริงในรายการของ backend, โมเดลหลายไฟล์ต้องมีคำเตือน |
 | `app/frontend/src/lib/reference-router.mjs` (ใหม่ — A5) | `planReferenceRoute` (บอกว่าเส้นทางไหนรันได้จริง/ยังใช้ไม่ได้ + ธง `stopgap` เมื่อโมเดลที่โหลดมี `ref_images` ของตัวเองแต่ยังโหลดหลายไฟล์ไม่ได้) และ `planReferenceFit` + `containBox` — ตัดสินจากขนาดจริงของรูป: สัดส่วนตรง ±12% และใหญ่พอ → ส่งเดิม, ไม่ตรง → เตรียมแคนวาสสัดส่วนเดียวกับเอาต์พุต (ใหญ่กว่า 15%, แคป 2048) โดยวางรูปทั้งใบแบบ contain (ไม่ตัดหัว/คาง) |
 | `app/frontend/src/components/Generator.jsx` + `Generator.css` (A5) | `prepareInitImage` วัดขนาดรูปจริง (`naturalWidth`), เติมรอบด้วยสำเนาเบลอ (cover) แล้ววางรูปจริงทับ (contain), คืนรูปเดิมเสมอถ้าทำงานไม่สำเร็จ; บรรทัด `.reference-route-line` ใต้ปุ่ม Generate; metadata เพิ่ม `referenceRoute`/`referencePlan`/`initImageFit` และแก้ `denoisingStrength` ให้บันทึก **ค่าที่ส่งจริง** (`generationStepPlan.strength` ซึ่งมาจาก `denoiseGuidance` ไม่ใช่ `constraints.denoisingStrength`) |
+| `app/frontend/src/components/ReferenceManager.jsx` + `Generator.css` (A6) | สไลเดอร์ 3 ตัว + เช็กบ็อกซ์ 4 ตัวย้ายเข้า `<details>` "ปรับละเอียด (Pro)" ที่ปิดไว้เป็นค่าเริ่มต้น (เปิดพาเนลมาเห็นแค่ "เพิ่มรูป → เจน") พร้อมหมายเหตุที่บอกว่า **Denoise Guidance คือค่าเดียวที่ถึง sampler จริง** และที่เหลือจะคุม IP-Adapter/`ref_images` เมื่ออัปเกรดเอนจิน |
 | `scripts/validation/test-reference-router.mjs` (ใหม่ — A5) | 46 checks: การเลือกเส้นทาง, ธง stopgap, คณิตของการ fit (tolerance, แคป 2048, contain ไม่บิดสัดส่วน), เหตุผลที่บอกผู้ใช้, และระดับซอร์สว่า Generator เรียกผ่านแผน + ถอยกลับเป็นรูปเดิมเมื่อ error |
 | `scripts/validation/test-image-reference-storage.mjs` (ใหม่) | 35 checks บนโมดูล pure (budget, ตัดสินใจ disk vs inline, hydration, การสร้าง URL) |
 | `scripts/validation/test-image-reference-payload.cjs` (ใหม่) | 29 checks ระดับ source: ไม่มีฟิลด์ตายบน wire, metadata ไม่มี base64, route ฝั่งเซิร์ฟเวอร์ + guard, panel เก็บ URL |
@@ -386,6 +387,6 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 ### ยังเหลือใน Phase A (ลำดับถัดไป — เรียงตาม "คุ้มต่อความเสี่ยง")
 
 1. ~~**Reference Router (§5)**~~ ✅ **ลงแล้ว (`cf32e7f`)** — เลือกเส้นทางเอง + เตรียมภาพตั้งต้นให้พอดีอัตโนมัติ · เหลือเฉพาะส่วน denoise/strength อัตโนมัติต่อ role ซึ่งต้องรอ `ref_images`/IP-Adapter จริงก่อน (ตอนนี้ค่า denoise มาจากสไลเดอร์ Denoise Guidance ตามเดิม)
-2. **สไลเดอร์ที่ยังไม่จริงใน `ReferenceManager.jsx`** — `Face Similarity` / `Reference Strength` / checkbox 4 ตัว ยังไม่ถึง backend (มีผลแค่ข้อความ prompt) → ทำให้มีผลหรือซ่อน (ปุ่มที่ไม่ทำอะไรแย่กว่าไม่มีปุ่ม)
+2. ~~**สไลเดอร์ที่ยังไม่จริงใน `ReferenceManager.jsx`**~~ ✅ **ลงแล้ว (`146a60e`)** — ย้ายเข้า Pro disclosure + ระบุความจริงว่าค่าไหนถึง sampler ; เหลือ "ทำให้มีผลจริง" ซึ่งต้องรอ Phase B
 3. **Hires fix 2 จังหวะ** — สลับเส้นทาง txt2img ไป `/sdapi/v1/txt2img` (`enable_hr`, `hr_upscaler`, `hr_scale`) หรือ `<sd_cpp_extra_args>` + UI toggle และต้องไม่พังเส้นทาง CoreML (apple-npu) ที่ใช้ร่วมกัน
 4. **ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด** (`master-685-19bdfe2` บน Mac / `master-721` บน Windows) — ถ้าไม่ผ่าน ใช้ multipart `/v1/images/edits` ซึ่งมี `ref_images` ในตัวอยู่แล้ว
