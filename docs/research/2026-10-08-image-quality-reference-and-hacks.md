@@ -348,7 +348,7 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 
 ## 12) บันทึกการลงมือทำ — Phase A (อัปเดต 2026-10-08)
 
-ลงแล้ว 4 ชิ้น: **A1 (เลิกลาก base64 ทั้งก้อนไปกับทุกคำขอ) + A2 (reference อยู่บนดิสก์, localStorage เก็บแค่ URL) + A4 (route เสิร์ฟไฟล์ reference)** — commit `bd9addc` · **A3 (สูตร steps/CFG/sampler ต่อตระกูลโมเดล)** — commit `e336498`
+ลงแล้ว 5 ชิ้น: **A1 (เลิกลาก base64 ทั้งก้อนไปกับทุกคำขอ) + A2 (reference อยู่บนดิสก์, localStorage เก็บแค่ URL) + A4 (route เสิร์ฟไฟล์ reference)** — commit `bd9addc` · **A3 (สูตร steps/CFG/sampler ต่อตระกูลโมเดล)** — commit `e336498` · **A5 (Reference Router + ปรับภาพตั้งต้นให้พอดีอัตโนมัติ)** — commit `cf32e7f`
 
 ### สิ่งที่เปลี่ยน
 
@@ -362,6 +362,9 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 | `app/frontend/src/lib/image-recipes.mjs` (ใหม่ — A3) | ตารางสูตร 8 ตระกูล (`z-image`, `qwen-image`, `flux-schnell`/`klein`, `flux-dev`/`kontext`, `lcm`, `sdxl-lightning`/`turbo`/`hyper`, `sdxl`, `sd15`) + `matchImageRecipe`/`recipePlan`/`describeRecipePatch` — จับคู่จากชื่อไฟล์, `recipePlan` แตะได้แค่ `steps`/`cfgScale`/`sampler` |
 | `app/frontend/src/components/Settings.jsx` + `Settings.css` (A3) | ชิป "สูตรที่แนะนำ" เหนือสไลเดอร์ Detail Steps: บอกค่าที่จะเปลี่ยน + ปุ่ม "ใช้ค่าที่แนะนำ (steps 26 · CFG 6)" — **กดเองเท่านั้น** และอัปเดต `standardSteps`/`npuSteps` เหมือนสไลเดอร์ทำ |
 | `scripts/validation/test-image-recipes.mjs` (ใหม่ — A3) | 47 checks: การจับคู่ (รวมชื่อซ้ำอย่าง `turbo`, path Windows, ไม่ตัด `v1.5`), patch แตะแค่ 3 คีย์, sampler ต้องมีจริงในรายการของ backend, โมเดลหลายไฟล์ต้องมีคำเตือน |
+| `app/frontend/src/lib/reference-router.mjs` (ใหม่ — A5) | `planReferenceRoute` (บอกว่าเส้นทางไหนรันได้จริง/ยังใช้ไม่ได้ + ธง `stopgap` เมื่อโมเดลที่โหลดมี `ref_images` ของตัวเองแต่ยังโหลดหลายไฟล์ไม่ได้) และ `planReferenceFit` + `containBox` — ตัดสินจากขนาดจริงของรูป: สัดส่วนตรง ±12% และใหญ่พอ → ส่งเดิม, ไม่ตรง → เตรียมแคนวาสสัดส่วนเดียวกับเอาต์พุต (ใหญ่กว่า 15%, แคป 2048) โดยวางรูปทั้งใบแบบ contain (ไม่ตัดหัว/คาง) |
+| `app/frontend/src/components/Generator.jsx` + `Generator.css` (A5) | `prepareInitImage` วัดขนาดรูปจริง (`naturalWidth`), เติมรอบด้วยสำเนาเบลอ (cover) แล้ววางรูปจริงทับ (contain), คืนรูปเดิมเสมอถ้าทำงานไม่สำเร็จ; บรรทัด `.reference-route-line` ใต้ปุ่ม Generate; metadata เพิ่ม `referenceRoute`/`referencePlan`/`initImageFit` และแก้ `denoisingStrength` ให้บันทึก **ค่าที่ส่งจริง** (`generationStepPlan.strength` ซึ่งมาจาก `denoiseGuidance` ไม่ใช่ `constraints.denoisingStrength`) |
+| `scripts/validation/test-reference-router.mjs` (ใหม่ — A5) | 46 checks: การเลือกเส้นทาง, ธง stopgap, คณิตของการ fit (tolerance, แคป 2048, contain ไม่บิดสัดส่วน), เหตุผลที่บอกผู้ใช้, และระดับซอร์สว่า Generator เรียกผ่านแผน + ถอยกลับเป็นรูปเดิมเมื่อ error |
 | `scripts/validation/test-image-reference-storage.mjs` (ใหม่) | 35 checks บนโมดูล pure (budget, ตัดสินใจ disk vs inline, hydration, การสร้าง URL) |
 | `scripts/validation/test-image-reference-payload.cjs` (ใหม่) | 29 checks ระดับ source: ไม่มีฟิลด์ตายบน wire, metadata ไม่มี base64, route ฝั่งเซิร์ฟเวอร์ + guard, panel เก็บ URL |
 
@@ -369,7 +372,7 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 
 * `vite build` ผ่าน (app/dist สร้างได้)
 * eslint correctness ทั้งต้นไม้: **294 ไฟล์ 0 problems**
-* `node scripts/validation/run-all.cjs` → **157 passed · 1 failed · 1 skipped** (ที่ fail คือ `validate-release.sh` เพราะ sandbox ไม่มี Python `imageio_ffmpeg` — สภาพแวดล้อม ไม่ใช่งานของเรา) · รายงาน `validation-reports/run-all-20261008-062340.txt`
+* `node scripts/validation/run-all.cjs` → **158 passed · 1 failed · 1 skipped** (ที่ fail คือ `validate-release.sh` เพราะ sandbox ไม่มี Python `imageio_ffmpeg` — สภาพแวดล้อม ไม่ใช่งานของเรา) · รายงาน `validation-reports/run-all-20261008-063029.txt`
   * หมายเหตุ: `test-frontend-dist-freshness.cjs` จะ fail ถ้าลืม `cd app/frontend && npx vite build` หลังแก้ซอร์ส — `app/dist` ในเครื่องคือบิลด์ที่ถูกเทสต์
 * `test-frontend-api-contract.cjs`: frontend เรียก 307 URL · เสิร์ฟครบ 307 · ไม่มีอันไหนตกไปที่ "Unknown API endpoint" (route ใหม่ถูกตรวจแล้ว)
 
@@ -382,7 +385,7 @@ backend  = scripts/server/serve.cjs startBackend()  → spawn  sd-server --model
 
 ### ยังเหลือใน Phase A (ลำดับถัดไป — เรียงตาม "คุ้มต่อความเสี่ยง")
 
-1. **Reference Router (§5)** — ให้ role/จำนวนภาพอ้างอิงเลือกเส้นทางเอง (denoise, strength, `ref_image_args`) ผู้ใช้ไม่ต้องตั้งค่า → ตรงกับเกณฑ์ข้อ 2 ของผู้ใช้ที่สุด และไม่ต้องโหลดโมเดลเพิ่ม
+1. ~~**Reference Router (§5)**~~ ✅ **ลงแล้ว (`cf32e7f`)** — เลือกเส้นทางเอง + เตรียมภาพตั้งต้นให้พอดีอัตโนมัติ · เหลือเฉพาะส่วน denoise/strength อัตโนมัติต่อ role ซึ่งต้องรอ `ref_images`/IP-Adapter จริงก่อน (ตอนนี้ค่า denoise มาจากสไลเดอร์ Denoise Guidance ตามเดิม)
 2. **สไลเดอร์ที่ยังไม่จริงใน `ReferenceManager.jsx`** — `Face Similarity` / `Reference Strength` / checkbox 4 ตัว ยังไม่ถึง backend (มีผลแค่ข้อความ prompt) → ทำให้มีผลหรือซ่อน (ปุ่มที่ไม่ทำอะไรแย่กว่าไม่มีปุ่ม)
 3. **Hires fix 2 จังหวะ** — สลับเส้นทาง txt2img ไป `/sdapi/v1/txt2img` (`enable_hr`, `hr_upscaler`, `hr_scale`) หรือ `<sd_cpp_extra_args>` + UI toggle และต้องไม่พังเส้นทาง CoreML (apple-npu) ที่ใช้ร่วมกัน
 4. **ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด** (`master-685-19bdfe2` บน Mac / `master-721` บน Windows) — ถ้าไม่ผ่าน ใช้ multipart `/v1/images/edits` ซึ่งมี `ref_images` ในตัวอยู่แล้ว

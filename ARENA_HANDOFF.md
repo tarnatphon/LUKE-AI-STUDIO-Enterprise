@@ -457,3 +457,19 @@ cd ../.. && ./mac.sh
 **กับดักที่เจอ:** `test-frontend-dist-freshness.cjs` จะ fail ถ้าแก้ `app/frontend/src/**` แล้วไม่รัน `cd app/frontend && npx vite build` — ตัวเทสต์สร้างบิลด์สะอาดแล้วเทียบกับ `app/dist` ในเครื่อง (`app/dist` ถูก `.gitignore` ไม่ได้ track ใน git จึงเป็นเรื่องของ local build เท่านั้น)
 
 **ก้าวต่อไปทันที:** Reference Router (§5 ของเอกสารวิจัย) — ทำให้ผลลัพธ์ "ใกล้ต้นฉบับโดยไม่ต้องตั้งค่าอะไร" ตามเกณฑ์ข้อ 2 ของผู้ใช้ ก่อนไปแตะ hires fix
+
+---
+
+## 7.11 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A4/A5 (Reference Router + fit ภาพตั้งต้น) ลงแล้ว
+
+**งานที่ทำ (commit `cf32e7f`, push แล้ว):**
+- `app/frontend/src/lib/reference-router.mjs` (ใหม่) — `planReferenceRoute` บอกว่าเส้นทางไหนรันได้จริงวันนี้ (img2img จากภาพอ้างอิงหลัก) และอันไหนยังใช้ไม่ได้ (IP-Adapter, `ref_images` ของเอนจิน) พร้อมธง `stopgap` เมื่อโมเดลที่โหลดเป็นตระกูลที่มี `ref_images` ของตัวเอง (Kontext/Qwen-Image/Z-Image) แต่ยังโหลดหลายไฟล์ไม่ได้ · `planReferenceFit` ตัดสินจากขนาดจริงของรูปว่าส่งเดิมหรือเตรียมใหม่ (สัดส่วนตรง ±12% + ใหญ่พอ → ส่งเดิม · ไม่ตรง → แคนวาสสัดส่วนเดียวกับเอาต์พุต ใหญ่กว่า 15% แคป 2048 วางรูปทั้งใบแบบ contain ไม่ตัดหัว/คาง)
+- `Generator.jsx` — `prepareInitImage` (โหลดรูปวัด `naturalWidth` → วาดสำเนาเบลอแบบ cover เต็มแคนวาส → ทับด้วยรูปจริงแบบ contain → `toDataURL("image/jpeg", 0.92)`) และ**ถอยกลับเป็นรูปเดิมเสมอถ้าพลาด** · บรรทัด `.reference-route-line` ใต้ปุ่ม Generate · metadata เพิ่ม `referenceRoute`/`referencePlan`/`initImageFit` และแก้ `denoisingStrength` ให้บันทึกค่าที่ส่งจริง (`generationStepPlan.strength` มาจาก `referenceSettings.denoiseGuidance` ไม่ใช่ `constraints.denoisingStrength`)
+- `Generator.css` — `.reference-route-line`
+- `scripts/validation/test-reference-router.mjs` (ใหม่) — 46 checks
+
+**ผลตรวจ (sandbox นี้ รันจริง):** test-reference-router 46/46 · test-image-reference-payload 29/29 · eslint 296 ไฟล์ 0 problems · `run-all.cjs` **158 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`) · รายงาน `validation-reports/run-all-20261008-063029.txt`
+
+**ยังเหลือใน Phase A:** (1) สไลเดอร์ Face Similarity / Reference Strength + เช็กบ็อกซ์ 4 ตัวใน `ReferenceManager.jsx:646-653` — มีผลแค่ข้อความ prompt ต้องทำให้จริงหรือซ่อน (2) Hires fix 2 จังหวะ (ต้องไม่พังเส้นทาง CoreML) (3) ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด (4) ส่วน denoise/strength อัตโนมัติต่อ role ของ Router — ทำได้หลังมี `ref_images`/IP-Adapter จริง
+
+**สิ่งที่ต้องยืนยันบน Mac จริง:** ภาพที่เจนจาก reference หลังอัปเดต A5 — ควรได้โครงภาพใกล้ต้นฉบับมากขึ้นและไม่ถูกบีบสัดส่วน (เทียบก่อน/หลังด้วยรูปเดียวกัน + seed เดียวกัน)
