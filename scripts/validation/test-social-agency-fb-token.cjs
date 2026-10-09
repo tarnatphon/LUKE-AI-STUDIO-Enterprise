@@ -116,6 +116,9 @@ async function main() {
   test("--curl prints the three-call ladder and makes no request", async () => {
     const res = await run(["--curl", "--app-id", APP_ID], { port });
     assert.strictEqual(res.status, 0, res.stderr);
+    const bare = await run(["--curl"], { port });
+    assert.strictEqual(bare.status, 0, "curl preview works with nothing supplied at all");
+    assert.match(bare.stdout, /client_id=APP_ID/);
     assert.strictEqual(calls.length, 0, "--curl is offline by definition");
     assert.match(res.stdout, /grant_type=fb_exchange_token/);
     assert.match(res.stdout, /\/me\/accounts/);
@@ -190,6 +193,21 @@ async function main() {
     const short = await run(["--app-id", APP_ID, "--prompt"], { port, input: `${SHORT_USER_TOKEN}\n` });
     assert.strictEqual(short.status, 1);
     assert.match(short.stderr, /ป้อนค่าไม่ครบ/);
+  });
+
+  test("--prompt also asks for a missing App ID, in one command", async () => {
+    const res = await run(["--prompt", "--page", GOOD_PAGE.id], { port, input: `${APP_ID}\n${SHORT_USER_TOKEN}\n${APP_SECRET}\n` });
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, new RegExp(`app ${APP_ID}`));
+    assert.match(res.stdout, new RegExp(GOOD_PAGE.token));
+    const checkMode = await run(["--check", "--app-id", APP_ID, "--app-secret", APP_SECRET, "--prompt"], { port, input: `${GOOD_PAGE.token}\n` });
+    assert.strictEqual(checkMode.status, 0, checkMode.stderr);
+    assert.match(checkMode.stdout, /never/);
+    // An App ID is required from somewhere; blank piped lines are skipped by
+    // design, so the "never supplied" case is the non-interactive one.
+    const noId = await run([], { port, env: { LUKE_FB_APP_ID: "", LUKE_FB_APP_SECRET: "", LUKE_FB_USER_TOKEN: "" } });
+    assert.strictEqual(noId.status, 1);
+    assert.match(noId.stderr, /ขาด --app-id/);
   });
 
   test("reads app id/secret/token from env, and still insists on a token", async () => {

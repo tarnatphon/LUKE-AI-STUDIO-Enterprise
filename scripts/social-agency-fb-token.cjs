@@ -25,7 +25,8 @@
  * never lands in your shell history when you use --prompt.
  *
  * Usage
- *   node scripts/social-agency-fb-token.cjs --prompt
+ *   node scripts/social-agency-fb-token.cjs --prompt            (asks for everything)
+ *   node scripts/social-agency-fb-token.cjs --page PAGE_ID --prompt
  *   node scripts/social-agency-fb-token.cjs --app-id ID --app-secret SECRET --token SHORT
  *   node scripts/social-agency-fb-token.cjs --page PAGE_ID --prompt
  *   node scripts/social-agency-fb-token.cjs --check --prompt
@@ -68,7 +69,7 @@ function parseArgs(argv) {
 const HELP = `
 Social Agency — Facebook Page token helper
 
-  --prompt                     ถามหา App Secret / token ตอนรัน (ไม่บันทึกลง shell history)
+  --prompt                     ถามหา App ID / App Secret / token ตอนรัน (ไม่บันทึกลง shell history)
   --app-id <id>                App ID จาก App Dashboard → Settings → Basic
   --app-secret <secret>        App Secret (ถ้าไม่ใส่จะใช้วิธีถาม หรือ env LUKE_FB_APP_SECRET)
   --token <short-lived>        User Access Token จาก Graph API Explorer (หรือ env LUKE_FB_USER_TOKEN)
@@ -314,15 +315,13 @@ async function main() {
     throw new Error(`Graph API version "${version}" ไม่อยู่ในรายการที่แอปนี้รองรับ (${[...KNOWN_GRAPH_VERSIONS].join(", ")})`);
   }
 
-  const appId = args["app-id"] || process.env.LUKE_FB_APP_ID || "";
+  let appId = args["app-id"] || process.env.LUKE_FB_APP_ID || "";
   let appSecret = args["app-secret"] || process.env.LUKE_FB_APP_SECRET || "";
   let userToken = args.token || process.env.LUKE_FB_USER_TOKEN || "";
 
-  if (!appId) throw new Error("ขาด --app-id (ดูใน App Dashboard → Settings → Basic) หรือ env LUKE_FB_APP_ID");
-
   // --curl: no secrets needed, no network — just show what would run.
   if (args.curl) {
-    const a = appId, s = appSecret || "APP_SECRET", t = userToken || "SHORT_LIVED_USER_TOKEN";
+    const a = appId || "APP_ID", s = appSecret || "APP_SECRET", t = userToken || "SHORT_LIVED_USER_TOKEN";
     process.stdout.write(`# 1) short-lived user token → long-lived user token (~60 วัน) — รันฝั่งเซิร์ฟเวอร์เท่านั้น เพราะมี App Secret
 curl -sG "https://graph.facebook.com/${version}/oauth/access_token" \\
   -d grant_type=fb_exchange_token -d client_id=${a} -d client_secret=${s} \\
@@ -340,19 +339,22 @@ curl -sG "https://graph.facebook.com/${version}/debug_token" \\
   }
 
   const mode = args.check ? "check" : "mint";
-  if (mode === "check" && !userToken && !args.prompt) throw new Error("--check ต้องมี --token (หรือใส่ --prompt เพื่อพิมพ์ค่า)");
 
+  // --prompt asks for whatever is still missing, including the App ID, so the
+  // whole setup can be one command with no secret on the visible command line.
   if (args.prompt) {
-    if (mode === "mint" && !userToken) {
-      process.stdout.write("User Access Token (สั้น) จาก Graph API Explorer — ใช้แค่แลกตัวจริง แล้วทิ้งได้\n");
-      userToken = await ask("  short-lived user token");
+    if (!appId) appId = await ask("  App ID (App Dashboard → Settings → Basic)");
+    if (!userToken) {
+      if (mode === "mint") process.stdout.write("User Access Token (สั้น) จาก Graph API Explorer — ใช้แค่แลกตัวจริง แล้วทิ้งได้\n");
+      userToken = await ask(mode === "check" ? "  token ที่ต้องการตรวจ" : "  short-lived user token");
     }
     if (!appSecret) appSecret = await ask("  App Secret");
   }
-  if (mode === "check" && args.prompt && !userToken) userToken = await ask("  token ที่ต้องการตรวจ");
-  if (mode === "mint" && !userToken) throw new Error("ขาด --token (User Access Token จาก Graph API Explorer) หรือ env LUKE_FB_USER_TOKEN — ถ้าไม่ต้องการพิมพ์ในคำสั่งใส่ --prompt");
-  if (!appSecret) throw new Error("ขาด --app-secret หรือ env LUKE_FB_APP_SECRET");
-  if (!userToken) throw new Error("ไม่ได้ใส่ token");
+  if (!appId) throw new Error("ขาด --app-id (ดูใน App Dashboard → Settings → Basic) หรือ env LUKE_FB_APP_ID — หรือใส่ --prompt ให้ถาม");
+  if (!userToken) throw new Error(mode === "check"
+    ? "ขาด --token สำหรับ --check (หรือใส่ --prompt ให้ถาม)"
+    : "ขาด --token (User Access Token จาก Graph API Explorer) หรือ env LUKE_FB_USER_TOKEN — ถ้าไม่ต้องการพิมพ์ในคำสั่งใส่ --prompt");
+  if (!appSecret) throw new Error("ขาด --app-secret หรือ env LUKE_FB_APP_SECRET — หรือใส่ --prompt ให้ถาม");
 
   const wantPage = mode === "mint" && args.page ? String(args.page).trim() : null;
   if (mode === "check" && args.page) process.stderr.write("! --check ตรวจ token ที่กรอกมาโดยตรง — --page ไม่มีผลในโหมดนี้\n");
