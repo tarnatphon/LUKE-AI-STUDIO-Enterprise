@@ -159,6 +159,47 @@ async function collectPipedLines() {
   return stdinQueue;
 }
 
+// Terminals wrap a paste in ESC[200~ … ESC[201~ when bracketed paste mode is on.
+// In raw mode those bytes arrive inline, and a "printable characters only" filter
+// keeps their visible halves — "[200~" — glued onto the front of the token. Nothing
+// is echoed, so the corruption is invisible and Meta just answers "Cannot parse
+// access token". Escape sequences are therefore consumed, never collected, and the
+// end-of-paste marker submits the line the way Enter would.
+function stripEscapeSequences(text) {
+  return String(text)
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "") // CSI: colours, arrows, bracketed paste
+    .replace(/\u001b[()][A-Za-z0-9]/g, "") // charset designators
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+}
+
+// App IDs, app secrets and tokens never contain whitespace, so a stray space or
+// tab from a double-click selection is noise to remove rather than a typo to keep.
+function sanitizeHiddenLine(text) {
+  return stripEscapeSequences(text).replace(/\s+/g, "");
+}
+
+const looksLikeToken = (value) => typeof value === "string" && value.length >= 24 && !/\s/.test(value);
+
+function describeValue(value, { secret = true } = {}) {
+  const v = String(value || "");
+  if (!v) return "(ว่าง)";
+  if (!secret) return v;
+  return `${v.length} ตัวอักษร · ${v.slice(0, 4)}…${v.slice(-4)}`;
+}
+
+// Slot-swap guard: hidden prompts give no feedback, so "App Secret typed into the
+// token box" otherwise surfaces three requests later as a confusing OAuth error.
+function validateInputs({ appId, userToken, appSecret, mode, problems }) {
+  if (appId && !/^\d{5,}$/.test(appId)) problems.push(`App ID ต้องเป็นตัวเลขล้วน — ได้ "${describeValue(appId, { secret: false }).slice(0, 24)}" (น่าจะเป็นค่าของช่องอื่น)`);
+  if (mode === "mint") {
+    if (/^\d+$/.test(userToken)) problems.push("ที่ช่อง token มีแต่ตัวเลข — น่าจะเป็น Page ID/App ID ไม่ใช่ User Access Token จาก Graph API Explorer");
+    else if (userToken && userToken.length < 20) problems.push("token ในช่องสั้นเกินไป (ต้อง ~40-400 ตัวอักษร) — วางไม่ครบหรือผิดช่อง?");
+  }
+  if (looksLikeToken(appSecret) && appSecret.startsWith("EAA")) problems.push("App Secret ขึ้นต้นด้วย EAA — นั่นคือรูปแบบ Access Token น่าจะวางสลับกับช่อง token");
+  else if (/^\d+$/.test(appSecret)) problems.push("App Secret ไม่ใช่ตัวเลขล้วน — น่าจะวาง App ID ซ้ำ");
+  return problems;
+}
+
 async function promptHidden(question) {
   if (!process.stdin.isTTY) {
     // Piped in (e.g. `printf '%s\n%s\n' TOKEN SECRET | ... --prompt`): consume one
@@ -166,25 +207,34 @@ async function promptHidden(question) {
     const lines = await collectPipedLines();
     const next = lines.shift();
     if (!next) throw new Error("ป้อนค่าไม่ครบ — stdin หมดก่อน (ต้องมี 1 บรรทัดต่อค่าที่ถาม) หรือใส่ --app-id/--app-secret/--token แทน");
-    return next;
+    return sanitizeHiddenLine(next);
   }
   return new Promise((resolve, reject) => {
     const stdin = process.stdin;
     let line = "";
+    let inEscape = false;
+    let pasteEnded = false;
     stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding("utf8");
     process.stdout.write(question);
+    const finish = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener("data", onData);
+      process.stdout.write("\n");
+      resolve(sanitizeHiddenLine(line));
+    };
     const onData = (chunk) => {
       for (const ch of String(chunk)) {
-        if (ch === "\r" || ch === "\n") {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.removeListener("data", onData);
-          process.stdout.write("\n");
-          resolve(line);
-          return;
+        if (inEscape) {
+          // swallow the rest of a CSI sequence; `~` ends a bracketed-paste marker
+          if (ch === "~") pasteEnded = true;
+          if (/[a-zA-Z~]/.test(ch)) inEscape = false;
+          continue;
         }
+        if (ch === "\u001b") { inEscape = true; continue; }
+        if (ch === "\r" || ch === "\n") { finish(); return; }
         if (ch === "\u0003") {
           stdin.setRawMode(false);
           stdin.pause();
@@ -192,21 +242,22 @@ async function promptHidden(question) {
           process.stdout.write("\nยกเลิกแล้ว\n");
           process.exit(130);
         }
-        if (ch === "\u007f" || ch === "\b") {
-          line = line.slice(0, -1);
-          continue;
-        }
-        if (ch >= " ") line += ch; // ignore escapes/ctrl; typed chars only
+        if (ch === "\u007f" || ch === "\b") { line = line.slice(0, -1); continue; }
+        if (ch >= " ") line += ch;
       }
+      // A paste with no trailing newline still has to end: the closing bracketed
+      // marker is that signal. Without it we keep waiting for Enter.
+      if (pasteEnded) { finish(); return; }
     };
     stdin.on("data", onData);
     stdin.once("error", reject);
   });
 }
 
-function ask(label, preset) {
-  if (preset) return Promise.resolve(String(preset).trim());
-  return promptHidden(`${label}: `);
+async function ask(label, preset, opts = {}) {
+  const value = preset ? sanitizeHiddenLine(preset) : await promptHidden(`${label}: ${opts.hint || ""}`);
+  if (!preset) process.stdout.write(`  = ${describeValue(value, { secret: opts.secret !== false })}\n`);
+  return value;
 }
 
 const qs = (params) => Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
@@ -343,12 +394,18 @@ curl -sG "https://graph.facebook.com/${version}/debug_token" \\
   // --prompt asks for whatever is still missing, including the App ID, so the
   // whole setup can be one command with no secret on the visible command line.
   if (args.prompt) {
-    if (!appId) appId = await ask("  App ID (App Dashboard → Settings → Basic)");
+    if (!appId) appId = await ask("  App ID (App Dashboard → Settings → Basic)", "", { secret: false });
     if (!userToken) {
       if (mode === "mint") process.stdout.write("User Access Token (สั้น) จาก Graph API Explorer — ใช้แค่แลกตัวจริง แล้วทิ้งได้\n");
-      userToken = await ask(mode === "check" ? "  token ที่ต้องการตรวจ" : "  short-lived user token");
+      userToken = await ask(mode === "check" ? "  token ที่ต้องการตรวจ" : "  short-lived user token", "", { hint: "(วางแล้วกด Enter)" });
     }
-    if (!appSecret) appSecret = await ask("  App Secret");
+    if (!appSecret) appSecret = await ask("  App Secret", "", { hint: "(วางแล้วกด Enter)" });
+  }
+  const problems = validateInputs({ appId, userToken, appSecret, mode, problems: [] });
+  if (problems.length) {
+    for (const problem of problems) process.stderr.write(`✗ ${problem}\n`);
+    process.exitCode = 2;
+    return 2;
   }
   if (!appId) throw new Error("ขาด --app-id (ดูใน App Dashboard → Settings → Basic) หรือ env LUKE_FB_APP_ID — หรือใส่ --prompt ให้ถาม");
   if (!userToken) throw new Error(mode === "check"
@@ -367,7 +424,12 @@ curl -sG "https://graph.facebook.com/${version}/debug_token" \\
 
   if (mode === "mint") {
     say("→ แลก long-lived user token (60 วัน) …");
-    const exchanged = await exchangeLongLivedUserToken({ appId, appSecret, userToken, version });
+    let exchanged;
+    try {
+      exchanged = await exchangeLongLivedUserToken({ appId, appSecret, userToken, version });
+    } catch (err) {
+      throw new Error(`${err.message}\n  สาเหตุที่พบบ่อย: วาง token ผิดช่อง · user token จาก Explorer หมดอายุแล้ว (~1-2 ชม.) · App Secret คนละแอป · แอปไม่มีสิทธิ์เพจนี้\n  รันใหม่ด้วย --prompt แล้วดูความยาว/ตัวหน้า-ท้ายที่พิมพ์กลับมาจากแต่ละช่อง`);
+    }
     usedUserToken = exchanged.token;
     say(`  ✓ ได้ long-lived user token (${exchanged.expiresIn ? `อยู่ได้ ${Math.round(exchanged.expiresIn / 86400)} วัน` : "ไม่ระบุอายุ"}) — token นี้เป็นความลับเช่นกัน แต่ไม่ต้องเอาไปวางที่ไหน`);
     say("→ อ่าน /me/accounts …");
@@ -446,7 +508,13 @@ curl -sG "https://graph.facebook.com/${version}/debug_token" \\
   return 0;
 }
 
-main().then((code) => { process.exitCode = code ?? 0; }).catch((err) => {
-  process.stderr.write(`✗ ${err.message || err}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().then((code) => { process.exitCode = code ?? 0; }).catch((err) => {
+    process.stderr.write(`✗ ${err.message || err}\n`);
+    process.exitCode = 1;
+  });
+}
+
+// Exported for scripts/validation/test-social-agency-fb-token.cjs — the hidden-input
+// path can't be exercised by piping, because a pipe is never a TTY.
+module.exports = { parseArgs, sanitizeHiddenLine, stripEscapeSequences, looksLikeToken, describeValue, validateInputs };

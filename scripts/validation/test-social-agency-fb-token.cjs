@@ -103,6 +103,9 @@ async function main() {
   const { server, calls, port } = await startMockGraph();
   const MINT_ARGS = ["--app-id", APP_ID, "--app-secret", APP_SECRET, "--token", SHORT_USER_TOKEN];
   const mint = (extra = [], input) => run([...MINT_ARGS, ...extra], { port, input });
+  // `calls` accumulates for the whole run, so "did this test make a request" has
+  // to be measured against a baseline rather than the array length.
+  const since = (mark) => calls.slice(mark);
 
   test("helper prints usage without touching the network", async () => {
     const res = await run(["--help"], { port });
@@ -114,12 +117,13 @@ async function main() {
   });
 
   test("--curl prints the three-call ladder and makes no request", async () => {
+    const mark = calls.length;
     const res = await run(["--curl", "--app-id", APP_ID], { port });
     assert.strictEqual(res.status, 0, res.stderr);
     const bare = await run(["--curl"], { port });
     assert.strictEqual(bare.status, 0, "curl preview works with nothing supplied at all");
     assert.match(bare.stdout, /client_id=APP_ID/);
-    assert.strictEqual(calls.length, 0, "--curl is offline by definition");
+    assert.strictEqual(since(mark).length, 0, "--curl is offline by definition");
     assert.match(res.stdout, /grant_type=fb_exchange_token/);
     assert.match(res.stdout, /\/me\/accounts/);
     assert.match(res.stdout, /\/debug_token/);
@@ -181,9 +185,19 @@ async function main() {
   });
 
   test("a 1-char arg must not redact every letter out of the message", async () => {
-    const res = await run(["--app-id", "1", "--app-secret", "s", "--token", "t"], { port });
+    const res = await run(["--app-id", APP_ID, "--app-secret", "s", "--token", SHORT_USER_TOKEN], { port });
     assert.strictEqual(res.status, 1);
     assert.match(`${res.stdout}${res.stderr}`, /Invalid OAuth access token - Cannot parse access token/);
+  });
+
+  test("a value in the wrong slot is caught before any request goes out", async () => {
+    const mark = calls.length;
+    const res = await run(["--app-id", "abc", "--app-secret", `EAA${"x".repeat(60)}`, "--token", GOOD_PAGE.id], { port });
+    assert.strictEqual(res.status, 2, res.stderr);
+    assert.match(res.stderr, /App ID ต้องเป็นตัวเลขล้วน/);
+    assert.match(res.stderr, /มีแต่ตัวเลข — น่าจะเป็น Page ID\/App ID/);
+    assert.match(res.stderr, /App Secret ขึ้นต้นด้วย EAA/);
+    assert.strictEqual(since(mark).filter((c) => c.endsWith("/oauth/access_token")).length, 0, "no request for obviously wrong input");
   });
 
   test("--prompt consumes stdin one value per prompt, keeping secrets off the command line", async () => {
@@ -232,6 +246,19 @@ async function main() {
     const supported = await mint(["--version", "v21.0", "--page", GOOD_PAGE.id]);
     assert.strictEqual(supported.status, 0, supported.stderr);
     assert.match(supported.stdout, /Graph API v21\.0/);
+  });
+
+  test("hidden input survives a bracketed paste (raw mode, no echo)", async () => {
+    // Piping can't reach the raw-mode reader — a pipe is never a TTY — so the
+    // sanitiser is asserted directly. This is the "pasted token, Meta says
+    // Cannot parse access token" bug: the escape wrapper survives as literal
+    // "[200~" text if you only filter for printable characters.
+    const { sanitizeHiddenLine, looksLikeToken } = require(HELPER);
+    assert.strictEqual(sanitizeHiddenLine(`\u001b[200~${GOOD_PAGE.token}\u001b[201~`), GOOD_PAGE.token);
+    assert.strictEqual(sanitizeHiddenLine(`  ${GOOD_PAGE.token}\u001b[?25l  \n`), GOOD_PAGE.token);
+    assert.strictEqual(sanitizeHiddenLine("EAA\u001b[Cabc"), "EAAabc", "stray arrow key must not land in the value");
+    assert.ok(looksLikeToken(GOOD_PAGE.token));
+    assert.ok(!looksLikeToken(GOOD_PAGE.id), "a page id is not a token");
   });
 
   test("an unknown page id says so and lists what you do have", async () => {
