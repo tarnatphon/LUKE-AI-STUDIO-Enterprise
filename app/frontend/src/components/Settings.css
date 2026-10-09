@@ -480,3 +480,45 @@ html[data-theme^="dark"] .settings-subsection:hover {
 .settings-expanded-content {
   animation: fadeInSlide 0.3s var(--md-transition-easing);
 }
+
+/* Per-model recipe suggestion. One chip, one button: the app's global defaults
+   cannot suit a Lightning checkpoint and a standard SDXL checkpoint at once, so
+   the recommendation is shown next to the sliders instead of applied silently. */
+.image-recipe-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.04));
+}
+
+.image-recipe-chip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--md-sys-color-primary);
+}
+
+.image-recipe-chip-note {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.image-recipe-chip-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--md-sys-color-primary);
+}
+
+.image-recipe-chip button {
+  align-self: flex-start;
+}

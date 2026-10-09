@@ -397,3 +397,89 @@ cd ../.. && ./mac.sh
 **สิ่งที่ทำแทนการกู้:** อ่านข้อความส่งต่อ (ซึ่งเป็นสเปกที่ละเอียดพอ) + อ่านโค้ดจริงใน `main` แล้ว**เขียนฟีเจอร์ชุดนี้ขึ้นใหม่ทั้งหมด** (หัวข้อ 2 "PR #38") — รวมถึงเทสต์ใหม่ 1 ชุด และบั๊กจริง 1 ตัวที่เจอระหว่างทาง (ด่านหลักฐานราคาไม่เคยนับ `product.price` เป็นหลักฐาน ทำให้แคปชันที่อ้างราคาจากข้อมูลจริงถูกตีว่าอ้างเกินทุกครั้ง) · **สิ่งที่เขียนใหม่ได้ตรงตามสเปก แต่ไม่ใช่ไบต์เดิมของ commit ที่หาย** — ถ้าเจ้าของงานมีสำเนา `86f6cf2` อยู่จริงบนเครื่อง Mac (เช่นใน reflog ของ repo ที่ `/Volumes/AI`) การเทียบ diff กับ PR #38 จะบอกได้ว่าของเดิมต่างตรงไหน
 
 **กติกาซ้ำ:** ทุก session ต้อง `commit → push → เปิด PR → merge เข้า main` ให้จบใน session เดียวกัน · ถ้า merge ไม่ทัน ให้ push branch **และ** เขียน sha ที่ push จริงลงหัวข้อ 1 (sha ที่ยังไม่ push ห้ามเขียนลงเอกสาร — เอกสารที่อ้าง commit ที่ไม่มีอยู่ทำให้ session ถัดไปต้องเสียเวลาไล่หาของที่ไม่มี)
+
+---
+
+## 7.8 บันทึก session `arena/68f04c57…` (2026-10-08) — วิจัย: คุณภาพการเจนภาพ / Reference Image / แฮ็ก
+
+**คำขอที่เข้ามา:** ผู้ใช้ถาม 3 เรื่องก่อนให้ลงมือแก้โค้ด — (1) ทำ Create Image ให้มีประสิทธิภาพใกล้ ChatGPT Image 2 พร้อมหา reference ที่ไวรัสบนเว็บ/YouTube (2) ทำ Reference Image ให้ได้ผลใกล้ต้นฉบับและ "ใช้งานง่ายโดยไม่ต้องตั้งอะไร" (3) ขอให้แนะนำแฮ็กที่ทำแล้วดีขึ้น
+
+**สิ่งที่ทำใน session นี้ (ยังไม่แก้โค้ดแอป — เป็นการวิจัยก่อนตัดสินใจ):**
+- เขียนเอกสารวิจัยใหม่ `docs/research/2026-10-08-image-quality-reference-and-hacks.md`
+- เปิด PR #39 (base `main`) · branch `arena/68f04c57-luke-ai-studio-enterprise` · **sha ที่ push จริง: `a3c35f3`** (commit ก่อนหน้าใน branch เดียวกัน: `b67a8c5`)
+
+**ข้อค้นพบสำคัญ (มีหลักฐานไฟล์:บรรทัดในเอกสาร):**
+1. ฟิลด์ `reference_images` / `reference_settings` / `reference_mode` ที่ frontend ส่งไป backend **ถูกเมินทั้งหมด** (upstream `/v1/images/generations` และ `/sdapi/v1/img2img` ไม่มีฟิลด์เหล่านี้) — ตรงกับคอมเมนต์ใน `scripts/server/social-agency-runtime.cjs:379-382`
+2. ทางเดียวที่ทำงานจริงวันนี้คือใช้รูปอ้างอิงเป็น `init_image` (img2img) → ได้โครงเดิม ไม่ได้ identity เดิม และสไลเดอร์ 3 ตัว + เช็กบ็อกซ์ 4 ตัวใน `ReferenceManager.jsx:646-653` ไม่มีผลถึง backend
+3. backend ที่แอปใช้ (`master-721` / Linux `master-685`) ยังไม่มี IP-Adapter (เข้า upstream 24 ก.ค. 2026), ADetailer (14 ก.ค. 2026), ref-image presets + `image_preprocess` (ก.ย. 2026) — แต่ **มี** Hires fix, `/v1/images/edits`, `ref_images`, `sd_cpp_extra_args` แล้ว
+4. กำแพงคุณภาพคือแอปโหลดได้แค่เช็คพอยต์ไฟล์เดียว (SD1.5/SDXL) ทั้งที่ engine รองรับ Qwen-Image-Edit / Kontext / Z-Image / FLUX.2 แล้ว
+5. **เครื่องเป้าหมายยืนยันจากหลักฐานใน repo: Apple Silicon 18 GB (Metal working set ~14.3 GB)** — `README.md:266-278`, `mac.sh:26`, `scripts/build/build_from_source.sh:22,39-56` ⇒ Qwen-Image-Edit 2509/2511 (~15.8–19 GB) และ Qwen-Image-2.1 (>20 GB) **ไม่ผ่าน**; ตัวที่ผ่านคือ IP-Adapter Plus บน SDXL (~10 GB), FLUX.2-klein 4B (~5.9 GB), Z-Image Turbo (~7.7 GB), FLUX.1-Kontext Q4 (~10.4 GB แบบ offload)
+
+**สิ่งที่รอเจ้าของงานตัดสิน (2 ข้อ):** เป้าหมายคุณภาพ (สูงสุดเท่าที่เครื่องไหว vs เบา/เร็ว) และนโยบาย license (Apache-2.0/commercial-safe vs ยอมรับ non-commercial ของ FLUX.1) — ประเด็นเครื่องถูกตอบแล้วข้างบน
+
+**บทเรียนเชิงปฏิบัติของ session นี้ (เกี่ยวกับ sandbox/git):** commit ของเทิร์นก่อน (`b67a8c5`) ถูก push ขึ้น remote สำเร็จ แต่**object ไม่อยู่ใน sandbox อีกในเทิร์นถัดมา** (`git cat-file -t b67a8c5` → Not a valid object name · reflog มีแค่ clone + checkout + commit ล่าสุด) → วิธีซ่อมที่ใช้ได้: `git fetch origin <branch>` แล้ว `git reset --soft FETCH_HEAD` + commit ใหม่ (ได้ parent ที่ถูกต้องและ push แบบ fast-forward) ⇒ **ทุก session ควร commit + push ให้จบในเทิร์นเดียวกัน และอย่าอ้าง sha ที่ยังไม่ push ลงเอกสาร**
+
+---
+
+## 7.9 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A1+A2 ลงมือจริง
+
+**คำตอบผู้ใช้ที่ยืนยันแล้ว (ผ่าน ask_user):** เครื่องเป้าหมาย = **Mac Apple Silicon 18 GB** (ตรงกับหลักฐานในหัวข้อ 7.8) · เริ่ม **Phase A ก่อน แล้วต่อ IP-Adapter** · license: **ยอมรับ non-commercial ได้** (เปิดทาง FLUX.1-Kontext)
+
+**งานที่ทำ (commit `bd9addc`, push แล้ว):**
+- `app/frontend/src/lib/reference-storage.mjs` (ใหม่) — `toPersistedReferences`, `referencesNeedingHydration`, `referenceUrlFromAsset`, `referenceFileUrl`, `blobToDataUrl` (โมดูล pure, reader inject ได้เพื่อเทสต์ใน node)
+- `api.js` — `generateImage` ไม่ส่ง `reference_images` / `reference_settings` / `reference_mode` อีก (backend ไม่อ่าน); ลบ `normalizeReferenceMode`
+- `Generator.jsx` — persist ผ่าน `toPersistedReferences` + `REFERENCE_STORAGE_KEY`; เพิ่ม effect hydrate `src` จากดิสก์ (รองรับ record เก่าที่มีแค่ `assetId` ผ่าน `getAsset`); `referencePayload` เก็บ `assetId` + `url` (ไม่มี base64); เตือนจำนวน reference ที่ไม่มีต้นฉบับ
+- `ReferenceManager.jsx` — เก็บ `url` จากผลอัปโหลด; `normalizeReference` คง `url`/`assetId`/`sourceMissing`; การ์ดไม่มีต้นฉบับแสดง "Source missing"
+- `serve.cjs` — `REFERENCE_OUTPUTS`, `GET /api/reference-file?filename=` (pathInside + immutable cache), ผลอัปโหลดคืน `reference.url`
+- เทสต์ใหม่: `test-image-reference-storage.mjs` (35 checks) · `test-image-reference-payload.cjs` (29 checks)
+
+**ผลตรวจ (sandbox นี้ รันจริง):** `vite build` ผ่าน · eslint 294 ไฟล์ 0 problems · `run-all.cjs` **156 passed · 1 failed · 1 skipped** — ที่ fail คือ `validate-release.sh` เพราะไม่มี Python `imageio_ffmpeg` (ต้อง `--include-python` / ติดตั้งใน CI) · `test-frontend-api-contract.cjs` 307/307 URL (route ใหม่รวมอยู่ด้วย)
+
+**หมายเหตุสภาพแวดล้อมของ sandbox:** ต้อง `npm ci --prefix scripts/server` และ `cd app/frontend && npm ci && npx vite build` ก่อน เทสต์กลุ่มที่ต้อง boot เซิร์ฟเวอร์/อ่าน `app/dist` จึงจะรันได้ (5 ชุด fail แบบ ENOENT/404 ถ้าไม่ build)
+
+**Phase A ที่ยังเหลือ (เรียงตามลำดับที่จะทำ):** (1) Reference Router — role/จำนวนภาพอ้างอิงเลือก denoise/strength เอง ผู้ใช้ไม่ต้องตั้งค่า (2) ทำสไลเดอร์ใน `ReferenceManager.jsx:646-653` ให้สัจจริงหรือซ่อน (3) Hires fix 2 จังหวะ + UI toggle + ระวังเส้นทาง CoreML ที่ไม่รองรับ (4) ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด
+
+**ยังต้องยืนยันบน Mac จริง:** การ hydrate reference หลัง reload (ต้องมีไฟล์ใน `app/outputs/references/`), ภาพที่เจนด้วย reference หลังอัปเดตยังเหมือนเดิม, และ `GET /api/reference-file` ตอบผ่านเซิร์ฟเวอร์จริงบนพอร์ตของแอป
+
+---
+
+## 7.10 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A3 (recipe ต่อโมเดล) ลงแล้ว
+
+**งานที่ทำ (commit `e336498`, push แล้ว):**
+- `app/frontend/src/lib/image-recipes.mjs` (ใหม่) — ตารางสูตร 8 ตระกูลโมเดล (`z-image` → `qwen-image` → `flux-schnell`/`klein` → `flux-dev`/`kontext` → `lcm` → `sdxl-lightning`/`turbo`/`hyper` → `sdxl` → `sd15`) พร้อม `steps`/`cfgScale`/`sampler` ที่โมเดลนั้นถูกเทรนมา · `normalizeModelKey` (รองรับ path Windows/POSIX แต่ไม่ตัด `v1.5` ทิ้งเพราะเป็นเวอร์ชัน) · `matchImageRecipe` (ตระกูลที่ใช้คำซ้ำอย่าง `turbo` ใช้ `exclude` ให้เจ้าของชื่อชนะ) · `recipePlan` (แตะได้แค่ 3 คีย์ + บอก `changedKeys`/`note`) · `describeRecipePatch`
+- `Settings.jsx` + `Settings.css` — ชิป "สูตรที่แนะนำ: <ชื่อตระกูล>" เหนือสไลเดอร์ Detail Steps แสดงค่าที่จะเปลี่ยนและปุ่ม "ใช้ค่าที่แนะนำ (steps 26 · CFG 6)" — **ไม่มีอะไรถูกเขียนทับเอง** ผู้ใช้ต้องกด และเมื่อกดจะอัปเดต `standardSteps`/`npuSteps` เหมือนสไลเดอร์ทำ
+- `scripts/validation/test-image-recipes.mjs` (ใหม่) — 47 checks
+
+**เหตุผล:** แอปมีค่า default ชุดเดียว (4 steps / CFG 1 สำหรับ Flux-schnell) → SDXL ปกติที่โหลดมาจะได้ภาพไหม้ และ SD1.5 จะได้ภาพแบน ซึ่งเป็นสาเหตุอันดับต้นของ "ภาพออกมาไม่ดี" ที่ไม่ได้มาจากโมเดล
+
+**ผลตรวจ (sandbox นี้ รันจริง):** `test-image-recipes.mjs` 47/47 · eslint 295 ไฟล์ 0 problems · `run-all.cjs` **157 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`) · รายงาน `validation-reports/run-all-20261008-062340.txt`
+
+**กับดักที่เจอ:** `test-frontend-dist-freshness.cjs` จะ fail ถ้าแก้ `app/frontend/src/**` แล้วไม่รัน `cd app/frontend && npx vite build` — ตัวเทสต์สร้างบิลด์สะอาดแล้วเทียบกับ `app/dist` ในเครื่อง (`app/dist` ถูก `.gitignore` ไม่ได้ track ใน git จึงเป็นเรื่องของ local build เท่านั้น)
+
+**ก้าวต่อไปทันที:** Reference Router (§5 ของเอกสารวิจัย) — ทำให้ผลลัพธ์ "ใกล้ต้นฉบับโดยไม่ต้องตั้งค่าอะไร" ตามเกณฑ์ข้อ 2 ของผู้ใช้ ก่อนไปแตะ hires fix
+
+---
+
+## 7.11 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A4/A5 (Reference Router + fit ภาพตั้งต้น) ลงแล้ว
+
+**งานที่ทำ (commit `cf32e7f`, push แล้ว):**
+- `app/frontend/src/lib/reference-router.mjs` (ใหม่) — `planReferenceRoute` บอกว่าเส้นทางไหนรันได้จริงวันนี้ (img2img จากภาพอ้างอิงหลัก) และอันไหนยังใช้ไม่ได้ (IP-Adapter, `ref_images` ของเอนจิน) พร้อมธง `stopgap` เมื่อโมเดลที่โหลดเป็นตระกูลที่มี `ref_images` ของตัวเอง (Kontext/Qwen-Image/Z-Image) แต่ยังโหลดหลายไฟล์ไม่ได้ · `planReferenceFit` ตัดสินจากขนาดจริงของรูปว่าส่งเดิมหรือเตรียมใหม่ (สัดส่วนตรง ±12% + ใหญ่พอ → ส่งเดิม · ไม่ตรง → แคนวาสสัดส่วนเดียวกับเอาต์พุต ใหญ่กว่า 15% แคป 2048 วางรูปทั้งใบแบบ contain ไม่ตัดหัว/คาง)
+- `Generator.jsx` — `prepareInitImage` (โหลดรูปวัด `naturalWidth` → วาดสำเนาเบลอแบบ cover เต็มแคนวาส → ทับด้วยรูปจริงแบบ contain → `toDataURL("image/jpeg", 0.92)`) และ**ถอยกลับเป็นรูปเดิมเสมอถ้าพลาด** · บรรทัด `.reference-route-line` ใต้ปุ่ม Generate · metadata เพิ่ม `referenceRoute`/`referencePlan`/`initImageFit` และแก้ `denoisingStrength` ให้บันทึกค่าที่ส่งจริง (`generationStepPlan.strength` มาจาก `referenceSettings.denoiseGuidance` ไม่ใช่ `constraints.denoisingStrength`)
+- `Generator.css` — `.reference-route-line`
+- `scripts/validation/test-reference-router.mjs` (ใหม่) — 46 checks
+
+**ผลตรวจ (sandbox นี้ รันจริง):** test-reference-router 46/46 · test-image-reference-payload 29/29 · eslint 296 ไฟล์ 0 problems · `run-all.cjs` **158 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`) · รายงาน `validation-reports/run-all-20261008-063029.txt`
+
+**ยังเหลือใน Phase A:** (1) สไลเดอร์ Face Similarity / Reference Strength + เช็กบ็อกซ์ 4 ตัวใน `ReferenceManager.jsx:646-653` — มีผลแค่ข้อความ prompt ต้องทำให้จริงหรือซ่อน (2) Hires fix 2 จังหวะ (ต้องไม่พังเส้นทาง CoreML) (3) ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด (4) ส่วน denoise/strength อัตโนมัติต่อ role ของ Router — ทำได้หลังมี `ref_images`/IP-Adapter จริง
+
+**สิ่งที่ต้องยืนยันบน Mac จริง:** ภาพที่เจนจาก reference หลังอัปเดต A5 — ควรได้โครงภาพใกล้ต้นฉบับมากขึ้นและไม่ถูกบีบสัดส่วน (เทียบก่อน/หลังด้วยรูปเดียวกัน + seed เดียวกัน)
+
+---
+
+## 7.12 บันทึก session `arena/68f04c57…` ต่อ (2026-10-08) — Phase A6 (พาเนล Reference แบบไม่ต้องตั้งค่า) ลงแล้ว
+
+**งานที่ทำ (commit `146a60e`, push แล้ว):** `ReferenceManager.jsx` — สไลเดอร์ `Face Similarity` / `Reference Strength` / `Denoise Guidance` + เช็กบ็อกซ์ 4 ตัว ย้ายเข้า `<details className="appearance-pro-controls">` ที่**ปิดไว้เป็นค่าเริ่มต้น** พร้อมหมายเหตุตรงไปตรงมาว่า Denoise Guidance เป็นค่าเดียวที่ถึง sampler จริง ส่วนที่เหลือมีผลแค่ข้อความ prompt และจะคุม IP-Adapter/`ref_images` จริงใน Phase B · `Generator.css` เพิ่ม `.appearance-pro-controls`/`.appearance-pro-note`
+
+**ผลตรวจ:** reference suites 5/5 (payload 29 · storage 35 · router 46 · asset schema · upload registration) · eslint 0 problems · `run-all.cjs` **158 passed · 1 failed · 1 skipped** (fail เฉพาะ `validate-release.sh` ที่ขาด Python `imageio_ffmpeg`)
+
+**สถานะ Phase A:** ✅ A1/A2/A4 (`bd9addc`) · ✅ A3 (`e336498`) · ✅ A5 (`cf32e7f`) · ✅ A6 (`146a60e`) — **เหลือ Hires fix 2 จังหวะ** (ต้องแตะเส้นทาง txt2img ร่วมกับ CoreML — ทำแบบมี toggle และต้องถอยกลับได้) กับ **ยืนยัน `<sd_cpp_extra_args>{"ref_images":[…]}` บนไบนารีที่ปักหมุด** แล้วจึงเข้า Phase B (IP-Adapter Plus)
