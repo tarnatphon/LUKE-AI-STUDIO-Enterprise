@@ -86,7 +86,14 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
     setBusy(true);
     setErr("");
     try {
-      await postJson(`/api/social-agency/products/${encodeURIComponent(product.sku)}?clientId=${encodeURIComponent(clientId)}`, { image });
+      // PATCH — the route is PATCH /api/social-agency/products/:sku. Sending the
+      // default POST here answers "Unknown API endpoint" and the photo is never
+      // saved, which is how the upload / paste-a-link buttons silently did nothing.
+      await postJson(
+        `/api/social-agency/products/${encodeURIComponent(product.sku)}?clientId=${encodeURIComponent(clientId)}`,
+        { image },
+        "PATCH",
+      );
       onSaved();
     } catch (e) {
       setErr(e.message);
