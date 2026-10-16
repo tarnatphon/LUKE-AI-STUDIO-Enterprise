@@ -60,7 +60,11 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [newEntryDate, setNewEntryDate] = useState(null);
   const [planPreview, setPlanPreview] = useState(null);
   const [planBusy, setPlanBusy] = useState(false);
-  const [onePerDay, setOnePerDay] = useState(true); // P5w: 1 สินค้า/วัน ไม่ซ้ำทั้งเดือน
+  // P5w: 1 สินค้า/วัน ไม่ซ้ำระหว่างวัน — fanned out to every selected platform
+  // so one day can carry Facebook + Instagram + LINE + web posts side by side.
+  const [planPlatforms, setPlanPlatforms] = useState(() => new Set(["facebook", "instagram", "line", "demo"]));
+  const [onePerDay, setOnePerDay] = useState(true);
+  const [replacePlanned, setReplacePlanned] = useState(false); // วางแผนซ้ำได้เรื่อย ๆ
   const [dragOver, setDragOver] = useState(null);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -134,7 +138,11 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     setPlanBusy(true);
     setError("");
     try {
-      const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5, onePerDay ? { onePerDay: true } : {});
+      const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5, {
+        onePerDay,
+        platforms: ["facebook", "instagram", "line", "demo"].filter((p) => planPlatforms.has(p)),
+        replacePlanned,
+      });
       setPlanPreview(preview);
     } catch (err) {
       setError(err.message);
@@ -163,11 +171,38 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         </div>
         <div className="sa-toolbar-right">
           <span className="sa-tz"><Clock size={12} /> Asia/Bangkok</span>
-          <label className="sa-check" title="วันละ 1 สินค้า และไม่มีสินค้าซ้ำกันภายในเดือน">
+          <span className="sa-plan-platforms" title="เลือกแพลตฟอร์มที่จะโพสต์ในแต่ละวัน — เลือกได้หลายอัน วันเดียวโพสต์ได้ทั้ง Facebook, Instagram, LINE และเว็บ">
+            แพลตฟอร์ม/วัน:
+            {["facebook", "instagram", "line", "demo"].map((p) => (
+              <label key={p} className={`sa-check sa-plan-platform ${PLATFORM_META[p].cls}${planPlatforms.has(p) ? " on" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={planPlatforms.has(p)}
+                  onChange={(e) => setPlanPlatforms((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.add(p);
+                    else next.delete(p);
+                    return next;
+                  })}
+                />
+                <span>{PLATFORM_META[p].label}</span>
+              </label>
+            ))}
+          </span>
+          <label className="sa-check" title="เติมโพสต์ทุกวันที่ยังว่าง · แต่ละวันใช้สินค้าเดียวกันทุกแพลตฟอร์ม และสินค้าไม่ซ้ำกันระหว่างวัน">
             <input type="checkbox" checked={onePerDay} onChange={(e) => setOnePerDay(e.target.checked)} />
-            <span>1 สินค้า/วัน (ไม่ซ้ำ)</span>
+            <span>ทุกวัน</span>
           </label>
-          <button className="sa-btn primary" disabled={planBusy || busy || !(activeClient?.products || []).length} onClick={startAutoPlan}>
+          <label className="sa-check" title="กดวางแผนซ้ำได้เรื่อย ๆ — แทนที่เฉพาะรายการที่ยังไม่เริ่มรัน (สถานะ วางแผนไว้) ในช่องเดียวกัน รายการที่รันแล้ว/เผยแพร่แล้วจะไม่ถูกแตะ">
+            <input type="checkbox" checked={replacePlanned} onChange={(e) => setReplacePlanned(e.target.checked)} />
+            <span>แทนที่แผนเดิม</span>
+          </label>
+          <button
+            className="sa-btn primary"
+            disabled={planBusy || busy || !(activeClient?.products || []).length || !planPlatforms.size}
+            onClick={startAutoPlan}
+            title="กดกี่ครั้งก็ได้ในหนึ่งเดือน — ระบบจะเติมเฉพาะช่องที่ยังว่าง หรือเลือก “แทนที่แผนเดิม” เพื่อวางแผนใหม่ทับรายการที่ยังไม่เริ่มรัน"
+          >
             <Sparkles size={14} /> {planBusy ? "กำลังวางแผน…" : "วางแผนอัตโนมัติทั้งเดือน"}
           </button>
         </div>
@@ -310,7 +345,10 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         <AutoPlanModal
           preview={planPreview}
           onClose={() => setPlanPreview(null)}
-          onApply={(m, slots) => onApplyPlan(activeClient.id, m, slots, planPreview?.mode === "one-per-day" ? { enforceUniqueProducts: true } : {})}
+          onApply={(m, slots) => onApplyPlan(activeClient.id, m, slots, {
+            ...(planPreview?.mode === "one-per-day" ? { enforceUniqueProducts: true } : {}),
+            ...(planPreview?.replacePlanned ? { replacePlanned: true } : {}),
+          })}
         />
       )}
     </div>

@@ -29,7 +29,7 @@ export const STATUS_META = {
 };
 
 export const PLATFORM_META = {
-  demo: { label: "Demo", short: "DM", cls: "demo" },
+  demo: { label: "เว็บ (Demo)", short: "WEB", cls: "demo" },
   facebook: { label: "Facebook", short: "f", cls: "facebook" },
   instagram: { label: "Instagram", short: "IG", cls: "instagram" },
   line: { label: "LINE", short: "LINE", cls: "line" },

@@ -205,8 +205,10 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
   const [error, setError] = useState("");
   const slots = preview?.slots || [];
   const selectedCount = useMemo(() => [...selected.values()].filter(Boolean).length, [selected]);
+  const selectedDays = useMemo(() => new Set(slots.filter((_, i) => selected.get(i)).map((s) => s.date)).size, [slots, selected]);
   const toggle = (i) => setSelected((m) => new Map(m).set(i, !m.get(i)));
   const onePerDay = preview?.mode === "one-per-day";
+  const planPlatforms = preview?.platforms || [];
   const productMix = useMemo(() => {
     const m = {};
     slots.forEach((s, i) => {
@@ -214,7 +216,8 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
       const k = s.productName || s.sku || "?";
       m[k] = (m[k] || 0) + 1;
     });
-    return Object.entries(m).map(([k, n]) => `${k}×${n}`).join(" ");
+    const rows = Object.entries(m).map(([k, n]) => `${k}×${n}`);
+    return rows.length > 6 ? `${rows.slice(0, 6).join(" ")} +${rows.length - 6} อื่น ๆ` : rows.join(" ");
   }, [slots, selected]);
   return (
     <Modal
@@ -225,7 +228,11 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
       footer={
         <>
           <span className="sa-muted">
-            เลือกแล้ว {selectedCount}/{slots.length} ช่อง · {onePerDay ? `วันละ 1 สินค้า ครอบคลุม ${slots.length}/${preview?.openDays ?? slots.length} วันที่ว่าง` : preview?.source === "llm" ? "วางแผนโดย LLM ในเครื่อง" : "วางแผนด้วยแม่แบบในตัว"}{productMix ? ` · สินค้า: ${productMix}` : ""}
+            เลือกแล้ว {selectedCount}/{slots.length} ช่อง
+            {onePerDay
+              ? ` · ${planPlatforms.length || 1} ช่อง/วัน (${planPlatforms.map((p) => PLATFORM_META[p]?.short || p).join(" · ")}) · ครอบคลุม ${selectedDays}/${preview?.openDays ?? selectedDays} วันที่ว่าง`
+              : preview?.source === "llm" ? " · วางแผนโดย LLM ในเครื่อง" : " · วางแผนด้วยแม่แบบในตัว"}
+            {productMix ? ` · สินค้า: ${productMix}` : ""}
           </span>
           <div style={{ flex: 1 }} />
           <button className="sa-btn ghost" onClick={onClose}>ยกเลิก</button>
@@ -255,15 +262,22 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
         {` · จ-ศ ${preview.strategy.weekdayTime} / ส-อา ${preview.strategy.weekendTime}`}
         {` · เวลา: ${preview.strategy.timeSource === "default" ? "ค่าเริ่มต้น" : "อิงผลงานจริง"}`}
         {` · โพสต์ live ที่มีข้อมูล ≥48 ชม. ${preview.strategy.samples} รายการ`}
+        {onePerDay && planPlatforms.length > 1 ? " · หลายช่อง/วัน เวลาจะกระจายกันไม่ให้ชนกัน" : ""}
       </p>}
+      {preview?.replacePlanned ? (
+        <p className="sa-form-hint">
+          โหมดแทนที่แผนเดิม: รายการที่ยังไม่เริ่มรัน (สถานะ วางแผนไว้) ในช่องเดียวกันจะถูกแทนที่ด้วยแผนใหม่
+          ส่วนรายการที่รันแล้ว/เผยแพร่แล้ว/อยู่ระหว่างรันจะไม่ถูกแตะ
+        </p>
+      ) : null}
       {onePerDay && preview?.shortBy > 0 ? (
         <p className="sa-probe-note warn">
-          สินค้าในคลังมีไม่พอสำหรับ {preview.openDays} วันที่เหลือ — ขาดอีก {preview.shortBy} สินค้า ระบบจะไม่ใส่สินค้าซ้ำวันเดิม
+          สินค้าในคลังมีไม่พอสำหรับ {preview.openDays} วันที่ยังว่าง — ขาดอีก {preview.shortBy} สินค้า (แต่ละวันใช้ 1 สินค้า ไม่ซ้ำกันระหว่างวัน)
           ให้ไปกด “สุ่ม 1 สินค้า/วัน” ในแท็บ สินค้า เพื่ออ่านสินค้าเพิ่มจากหน้าแคตตาล็อก
         </p>
       ) : null}
       {slots.length === 0 ? (
-        <p className="sa-muted">เดือนนี้ไม่มีช่องว่างเหลือ หรือยังไม่มีสินค้าให้วางแผน</p>
+        <p className="sa-muted">เดือนนี้ยังไม่มีช่องว่างให้วางแผน — ทุกวันมีครบทุกแพลตฟอร์มที่เลือกแล้ว ลองเพิ่มแพลตฟอร์ม เลือก “แทนที่แผนเดิม” หรือลบบางรายการก่อนวางแผนใหม่</p>
       ) : (
         <div className="sa-autoplan-list">
           <div className="sa-autoplan-head">
