@@ -71,7 +71,12 @@ async function main() {
     assert.ok(requests.find((r) => r.path.endsWith("/videos")).body.toString("utf8").includes("utm_source=facebook"));
 
     const igEntry = rt.createCalendarEntry(clientId, { entry: { date: yesterday, time: "14:15", sku, platform: "instagram" } });
-    const ig = await rt._publishEntry(getClient(), withPost(igEntry.id, { image: { publicUrl: "https://media.example/p.jpg" } }), { trigger: "schedule" });
+    rt._mutateClient(clientId, (c) => {
+      const e = c.calendar.find((x) => x.id === igEntry.id);
+      e.image = { publicUrl: "https://media.example/p.jpg" };
+    });
+    rt.reviewEntryImage(clientId, igEntry.id, { confirmed: true });
+    const ig = await rt._publishEntry(getClient(), withPost(igEntry.id), { trigger: "schedule" });
     assert.equal(ig.postId, "ig-media");
     const igBody = JSON.parse(requests.find((r) => r.path.endsWith("/media")).body);
     assert.match(igBody.caption, /utm_source=instagram/);
@@ -130,7 +135,7 @@ async function main() {
     rt.deleteCalendarEntry(clientId, source.id);
     assert.equal(rt.buildPerformance(clientId).experiments.find((e) => e.id === pair.testId).winner, "A", "report survives deleted source");
 
-    const next = rt.createHookExperiment(clientId, another.id, { firstIndex: 0, secondIndex: 1, date: future(6), morning: "09:00", evening: "18:30" });
+    const next = rt.createHookExperiment(clientId, another.id, { firstIndex: 0, secondIndex: 1, date: future(6), morning: "09:15", evening: "18:45" });
     assert.throws(() => rt.startEntryVideoGen(clientId, next.created[0].id), /แชร์สื่อเดียวกัน/);
     assert.throws(() => rt.startEntryImageGen(clientId, next.created[0].id), /แชร์สื่อเดียวกัน/);
     const cancelled = rt.cancelHookExperiment(clientId, next.testId);
@@ -139,7 +144,7 @@ async function main() {
     assert.throws(() => rt._findEntry(clientId, next.created[0].id), /ไม่พบรายการ/);
 
     // The workflow must not replace a chosen variant with a newly scored hook.
-    const workflowPair = rt.createHookExperiment(clientId, another.id, { firstIndex: 0, secondIndex: 1, date: future(7), morning: "09:00", evening: "18:30" });
+    const workflowPair = rt.createHookExperiment(clientId, another.id, { firstIndex: 0, secondIndex: 1, date: future(7), morning: "09:15", evening: "18:45" });
     const savedCheck = rt._aiCheck;
     const savedPublisher = rt._publishEntry;
     rt._aiCheck = async () => ({ score: 95, verdict: "pass", issues: [] });

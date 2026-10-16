@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload } from "lucide-react";
-import { api, postJson } from "./lib.js";
+import { api, postJson, ensureProductRef500 } from "./lib.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 
 /**
@@ -89,11 +89,14 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
       // PATCH — the route is PATCH /api/social-agency/products/:sku. Sending the
       // default POST here answers "Unknown API endpoint" and the photo is never
       // saved, which is how the upload / paste-a-link buttons silently did nothing.
-      await postJson(
+      const res = await postJson(
         `/api/social-agency/products/${encodeURIComponent(product.sku)}?clientId=${encodeURIComponent(clientId)}`,
         { image },
         "PATCH",
       );
+      if (res?.product?.image?.startsWith("/sa-products/")) {
+        ensureProductRef500(clientId, res.product).catch(() => {});
+      }
       onSaved();
     } catch (e) {
       setErr(e.message);
@@ -108,6 +111,9 @@ function ProductImageEditor({ product, clientId, onClose, onSaved }) {
       const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { skus: [product.sku] });
       const r = (data.results || [])[0];
       if (data.saved > 0 && r) {
+        if (String(r.image || "").startsWith("/sa-products/")) {
+          ensureProductRef500(clientId, { ...product, image: r.image }).catch(() => {});
+        }
         onSaved(r.sourceUrl ? `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓ (${r.sourceUrl.slice(0, 70)}${r.sourceUrl.length > 70 ? "…" : ""})` : `ดึงรูปจากหน้าเว็บสินค้า ${product.sku} มาเก็บแล้ว ✓`);
       } else {
         setErr(r?.reason || "ไม่พบรูปบนหน้าเว็บของสินค้านี้");
@@ -197,6 +203,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
     setNote("");
     try {
       const data = await postJson(`/api/social-agency/products/fetch-image?clientId=${encodeURIComponent(clientId)}`, { missingOnly: true });
+      for (const r of data.results || []) {
+        if (r?.status === "saved" && r.sku && String(r.image || "").startsWith("/sa-products/")) {
+          ensureProductRef500(clientId, { sku: r.sku, image: r.image }).catch(() => {});
+        }
+      }
       const fails = (data.results || []).filter((r) => r.status !== "saved");
       setNote(
         `ดึงรูปสินค้าจากเว็บได้ ${data.saved}/${data.checked} รายการ ✓` +

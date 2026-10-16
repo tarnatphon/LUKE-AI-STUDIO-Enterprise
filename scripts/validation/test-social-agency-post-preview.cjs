@@ -16,6 +16,8 @@ const css = read("app", "frontend", "src", "social-agency.css");
 const styleTab = read("app", "frontend", "src", "social-agency", "StyleTab.jsx");
 const drawers = read("app", "frontend", "src", "social-agency", "drawers.jsx");
 const runsTab = read("app", "frontend", "src", "social-agency", "RunsTab.jsx");
+const productsTab = read("app", "frontend", "src", "social-agency", "ProductsTab.jsx");
+const saLib = read("app", "frontend", "src", "social-agency", "lib.js");
 
 const tests = [
   ["preview uses the exact published caption when it exists, otherwise the draft", () => {
@@ -32,9 +34,15 @@ const tests = [
     assert.match(preview, /platform !== "tiktok"/);
     assert.match(preview, /sendImageTextStack !== false/);
     assert.match(preview, /showFacebookProductRef/);
+    assert.match(preview, /&& !videoUrl/);
     assert.match(preview, /<video[^>]*controls/);
     assert.match(css, /\.sa-post-preview\.is-instagram \.sa-post-preview-media\s*\{[^}]*aspect-ratio:\s*1 \/ 1/s);
     assert.match(css, /\.sa-post-preview\.is-tiktok \.sa-post-preview-media\s*\{[^}]*aspect-ratio:\s*9 \/ 16/s);
+  }],
+  ["saving or fetching a product photo derives <sku>.ref500.jpg without skipping ≤500px originals", () => {
+    assert.match(productsTab, /ensureProductRef500/);
+    assert.match(saLib, /Math\.min\(1,\s*PRODUCT_REF_POST_EDGE \/ long\)/);
+    assert.doesNotMatch(saLib, /smallOriginal:\s*true/);
   }],
   ["each generated platform version gets a full visual preview", () => {
     assert.match(styleTab, /<PostPreview[\s\S]*?platform=\{platform\}[\s\S]*?caption=\{text\}/);

@@ -252,6 +252,54 @@ async function main() {
       assert.ok(legacy.size, "legacy size still present");
     });
 
+    test("replacing, clearing, or switching a product image to a URL invalidates <sku>.ref500.jpg", () => {
+      const ref500File = path.join(photoDir, `${sku}.ref500.jpg`);
+      const okB64 = REF500_JPEG.toString("base64");
+      rt.saveProductRef500(clientId, { sku, dataUrl: `data:image/jpeg;base64,${okB64}` });
+      assert.strictEqual(rt.getProductRef500Status(clientId, sku).exists, true);
+
+      // Uploading a new product image removes the old .ref500.jpg
+      rt.updateProduct(clientId, sku, { image: `data:image/png;base64,${PNG_A.toString("base64")}` });
+      assert.strictEqual(fs.existsSync(ref500File), false, "new upload drops stale .ref500.jpg");
+      assert.strictEqual(rt.getProductRef500Status(clientId, sku).exists, false);
+
+      // Switching to a remote URL removes local files + .ref500.jpg
+      rt.saveProductRef500(clientId, { sku, dataUrl: `data:image/jpeg;base64,${okB64}` });
+      assert.strictEqual(fs.existsSync(ref500File), true);
+      rt.updateProduct(clientId, sku, { image: "https://shop.example.com/p/photo.jpg" });
+      assert.strictEqual(fs.existsSync(ref500File), false, "switching to URL drops .ref500.jpg");
+
+      // Restore local photo, save .ref500.jpg, then clear image
+      rt.updateProduct(clientId, sku, { image: `data:image/png;base64,${PNG_A.toString("base64")}` });
+      rt.saveProductRef500(clientId, { sku, dataUrl: `data:image/jpeg;base64,${okB64}` });
+      assert.strictEqual(fs.existsSync(ref500File), true);
+      rt.updateProduct(clientId, sku, { image: "" });
+      assert.strictEqual(fs.existsSync(ref500File), false, "clearing image drops .ref500.jpg");
+
+      // Restore local photo for any later checks
+      rt.updateProduct(clientId, sku, { image: `data:image/png;base64,${PNG_A.toString("base64")}` });
+    });
+
+    test("a .ref500.jpg older than the original product photo is treated as stale", () => {
+      const origFile = path.join(photoDir, `${sku}.png`);
+      const ref500File = path.join(photoDir, `${sku}.ref500.jpg`);
+      fs.writeFileSync(origFile, PNG_A);
+      fs.writeFileSync(ref500File, REF500_JPEG);
+      const past = new Date(Date.now() - 60000);
+      fs.utimesSync(ref500File, past, past);
+      const status = rt.getProductRef500Status(clientId, sku);
+      assert.strictEqual(status.exists, false, "stale .ref500.jpg must not report as current");
+    });
+
+    test("manualEarly dry-run explains the future scheduled time instead of blaming connectors dry-run", async () => {
+      const futureEntry = rt.createCalendarEntry(clientId, {
+        entry: { date: bangkokToday(3), time: "07:15", platform: "facebook", sku, angle: "เปิดตัวสินค้า" },
+      });
+      const out = await rt._publishEntry(getClient(), { ...futureEntry, caption: "ซ้อมโพสต์อนาคต" }, { trigger: "manual" });
+      assert.strictEqual(out.mode, "dry");
+      assert.match(out.note, /วัน\/เวลานัดโพสต์ยังมาไม่ถึง/, out.note);
+    });
+
     for (const [name, fn] of tests) {
       try {
         await fn();

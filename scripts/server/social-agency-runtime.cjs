@@ -2898,7 +2898,10 @@ class SocialAgencyRuntime {
       this._unlinkProductImages(client.id, product.sku);
       return "";
     }
-    if (/^https?:\/\//i.test(img)) return img.slice(0, 500);
+    if (/^https?:\/\//i.test(img)) {
+      this._unlinkProductImages(client.id, product.sku);
+      return img.slice(0, 500);
+    }
     if (img.startsWith("/sa-products/")) {
       const same = (product.image || "") === img;
       const mm = img.match(/^\/sa-products\/([^/\\]+)\/([^/\\]+)\.([A-Za-z0-9]+)$/);
@@ -2925,11 +2928,13 @@ class SocialAgencyRuntime {
   }
 
   // Remove any stored image files for a sku (optionally keep `keepExt`).
+  // Also drops <sku>.ref500.jpg so a replaced/deleted product photo can never
+  // leave an old 500px derivative behind for Facebook multi-photo posts.
   _unlinkProductImages(clientId, sku, keepExt = null) {
     try {
       const dir = path.join(this.root, "app", "outputs", "sa-products", clientId);
       if (!fs.existsSync(dir)) return;
-      for (const e of [".jpg", ".jpeg", ".png", ".webp", ".gif"]) {
+      for (const e of [".jpg", ".jpeg", ".png", ".webp", ".gif", ".ref500.jpg"]) {
         if (e === keepExt) continue;
         try { fs.unlinkSync(path.join(dir, `${sku}${e}`)); } catch { /* not there */ }
       }
@@ -5344,15 +5349,23 @@ class SocialAgencyRuntime {
   }
 
   // ── publishers ──
-  async _dryPublish(platform, configured) {
+  async _dryPublish(platform, configured, opts = {}) {
     const t0 = Date.now();
     await sleep(800);
+    let note;
+    if (!configured) {
+      note = "ยังไม่ได้ตั้งค่า connector จึงจำลองการเผยแพร่";
+    } else if (opts.manualEarly && opts.dryRun === false) {
+      note = "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง เพราะวัน/เวลานัดโพสต์ยังมาไม่ถึง — กด \"อนุมัติและเผยแพร่\" หรือเลื่อนเวลาโพสต์ให้ไม่เกินเวลาปัจจุบันหากต้องการส่งจริงทันที";
+    } else {
+      note = "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง — ปิด dry-run ใน Connectors เมื่อพร้อม";
+    }
     return {
       platform,
       mode: "dry",
       postId: `dry-${crypto.randomBytes(4).toString("hex")}`,
       latencyMs: Date.now() - t0,
-      note: configured ? "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง — ปิด dry-run ใน Connectors เมื่อพร้อม" : "ยังไม่ได้ตั้งค่า connector จึงจำลองการเผยแพร่",
+      note,
     };
   }
 
@@ -5924,7 +5937,7 @@ class SocialAgencyRuntime {
     const dueMs = bangkokToUtcMs(entry.date, entry.time);
     const manualEarly = platform !== "tiktok" && ctx.trigger === "manual" && Number.isFinite(dueMs) && dueMs > Date.now();
     const live = configured && meta.dryRun === false && !manualEarly;
-    return { secret, meta, configured, live };
+    return { secret, meta, configured, live, manualEarly };
   }
 
   // ── image review gate ─────────────────────────────────────────────────────
@@ -6112,6 +6125,11 @@ class SocialAgencyRuntime {
       const realDir = fs.realpathSync(dir);
       const realRef = fs.realpathSync(ref500);
       if (realRef !== path.join(realDir, `${product.sku}.ref500.jpg`)) return { original: found.file, ref500: null };
+      const origStat = fs.statSync(found.file);
+      const refStat = fs.statSync(realRef);
+      if (!refStat.isFile() || refStat.size <= 0 || refStat.mtimeMs + 10 < origStat.mtimeMs) {
+        return { original: found.file, ref500: null, staleRef500: refStat.mtimeMs + 10 < origStat.mtimeMs };
+      }
       return { original: found.file, ref500: realRef };
     } catch {
       return { original: found.file, ref500: null };
@@ -6480,13 +6498,13 @@ class SocialAgencyRuntime {
       await sleep(800);
       return { platform, mode: "demo", postId: `demo-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: "Demo publisher — จำลองการเผยแพร่ 800ms" };
     }
-    const { secret, meta, configured, live } = this._publishLiveState(client, entry, ctx);
+    const { secret, meta, configured, live, manualEarly } = this._publishLiveState(client, entry, ctx);
     if (platform === "tiktok") {
       if (entry.tiktokInitAttemptedAt || entry.tiktokPublishId) throw new Error("TikTok เริ่มส่งรายการนี้แล้ว — ตรวจสอบสถานะก่อน ห้ามส่งซ้ำ");
       if (!entry.tiktokPost) throw new Error("TikTok ต้องเลือก privacy และยืนยันการส่งวิดีโอในปฏิทินก่อน (ห้าม auto-post)");
       if (!this._entryVideoFile(entry)) throw new Error("TikTok ต้องมีไฟล์วิดีโอในเครื่องก่อนรัน แม้เป็น dry-run");
     }
-    if (!live) return this._dryPublish(platform, configured);
+    if (!live) return this._dryPublish(platform, configured, { manualEarly, dryRun: meta.dryRun !== false });
     // Last line of defence: even if a caller skipped the workflow pre-check, a
     // real send never goes out with an unreviewed / changed / regenerating image.
     this._assertImageReviewed(entry);

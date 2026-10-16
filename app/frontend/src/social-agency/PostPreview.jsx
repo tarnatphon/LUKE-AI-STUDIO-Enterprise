@@ -67,6 +67,7 @@ export default function PostPreview({ entry, client, product, platform: platform
     : "ตัวอย่างก่อนเผยแพร่";
   const postStatus = entry?.status ? (STATUS_META[entry.status]?.label || entry.status) : "ตัวอย่าง";
   const showFacebookProductRef = platform === "facebook"
+    && !videoUrl
     && Boolean(outputImageUrl)
     && productImageUrl.startsWith("/sa-products/")
     && client?.settings?.productRefInPost !== false;

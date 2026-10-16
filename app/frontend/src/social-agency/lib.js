@@ -238,14 +238,14 @@ export async function ensureProductRef500(clientId, product) {
   }
   if (!status || status.exists) return status || null;
   // Derive the ≤500px JPEG with canvas: scale the long edge down, keep the
-  // aspect ratio, never upscale, no other edits.
+  // aspect ratio, never upscale, no other edits. Images already ≤500px are
+  // drawn 1:1 (scale = 1) so <sku>.ref500.jpg always exists on disk.
   const img = new Image();
-  img.src = image;
+  img.src = `${image}${image.includes("?") ? "&" : "?"}t=${Date.now()}`;
   await img.decode();
   const long = Math.max(img.naturalWidth || 0, img.naturalHeight || 0);
   if (!long) return null;
-  if (long <= PRODUCT_REF_POST_EDGE) return { ...status, smallOriginal: true }; // already ≤500px — server attaches the original
-  const scale = PRODUCT_REF_POST_EDGE / long;
+  const scale = Math.min(1, PRODUCT_REF_POST_EDGE / long);
   const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
   const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
   const canvas = document.createElement("canvas");
