@@ -17,18 +17,43 @@ const { exec } = require("child_process");
 // lengthening it, so the request has to carry more steps to spend the budget the
 // user asked for. See img2img-steps.cjs for the backend source it mirrors.
 const { planImg2ImgSteps } = require("./img2img-steps.cjs");
+// "ลูกค้ารายนี้ทำธุรกิจอะไร" → มุมคอนเทนต์/แคปชัน/แฮชแท็ก/เสาหลักของเขา
+// (ดู social-agency-content-kinds.cjs). มุมคอนเทนต์เดิมทั้ง 5 เป็นของ kind
+// `goods` จึงไม่มีการเปลี่ยนชื่ออะไรให้ข้อมูลเดิมพัง — แต่ละลูกค้าได้ชุดของ
+// ธุรกิจตัวเองแทนที่จะได้ชุดของโรงงานกระเป๋าโดยปริยาย
+const {
+  KINDS: CONTENT_KINDS,
+  detectContentKind,
+  allAngles,
+  anglesForKind,
+  kindLabel,
+  roleOfAngle,
+  angleImagePrompt,
+  captionLeads,
+  toneLines,
+  pillarsForKind,
+  isLegacyDefaultPillars,
+  planAnglesFor,
+  angleOptionsFor,
+  hashtagsForKind,
+  legacyHashtags,
+  orderWording,
+  presetClosers,
+} = require("./social-agency-content-kinds.cjs");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TZ_LABEL = "Asia/Bangkok";
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
-const CONTENT_ANGLES = [
-  "เปิดตัวสินค้า",
-  "เบื้องหลังการผลิต",
-  "เคล็ดลับการใช้งาน",
-  "เรื่องจากลูกค้า",
-  "โปรโมชัน/ข้อเสนอ OEM",
-];
+// Every angle label any business kind may use. Stored pillars and calendar
+// entries carry these strings, so validation accepts the union; which of them a
+// given client is actually planned with comes from its own kind + pillars.
+const CONTENT_ANGLES = allAngles();
+// The label a month falls back to when a client has no usable pillar angle —
+// kept as the goods launch label so old behaviour is unchanged.
+const DEFAULT_ANGLE = "เปิดตัวสินค้า";
+const DEFAULT_CONTENT_KIND = "goods";
 const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
+
 const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok"];
 // Auto-plan fills ONE slot per selected platform per day, so a single day can
 // carry Facebook + Instagram + LINE + web ("demo" = เว็บโพสต์) side by side.
@@ -408,31 +433,57 @@ const IMG2IMG_FIELD_HINT = /init_images?|denoising_strength|img2img|unknown fiel
 const REF_WARNING_PREFIX = "ไม่ได้ใช้รูปสินค้าอ้างอิง";
 
 // ── P3: per-client content pillars ──
-function defaultPillars() {
-  const now = new Date().toISOString();
-  return [
-    { id: "pl-sell", name: "ขายตรง", angles: ["เปิดตัวสินค้า", "โปรโมชัน/ข้อเสนอ OEM"], weight: 2, createdAt: now },
-    { id: "pl-teach", name: "ให้ความรู้", angles: ["เคล็ดลับการใช้งาน"], weight: 2, createdAt: now },
-    { id: "pl-trust", name: "สร้างความเชื่อใจ", angles: ["เบื้องหลังการผลิต", "เรื่องจากลูกค้า"], weight: 1, createdAt: now },
-  ];
+// A client's pillars now come from its own business kind: a yoga studio starts
+// with "ชวนมาใช้บริการ" + คลาส/บริการใหม่ instead of the factory's OEM angles.
+// `kind` defaults to goods, which is the pillar set that shipped before kinds.
+function defaultPillars(kind = DEFAULT_CONTENT_KIND) {
+  return pillarsForKind(kind);
 }
 
-function sanitizePillar(raw) {
+function sanitizePillar(raw, fallbackAngles) {
   const name = String(raw?.name || "").trim().slice(0, 40);
   const angles = (Array.isArray(raw?.angles) ? raw.angles : []).filter((a) => CONTENT_ANGLES.includes(a));
+  const fallback = (Array.isArray(fallbackAngles) && fallbackAngles.length ? fallbackAngles : CONTENT_ANGLES)
+    .filter((a) => CONTENT_ANGLES.includes(a));
   return {
     id: String(raw?.id || ""),
     name,
-    angles: angles.length ? [...new Set(angles)] : [...CONTENT_ANGLES],
+    angles: angles.length ? [...new Set(angles)] : [...fallback],
     weight: clampNumber(raw?.weight, 1, 5, 1),
     createdAt: raw?.createdAt || null,
   };
 }
 
+// Which angles may this client's pillars point at? Its own kind's labels first,
+// plus every label its pillars already use (so a client whose business was
+// re-classified never loses an angle it is already planning with).
+function clientAnglePool(client) {
+  const kind = detectContentKind(client);
+  const own = anglesForKind(kind);
+  const used = [];
+  for (const pillar of (client?.pillars || [])) {
+    for (const angle of (pillar?.angles || [])) if (!own.includes(angle)) used.push(angle);
+  }
+  return [...own, ...new Set(used)];
+}
+
+// The pillar/angle pair an entry gets when nobody chose one — the client's own
+// first angle, not the factory's.
+function defaultAngleFor(client) {
+  const pool = planAnglesFor(client);
+  return pool[0] || anchorsForKind(client)[0] || DEFAULT_ANGLE;
+}
+
+// The five role anchors of the client's kind, in role order (the month's rhythm
+// even before any pillar exists).
+function anchorsForKind(client) {
+  return anglesForKind(detectContentKind(client));
+}
+
 // Pure core: least-used pillar (usage/weight), angle-aware. Shared by
 // createCalendarEntry + applyAutoPlan; exposed as _pickPillar for tests.
-function pickPillar(pillars, counts, { pillar, angle, seed = "" } = {}) {
-  const list = (pillars || []).map(sanitizePillar).filter((p) => p.name);
+function pickPillar(pillars, counts, { pillar, angle, seed = "", fallbackAngles } = {}) {
+  const list = (pillars || []).map((p) => sanitizePillar(p, fallbackAngles)).filter((p) => p.name);
   const pool = list.length ? list : defaultPillars();
   const want = String(pillar || "").trim().toLowerCase();
   let cands = want ? pool.filter((p) => p.name.toLowerCase() === want || p.id === pillar) : [...pool];
@@ -772,20 +823,11 @@ function tableToProducts(table) {
   return out;
 }
 
-// THE built-in sample post template (Thai product-launch post).
-function templateHashtags(product, platform) {
-  const cat = String(product?.category || "").toLowerCase();
-  const name = String(product?.name || "");
-  const table = [
-    [/bag|กระเป๋า/, ["#กระเป๋าผ้า", "#ผลิตกระเป๋า", "#OEMกระเป๋า", "#กระเป๋าสั่งทำ", "#โรงงานกระเป๋า"]],
-    [/cake|เค้ก|คุกกี้|ขนม|bakery/, ["#เค้กสั่งทำ", "#เบเกอรี่บ้านๆ", "#คุกกี้ของขวัญ", "#ขนมฝีมือบ้าน", "#เค้กวันเกิด"]],
-    [/coffee|กาแฟ/, ["#กาแฟคั่วบด", "#กาแฟดอย", "#กาแฟสด", "#ร้านกาแฟ", "#เมล็ดกาแฟ"]],
-    [/yoga|โยคะ|fitness|ฟิต/, ["#โยคะ", "#คลาสโยคะ", "#โยคะมือใหม่", "#ออกกำลังกาย", "#สุขภาพดี"]],
-    [/plant|ต้นไม้|กระถาง|monstera/, ["#ต้นไม้", "#มอนสเตอร่า", "#กระถางสวยๆ", "#ต้นไม้ฟอกอากาศ", "#คนรักต้นไม้"]],
-  ];
-  let tags = ["#สั่งทำ", "#ฝีมือคนไทย", "#ของดีแนะนำ", "#ร้านน่าติดตาม", "#ช้อปสบายๆ"];
-  const hit = table.find(([re]) => re.test(cat) || re.test(name));
-  if (hit) tags = hit[1];
+// THE built-in sample post template. Without a client the product-category
+// tables answer exactly what they always answered; with one, the tags come from
+// the client's own business kind (a bakery never falls back to "#สั่งทำ").
+function templateHashtags(product, platform, client) {
+  const tags = client ? hashtagsForKind(detectContentKind(client), product) : legacyHashtags(product);
   if (platform === "line") return tags.slice(0, 2);
   if (platform === "instagram" || platform === "tiktok") return tags.slice(0, 5);
   return tags.slice(0, 4);
@@ -829,34 +871,6 @@ function discoverPaginationLinks(html, pageUrl) {
   return [...new Set(out)];
 }
 
-const CAPTION_LEADS = {
-  "เปิดตัวสินค้า": [
-    "{name} ตัวใหม่ของเรา มาแล้วนะครับ 🎉",
-    "เปิดตัวแล้วครับ {name} รุ่นใหม่ล่าสุดของร้าน ใครกำลังมองหาอยู่ต้องดู ✨",
-    "มาแล้วครับ {name} โฉมใหม่ สั่งทำตามแบบแบรนด์คุณได้เลย 🙌",
-  ],
-  "เบื้องหลังการผลิต": [
-    "วันนี้พาไปดูเบื้องหลังการทำงานจริงๆ กันนะครับ ทุกชิ้นเราใส่ใจตั้งแต่เลือกวัสดุจนส่งมอบ 🙌",
-    "กว่าจะเป็นแต่ละชิ้นต้องผ่านหลายขั้นตอน วันนี้เก็บภาพเบื้องหลังมาฝากครับ 🧵",
-    "โรงงานเราวันนี้คึกคักมาก พามาดูว่าทีมช่างใส่ใจรายละเอียดแค่ไหน 👀",
-  ],
-  "เคล็ดลับการใช้งาน": [
-    "ขอแนะนำวิธีดูแลให้ใช้ได้นานๆ แบบเข้าใจง่าย อ่านจบใช้ได้เลยครับ ✨",
-    "ใช้ยังไงให้คุ้มและทนที่สุด รวมทริคดีๆ มาฝากกันครับ 📌",
-    "หลายคนถามมาเยอะว่าดูแลรักษายังไง โพสต์นี้มีคำตอบครับ 💡",
-  ],
-  "เรื่องจากลูกค้า": [
-    "เมื่อสัปดาห์ที่ผ่านมามีลูกค้าเอาไปใช้แล้วส่งรูปมาให้ดู ขอบคุณมากๆ นะครับ 🥰",
-    "รีวิวจากลูกค้าตัวจริงเสียงจริง เอามาฝากกันครับ ขอบคุณที่ไว้ใจร้านเรา 🙏",
-    "ลูกค้าส่งฟีดแบ็กมาว่าใช้ดีมาก ดีใจจนต้องเอามาแชร์เลยครับ ⭐",
-  ],
-  "โปรโมชัน/ข้อเสนอ OEM": [
-    "ทีมรับปรึกษางาน OEM พร้อมช่วยดูแบบให้เหมาะกับแบรนด์ของคุณ ทักมาคุยกันก่อนได้เลยครับ 💬",
-    "โปรดีๆ สำหรับแบรนด์ที่กำลังหาผู้ผลิต สั่งขั้นต่ำไม่เยอะ เริ่มคุยกันก่อนได้ครับ 🎁",
-    "รับผลิต OEM ตามแบบที่ลูกค้าต้องการ ราคาโรงงานโดยตรง สนใจทักมาเลยครับ 📩",
-  ],
-};
-
 const CAPTION_TONES = {
   "พนักงานขาย": [
     "สนใจสอบถามรายละเอียดเพิ่มเติม ทักมาได้ทุกวันครับ ยินดีช่วยเลือกให้ครับ 🙏",
@@ -875,20 +889,33 @@ const CAPTION_TONES = {
   ],
 };
 
-function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid = [] } = {}) {
+// The ready-made caption line for one angle. `kind` comes from the client, so a
+// yoga studio reads "วันนี้พามาดูเบื้องหลังการเตรียมคลาส…" instead of the
+// factory's "โรงงานเราวันนี้คึกคักมาก". Without a client the legacy wordings of
+// `goods` are used, which is what every caller had before kinds existed.
+function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid = [], client, kind } = {}) {
+  const contentKind = kind || (client ? detectContentKind(client) : DEFAULT_CONTENT_KIND);
+  const role = roleOfAngle(angle, contentKind) || "launch";
   const name = product?.name || "สินค้าใหม่";
   const minOrder = product?.minimumOrder || "";
-  const orderLine = [minOrder ? `สั่งขั้นต่ำ ${minOrder}` : "", product?.productionTime ? `ผลิต ${product.productionTime}` : "", product?.price ? `ราคา ${product.price}` : ""]
+  const wording = orderWording(contentKind);
+  const orderLine = [
+    minOrder ? `${wording.minimum} ${minOrder}` : "",
+    product?.productionTime ? `${wording.production} ${product.productionTime}`.trim() : "",
+    product?.price ? `ราคา ${product.price}` : "",
+  ]
     .filter(Boolean)
     .join(" · ");
-  const tags = templateHashtags(product, platform);
+  const tags = templateHashtags(product, platform, client);
   const denied = new Set((avoid || []).filter(Boolean));
   let last = "";
   for (let attempt = 0; attempt < 10; attempt++) {
     const s = seed + "#" + attempt;
-    const leads = CAPTION_LEADS[angle] || CAPTION_LEADS["เปิดตัวสินค้า"];
+    const leads = captionLeads(contentKind, role);
     const leadText = pickBySeed(leads, s, "lead").replace(/{name}/g, name);
-    const tonePool = CAPTION_TONES[tone] || CAPTION_TONES.default;
+    // โทนเสียงปิดท้ายก็อิงธุรกิจของลูกค้า: โรงงานพูดเรื่องเวลาผลิต แต่คลาสเรียน
+    // พูดเรื่องรอบเรียน และร้านกาแฟพูดเรื่องรส/คิว
+    const tonePool = (kind || client) ? toneLines(contentKind, tone) : (CAPTION_TONES[tone] || CAPTION_TONES.default);
     const toneLine = pickBySeed(tonePool, s, "tone");
     const rot = tags.length ? hashSeed("tags:" + s) % tags.length : 0;
     const hashtags = [...tags.slice(rot), ...tags.slice(0, rot)].join(" ");
@@ -909,10 +936,14 @@ function buildTemplateCaption(product, { angle, platform, tone, seed = "", avoid
 // no time, no status, and no publish. Every line stays inside what the evidence
 // actually says (price/ขั้นต่ำ/เวลาผลิต appear only when the product carries
 // them) so the draft survives the same AI Check the workflow runs later.
-function presetOrderLine(product) {
+// Ordering facts are worded per kind: a factory "ผลิต 30–45 วัน", a bakery or a
+// studio just states its lead time / schedule, and a class starts at "เริ่มต้น
+// 1 คลาส" rather than "สั่งขั้นต่ำ 1 คลาส".
+function presetOrderLine(product, client) {
+  const wording = orderWording(client ? detectContentKind(client) : DEFAULT_CONTENT_KIND);
   return [
-    product?.minimumOrder ? `สั่งขั้นต่ำ ${product.minimumOrder}` : "",
-    product?.productionTime ? `ผลิต ${product.productionTime}` : "",
+    product?.minimumOrder ? `${wording.minimum} ${product.minimumOrder}` : "",
+    product?.productionTime ? `${wording.production} ${product.productionTime}`.trim() : "",
     product?.price ? `ราคา ${product.price}` : "",
   ].filter(Boolean).join(" · ");
 }
@@ -923,18 +954,65 @@ function presetDetail(product, max = 90) {
   return detail;
 }
 
+// Lead lines per kind: what the shop asks about is not what a class asks about
+// ("อยากให้มีแบบหรือสีเพิ่มอีกไหม" vs "อยากให้มีรอบเวลาไหนเพิ่มอีกไหม").
+function presetOpeners(kind) {
+  const table = {
+    goods: [
+      [`อยากแนะนำ {name} ให้รู้จักครับ ✨`, "สนใจทักมาถามรายละเอียดได้เลยครับ ช่วยดูให้ว่าแบบไหนเหมาะกับงานของคุณ"],
+      ["ชวนคิดจากโจทย์ใช้งานครับ 🤔", "คอมเมนต์เล่าโจทย์ของคุณมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้ว่าควรเริ่มแบบไหน"],
+      ["ชวนคุยเล่น ๆ ครับ 💬", "คอมเมนต์บอกกันได้เลย หรือทักแชทมาคุยก็ได้ครับ"],
+    ],
+    food: [
+      [`อยากแนะนำ {name} ให้รู้จักครับ ✨`, "สนใจทักมาถามรายละเอียดได้เลยครับ เดี๋ยวช่วยเลือกให้"],
+      ["ชวนคิดจากโจทย์ของกินครับ 🤔", "คอมเมนต์เล่าโจทย์มาก่อนได้เลยครับ เดี๋ยวช่วยจัดให้"],
+      ["ชวนคุยเล่น ๆ ครับ 💬", "คอมเมนต์บอกกันได้เลยครับ อยากได้รสไหนหรืออยากให้จัดแบบไหน"],
+    ],
+    service: [
+      [`อยากแนะนำ {name} ให้รู้จักครับ ✨`, "สนใจทักมาถามรายละเอียดได้เลยครับ เดี๋ยวช่วยดูให้"],
+      ["ชวนคิดจากเป้าหมายของคุณครับ 🤔", "คอมเมนต์เล่าเป้าหมายมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้ว่าเริ่มแบบไหน"],
+      ["ชวนคุยเล่น ๆ ครับ 💬", "คอมเมนต์บอกกันได้เลยครับ อยากเริ่มจากตรงไหน"],
+    ],
+    shop: [
+      [`อยากแนะนำ {name} ให้รู้จักครับ ✨`, "สนใจทักมาถามรายละเอียดได้เลยครับ เดี๋ยวช่วยดูให้"],
+      ["ชวนคิดจากมุมที่คุณจะวางครับ 🤔", "คอมเมนต์เล่ามุมของคุณมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้"],
+      ["ชวนคุยเล่น ๆ ครับ 💬", "คอมเมนต์บอกกันได้เลยครับ อยากได้สไตล์ไหน"],
+    ],
+    generic: [
+      [`อยากแนะนำ {name} ให้รู้จักครับ ✨`, "สนใจทักมาถามรายละเอียดได้เลยครับ ยินดีช่วยดูให้ครับ"],
+      ["ชวนคิดครับ 🤔", "คอมเมนต์เล่าโจทย์ของคุณมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้"],
+      ["ชวนคุยเล่น ๆ ครับ 💬", "คอมเมนต์บอกกันได้เลยครับ"],
+    ],
+  };
+  return table[kind] || table.generic;
+}
+
+function presetAskLine(kind, index) {
+  const asks = {
+    goods: ["ถ้าได้ {name} ไปใช้ อยากให้เพิ่มแบบหรือสีอะไรอีกไหมครับ?", "ถ้าต้องเอา {name} ไปใช้จริงในงานของคุณ เลือกแบบไหนถึงจะตอบโจทย์ที่สุด?"],
+    food: ["ถ้าได้ {name} ไปลอง อยากให้เพิ่มรสหรือเมนูอะไรอีกไหมครับ?", "ถ้าจะเอา {name} ไปฝากใครสักคน คุณจะเลือกแบบไหน?"],
+    service: ["ถ้าได้ {name} ไปลอง อยากให้มีรอบเวลาไหนเพิ่มอีกไหมครับ?", "ถ้าจะเริ่มจริง ๆ เป้าหมายของคุณคืออะไรครับ?"],
+    shop: ["ถ้าได้ {name} ไปวางที่บ้านหรือที่ร้าน อยากให้มีแบบอะไรเพิ่มอีกไหมครับ?", "ถ้าจะเลือกจริง ๆ คุณอยากได้แบบไหนครับ?"],
+    generic: ["ถ้าได้ {name} ไปใช้ อยากให้มีอะไรเพิ่มอีกไหมครับ?", "ถ้าจะเลือกจริง ๆ อะไรสำคัญที่สุดสำหรับคุณครับ?"],
+  };
+  const list = asks[kind] || asks.generic;
+  return list[Math.min(index, list.length - 1)];
+}
+
 const CAPTION_PRESETS = [
   {
     id: "product-intro",
     label: "แนะนำสินค้า",
     hint: "ชูจุดขายของสินค้าจากข้อมูลจริง พร้อมข้อมูลสั่งซื้อเท่าที่มีในระบบ",
-    build: ({ product, platform }) => {
+    build: ({ product, platform, client }) => {
+      const kind = client ? detectContentKind(client) : DEFAULT_CONTENT_KIND;
       const name = product?.name || "สินค้าใหม่";
-      const order = presetOrderLine(product);
-      const tags = templateHashtags(product, platform).join(" ");
+      const order = presetOrderLine(product, client);
+      const tags = templateHashtags(product, platform, client).join(" ");
+      const [opener, closer] = presetOpeners(kind)[0];
       const lines = platform === "line"
         ? [`${name} นะครับ 😊`, presetDetail(product), order, "สนใจพิมพ์ถามรายละเอียดได้เลยครับ ยินดีช่วยเลือกให้", tags]
-        : [`อยากแนะนำ ${name} ให้รู้จักครับ ✨`, presetDetail(product), order, "สนใจทักมาถามรายละเอียดได้เลยครับ ช่วยดูให้ว่าแบบไหนเหมาะกับงานของคุณ", tags];
+        : [opener.replace(/{name}/g, name), presetDetail(product), order, closer, tags];
       return lines.filter(Boolean).join("\n");
     },
   },
@@ -942,13 +1020,16 @@ const CAPTION_PRESETS = [
     id: "use-case-prompt",
     label: "ชวนคิดจากโจทย์ใช้งาน",
     hint: "ตั้งคำถามจากโจทย์การใช้งานจริง ให้ลูกค้านึกถึงงานของตัวเองก่อนทัก",
-    build: ({ product, platform }) => {
+    build: ({ product, platform, client }) => {
+      const kind = client ? detectContentKind(client) : DEFAULT_CONTENT_KIND;
       const name = product?.name || "สินค้าใหม่";
-      const order = presetOrderLine(product);
-      const tags = templateHashtags(product, platform).join(" ");
+      const order = presetOrderLine(product, client);
+      const tags = templateHashtags(product, platform, client).join(" ");
+      const [opener, closer] = presetOpeners(kind)[1];
+      const ask = presetAskLine(kind, 1).replace(/{name}/g, name);
       const lines = platform === "line"
-        ? ["ชวนคิดครับ 🤔", `${name} เหมาะกับงานแบบไหนของคุณมากที่สุด?`, order, "พิมพ์เล่าโจทย์มาได้เลยครับ เดี๋ยวช่วยดูให้ว่าเริ่มแบบไหนคุ้มที่สุด", tags]
-        : ["ชวนคิดจากโจทย์ใช้งานครับ 🤔", `ถ้าต้องเอา ${name} ไปใช้จริงในงานของคุณ เลือกแบบไหนถึงจะตอบโจทย์ที่สุด?`, order, "คอมเมนต์เล่าโจทย์ของคุณมาก่อนได้เลยครับ เดี๋ยวช่วยดูให้ว่าควรเริ่มแบบไหน", tags];
+        ? ["ชวนคิดครับ 🤔", ask, order, "พิมพ์เล่าโจทย์มาได้เลยครับ เดี๋ยวช่วยดูให้", tags]
+        : [opener, ask, order, closer, tags];
       return lines.filter(Boolean).join("\n");
     },
   },
@@ -956,13 +1037,16 @@ const CAPTION_PRESETS = [
     id: "conversation-starter",
     label: "ชวนเริ่มพูดคุย",
     hint: "เปิดบทสนทนาแบบสบาย ๆ ให้ลูกค้าอยากคอมเมนต์หรือทักแชท",
-    build: ({ product, platform }) => {
+    build: ({ product, platform, client }) => {
+      const kind = client ? detectContentKind(client) : DEFAULT_CONTENT_KIND;
       const name = product?.name || "สินค้าใหม่";
-      const order = presetOrderLine(product);
-      const tags = templateHashtags(product, platform).join(" ");
+      const order = presetOrderLine(product, client);
+      const tags = templateHashtags(product, platform, client).join(" ");
+      const [opener, closer] = presetOpeners(kind)[2];
+      const ask = presetAskLine(kind, 0).replace(/{name}/g, name);
       const lines = platform === "line"
-        ? ["ทักทายกันครับ 👋", `ถ้าได้ ${name} ไปใช้ อยากให้เพิ่มแบบหรือสีอะไรอีกไหมครับ?`, order, "พิมพ์บอกกันได้เลยครับ", tags]
-        : ["ชวนคุยเล่น ๆ ครับ 💬", `ถ้าได้ ${name} ไปใช้ อยากให้มีแบบหรือสีอะไรเพิ่มอีกไหมครับ?`, order, "คอมเมนต์บอกกันได้เลย หรือทักแชทมาคุยก็ได้ครับ", tags];
+        ? ["ทักทายกันครับ 👋", ask, order, "พิมพ์บอกกันได้เลยครับ", tags]
+        : [opener, ask, order, closer, tags];
       return lines.filter(Boolean).join("\n");
     },
   },
@@ -971,6 +1055,9 @@ const CAPTION_PRESETS = [
 // Image prompts are machine instructions for Stable Diffusion, which cannot
 // read Thai — so they are authored in English natively (no round-trip
 // translation). Audience-facing captions stay in Thai.
+// Stable Diffusion cannot read Thai, so the style phrase is looked up by angle
+// inside the client's own kind (a bakery gets a kitchen scene, a studio a class
+// scene). The goods table is the original one, kept for callers without client.
 const IMAGE_ANGLE_EN = {
   "เปิดตัวสินค้า": "new product launch showcase",
   "เบื้องหลังการผลิต": "behind-the-scenes artisan workshop",
@@ -978,6 +1065,13 @@ const IMAGE_ANGLE_EN = {
   "เรื่องจากลูกค้า": "happy customer lifestyle testimonial scene",
   "โปรโมชัน/ข้อเสนอ OEM": "promotional sale display, gift-ready packaging",
 };
+
+// `kind` may come from the caller (the entry's client); without it the original
+// goods table answers, exactly as before.
+function imageAngleStyle(angle, kind) {
+  if (kind) return angleImagePrompt(angle, kind) || IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+  return IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+}
 
 const IMAGE_BACKDROPS = [
   "on a warm wooden table",
@@ -1004,7 +1098,7 @@ const IMAGE_CAMERA = [
   "minimal centered composition with copy space",
 ];
 
-function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], translatedName = "" } = {}) {
+function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], translatedName = "", kind } = {}) {
   const rawName = product?.name ? String(product.name).trim() : "";
   const rawCat = product?.category ? String(product.category).trim() : "";
   // Build the best ASCII-only item description from available product fields.
@@ -1053,7 +1147,7 @@ function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], trans
     // Do NOT use a Thai-only category — it would break ASCII-only requirement
   }
   if (!item) item = "product";
-  const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+  const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
   const denied = new Set((avoid || []).filter(Boolean));
@@ -1124,7 +1218,7 @@ function pickAnimateCamera(seed, avoidIds) {
   return pickBySeed(ANIMATE_CAMERA_MOVES, seed + "#x", "ac");
 }
 
-function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [] } = {}) {
+function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [], kind } = {}) {
   const rawName = product?.name ? String(product.name).trim() : "";
   const rawCat = product?.category ? String(product.category).trim() : "";
   // Same ASCII-only item logic as buildTemplateImagePrompt
@@ -1152,7 +1246,7 @@ function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avo
     // Do NOT use a Thai-only category — it would break ASCII-only requirement
   }
   if (!item) item = "product";
-  const style = IMAGE_ANGLE_EN[String(angle || "")] || "elegant studio product showcase";
+  const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
   const denied = new Set((avoid || []).filter(Boolean));
@@ -1241,6 +1335,18 @@ function truncateAtBoundary(text, max) {
 }
 
 
+// มุมคอนเทนต์ที่แผนนี้ใช้จริง + จำนวนช่องของแต่ละมุม (โชว์ในหน้าต่างวางแผน)
+function summarizeAngles(slots) {
+  const counts = new Map();
+  for (const slot of slots || []) {
+    const angle = String(slot?.angle || "").trim();
+    if (angle) counts.set(angle, (counts.get(angle) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([angle, count]) => ({ angle, count }))
+    .sort((a, b) => b.count - a.count || a.angle.localeCompare(b.angle));
+}
+
 // ── Sample calendar (pre-filled demo month for the FIRST client only) ──────
 function buildSampleCalendar(client) {
   const todayStr = bangkokDateStr();
@@ -1255,6 +1361,9 @@ function buildSampleCalendar(client) {
   };
   const products = client.products.length ? client.products : seedProducts;
   const pick = (i) => products[i % products.length];
+  // มุมของ sample month ก็มาจากธุรกิจของลูกค้ารายนั้นเหมือนกัน
+  const angles = anglesForKind(detectContentKind(client));
+  const pickAngle = (i) => angles[i % angles.length];
   const now = new Date().toISOString();
   const entries = [];
   const offsets = [1, 3, 6, 9, 12];
@@ -1268,7 +1377,7 @@ function buildSampleCalendar(client) {
       platform: "demo",
       sku: product.sku,
       productName: product.name,
-      angle: CONTENT_ANGLES[i % CONTENT_ANGLES.length],
+      angle: pickAngle(i),
       status: "planned",
       createdAt: now,
       updatedAt: now,
@@ -1284,11 +1393,11 @@ function buildSampleCalendar(client) {
     platform: "demo",
     sku: pubProduct.sku,
     productName: pubProduct.name,
-    angle: CONTENT_ANGLES[0],
+    angle: pickAngle(0),
     status: "published",
     publishedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
     postId: `demo-${crypto.randomBytes(4).toString("hex")}`,
-    caption: buildTemplateCaption(pubProduct, { angle: CONTENT_ANGLES[0], platform: "demo", tone: client.tone }),
+    caption: buildTemplateCaption(pubProduct, { angle: pickAngle(0), platform: "demo", tone: client.tone, client }),
     createdAt: now,
     updatedAt: now,
   });
@@ -1304,7 +1413,7 @@ function buildSampleCalendar(client) {
     platform: "demo",
     sku: reviewProduct.sku,
     productName: reviewProduct.name,
-    angle: CONTENT_ANGLES[4],
+    angle: pickAngle(4),
     status: "needs_review",
     caption: badCaption,
     createdAt: now,
@@ -1328,7 +1437,7 @@ function buildSampleCalendar(client) {
         return { ...def, status: "done", durationMs: 8200, output: "โน้ตวิจัยตลาด + เทรนด์ (ตัวอย่างสาธิต)", detail: "นักวิจัยตลาด: เน้นกลุ่มผู้ผลิตแบรนด์ที่มองหาโรงงานที่ทำได้จริง\nนักวิจัยเทรนด์: รูปงานจริง + คอนเทนต์สั้นตอบคอมเมนต์ไว" };
       }
       if (def.key === "brief") {
-        return { ...def, status: "done", durationMs: 600, output: "Brief: เปิดตัวสินค้า + ข้อเสนอ OEM (ตัวอย่างสาธิต)", detail: "สินค้า: " + reviewProduct.name + "\nมุม: " + CONTENT_ANGLES[4] };
+        return { ...def, status: "done", durationMs: 600, output: `Brief: ${pickAngle(4)} (ตัวอย่างสาธิต)`, detail: "สินค้า: " + reviewProduct.name + "\nมุม: " + pickAngle(4) };
       }
       if (def.key === "create") {
         return { ...def, status: "done", durationMs: 15400, output: badCaption.slice(0, 80) + "…", detail: badCaption };
@@ -1640,9 +1749,25 @@ class SocialAgencyRuntime {
       if (!Array.isArray(client.workflowRuns)) client.workflowRuns = [];
       if (!Array.isArray(client.researcherRoles) || !client.researcherRoles.length) client.researcherRoles = defaultResearcherRoles();
       if (!Array.isArray(client.fewShots)) client.fewShots = [];
-      if (!Array.isArray(client.pillars) || !client.pillars.length) client.pillars = defaultPillars();
-      else client.pillars = client.pillars.map(sanitizePillar).filter((p) => p.name);
-      if (!client.pillars.length) client.pillars = defaultPillars();
+      // เสาหลักตามประเภทธุรกิจของลูกค้ารายนี้. ลูกค้าที่วางแผนด้วยชุดของโรงงาน
+      // กระเป๋าเดิม (3 เสามาตรฐาน) จะถูกย้ายมาใช้เสาของธุรกิจตัวเองหนึ่งครั้ง
+      // และถ้าธุรกิจที่ตรวจได้เปลี่ยนไป (เพิ่ม/แก้สินค้าจนอ่านชนิดใหม่ได้) ก็จะ
+      // เปลี่ยนตาม — แต่เสาที่ผู้ใช้แก้เองแล้ว (contentPillarsEditedAt) ไม่ถูกแตะ
+      const kindNow = detectContentKind(client);
+      const autoKind = !client.contentKind || client.contentKind === "auto";
+      const syncedKind = client.contentPillarsSyncedKind || null;
+      const needsSync = !client.contentPillarsEditedAt && (
+        isLegacyDefaultPillars(client.pillars) || (autoKind && syncedKind && syncedKind !== kindNow)
+      );
+      if (needsSync && (kindNow !== "goods" || !syncedKind)) {
+        client.contentPillarsSyncedAt = new Date().toISOString();
+        client.contentPillarsSyncedKind = kindNow;
+        if (kindNow !== "goods") client.pillars = defaultPillars(kindNow);
+      }
+      const pool = clientAnglePool(client);
+      if (!Array.isArray(client.pillars) || !client.pillars.length) client.pillars = defaultPillars(detectContentKind(client));
+      else client.pillars = client.pillars.map((p) => sanitizePillar(p, pool)).filter((p) => p.name);
+      if (!client.pillars.length) client.pillars = defaultPillars(detectContentKind(client));
       for (const p of client.pillars) if (!p.id) p.id = newId("pl");
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
@@ -1698,6 +1823,9 @@ class SocialAgencyRuntime {
   getState() {
     const state = this._read();
     this._mirrorLegacy(state);
+    // ข้อมูลที่ UI ใช้ตัดสินใจ (ไม่ถูกเขียนกลับลงไฟล์): ลูกค้ารายนี้ทำธุรกิจอะไร
+    // และเดือนนี้จะวางแผนด้วยมุมคอนเทนต์อะไร
+    for (const client of state.clients || []) Object.assign(client, this._clientContent(client));
     try {
       for (const c of state.clients || []) for (const e of c.calendar || []) this._ensureEntryAnimatePrompt(c, e);
     } catch {}
@@ -1716,6 +1844,8 @@ class SocialAgencyRuntime {
       industry: c.industry,
       tone: c.tone,
       createdAt: c.createdAt,
+      contentKind: detectContentKind(c),
+      contentKindLabel: kindLabel(detectContentKind(c)),
       productCount: (c.products || []).length,
       scheduledThisMonth: (c.calendar || []).filter(
         (e) => e.date && e.date.startsWith(bangkokMonthStr()) && ["planned", "in_workflow", "ready", "publishing", "needs_review"].includes(e.status)
@@ -1756,6 +1886,10 @@ class SocialAgencyRuntime {
       connectors: defaultConnectorMeta(),
       settings: defaultSettings(),
     };
+    // เสาหลักเริ่มต้นตามประเภทธุรกิจที่อ่านได้จากชื่อลูกค้า/สินค้าชิ้นแรก
+    client.contentKind = "auto";
+    client.pillars = defaultPillars(detectContentKind(client));
+    client.contentPillarsSyncedAt = now;
     state.clients.push(client);
     state.activeClientId = id;
     this._write(state);
@@ -1767,6 +1901,18 @@ class SocialAgencyRuntime {
     if (patch && typeof patch.name === "string" && patch.name.trim()) client.name = patch.name.trim();
     if (patch && typeof patch.industry === "string" && patch.industry.trim()) client.industry = patch.industry.trim();
     if (patch && patch.tone && TONE_PRESETS.includes(patch.tone)) client.tone = patch.tone;
+    if (patch && typeof patch.contentKind === "string") {
+      const kind = patch.contentKind.trim().toLowerCase();
+      if (kind !== "auto" && !CONTENT_KINDS.includes(kind)) throw new Error("ไม่รู้จักประเภทธุรกิจนี้");
+      client.contentKind = kind;
+      // เปลี่ยนประเภทธุรกิจ = ชุดเสาหลักเดิมของอีกธุรกิจไม่ใช้แล้ว ให้ชุดใหม่ของ
+      // ธุรกิจที่เลือก เว้นแต่ผู้ใช้แก้เสาเองไว้ (จะไม่ถูกทับ)
+      if (kind !== "auto" && !client.contentPillarsEditedAt) {
+        client.pillars = defaultPillars(kind);
+        client.contentPillarsSyncedAt = new Date().toISOString();
+        client.contentPillarsSyncedKind = kind;
+      }
+    }
     if (patch && Array.isArray(patch.researcherRoles)) {
       client.researcherRoles = patch.researcherRoles
         .filter((r) => r && typeof r === "object" && String(r.name || "").trim())
@@ -1934,10 +2080,10 @@ class SocialAgencyRuntime {
   }
 
   // ── per-platform caption versions (group 4) ──
-  buildPlatformVersions({ caption, product, angle, tone } = {}) {
-    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone, seed: String(product?.sku || "") + ":" + String(angle || "") });
+  buildPlatformVersions({ caption, product, angle, tone, client } = {}) {
+    const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone, seed: String(product?.sku || "") + ":" + String(angle || ""), client });
     const { body, tags } = splitHashtags(base);
-    const fallbackTags = templateHashtags(product, "instagram");
+    const fallbackTags = templateHashtags(product, "instagram", client);
     const fill = (have, max) => {
       const out = [...have];
       for (const t of fallbackTags) {
@@ -1980,7 +2126,7 @@ class SocialAgencyRuntime {
     const { client } = this._resolveClient(clientId || body.clientId);
     let caption = body.caption ? String(body.caption) : "";
     let product = client.products.find((p) => p.sku === body.sku) || client.products[0];
-    let angle = CONTENT_ANGLES.includes(body.angle) ? body.angle : CONTENT_ANGLES[0];
+    let angle = CONTENT_ANGLES.includes(body.angle) ? body.angle : defaultAngleFor(client);
     let entryId = null;
     if (body.entryId) {
       const entry = (client.calendar || []).find((e) => e.id === body.entryId);
@@ -1991,13 +2137,13 @@ class SocialAgencyRuntime {
       angle = entry.angle || angle;
     }
     if (!product) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า กรุณาเพิ่มสินค้าก่อน");
-    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone, seed: entryId, avoid: (client.calendar || []).filter((e) => e.id !== entryId).map((e) => e.caption) });
+    if (!caption) caption = buildTemplateCaption(product, { angle, platform: "facebook", tone: client.tone, seed: entryId, client, avoid: (client.calendar || []).filter((e) => e.id !== entryId).map((e) => e.caption) });
     return {
       entryId,
       sku: product.sku,
       productName: product.name,
       angle,
-      ...this.buildPlatformVersions({ caption, product, angle, tone: client.tone }),
+      ...this.buildPlatformVersions({ caption, product, angle, tone: client.tone, client }),
     };
   }
 
@@ -2109,6 +2255,18 @@ class SocialAgencyRuntime {
     return [...(client.pillars || [])];
   }
 
+  // มุมคอนเทนต์ที่ธุรกิจของลูกค้ารายนี้ใช้ (ให้หน้าตั้งค่าเสาหลักเลือกได้)
+  contentProfile(clientId) {
+    const { client } = this._resolveClient(clientId);
+    const info = angleOptionsFor(client);
+    return {
+      contentKind: info.kind,
+      contentKindLabel: info.kindLabel,
+      angles: clientAnglePool(client),
+      options: info.options,
+    };
+  }
+
   addPillar(clientId, body = {}) {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const name = String(body.name || "").trim().slice(0, 40);
@@ -2116,11 +2274,12 @@ class SocialAgencyRuntime {
     if ((client.pillars || []).some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new Error("มีเสาหลักชื่อนี้อยู่แล้ว");
     if ((client.pillars || []).length >= MAX_PILLARS_PER_CLIENT) throw new Error(`มีเสาหลักได้สูงสุด ${MAX_PILLARS_PER_CLIENT} เสาต่อลูกค้า`);
     const pillar = {
-      ...sanitizePillar({ name, angles: body.angles, weight: body.weight }),
+      ...sanitizePillar({ name, angles: body.angles, weight: body.weight }, clientAnglePool(client)),
       id: newId("pl"),
       createdAt: new Date().toISOString(),
     };
     client.pillars = [...(client.pillars || []), pillar];
+    client.contentPillarsEditedAt = new Date().toISOString();
     this._write(state);
     return pillar;
   }
@@ -2143,6 +2302,7 @@ class SocialAgencyRuntime {
       pillar.angles = [...new Set(angles)];
     }
     if (body.weight !== undefined) pillar.weight = clampNumber(body.weight, 1, 5, pillar.weight);
+    client.contentPillarsEditedAt = new Date().toISOString();
     this._write(state);
     return pillar;
   }
@@ -2152,7 +2312,7 @@ class SocialAgencyRuntime {
     const pillar = (client.pillars || []).find((p) => p.id === pillarId);
     if (!pillar) throw new Error("ไม่พบเสาหลักนี้");
     client.pillars = (client.pillars || []).filter((p) => p.id !== pillarId);
-    if (!client.pillars.length) client.pillars = defaultPillars();
+    if (!client.pillars.length) client.pillars = defaultPillars(detectContentKind(client));
     for (const e of client.calendar || []) {
       if (e.pillar === pillar.name) {
         const r = this._resolvePillarAngle(client, { angle: e.angle, seed: e.id });
@@ -2160,6 +2320,7 @@ class SocialAgencyRuntime {
         e.angle = r.angle;
       }
     }
+    client.contentPillarsEditedAt = new Date().toISOString();
     this._write(state);
     return { deleted: pillarId };
   }
@@ -2169,7 +2330,33 @@ class SocialAgencyRuntime {
     for (const e of client.calendar || []) {
       if (e.pillar) counts[e.pillar] = (counts[e.pillar] || 0) + 1;
     }
-    return pickPillar(client.pillars, counts, { pillar, angle, seed });
+    return pickPillar(client.pillars, counts, { pillar, angle, seed, fallbackAngles: clientAnglePool(client) });
+  }
+
+  // มุมคอนเทนต์ของเดือนนี้: เอาจากเสาหลักของลูกค้ารายนี้ (ถ่วงตามน้ำหนักเสา)
+  // แล้วกรองด้วยมุมที่ผู้ใช้อุตสาหกรรมเลือกในหน้าวางแผน — ไม่ใช้ชุดของโรงงาน
+  // กระเป๋าอีก เว้นแต่ลูกค้ารายนั้นเป็นโรงงานจริง ๆ
+  _planAngles(client, only) {
+    const pool = planAnglesFor(client, only);
+    return pool.length ? [...new Set(pool)] : [DEFAULT_ANGLE];
+  }
+
+  _planAngleRotation(client, only) {
+    const pool = planAnglesFor(client, only);
+    return pool.length ? pool : [DEFAULT_ANGLE];
+  }
+
+  // รายละเอียดลูกค้าที่ UI ใช้โชว์ "เดือนนี้ลูกค้าอยากได้อะไร"
+  _clientContent(client) {
+    const info = angleOptionsFor(client);
+    const rotation = planAnglesFor(client);
+    return {
+      contentKind: info.kind,
+      contentKindLabel: info.kindLabel,
+      contentAngles: info.angles,
+      planAngles: [...new Set(rotation)],
+      angleOptions: info.options,
+    };
   }
 
   _fewShotExamples(client, platform, limit = 3) {
@@ -2473,6 +2660,9 @@ class SocialAgencyRuntime {
     const seed = String(opts.seed || `${monthStr}:${client.id}`);
     const pool = seededShuffle((client.products || []).filter((p) => !usedSku.has(p.sku)), seed);
     const signals = this._planningSignals(client);
+    // มุมคอนเทนต์ของเดือนนี้มาจากเสาหลักของลูกค้ารายนี้ (ถ่วงตามน้ำหนัก) และ
+    // กรองได้ด้วยมุมที่เลือกในหน้าวางแผน — ไม่ใช่ชุดของโรงงานกระเป๋าโดยปริยาย
+    const angles = this._planAngleRotation(client, opts.angles);
     const customTime = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : null;
     const dayKey = (day) => `${year}-${pad(month)}-${pad(day)}`;
     const slots = [];
@@ -2518,7 +2708,7 @@ class SocialAgencyRuntime {
           time,
           sku: product.sku,
           productName: product.name,
-          angle: CONTENT_ANGLES[(day - 1) % CONTENT_ANGLES.length],
+          angle: angles[(day - 1) % angles.length],
           platform,
         });
       }
@@ -2529,6 +2719,7 @@ class SocialAgencyRuntime {
       fromDay,
       openDays,
       platforms,
+      angles: [...new Set(angles)],
       replacePlanned,
       poolSize: pool.length,
       shortBy: Math.max(0, daysNeedingProduct - pool.length),
@@ -2589,6 +2780,7 @@ class SocialAgencyRuntime {
     const ordered = [...products].sort((a, b) => (monthUsage.get(a.sku) || 0) - (monthUsage.get(b.sku) || 0));
     const perWeek = clampNumber(postsPerWeek, 1, 7, 5);
     const strategy = this._planningSignals(client);
+    const planAngles = this._planAngleRotation(client, opts.angles);
     // rotate through the platforms the operator picked (order preserved)
     const platformRotation = this._autoPlanPlatforms(opts.platforms);
     const slots = [];
@@ -2603,7 +2795,7 @@ class SocialAgencyRuntime {
       if (takenCombos.has(`${date}|${platform}`)) return; // that platform already has a post that day
       if (existing.has(`${date} ${time}`)) return;
       const product = ordered[productIdx % ordered.length];
-      const angle = CONTENT_ANGLES[angleIdx % CONTENT_ANGLES.length];
+      const angle = planAngles[angleIdx % planAngles.length];
       existing.add(`${date} ${time}`);
       takenCombos.add(`${date}|${platform}`);
       slots.push({ date, time, sku: product.sku, productName: product.name, angle, platform });
@@ -2629,9 +2821,19 @@ class SocialAgencyRuntime {
     const postsPerWeek = clampNumber(body?.postsPerWeek, 1, 7, client.settings?.postsPerWeek || 5);
     const platforms = this._autoPlanPlatforms(body?.platforms);
     const replacePlanned = body?.replacePlanned === true;
+    const angles = this._planAngles(client, body?.angles);
+    const content = this._clientContent(client);
+    const withContent = (payload, slots) => ({
+      ...payload,
+      contentKind: content.contentKind,
+      contentKindLabel: content.contentKindLabel,
+      angleOptions: content.angleOptions,
+      angles,
+      angleMix: summarizeAngles(slots),
+    });
     if (body?.onePerDay === true) {
-      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed, platforms, replacePlanned });
-      return {
+      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed, platforms, replacePlanned, angles });
+      return withContent({
         clientId: client.id,
         clientName: client.name,
         month,
@@ -2648,9 +2850,9 @@ class SocialAgencyRuntime {
         seed: daily.seed,
         strategy: daily.strategy,
         slots: daily.slots,
-      };
+      }, daily.slots);
     }
-    const fallback = this._buildFallbackSlots(client, month, postsPerWeek, { platforms, replacePlanned });
+    const fallback = this._buildFallbackSlots(client, month, postsPerWeek, { platforms, replacePlanned, angles });
     const strategy = this._planningSignals(client);
     let slots = fallback;
     let source = "template";
@@ -2682,7 +2884,7 @@ class SocialAgencyRuntime {
     }
     const uniq = this._dedupeSlotProducts(client, slots).slots;
     const capped = uniq.slice(0, 40);
-    return {
+    return withContent({
       clientId: client.id,
       clientName: client.name,
       month,
@@ -2693,7 +2895,7 @@ class SocialAgencyRuntime {
       replacePlanned,
       uniqueProducts: new Set(capped.map((x) => x.sku)).size,
       slots: capped,
-    };
+    }, capped);
   }
 
   applyAutoPlan(clientId, body) {
@@ -2738,6 +2940,7 @@ class SocialAgencyRuntime {
         // not appear on two different days of the same plan
         if (dates && !dates.has(date)) { skippedDup += 1; continue; }
       }
+      const angle = CONTENT_ANGLES.includes(slot?.angle) ? slot.angle : defaultAngleFor(client);
       const entry = {
         id: newId("cal"),
         date,
@@ -2745,7 +2948,7 @@ class SocialAgencyRuntime {
         platform,
         sku: product.sku,
         productName: product.name,
-        ...this._resolvePillarAngle(client, { angle: slot.angle, seed: `${date} ${time}` }),
+        ...this._resolvePillarAngle(client, { angle, seed: `${date} ${time}` }),
         status: "planned",
         createdAt: now,
         updatedAt: now,
@@ -4087,9 +4290,13 @@ class SocialAgencyRuntime {
     }
   }
 
-  async _buildTemplateImagePrompt(product, options = {}) {
+  async _buildTemplateImagePrompt(product, options = {}, client = null) {
     const translatedName = await this._llmTranslateForPrompt(product?.name);
-    return buildTemplateImagePrompt(product, { ...options, translatedName });
+    return buildTemplateImagePrompt(product, {
+      ...options,
+      translatedName,
+      kind: options.kind || (client ? detectContentKind(client) : undefined),
+    });
   }
 
   static extractJson(text) {
@@ -4303,7 +4510,7 @@ class SocialAgencyRuntime {
         },
         {
           role: "user",
-          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ ${strategy.weekdayTime} + สุดสัปดาห์ 1 ช่อง ${strategy.weekendTime})\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nกระจายสินค้าให้ครบทุกตัวก่อนซ้ำ (ห้ามใช้สินค้าเดิมซ้ำถ้ายังมีตัวที่ไม่ได้ใช้)\nมุมคอนเทนต์ให้หมุนเวียน: ${CONTENT_ANGLES.join(" / ")}\nแพลตฟอร์มหมุนเวียนตาม ${strategy.platformRotation.join(" / ")} (${strategy.platformSource})\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
+          content: `วางแผนโพสต์เดือน ${month} สำหรับ ${client.name} (${client.industry}) ประมาณ ${targetCount} ช่วงเวลา สัปดาห์ละ ${postsPerWeek} โพสต์ (จ-ศ ประมาณ ${strategy.weekdayTime} + สุดสัปดาห์ 1 ช่อง ${strategy.weekendTime})\nสินค้า: ${client.products.map((p) => `${p.sku}=${p.name} (${p.category})`).join(", ")}\nกระจายสินค้าให้ครบทุกตัวก่อนซ้ำ (ห้ามใช้สินค้าเดิมซ้ำถ้ายังมีตัวที่ไม่ได้ใช้)\nธุรกิจของลูกค้า: ${client.industry || "-"} (${kindLabel(detectContentKind(client))})\nมุมคอนเทนต์ให้หมุนเวียนตามธุรกิจนี้เท่านั้น: ${this._planAngles(client).join(" / ")}\nแพลตฟอร์มหมุนเวียนตาม ${strategy.platformRotation.join(" / ")} (${strategy.platformSource})\nเว้นวันที่เหล่านี้ที่มีคอนเทนต์อยู่แล้ว: ${(client.calendar || []).filter((e) => e.date && e.date.startsWith(month)).map((e) => `${e.date} ${e.time}`).join(", ") || "(ไม่มี)"}`,
         },
       ],
       { json: true, temperature: 0.5, maxTokens: 1400, timeoutMs: 240000 }
@@ -4317,7 +4524,7 @@ class SocialAgencyRuntime {
         date: String(s?.date || ""),
         time: /^\d{2}:\d{2}$/.test(String(s?.time || "")) ? String(s.time) : "18:30",
         sku: skuSet.has(s?.sku) ? s.sku : client.products[0].sku,
-        angle: CONTENT_ANGLES.includes(s?.angle) ? s.angle : CONTENT_ANGLES[Math.floor(Math.random() * CONTENT_ANGLES.length)],
+        angle: CONTENT_ANGLES.includes(s?.angle) ? s.angle : defaultAngleFor(client),
         platform: PLATFORMS.includes(s?.platform) && s.platform !== "tiktok" ? s.platform : "demo",
       }))
       .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.date.startsWith(monthPrefix));
@@ -4711,7 +4918,7 @@ class SocialAgencyRuntime {
           caption = await this._llmCreateCaption({ client, product, angle: entry.angle, platform: entry.platform, brief: entry.brief, pillar: entry.pillar });
         } catch (err) {
           console.warn("[social-agency] create fallback to template:", err.message);
-          caption = buildTemplateCaption(product, { angle: entry.angle, platform: entry.platform, tone: client.tone, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.caption) });
+          caption = buildTemplateCaption(product, { angle: entry.angle, platform: entry.platform, tone: client.tone, seed: entry.id, client, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.caption) });
           source = "template";
         }
       }
@@ -4737,7 +4944,7 @@ class SocialAgencyRuntime {
         caption = capLines.join("\n");
       }
       const hookVariants = scored.map((s) => ({ text: s.text, score: s.score, used: s === best }));
-      const imagePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
+      const imagePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
       const animateSib = (client.calendar || []).filter((e) => e.id !== entry.id);
       const animateBuilt = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: animateSib.map((e) => e.animatePrompt), avoidCameras: animateSib.map((e) => e.animateCamera) });
       return {
@@ -5093,7 +5300,7 @@ class SocialAgencyRuntime {
     let cursor = Number(parts[0]) * 60 + Number(parts[1]);
     if (!Number.isFinite(cursor)) cursor = 18 * 60 + 30;
     const now = new Date().toISOString();
-    const templateVersions = this.buildPlatformVersions({ caption, product, angle: entry.angle, tone: client.tone }).versions;
+    const templateVersions = this.buildPlatformVersions({ caption, product, angle: entry.angle, tone: client.tone, client }).versions;
     const created = [];
     for (const platform of targets) {
       let text = "";
@@ -5552,7 +5759,7 @@ class SocialAgencyRuntime {
   async _ensureEntryImagePrompt(client, entry) {
     if (entry.imagePrompt && String(entry.imagePrompt).trim()) return entry.imagePrompt;
     const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
-    entry.imagePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) });
+    entry.imagePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
     return entry.imagePrompt;
   }
 
@@ -7386,7 +7593,7 @@ class SocialAgencyRuntime {
         return json(res, 200, { ok: true, ...this.deleteFewShot(clientId, decodeURIComponent(match[1])) });
       }
       if (pathname === "/api/social-agency/pillars" && method === "GET") {
-        return json(res, 200, { ok: true, pillars: this.listPillars(clientId) });
+        return json(res, 200, { ok: true, pillars: this.listPillars(clientId), content: this.contentProfile(clientId) });
       }
       if (pathname === "/api/social-agency/pillars" && method === "POST") {
         const body = await readBody();

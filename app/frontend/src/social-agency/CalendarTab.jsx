@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, Plus, CalendarDays, Clock, Search, X, Trash2, ListChecks, Eye } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
@@ -65,6 +65,16 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [planPlatforms, setPlanPlatforms] = useState(() => new Set(["facebook", "instagram", "line", "demo"]));
   const [onePerDay, setOnePerDay] = useState(true);
   const [replacePlanned, setReplacePlanned] = useState(false); // วางแผนซ้ำได้เรื่อย ๆ
+  // มุมคอนเทนต์ของเดือนนี้ — มาจากธุรกิจของลูกค้ารายนี้ (เสาหลัก/ประเภทธุรกิจ)
+  // ไม่ใช่ชุดของโรงงานกระเป๋าโดยปริยาย · ไม่ติ๊กเลย = ใช้ทุกมุมของลูกค้ารายนี้
+  const clientAngles = useMemo(
+    () => (activeClient?.planAngles?.length ? activeClient.planAngles : activeClient?.contentAngles || []),
+    [activeClient]
+  );
+  const [planAngles, setPlanAngles] = useState(() => new Set());
+  useEffect(() => {
+    setPlanAngles(new Set(clientAngles));
+  }, [clientAngles]);
   const [dragOver, setDragOver] = useState(null);
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -141,6 +151,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
       const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5, {
         onePerDay,
         platforms: ["facebook", "instagram", "line", "demo"].filter((p) => planPlatforms.has(p)),
+        angles: [...planAngles],
         replacePlanned,
       });
       setPlanPreview(preview);
@@ -189,6 +200,29 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
               </label>
             ))}
           </span>
+          {clientAngles.length > 0 && (
+            <span
+              className="sa-plan-angles"
+              title={`มุมคอนเทนต์ที่ใช้วางแผนเดือนนี้ — ตั้งต้นจากธุรกิจของลูกค้ารายนี้ (${activeClient?.contentKindLabel || "ทั่วไป"}) และเสาหลักที่ตั้งไว้ · ไม่เลือกเลย = ใช้ทุกมุมของลูกค้ารายนี้`}
+            >
+              มุมคอนเทนต์:
+              {clientAngles.map((a) => (
+                <label key={a} className={`sa-check sa-plan-angle${planAngles.has(a) ? " on" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={planAngles.has(a)}
+                    onChange={(e) => setPlanAngles((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(a);
+                      else next.delete(a);
+                      return next;
+                    })}
+                  />
+                  <span>{a}</span>
+                </label>
+              ))}
+            </span>
+          )}
           <label className="sa-check" title="เติมโพสต์ทุกวันที่ยังว่าง · แต่ละวันใช้สินค้าเดียวกันทุกแพลตฟอร์ม และสินค้าไม่ซ้ำกันระหว่างวัน">
             <input type="checkbox" checked={onePerDay} onChange={(e) => setOnePerDay(e.target.checked)} />
             <span>ทุกวัน</span>

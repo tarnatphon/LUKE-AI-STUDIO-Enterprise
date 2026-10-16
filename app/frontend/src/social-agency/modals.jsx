@@ -264,6 +264,12 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
         {` · โพสต์ live ที่มีข้อมูล ≥48 ชม. ${preview.strategy.samples} รายการ`}
         {onePerDay && planPlatforms.length > 1 ? " · หลายช่อง/วัน เวลาจะกระจายกันไม่ให้ชนกัน" : ""}
       </p>}
+      {preview?.angleMix?.length ? (
+        <p className="sa-form-hint">
+          <b>มุมคอนเทนต์เดือนนี้</b> ({preview.contentKindLabel || "ทั่วไป"} · {preview.angleMix.length} มุม): {preview.angleMix.map((a) => `${a.angle} ×${a.count}`).join(" · ")}
+          {" — มาจากธุรกิจของลูกค้ารายนี้และเสาหลักที่ตั้งไว้ เปลี่ยนมุมที่เลือกได้ที่แถบเครื่องมือ ปฏิทินก่อนกดวางแผน"}
+        </p>
+      ) : null}
       {preview?.replacePlanned ? (
         <p className="sa-form-hint">
           โหมดแทนที่แผนเดิม: รายการที่ยังไม่เริ่มรัน (สถานะ วางแผนไว้) ในช่องเดียวกันจะถูกแทนที่ด้วยแผนใหม่
