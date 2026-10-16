@@ -33,6 +33,16 @@ const frontendSrc = path.join(root, "app", "frontend", "src");
 
 const FALLBACK = "Unknown API endpoint";
 const METHODS = ["POST", "GET", "PATCH", "DELETE"];
+/** The verbs a call site may name, which is wider than the sweep below. */
+const NAMED_METHODS = new Set([...METHODS, "PUT", "HEAD", "OPTIONS"]);
+
+/**
+ * The wrappers the frontend sends requests through, and the ones whose verb is
+ * GET when the call site does not say otherwise. Anything else is only claimed
+ * when it writes its verb down.
+ */
+const REQUEST_HELPERS = new Set(["fetch", "api", "postJson", "fetchWithTimeoutAndRetry"]);
+const GET_BY_DEFAULT = new Set(["fetch", "api", "fetchWithTimeoutAndRetry"]);
 
 /**
  * Endpoints whose job is to open a native dialog and wait for a person.
@@ -122,6 +132,125 @@ function resolveTemplate(raw) {
 }
 
 /**
+ * The HTTP method a call site uses, or null when it cannot be read.
+ *
+ * The verb is part of the contract. `PATCH /api/social-agency/products/:sku` is
+ * how a product photo is saved, and the call site that saved one was sending
+ * POST — a URL that was right, aimed at a route that existed, and answered by
+ * the 404 fallback, so the upload and paste-a-link buttons did nothing. Sweeping
+ * every method is what hid it: PATCH answered, the URL counted as served, and
+ * the one verb the page actually sends was never tried on its own.
+ *
+ * A call site whose verb cannot be read keeps the old treatment — every method
+ * is tried, so "the server does not serve this URL at all" is still caught.
+ * Only the verbs written down at the call site are asserted.
+ */
+function methodAtCallSite(name, args) {
+  const asString = (value) => {
+    const text = String(value ?? "").trim();
+    const match =
+      text.match(/^`([\s\S]*)`$/) || text.match(/^"([\s\S]*)"$/) || text.match(/^'([\s\S]*)'$/);
+    return match ? match[1] : null;
+  };
+  const isMethod = (value) => typeof value === "string" && NAMED_METHODS.has(value);
+
+  // postJson(url, body) is POST; postJson(url, body, "PATCH") is PATCH.
+  if (name === "postJson") {
+    const third = asString(args[2]);
+    return isMethod(third) ? third : "POST";
+  }
+
+  const options = String(args[1] ?? "");
+  if (options.trimStart().startsWith("{")) {
+    const declared = options.match(/method:\s*["'`]([A-Za-z]+)["'`]/);
+    if (declared) return isMethod(declared[1]) ? declared[1] : null;
+    return GET_BY_DEFAULT.has(name) ? "GET" : null;
+  }
+  // A variable in the options slot can carry any verb, so none is claimed.
+  if (options) return null;
+  return GET_BY_DEFAULT.has(name) ? "GET" : null;
+}
+
+/** The balanced argument list of one call, as raw source text per argument. */
+function readCallArgs(text, openIndex) {
+  let depth = 1;
+  let i = openIndex + 1;
+  let current = "";
+  let quote = null;
+  let interpolation = 0;
+  const args = [];
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (quote) {
+      if (ch === "\\") { current += ch + text[i + 1]; i += 2; continue; }
+      if (quote === "`") {
+        if (ch === "$" && text[i + 1] === "{") { interpolation = 1; current += "${"; i += 2; continue; }
+        if (interpolation > 0) {
+          if (ch === "{") interpolation += 1;
+          else if (ch === "}") {
+            interpolation -= 1;
+            if (interpolation === 0) { current += "}"; i += 1; continue; }
+          }
+          current += ch; i += 1; continue;
+        }
+        if (ch === "`") quote = null;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      current += ch; i += 1; continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") { quote = ch; current += ch; i += 1; continue; }
+    if (ch === "(" || ch === "[" || ch === "{") { depth += 1; current += ch; i += 1; continue; }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth -= 1;
+      if (depth === 0) return args.concat(current);
+      current += ch; i += 1; continue;
+    }
+    if (ch === "," && depth === 1) { args.push(current); current = ""; i += 1; continue; }
+    current += ch; i += 1;
+  }
+  return null;
+}
+
+/**
+ * Every (url, method) pair a call site states outright: the first argument is a
+ * URL literal, so the call is a request, and the verb is either written in the
+ * options object, handed to postJson, or the helper's own default — a bare
+ * fetch() asks for GET.
+ */
+function calledMethods() {
+  const found = new Map();
+
+  for (const file of walk(frontendSrc)) {
+    const text = fs.readFileSync(file, "utf8");
+    const call = /([A-Za-z_$][\w$]*)\s*\(/g;
+    let match;
+
+    while ((match = call.exec(text)) !== null) {
+      const name = match[1];
+      if (!REQUEST_HELPERS.has(name)) continue;
+      const args = readCallArgs(text, match.index + match[0].length - 1);
+      if (!args) continue;
+      const raw = String(args[0] ?? "").trim();
+      const literal =
+        raw.match(/^`([\s\S]*)`$/) || raw.match(/^"([\s\S]*)"$/) || raw.match(/^'([\s\S]*)'$/);
+      if (!literal) continue;
+      const url = resolveTemplate(literal[1].split("?")[0]).replace(/\/+$/, "");
+      if (!url.startsWith("/")) continue;
+      const method = methodAtCallSite(name, args);
+      if (!method) continue;
+      if (!found.has(url)) found.set(url, new Set());
+      found.get(url).add(method);
+    }
+  }
+
+  return found;
+}
+
+/**
  * Every URL the frontend asks for, with the candidate action words from the file
  * that asks for it. Those words are how a URL ending in a runtime-chosen segment
  * — `/batches/${id}/${action}` — gets resolved without consulting the server.
@@ -129,6 +258,7 @@ function resolveTemplate(raw) {
 function calledUrls() {
   const found = new Map();
   const prefix = "(?:api|v1|sdapi|tts-outputs)";
+  const methods = calledMethods();
 
   for (const file of walk(frontendSrc)) {
     const text = fs.readFileSync(file, "utf8");
@@ -143,7 +273,7 @@ function calledUrls() {
           (text.match(/"[a-z][a-z0-9-]{1,24}"/g) || []).map((word) => word.slice(1, -1))
         ),
       ];
-      found.set(url, words);
+      found.set(url, { words, methods: [...(methods.get(url) || [])] });
     };
 
     const plain = new RegExp(`"(\\/${prefix}\\/[^"$]*)\"`, "g");
@@ -154,7 +284,11 @@ function calledUrls() {
     while ((match = template.exec(text)) !== null) collect(match[1]);
   }
 
-  return [...found.keys()].sort().map((url) => ({ url, actions: found.get(url) }));
+  return [...found.keys()].sort().map((url) => ({
+    url,
+    actions: found.get(url).words,
+    methods: found.get(url).methods,
+  }));
 }
 
 /** A throwaway checkout, so booting the server cannot touch the real one. */
@@ -266,31 +400,27 @@ async function main() {
     }
     assert(ready, "The server starts on a throwaway checkout.");
 
-    const isServed = async (target) => {
-      let answered = false;
-      for (const method of METHODS) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 20000);
-        try {
-          const response = await fetch(`${baseUrl}${target}`, {
-            method,
-            signal: controller.signal,
-            headers: { "content-type": "application/json" },
-            body: method === "GET" ? undefined : "{}",
-          });
-          answered = true;
-          if (!(await response.text()).includes(FALLBACK)) return "served";
-        } catch {
-          // A timeout or a reset connection is not "no such route"; the sweep in
-          // test-api-route-methods.cjs is where those are judged. It is also not
-          // "served", and it is not the same thing as the fallback answering —
-          // so it is remembered as "no answer" and reported as its own thing
-          // rather than folded into the list of routes the server lacks.
-        } finally {
-          clearTimeout(timer);
-        }
+    const ask = async (target, method) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const response = await fetch(`${baseUrl}${target}`, {
+          method,
+          signal: controller.signal,
+          headers: { "content-type": "application/json" },
+          body: method === "GET" ? undefined : "{}",
+        });
+        return (await response.text()).includes(FALLBACK) ? "fallback" : "served";
+      } catch {
+        // A timeout or a reset connection is not "no such route"; the sweep in
+        // test-api-route-methods.cjs is where those are judged. It is also not
+        // "served", and it is not the same thing as the fallback answering —
+        // so it is remembered as "no answer" and reported as its own thing
+        // rather than folded into the list of routes the server lacks.
+        return "no-answer";
+      } finally {
+        clearTimeout(timer);
       }
-      return answered ? "fallback" : "no-answer";
     };
 
     const unserved = [];
@@ -298,41 +428,67 @@ async function main() {
     const served = new Set();
     const viaAction = [];
     const byDeclaration = [];
+    const methodKnown = [];
 
-    for (const { url, actions } of entries) {
-      let verdict;
+    /**
+     * One URL on one verb. A URL whose last segment is an action the caller
+     * picks at runtime — `/download-queue/${id}/${action}`,
+     * `/batches/${id}/${action}`, `/scheduler/${running ? "stop" : "start"}` —
+     * cannot be resolved statically, and "probe-id" is not a word any route
+     * accepts. The accepted words are recovered from the calling file rather
+     * than from the server, and the URL counts as served if any of them is.
+     */
+    const tryVerb = async (url, method, actions) => {
+      let verdict = await ask(url, method);
+      if (verdict === "served" || !url.endsWith("/probe-id") || !actions?.length) return verdict;
+      const base = url.slice(0, -"/probe-id".length);
+      for (const action of actions) {
+        if ((await ask(`${base}/${action}`, method)) === "served") {
+          viaAction.push(`${method} ${url}  →  ${base}/${action}`);
+          return "served";
+        }
+      }
+      return verdict;
+    };
+
+    for (const { url, actions, methods } of entries) {
+      let verdict = "served";
+      let unresolved = "";
 
       if (INTERACTIVE.has(url)) {
         verdict = isDeclared(url) ? "served" : "fallback";
         if (verdict === "served") byDeclaration.push(url);
+      } else if (methods?.length) {
+        // Every verb the call sites state outright has to be one the route
+        // answers. This is the check a single sweep cannot make: a route that
+        // answers PATCH passes a sweep that also tries POST, and the button
+        // sending POST stays broken.
+        methodKnown.push(url);
+        for (const method of [...methods].sort()) {
+          const verbVerdict = await tryVerb(url, method, actions);
+          if (verbVerdict === "served") continue;
+          if (verbVerdict === "no-answer" && verdict !== "fallback") verdict = "no-answer";
+          else verdict = "fallback";
+          unresolved = unresolved ? `${unresolved}, ${method}` : method;
+        }
       } else {
-        verdict = await isServed(url);
-      }
-
-      // A URL whose last segment is an action the caller picks at runtime —
-      // `/download-queue/${id}/${action}`, `/batches/${id}/${action}`,
-      // `/scheduler/${running ? "stop" : "start"}` — cannot be resolved
-      // statically, and "probe-id" is not a word any route accepts. The accepted
-      // words are recovered from the calling file rather than from the server,
-      // and the URL counts as served if any of them is.
-      if (verdict !== "served" && url.endsWith("/probe-id") && actions?.length) {
-        const base = url.slice(0, -"/probe-id".length);
-        for (const action of actions) {
-          if ((await isServed(`${base}/${action}`)) === "served") {
-            verdict = "served";
-            viaAction.push(`${url}  →  ${base}/${action}`);
-            break;
-          }
+        // No verb was readable at the call site, so the URL is held to what it
+        // always was: some method reaches it.
+        for (const method of METHODS) {
+          const verbVerdict = await tryVerb(url, method, actions);
+          if (verbVerdict === "served") { verdict = "served"; break; }
+          if (verbVerdict === "no-answer" && verdict !== "fallback") verdict = "no-answer";
+          else verdict = "fallback";
         }
       }
 
       if (verdict === "served") served.add(url);
       else if (verdict === "no-answer") unanswered.push(url);
-      else unserved.push(url);
+      else unserved.push(unresolved ? `${unresolved} ${url}` : url);
     }
 
     console.log(
-      `  called: ${urls.length} · served: ${served.size} · unserved: ${unserved.length}`
+      `  called: ${urls.length} · served: ${served.size} · unserved: ${unserved.length} · verbs read at the call site: ${methodKnown.length}`
     );
     if (viaAction.length) {
       console.log(`  ${viaAction.length} needed a runtime action word taken from the caller:`);
@@ -347,8 +503,12 @@ async function main() {
     }
 
     assert(
+      methodKnown.length > 150,
+      `The verb was read at the call site for ${methodKnown.length} of the ${urls.length} URLs.`
+    );
+    assert(
       unserved.length === 0,
-      `Every URL the frontend calls reaches a route (${unserved.length} fall through to "${FALLBACK}").`
+      `Every URL the frontend calls, with the method its call site sends, reaches a route (${unserved.length} fall through to "${FALLBACK}").`
     );
     assert(
       unanswered.length === 0,
