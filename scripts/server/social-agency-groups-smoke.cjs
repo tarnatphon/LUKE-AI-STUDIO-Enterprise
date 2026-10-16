@@ -1343,27 +1343,65 @@ async function main() {
     assert.ok(!/limitstart|limit=/.test(vAfter.sourceUrl), vAfter.sourceUrl);
   });
 
-  // ── P5w: one product per day, no repeats, drawn from a catalogue page ──
+  // ── P5w: one product per day (cross-posted per platform), no repeats between days ──
   const wId = rt.createClient({ name: "ทดสอบวางแผนรายวัน", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋ารุ่นเริ่ม WXA-001" }).id;
   for (let i = 2; i <= 34; i += 1) rt.addProduct(wId, { name: `กระเป๋ารุ่นทดสอบ WXA-${String(i).padStart(3, "0")}` });
   const wPlan = await rt.autoPlanPreview(wId, { month: "2026-11", onePerDay: true });
   const wApply = rt.applyAutoPlan(wId, { month: "2026-11", slots: wPlan.slots, enforceUniqueProducts: true });
   const wAgain = await rt.autoPlanPreview(wId, { month: "2026-11", onePerDay: true });
-  check("one-per-day plan gives each day its own product and never repeats one", () => {
+  check("one-per-day plan gives each day its own product, one slot per platform, never repeats a product between days", () => {
     assert.strictEqual(wPlan.mode, "one-per-day");
     assert.strictEqual(wPlan.daysInMonth, 30);
-    assert.strictEqual(wPlan.slots.length, 30, `30 days should be covered, got ${wPlan.slots.length}`);
-    assert.strictEqual(new Set(wPlan.slots.map((x) => x.sku)).size, 30, "a product must not repeat in the month");
-    assert.strictEqual(new Set(wPlan.slots.map((x) => x.date)).size, 30, "one post per day");
+    assert.strictEqual(wPlan.slots.length, 120, `30 days × 4 platforms should be covered, got ${wPlan.slots.length}`);
+    assert.strictEqual(new Set(wPlan.slots.map((x) => x.sku)).size, 30, "a product must not repeat between days");
+    assert.strictEqual(new Set(wPlan.slots.map((x) => x.date)).size, 30, "all 30 days covered");
     assert.ok(wPlan.slots.every((x) => x.date.startsWith("2026-11")));
+    for (const date of new Set(wPlan.slots.map((x) => x.date))) {
+      const day = wPlan.slots.filter((x) => x.date === date);
+      assert.strictEqual(day.length, 4, `${date}: Facebook + Instagram + LINE + web in one day`);
+      assert.strictEqual(new Set(day.map((x) => x.platform)).size, 4, `${date}: one slot per platform`);
+      assert.strictEqual(new Set(day.map((x) => x.time)).size, 4, `${date}: staggered times must not collide`);
+      assert.strictEqual(new Set(day.map((x) => x.sku)).size, 1, `${date}: one product per day, cross-posted`);
+    }
     assert.strictEqual(wPlan.shortBy, 0);
-    assert.strictEqual(wApply.count, 30);
+    assert.strictEqual(wApply.count, 120);
     assert.strictEqual(wAgain.slots.length, 0, "the planned month must not be refilled with repeats");
   });
+
+  // ── P5w+: auto-plan is repeatable inside one month (fill other platforms / replace) ──
+  const w2Id = rt.createClient({ name: "ทดสอบวางแผนซ้ำ", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋ารุ่นซ้ำ WXC-001" }).id;
+  for (let i = 2; i <= 34; i += 1) rt.addProduct(w2Id, { name: `กระเป๋ารุ่นซ้ำ WXC-${String(i).padStart(3, "0")}` });
+  const w2First = await rt.autoPlanPreview(w2Id, { month: "2026-11", onePerDay: true, platforms: ["facebook"] });
+  rt.applyAutoPlan(w2Id, { month: "2026-11", slots: w2First.slots, enforceUniqueProducts: true });
+  const w2Second = await rt.autoPlanPreview(w2Id, { month: "2026-11", onePerDay: true, platforms: ["instagram", "line", "demo"] });
+  const w2Apply = rt.applyAutoPlan(w2Id, { month: "2026-11", slots: w2Second.slots, enforceUniqueProducts: true });
+  const w2Third = await rt.autoPlanPreview(w2Id, { month: "2026-11", onePerDay: true });
+  const w2Replace = await rt.autoPlanPreview(w2Id, { month: "2026-11", onePerDay: true, platforms: ["facebook"], replacePlanned: true });
+  const w2ReplaceApply = rt.applyAutoPlan(w2Id, { month: "2026-11", slots: w2Replace.slots, replacePlanned: true, enforceUniqueProducts: true });
+  check("auto-plan can run again in the same month: it fills the platform slots a previous run left open", () => {
+    assert.strictEqual(w2First.slots.length, 30, "first run: 30 days × facebook only");
+    assert.strictEqual(w2Second.slots.length, 90, `second run must add the other 3 platforms, got ${w2Second.slots.length}`);
+    assert.strictEqual(w2Apply.count, 90);
+    // the second run cross-posts each day's existing product instead of inventing a new one
+    const firstSku = new Map(w2First.slots.map((s) => [s.date, s.sku]));
+    assert.ok(w2Second.slots.every((s) => firstSku.get(s.date) === s.sku), "same day = same product across platforms");
+    assert.strictEqual(w2Third.slots.length, 0, "every platform of every day now has a post");
+    // replace mode re-plans over unstarted entries and leaves the rest alone
+    assert.strictEqual(w2Replace.slots.length, 30, "replace mode re-plans the facebook slots");
+    assert.ok(w2Replace.slots.every((s) => s.platform === "facebook"));
+    assert.strictEqual(w2ReplaceApply.replaced, 30, "the unstarted facebook posts are replaced");
+    assert.strictEqual(w2ReplaceApply.count, 30);
+    const after = rt._read().clients.find((c) => c.id === w2Id).calendar;
+    assert.strictEqual(after.filter((e) => e.platform === "facebook").length, 30, "still one facebook post per day");
+    assert.strictEqual(after.length, 120, "the other platforms' posts were not touched");
+    assert.ok(after.every((e) => e.status === "planned"), "nothing else must change");
+  });
+
   const fewId = rt.createClient({ name: "ทดสอบสินค้าไม่พอ", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋าเดียว WXB-001" }).id;
   const wFew = await rt.autoPlanPreview(fewId, { month: "2026-12", onePerDay: true });
   check("a short product pool is reported instead of repeating products", () => {
-    assert.strictEqual(wFew.slots.length, 1);
+    assert.strictEqual(wFew.slots.length, 4, "1 product covers 1 day × 4 platforms");
+    assert.strictEqual(new Set(wFew.slots.map((x) => x.sku)).size, 1);
     assert.strictEqual(wFew.shortBy, 30, `31 open days - 1 product, got ${wFew.shortBy}`);
   });
   const catPage = (from, to, nextStart) => `<html><head><title>รายการสินค้าและผลิตภัณฑ์กระเป๋า</title></head><body><main>${
@@ -1388,8 +1426,8 @@ async function main() {
     assert.strictEqual(wSample.pages, 3, `pagination: expected 3 pages, got ${wSample.pages}`);
     assert.strictEqual(wSample.importedCount, 31);
     assert.strictEqual(wSample.shortBy, 0);
-    assert.strictEqual(wSamplePlan.slots.length, 31, `after sampling, all 31 days must be fillable: ${wSamplePlan.slots.length}`);
-    assert.strictEqual(new Set(wSamplePlan.slots.map((x) => x.sku)).size, 31);
+    assert.strictEqual(wSamplePlan.slots.length, 124, `after sampling, all 31 days × 4 platforms must be fillable: ${wSamplePlan.slots.length}`);
+    assert.strictEqual(new Set(wSamplePlan.slots.map((x) => x.sku)).size, 31, "one product per day, no repeats between days");
   });
 
   console.log(`\nPASS: ${passed} checks (root: ${root})`);

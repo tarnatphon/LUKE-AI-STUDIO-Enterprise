@@ -302,8 +302,11 @@
 .sa-legend-dot.needs-review { background: var(--sa-warn); border-color: var(--sa-warn); }
 .sa-legend-dot.failed { background: var(--sa-error); border-color: var(--sa-error); }
 .sa-legend-dot.missed { border-style: dashed; }
-.sa-toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.sa-toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sa-tz { display: inline-flex; gap: 4px; align-items: center; font-size: 0.7rem; color: var(--sa-muted); }
+.sa-plan-platforms { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.7rem; color: var(--sa-muted); }
+.sa-plan-platform { padding: 2px 7px; border: 1px solid var(--sa-outline); border-radius: 999px; }
+.sa-plan-platform.on { border-color: color-mix(in srgb, var(--sa-primary) 45%, transparent); background: var(--sa-primary-container); color: var(--sa-on-surface, inherit); }
 
 .sa-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--sa-outline); border-radius: var(--sa-radius); background: var(--sa-card-1); overflow: hidden; }
 .sa-grid-head { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--sa-outline); background: var(--sa-card); }
@@ -739,7 +742,7 @@
 .sa-confirm-detail { margin: 0; color: var(--sa-muted); font-size: 0.74rem; }
 .sa-warn-icon { color: var(--sa-warn); }
 
-.sa-autoplan-list { display: flex; flex-direction: column; gap: 6px; }
+.sa-autoplan-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; }
 .sa-autoplan-head { display: flex; justify-content: flex-end; }
 .sa-autoplan-row {
   display: flex; align-items: center; gap: 9px;

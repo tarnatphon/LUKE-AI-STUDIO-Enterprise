@@ -30,6 +30,19 @@ const CONTENT_ANGLES = [
 ];
 const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
 const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok"];
+// Auto-plan fills ONE slot per selected platform per day, so a single day can
+// carry Facebook + Instagram + LINE + web ("demo" = เว็บโพสต์) side by side.
+// TikTok never joins unattended planning (it needs creator consent per post).
+const AUTO_PLAN_PLATFORMS = ["facebook", "instagram", "line", "demo"];
+// Default posting times for the non-anchor platforms of a multi-post day. The
+// first selected platform anchors on the learned weekday/weekend time instead,
+// and colliding times are nudged 30' apart so date+time stays unique.
+const AUTO_PLAN_PLATFORM_TIMES = {
+  facebook: { weekday: "18:30", weekend: "11:00" },
+  instagram: { weekday: "12:30", weekend: "12:30" },
+  line: { weekday: "10:00", weekend: "10:00" },
+  demo: { weekday: "15:00", weekend: "15:00" },
+};
 // Platforms where a real send puts an image in front of the public. Those need a
 // human image review (separate from caption approval) before going live.
 const IMAGE_REVIEW_PLATFORMS = ["facebook", "instagram", "line"];
@@ -2383,7 +2396,48 @@ class SocialAgencyRuntime {
     return defaults;
   }
 
-  // P5w: "one product a day, no repeats inside the month"
+  // Platforms auto-plan may fill: validated, de-duped, TikTok excluded.
+  _autoPlanPlatforms(input) {
+    const list = Array.isArray(input) ? input : null;
+    const picked = (list || AUTO_PLAN_PLATFORMS)
+      .map((p) => String(p || "").toLowerCase())
+      .filter((p, i, arr) => AUTO_PLAN_PLATFORMS.includes(p) && arr.indexOf(p) === i);
+    return picked.length ? picked : [...AUTO_PLAN_PLATFORMS];
+  }
+
+  static _hhmmToMin(hhmm) {
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : 18 * 60 + 30;
+  }
+
+  static _minToHhmm(min) {
+    const t = Math.max(0, Math.min(23 * 60 + 59, Math.round(min)));
+    return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+  }
+
+  // Date+time must stay unique per day. Prefer the planned time; when it is
+  // already taken, move 30' later first (clamped 21:30) then 30' earlier.
+  static _nudgeFreeTime(taken, baseTime) {
+    const takenSet = taken instanceof Set ? taken : new Set(taken || []);
+    const base = SocialAgencyRuntime._hhmmToMin(baseTime);
+    for (let step = 0; step < 32; step += 1) {
+      const cands = step === 0 ? [base] : [base + step * 30, base - step * 30];
+      for (const c of cands) {
+        if (c < 8 * 60 || c > 21 * 60 + 30) continue;
+        const key = SocialAgencyRuntime._minToHhmm(c);
+        if (!takenSet.has(key)) return key;
+      }
+    }
+    return SocialAgencyRuntime._minToHhmm(Math.max(8 * 60, Math.min(21 * 60 + 30, base)));
+  }
+
+  // P5w: "one product a day, no repeats inside the month" — now fanned out to
+  // one slot PER SELECTED PLATFORM per day (Facebook + Instagram + LINE + web
+  // can all run on the same day). A day keeps a single product across its
+  // platform slots (cross-posting); different days never share a product while
+  // unused products remain. Planning is repeatable: the occupancy unit is the
+  // (date, platform) pair, so a later run fills the platform slots a previous
+  // run left out — and `replacePlanned` re-plans over unstarted entries.
   _buildDailySlots(client, monthStr, opts = {}) {
     const { year, month, daysInMonth } = currentMonthWeeks(monthStr);
     const pad = (n) => String(n).padStart(2, "0");
@@ -2391,53 +2445,115 @@ class SocialAgencyRuntime {
     const isCurrentMonth = todayStr.startsWith(`${year}-${pad(month)}`);
     const fromDay = isCurrentMonth ? Number(todayStr.slice(8, 10)) : 1;
     const monthEntries = (client.calendar || []).filter((e) => e.date && e.date.startsWith(monthStr));
-    const takenDates = new Set(monthEntries.map((e) => e.date));
-    const usedSku = new Set(monthEntries.filter((e) => e.sku).map((e) => e.sku));
+    const replacePlanned = opts.replacePlanned === true;
+    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight;
+    const keptEntries = monthEntries.filter((e) => !replannable(e));
+    const platforms = this._autoPlanPlatforms(opts.platforms);
+    // (date, platform) combos already carrying content — auto-plan never stacks
+    // a second post on the same platform on the same day.
+    const occupied = new Set(keptEntries.map((e) => `${e.date}|${e.platform}`));
+    const takenTimes = new Map(); // date -> Set of "HH:mm"
+    const replannableTimes = new Map(); // date|platform -> "HH:mm" the new slot may reclaim
+    const daySku = new Map(); // date -> product already chosen for that day
+    const usedSku = new Set();
+    for (const e of monthEntries) {
+      const times = takenTimes.get(e.date) || new Set();
+      times.add(e.time);
+      takenTimes.set(e.date, times);
+    }
+    for (const e of keptEntries) {
+      if (e.sku) {
+        usedSku.add(e.sku);
+        if (!daySku.has(e.date)) daySku.set(e.date, e.sku);
+      }
+    }
+    for (const e of monthEntries) {
+      if (replannable(e)) replannableTimes.set(`${e.date}|${e.platform}`, e.time);
+    }
     const seed = String(opts.seed || `${monthStr}:${client.id}`);
     const pool = seededShuffle((client.products || []).filter((p) => !usedSku.has(p.sku)), seed);
     const signals = this._planningSignals(client);
-    const time = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : null;
-    const platforms = signals.platformSource === "default" ? ["facebook", "instagram", "line", "demo"] : signals.platformRotation;
-    const slots = [];
+    const customTime = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : null;
     const dayKey = (day) => `${year}-${pad(month)}-${pad(day)}`;
+    const slots = [];
     let openDays = 0;
-    for (let day = fromDay; day <= daysInMonth; day += 1) if (!takenDates.has(dayKey(day))) openDays += 1;
-    for (let day = fromDay; day <= daysInMonth && slots.length < pool.length; day += 1) {
+    let daysNeedingProduct = 0;
+    let poolIdx = 0;
+    for (let day = fromDay; day <= daysInMonth; day += 1) {
       const date = dayKey(day);
-      if (takenDates.has(date)) continue; // strictly one post per day
-      const product = pool[slots.length];
-      slots.push({
-        date,
-        time: time || ([0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay()) ? signals.weekendTime : signals.weekdayTime),
-        sku: product.sku,
-        productName: product.name,
-        angle: CONTENT_ANGLES[(day - 1) % CONTENT_ANGLES.length],
-        platform: platforms[(day - 1) % platforms.length],
-      });
+      const freePlatforms = platforms.filter((p) => !occupied.has(`${date}|${p}`));
+      if (!freePlatforms.length) continue;
+      openDays += 1;
+      // the day's product: reuse what an existing entry already chose for that
+      // day (cross-posting), otherwise draw an unused product (no repeats)
+      let product = null;
+      const existingSku = daySku.get(date);
+      if (existingSku) product = (client.products || []).find((p) => p.sku === existingSku) || null;
+      if (!product) {
+        daysNeedingProduct += 1;
+        if (poolIdx < pool.length) {
+          product = pool[poolIdx];
+          poolIdx += 1;
+          daySku.set(date, product.sku);
+          usedSku.add(product.sku);
+        }
+      }
+      if (!product) continue; // product pool exhausted — shortBy reports it
+      const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+      const anchorTime = weekend ? signals.weekendTime : signals.weekdayTime;
+      const times = takenTimes.get(date) || new Set();
+      takenTimes.set(date, times);
+      for (const platform of freePlatforms) {
+        const tableTime = AUTO_PLAN_PLATFORM_TIMES[platform]?.[weekend ? "weekend" : "weekday"] || anchorTime;
+        const base = customTime || (platform === platforms[0] ? anchorTime : tableTime);
+        // the unstarted entry this slot replaces frees its own time for THIS
+        // platform only — the other platforms of the day keep their times
+        const localTimes = new Set(times);
+        const reclaimed = replannableTimes.get(`${date}|${platform}`);
+        if (reclaimed) localTimes.delete(reclaimed);
+        const time = SocialAgencyRuntime._nudgeFreeTime(localTimes, base);
+        times.add(time);
+        slots.push({
+          date,
+          time,
+          sku: product.sku,
+          productName: product.name,
+          angle: CONTENT_ANGLES[(day - 1) % CONTENT_ANGLES.length],
+          platform,
+        });
+      }
     }
     return {
       slots,
       daysInMonth,
       fromDay,
       openDays,
+      platforms,
+      replacePlanned,
       poolSize: pool.length,
-      shortBy: Math.max(0, openDays - pool.length),
+      shortBy: Math.max(0, daysNeedingProduct - pool.length),
       seed,
       strategy: signals,
     };
   }
 
-  // two days must never carry the same product - even when the LLM picked them
+  // two different days must never carry the same product - even when the LLM
+  // picked them. Slots for the SAME day may share a product (cross-posting one
+  // product across Facebook/Instagram/LINE/web in one day).
   _dedupeSlotProducts(client, slots) {
-    const taken = new Set();
+    const taken = new Map(); // sku -> first date seen in this plan
     const out = [];
     let replaced = 0;
     let dropped = 0;
     for (const s of slots || []) {
-      if (s.sku && taken.has(s.sku)) {
-        const alt = (client.products || []).find((p) => !taken.has(p.sku));
+      const firstDate = s.sku ? taken.get(s.sku) : undefined;
+      if (s.sku && firstDate !== undefined && firstDate !== s.date) {
+        const alt = (client.products || []).find((p) => {
+          const d = taken.get(p.sku);
+          return d === undefined || d === s.date;
+        });
         if (alt) {
-          taken.add(alt.sku);
+          if (taken.get(alt.sku) === undefined) taken.set(alt.sku, s.date);
           out.push({ ...s, sku: alt.sku, productName: alt.name });
           replaced += 1;
         } else {
@@ -2445,30 +2561,36 @@ class SocialAgencyRuntime {
         }
         continue;
       }
-      if (s.sku) taken.add(s.sku);
+      if (s.sku && firstDate === undefined) taken.set(s.sku, s.date);
       out.push(s);
     }
     return { slots: out, replaced, dropped };
   }
 
-  _buildFallbackSlots(client, monthStr, postsPerWeek) {
+  _buildFallbackSlots(client, monthStr, postsPerWeek, opts = {}) {
     const { year, month, daysInMonth, weeks } = currentMonthWeeks(monthStr);
     const pad = (n) => String(n).padStart(2, "0");
     const todayStr = bangkokDateStr();
     const isCurrentMonth = todayStr.startsWith(`${year}-${pad(month)}`);
     const todayDay = Number(todayStr.slice(8, 10));
-    const existing = new Set((client.calendar || []).filter((e) => e.date && e.date.startsWith(monthStr)).map((e) => `${e.date} ${e.time}`));
+    const monthPrefix = `${year}-${pad(month)}`;
+    const replacePlanned = opts.replacePlanned === true;
+    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight;
+    const kept = (client.calendar || []).filter((e) => e.date && e.date.startsWith(monthPrefix) && !replannable(e));
+    const existing = new Set(kept.map((e) => `${e.date} ${e.time}`));
+    const takenCombos = new Set(kept.map((e) => `${e.date}|${e.platform}`));
     const products = client.products || [];
     if (!products.length) return [];
     // P5c: least-used-first so every product gets featured before any repeat
     const monthUsage = new Map();
-    for (const e of client.calendar || []) {
-      if (e.date && e.date.startsWith(monthStr) && e.sku) monthUsage.set(e.sku, (monthUsage.get(e.sku) || 0) + 1);
+    for (const e of kept) {
+      if (e.sku) monthUsage.set(e.sku, (monthUsage.get(e.sku) || 0) + 1);
     }
     const ordered = [...products].sort((a, b) => (monthUsage.get(a.sku) || 0) - (monthUsage.get(b.sku) || 0));
     const perWeek = clampNumber(postsPerWeek, 1, 7, 5);
     const strategy = this._planningSignals(client);
-    const platformRotation = strategy.platformRotation;
+    // rotate through the platforms the operator picked (order preserved)
+    const platformRotation = this._autoPlanPlatforms(opts.platforms);
     const slots = [];
     let productIdx = 0;
     let angleIdx = 0;
@@ -2477,11 +2599,13 @@ class SocialAgencyRuntime {
       if (!day) return;
       if (isCurrentMonth && day < todayDay) return;
       const date = `${year}-${pad(month)}-${pad(day)}`;
+      const platform = platformRotation[platformIdx % platformRotation.length];
+      if (takenCombos.has(`${date}|${platform}`)) return; // that platform already has a post that day
       if (existing.has(`${date} ${time}`)) return;
       const product = ordered[productIdx % ordered.length];
       const angle = CONTENT_ANGLES[angleIdx % CONTENT_ANGLES.length];
-      const platform = platformRotation[platformIdx % platformRotation.length];
       existing.add(`${date} ${time}`);
+      takenCombos.add(`${date}|${platform}`);
       slots.push({ date, time, sku: product.sku, productName: product.name, angle, platform });
       productIdx += 1;
       angleIdx += 1;
@@ -2503,8 +2627,10 @@ class SocialAgencyRuntime {
     if (!(client.products || []).length) throw new Error("ลูกค้ารายนี้ยังไม่มีสินค้า เพิ่มสินค้าก่อนวางแผนอัตโนมัติ");
     const month = /^\d{4}-\d{2}$/.test(String(body?.month || "")) ? String(body.month) : bangkokMonthStr();
     const postsPerWeek = clampNumber(body?.postsPerWeek, 1, 7, client.settings?.postsPerWeek || 5);
+    const platforms = this._autoPlanPlatforms(body?.platforms);
+    const replacePlanned = body?.replacePlanned === true;
     if (body?.onePerDay === true) {
-      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed });
+      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed, platforms, replacePlanned });
       return {
         clientId: client.id,
         clientName: client.name,
@@ -2515,6 +2641,8 @@ class SocialAgencyRuntime {
         daysInMonth: daily.daysInMonth,
         fromDay: daily.fromDay,
         openDays: daily.openDays,
+        platforms: daily.platforms,
+        replacePlanned: daily.replacePlanned,
         productPool: daily.poolSize,
         shortBy: daily.shortBy,
         seed: daily.seed,
@@ -2522,7 +2650,7 @@ class SocialAgencyRuntime {
         slots: daily.slots,
       };
     }
-    const fallback = this._buildFallbackSlots(client, month, postsPerWeek);
+    const fallback = this._buildFallbackSlots(client, month, postsPerWeek, { platforms, replacePlanned });
     const strategy = this._planningSignals(client);
     let slots = fallback;
     let source = "template";
@@ -2553,7 +2681,7 @@ class SocialAgencyRuntime {
       }
     }
     const uniq = this._dedupeSlotProducts(client, slots).slots;
-    const capped = uniq.slice(0, 22);
+    const capped = uniq.slice(0, 40);
     return {
       clientId: client.id,
       clientName: client.name,
@@ -2561,6 +2689,8 @@ class SocialAgencyRuntime {
       postsPerWeek,
       source,
       strategy,
+      platforms,
+      replacePlanned,
       uniqueProducts: new Set(capped.map((x) => x.sku)).size,
       slots: capped,
     };
@@ -2571,26 +2701,48 @@ class SocialAgencyRuntime {
     const month = /^\d{4}-\d{2}$/.test(String(body?.month || "")) ? String(body.month) : bangkokMonthStr();
     const incoming = Array.isArray(body?.slots) ? body.slots : [];
     if (!incoming.length) throw new Error("ยังไม่ได้เลือกช่วงเวลาใด");
-    const existing = new Set((client.calendar || []).map((e) => `${e.date} ${e.time}`));
+    // replace mode frees the same (date, platform) / (date, time) combos held by
+    // unstarted plans only — anything that already ran or is running survives
+    const replacePlanned = body?.replacePlanned === true;
+    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight && e.date.startsWith(month);
     const now = new Date().toISOString();
     const created = [];
+    let skippedConflict = 0;
     let skippedDup = 0;
+    let replaced = 0;
     const enforceUnique = body?.enforceUniqueProducts === true;
-    const plannedSku = new Set();
-    for (const slot of incoming.slice(0, 31)) {
+    const plannedSkuDates = new Map(); // sku -> Set of dates planned in this batch
+    for (const slot of incoming.slice(0, 200)) {
       const date = String(slot?.date || "");
       const time = String(slot?.time || "18:30");
       if (!date.startsWith(month) || !/^\d{2}:\d{2}$/.test(time)) continue;
-      if (existing.has(`${date} ${time}`)) continue;
+      const platform = PLATFORMS.includes(slot.platform) ? slot.platform : "demo";
+      if (replacePlanned) {
+        const before = client.calendar.length;
+        // only the same (date, platform) combo is replaced — a different
+        // platform's post that day survives even when times would clash
+        client.calendar = client.calendar.filter((e) => !(replannable(e) && e.date === date && e.platform === platform));
+        replaced += before - client.calendar.length;
+      }
+      // date+time stays unique, and auto-plan never stacks a second post on the
+      // same platform on the same day
+      if (client.calendar.some((e) => e.date === date && (e.time === time || e.platform === platform))) {
+        skippedConflict += 1;
+        continue;
+      }
       const product = client.products.find((p) => p.sku === slot.sku) || client.products[0];
       if (!product) continue;
-      if (enforceUnique && plannedSku.has(product.sku)) { skippedDup += 1; continue; }
-      plannedSku.add(product.sku);
+      if (enforceUnique) {
+        const dates = plannedSkuDates.get(product.sku);
+        // one product per day is fine (cross-posting); the same product must
+        // not appear on two different days of the same plan
+        if (dates && !dates.has(date)) { skippedDup += 1; continue; }
+      }
       const entry = {
         id: newId("cal"),
         date,
         time,
-        platform: PLATFORMS.includes(slot.platform) ? slot.platform : "demo",
+        platform,
         sku: product.sku,
         productName: product.name,
         ...this._resolvePillarAngle(client, { angle: slot.angle, seed: `${date} ${time}` }),
@@ -2598,12 +2750,16 @@ class SocialAgencyRuntime {
         createdAt: now,
         updatedAt: now,
       };
-      existing.add(`${date} ${time}`);
+      if (enforceUnique) {
+        const dates = plannedSkuDates.get(product.sku) || new Set();
+        dates.add(date);
+        plannedSkuDates.set(product.sku, dates);
+      }
       client.calendar.push(entry);
       created.push(entry);
     }
     this._write(state);
-    return { created, count: created.length, skippedDuplicateProduct: skippedDup };
+    return { created, count: created.length, replaced, skippedConflict, skippedDuplicateProduct: skippedDup };
   }
 
   // Meta returns *missing* (not zero) for unavailable insights. Read the
