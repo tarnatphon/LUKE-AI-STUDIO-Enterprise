@@ -1,4 +1,5 @@
 import { getSliderStyle } from "../lib/slider-style.mjs";
+import { describeRecipePatch, matchImageRecipe, recipePlan } from "../lib/image-recipes.mjs";
 import React, { memo, useEffect, useState, useCallback } from "react";
 import PerformancePanel from "./PerformancePanel";
 import {
@@ -585,6 +586,28 @@ function Settings({
     };
   }, [backendDownload.active, refreshBackendOptions]);
 
+  // What the loaded checkpoint was trained to be sampled with. Advisory on
+  // purpose: the app ships one global default (4 steps / CFG 1), which burns a
+  // standard SDXL checkpoint and starves nothing else, so a Lightning model and
+  // an SDXL model cannot both be right. The chip says what would change and the
+  // button is the only thing that applies it.
+  const imageRecipePlan = recipePlan(matchImageRecipe(activeModel), constraints);
+  const applyImageRecipe = () => {
+    if (!imageRecipePlan || imageRecipePlan.alreadyMatches) return;
+    const { patch } = imageRecipePlan;
+    setConstraints((prev) => ({
+      ...prev,
+      ...patch,
+      // Same bookkeeping the steps slider does, so switching backend later
+      // restores the value the recipe chose instead of the old default.
+      ...(patch.steps === undefined
+        ? {}
+        : isOpenVinoNpu
+          ? { npuSteps: Math.max(1, Math.min(8, patch.steps)) }
+          : { standardSteps: Math.max(1, Math.min(60, patch.steps)) }),
+    }));
+  };
+
   const updateConstraint = (key, value) => {
     setConstraints((prev) => ({
       ...prev,
@@ -960,6 +983,24 @@ function Settings({
               <Sliders size={16} />
               Quality & Speed
             </div>
+            {imageRecipePlan && (
+              <div className="image-recipe-chip">
+                <div className="image-recipe-chip-head">
+                  <Wand2 size={14} />
+                  <span>สูตรที่แนะนำ: {imageRecipePlan.recipe.label}</span>
+                </div>
+                <span className="image-recipe-chip-note">{imageRecipePlan.note}</span>
+                {imageRecipePlan.alreadyMatches ? (
+                  <span className="image-recipe-chip-ok">
+                    <Check size={13} /> ค่าปัจจุบันตรงกับสูตรนี้แล้ว
+                  </span>
+                ) : (
+                  <button type="button" className="m3-btn m3-btn-tonal" onClick={applyImageRecipe}>
+                    ใช้ค่าที่แนะนำ ({describeRecipePatch(imageRecipePlan.patch)})
+                  </button>
+                )}
+              </div>
+            )}
             <div className="m3-field-group">
               <div className="m3-slider-group">
                 <div className="m3-slider-header">

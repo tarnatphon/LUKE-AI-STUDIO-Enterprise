@@ -175,10 +175,9 @@ function clampReferenceNumber(value, min, max, fallback = min) {
   return Math.min(max, Math.max(min, n));
 }
 
-function normalizeReferenceMode() {
-  return "Appearance Lock";
-}
-
+// Reference settings are a *prompt-level* control here: the bundled backend has
+// no reference-image fields to configure (see generateImage). `denoiseGuidance`
+// is the one that reaches the sampler, through planImageSteps below.
 function buildReferencePromptBoost(references = [], settings = {}) {
   const activeRefs = (Array.isArray(references) ? references : [])
     .filter((item) => item && item.enabled !== false)
@@ -1338,6 +1337,18 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
   const img2imgPlan = inputImageBase64 ? planImageSteps(constraints, referenceSettings, true) : null;
 
   // Prepare payload based on standard stable-diffusion.cpp REST endpoint schemas
+  //
+  // No reference-image fields go on the wire. The bundled backend reads neither
+  // `reference_images` nor `reference_settings` on `/v1/images/generations` or
+  // `/sdapi/v1/img2img` (its own native schema calls the field `ref_images`, and
+  // only the native `/sdcpp/v1/*` routes and `<sd_cpp_extra_args>` accept it).
+  // Sending them used to ship the base64 of every reference with every generate
+  // request — about 30 MB for twenty photos — and the backend discarded all of
+  // it. What actually carries a reference today is `inputImageBase64` (the
+  // primary reference as the img2img init image, planned by planImageSteps
+  // above), and the prompt boost below. `referenceImages`/`referenceSettings`
+  // stay as parameters for those two jobs and for the metadata the Generator
+  // saves next to the output.
   const payload = {
     prompt: effectivePrompt,
     negative_prompt: effectiveNegativePrompt,
@@ -1349,8 +1360,6 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
     sampler: constraints.sampler || "euler_a",
     image: inputImageBase64 || null, // Image to image source (base64)
     denoising_strength: img2imgPlan ? img2imgPlan.strength : (constraints.denoisingStrength || 0.7),
-    reference_images: referenceImages,
-    reference_settings: referenceSettings,
   };
 
   if (constraints.backendType === "openvino-npu") {
@@ -1417,8 +1426,6 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
     cfg_scale:        payload.cfg_scale,
     seed:             payload.seed,
     sample_method:    payload.sampler || "euler_a",
-    reference_images: payload.reference_images || [],
-    reference_settings: payload.reference_settings || {},
   };
 
   // img2img extra fields
@@ -1444,9 +1451,6 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       n_iter:             1,
       send_images:        true,
       save_images:        false,
-      reference_images:   payload.reference_images || [],
-      reference_settings: payload.reference_settings || {},
-      reference_mode:     normalizeReferenceMode(referenceSettings.mode),
     };
   }
 
