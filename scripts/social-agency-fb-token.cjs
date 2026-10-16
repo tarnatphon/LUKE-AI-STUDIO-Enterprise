@@ -304,10 +304,10 @@ async function debugToken({ inputToken, appId, appSecret, version }) {
   const body = await graphGet(version, `/debug_token?${qs({ input_token: inputToken, access_token: `${appId}|${appSecret}` })}`, [appSecret, inputToken]);
   const d = body.data || {};
   return {
-    id: d.id || null,
+    id: d.id || d.profile_id || null,
     appId: d.app_id || null,
     type: d.type || null,
-    valid: Boolean(d.valid),
+    valid: Boolean(d.is_valid ?? d.valid),
     issuedAt: d.issued_at || null,
     expiresAt: d.expires_at ?? null,
     scopes: Array.isArray(d.scopes) ? d.scopes : [],

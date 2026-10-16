@@ -738,7 +738,7 @@ async function inspectFbPostReadiness(options = {}) {
       }
       const meRes = await graphRequest(
         "GET",
-        `/${apiVersion}/me?fields=id,name,category&access_token=${encodeURIComponent(accessToken)}`
+        `/${apiVersion}/me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`
       );
       if (meRes.status >= 400 || meRes.json?.error) {
         const msg = meRes.json?.error?.message || `HTTP ${meRes.status}`;
@@ -767,7 +767,7 @@ async function inspectFbPostReadiness(options = {}) {
         const scopes = Array.isArray(d.scopes) ? d.scopes : [];
         const missingScopes = NEEDED_SCOPES.filter((s) => !scopes.includes(s));
         const Problems = [];
-        if (!d.valid) Problems.push("valid=false");
+        if (!(d.is_valid ?? d.valid)) Problems.push("valid=false");
         if (d.type && d.type !== "PAGE") Problems.push(`type=${d.type} (ไม่ใช่ PAGE)`);
         if (d.expires_at && Number(d.expires_at) !== 0) {
           const expIso = new Date(Number(d.expires_at) * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
