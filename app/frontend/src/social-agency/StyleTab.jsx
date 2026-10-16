@@ -13,6 +13,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
   const [saving, setSaving] = useState(false);
   const [pillars, setPillars] = useState([]);
   const [pillarsError, setPillarsError] = useState("");
+  const [content, setContent] = useState(null); // ประเภทธุรกิจ + มุมคอนเทนต์ของลูกค้ารายนี้
   const [pform, setPform] = useState({ name: "", angles: [], weight: 1 });
   const [psaving, setPsaving] = useState(false);
 
@@ -57,6 +58,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
       .then((data) => {
         if (cancelled) return;
         setPillars(data.pillars || []);
+        setContent(data.content || null);
         setPillarsError("");
       })
       .catch((err) => {
@@ -163,6 +165,12 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
     } catch {}
   };
 
+  // มุมที่เลือกได้ = มุมของธุรกิจลูกค้ารายนี้ + มุมที่เสาหลักใช้อยู่แล้ว (ไม่ซ่อนของเดิม)
+  const angleChoices = [
+    ...(content?.angles || activeClient?.contentAngles || ANGLES),
+    ...pillars.flatMap((p) => p.angles || []),
+  ].filter((a, i, arr) => arr.indexOf(a) === i);
+
   if (!clientId) return <div className="sa-style"><p className="sa-muted">ยังไม่ได้เลือกลูกค้า</p></div>;
 
   return (
@@ -173,6 +181,10 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
           <b>เสาหลักคอนเทนต์ (Pillars)</b>
           <span className="sa-muted">{pillars.length}/8 · กระจายมุมโพสต์อัตโนมัติตามน้ำหนัก</span>
         </header>
+        <p className="sa-form-hint">
+          มุมคอนเทนต์ของลูกค้ารายนี้มาจาก<b>ประเภทธุรกิจที่ระบบอ่านได้</b> ({content?.contentKindLabel || activeClient?.contentKindLabel || "ทั่วไป"})
+          {" "}รวมกับมุมที่เสาหลักอ้างอยู่ — แก้เสาเมื่อไหร่ ระบบจะไม่ทับให้อีก และปฏิทินจะวางแผนด้วยมุมชุดนี้
+        </p>
         {pillarsError && <p className="sa-error-banner">{pillarsError}</p>}
         <div className="sa-style-form">
           <div className="sa-style-row">
@@ -188,7 +200,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
             </select>
           </div>
           <div className="sa-style-row">
-            {ANGLES.map((a) => (
+            {(angleChoices.length ? angleChoices : ANGLES).map((a) => (
               <label key={a} style={{ display: "flex", gap: 4, alignItems: "center" }}>
                 <input type="checkbox" checked={pform.angles.includes(a)} onChange={() => togglePAngle(a)} /> {a}
               </label>

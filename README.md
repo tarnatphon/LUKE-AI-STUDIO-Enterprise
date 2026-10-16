@@ -36,6 +36,7 @@
 * [Troubleshooting & FAQ](#troubleshooting-faq)
 * [Building From Source](#building-from-source)
 * [Running the validation suites](#validation)
+* [Luke Social Agency content follows the client](#social-agency-content)
 * [Licensing](#licensing)
 
 ---
@@ -144,6 +145,21 @@ Uncensored-AI-Studio/
 ## <a id="getting-started"></a>🚀 Getting Started
 
 Ensure you have a modern web browser installed. Follow the quick guide below for your platform:
+
+**One command for macOS / Linux:** `./start.sh` runs the right launcher for this machine
+(`mac.sh` on macOS, `linux.sh` on Linux). If you just pulled new code, run `bash validate.sh`
+first — it installs what is missing, builds the UI, and runs every validation suite, so the app
+never starts against a half-built frontend.
+
+```bash
+git pull
+bash validate.sh     # deps (if needed) → vite build → node scripts/validation/run-all.cjs
+./start.sh           # mac.sh (macOS) or linux.sh (Linux)
+```
+
+Then open the app and load a text model in the **Text Models** tab before using any Local AI
+feature — the Social Agency workflow, chat, and image prompts all fall back to templates until a
+model is loaded.
 
 ### Windows Setup
 
@@ -339,7 +355,14 @@ Then restart the app with `./linux.sh` (Linux) or `./mac.sh` (macOS).
 
 ## <a id="validation"></a>🧪 Running the validation suites
 
-`scripts/validation/` holds the test suites as plain `node` programs that exit
+The one-command gate is **`bash validate.sh`**: it checks Node ≥ 20, installs
+`scripts/server` and `app/frontend` dependencies when they are missing, runs
+`vite build` (several suites assert against the built UI), then hands over to
+`run-all.cjs`. Flags it understands: `--no-install`, `--no-build`, and anything
+else is passed straight through (`./validate.sh --filter social`,
+`./validate.sh --include-python`).
+
+Under the hood, `scripts/validation/` holds the test suites as plain `node` programs that exit
 non-zero when an assertion fails. `run-all.cjs` runs the lot, prints one line per
 suite plus a summary (passed, failed, known-failing, xpassed and skipped), and
 writes a timestamped report to `validation-reports/` (local output, not tracked by
@@ -386,6 +409,36 @@ on pushes to `main`, and on demand from the Actions tab. The job runs on
 dependencies, builds the frontend so `app/dist/` exists, then runs
 `run-all.cjs --timeout 300` and uploads the report as an artifact. Anything not
 already in `ci-baseline.json` fails the job.
+
+---
+
+## <a id="social-agency-content"></a>🎯 Luke Social Agency content follows the client
+
+The Social Agency plans and writes for **the client's own business**, not for one
+business kind. `scripts/server/social-agency-content-kinds.cjs` reads a client's
+`industry` and its product list and picks a kind — `goods` (product/manufacturing),
+`food`, `service`, `shop`, or `generic` — and that kind owns the month's angle
+labels, the Thai caption leads, the ready-made caption examples, the closing tone
+line, the hashtag tables (and their fallback), and the English Stable Diffusion
+style phrase.
+
+| Client | Kind | Angles the month is planned with |
+|---|---|---|
+| Thai Modern Bags | goods | เปิดตัวสินค้า · เบื้องหลังการผลิต · เคล็ดลับการใช้งาน · เรื่องจากลูกค้า · โปรโมชัน/ข้อเสนอ OEM |
+| Oven บ้านๆ / ดอยหอม | food | เมนูใหม่ · เบื้องหลังครัว · วิธีเก็บ/วิธีทาน · เสียงจากลูกค้า · โปรโมชัน/เซตของขวัญ |
+| ปลายฝน (yoga) | service | คลาส/บริการใหม่ · เบื้องหลังทีมงาน · ความรู้/วิธีปฏิบัติ · เสียงจากสมาชิก · โปรโมชัน/แพ็กเกจ |
+| Plant Club | shop | ของเข้าใหม่ · เบื้องหลังร้าน · วิธีดูแล/วิธีใช้ · เสียงจากลูกค้า · โปรโมชัน/จัดเซต |
+
+- The five original labels are the `goods` kind, so nothing is renamed and stored
+  entries/pillars from earlier versions stay valid. `PATCH /clients/:id` accepts
+  `contentKind: "auto" | <kind>` when you want to pin it yourself, and
+  `GET /api/social-agency/pillars` answers the client's own angle catalog.
+- **The calendar says what this month is about**: the toolbar's "มุมคอนเทนต์:" picker
+  starts ticked with the client's own angles (weighted by its content pillars) and sends
+  `angles: […]` with `POST /api/social-agency/auto-plan`; the preview modal summarises
+  the mix ("มุมคอนเทนต์เดือนนี้ (… · N มุม): มุม ×จำนวน").
+- Pillars start as the client's kind and an untouched legacy default set is swapped once
+  for the right business — a pillar you edited yourself is never overwritten.
 
 ---
 

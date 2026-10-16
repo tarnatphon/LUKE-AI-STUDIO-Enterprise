@@ -328,6 +328,35 @@
   background: transparent; color: var(--sa-muted);
   opacity: 0;
 }
+
+/* มุมคอนเทนต์ของเดือนนี้ — ตั้งต้นจากธุรกิจของลูกค้ารายนั้น */
+.sa-plan-angles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sa-plan-angle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--sa-border, #d8d8d8);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sa-plan-angle.on {
+  border-color: var(--sa-accent, #6c5ce7);
+  background: rgba(108, 92, 231, 0.12);
+}
+
+.sa-plan-angle input {
+  margin: 0;
+}
 .sa-day:hover .sa-day-add { opacity: 1; }
 .sa-day-add:hover { background: var(--sa-primary); color: var(--sa-on-primary); }
 .sa-day-chips { display: flex; flex-direction: column; gap: 3px; overflow: visible; }

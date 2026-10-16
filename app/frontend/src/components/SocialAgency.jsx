@@ -398,7 +398,10 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
             <Megaphone size={18} />
             <div>
               <h2>{activeClient?.name}</h2>
-              <span className="sa-muted">{activeClient?.industry} · โทน {activeClient?.tone} · {activeClient?.products?.length || 0} สินค้า</span>
+              <span className="sa-muted">
+                {activeClient?.industry} · โทน {activeClient?.tone} · {activeClient?.products?.length || 0} สินค้า
+                {activeClient?.contentKindLabel ? ` · คอนเทนต์แบบ ${activeClient.contentKindLabel}` : ""}
+              </span>
             </div>
           </div>
           <div className="sa-header-chips">
