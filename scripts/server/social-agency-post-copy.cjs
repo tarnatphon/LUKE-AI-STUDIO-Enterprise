@@ -10,16 +10,24 @@ const PLATFORM_RULES = Object.freeze({
   tiktok: { maxChars: 2200, maxHashtags: 5 },
 });
 
-const THAI_MODERN_BAGS_CONTACT = [
-  "กว่า 40 ปี ที่ Thai Modern Bags มุ่งมั่นผลิตกระเป๋า OEM / ODM คุณภาพมาตรฐาน ให้กับองค์กรชั้นนำทั่วประเทศ",
-  "",
+const THAI_MODERN_BAGS_ABOUT = "กว่า 40 ปี ที่ Thai Modern Bags มุ่งมั่นผลิตกระเป๋า OEM / ODM คุณภาพมาตรฐาน ให้กับองค์กรชั้นนำทั่วประเทศ";
+const THAI_MODERN_BAGS_CONTACT_LINES = [
   "📩 สอบถามรายละเอียดหรือขอใบเสนอราคา",
   "☎️ TEL: 0-2466-3312, 02-465-3355",
   "📱 MOBILE: 097-469-4656, 095-226-4565",
   "💬 LINE ID: @thaimodernbags",
   "📧 EMAIL: ekkaphon@thaimodernbags.com",
-  "🌐 WEBSITE: https://www.thaimodernbags.com",
+];
+// Instagram and the default block keep the full website URL.
+const THAI_MODERN_BAGS_CONTACT = [
+  THAI_MODERN_BAGS_ABOUT, "", ...THAI_MODERN_BAGS_CONTACT_LINES, "🌐 WEBSITE: https://www.thaimodernbags.com",
 ].join("\n");
+// Facebook does not allow the website as a link in posts, so the bare domain is written.
+const THAI_MODERN_BAGS_FACEBOOK = [
+  THAI_MODERN_BAGS_ABOUT, "", ...THAI_MODERN_BAGS_CONTACT_LINES, "🌐 WEBSITE: thaimodernbags.com",
+].join("\n");
+// The Facebook value saved before this change; migrated once, edits are kept.
+const LEGACY_THAI_MODERN_BAGS_FACEBOOK = THAI_MODERN_BAGS_CONTACT;
 
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
 const isMap = (value) => value && typeof value === "object" && !Array.isArray(value);
@@ -36,10 +44,20 @@ function defaultCaptionFooters(client) {
   const result = Object.fromEntries(Object.keys(PLATFORM_RULES).map((platform) => [platform, ""]));
   // This is the user's named customer, NOT a default for goods/OEM businesses.
   if (client?.id === "thai-modern-bags") {
-    result.facebook = THAI_MODERN_BAGS_CONTACT;
+    result.facebook = THAI_MODERN_BAGS_FACEBOOK;
     result.instagram = THAI_MODERN_BAGS_CONTACT;
   }
   return result;
+}
+
+// Applied once when state is read: a stored Facebook footer that still holds the
+// old full-URL text is replaced; any other edited value is left alone.
+function migrateCaptionFooters(client) {
+  const footers = captionFootersFor(client);
+  if (client?.id === "thai-modern-bags" && footers.facebook === LEGACY_THAI_MODERN_BAGS_FACEBOOK) {
+    footers.facebook = THAI_MODERN_BAGS_FACEBOOK;
+  }
+  return footers;
 }
 
 function captionFootersFor(client) {
@@ -69,7 +87,7 @@ function sanitizeCaptionFooters(raw) {
 
 function managedFooters(client) {
   const maps = [captionFootersFor(client), ...(Array.isArray(client?.captionFooterHistory) ? client.captionFooterHistory.slice(-8) : [])];
-  if (client?.id === "thai-modern-bags") maps.push(defaultCaptionFooters(client));
+  if (client?.id === "thai-modern-bags") maps.push(defaultCaptionFooters(client), { facebook: LEGACY_THAI_MODERN_BAGS_FACEBOOK });
   return [...new Set(maps.flatMap((map) => isMap(map) ? Object.values(map).filter((value) => typeof value === "string" && value.trim()).map(plainSocialText) : []))]
     .sort((a, b) => b.length - a.length);
 }
@@ -124,7 +142,7 @@ function formatPostCaption(client, platform, value, { truncateBody = false } = {
 }
 
 module.exports = {
-  PLATFORM_RULES, THAI_MODERN_BAGS_CONTACT, plainSocialText,
-  defaultCaptionFooters, captionFootersFor, sanitizeCaptionFooters,
+  PLATFORM_RULES, THAI_MODERN_BAGS_CONTACT, THAI_MODERN_BAGS_FACEBOOK, LEGACY_THAI_MODERN_BAGS_FACEBOOK, plainSocialText,
+  defaultCaptionFooters, captionFootersFor, migrateCaptionFooters, sanitizeCaptionFooters,
   footerLimit, stripCaptionFooters, formatPostCaption,
 };
