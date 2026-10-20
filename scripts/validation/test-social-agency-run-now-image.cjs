@@ -47,6 +47,10 @@ async function main() {
   const getClient = () => rt._read().clients.find((c) => c.id === clientId);
   const getEntry = (id) => getClient().calendar.find((e) => e.id === id);
   const sku = getClient().products[0].sku;
+  // The product-photo lookup would download the real product page's image from
+  // the internet, which makes timing depend on the network. Keep this suite offline;
+  // the reference-photo pair has its own suite (test-social-agency-fb-ref-multi-photo).
+  rt.saveConnectors(clientId, { settings: { productRefInPost: false } });
 
   // Mock the image backend and capture the prompts it receives.
   const requests = [];
