@@ -8,50 +8,62 @@ import { NewEntryModal, AutoPlanModal } from "./modals.jsx";
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
-function Chip({ entry, onOpen, onDragStart, onDelete, onToggle, selectMode, selected }) {
+function Chip({ entry, onOpen, onDelete, onToggle, selectMode, selected }) {
   const meta = STATUS_META[entry.status] || { label: entry.status, cls: "" };
   const platform = PLATFORM_META[entry.platform] || PLATFORM_META.demo;
+  const productTitle = entry.productName || entry.angle || entry.sku || "โพสต์";
+  const detail = `${entry.time} · ${platform.label} · ${meta.label} · ${productTitle} · ${entry.angle || "—"} · ${entry.pillar || "—"}`;
   // An eye on the card means there is something to look at before approving:
   // the entry already carries a caption and/or prepared media, and opening it
   // lands on the full post preview (it sits at the top of the details).
   const previewable = Boolean(entry.caption || entry.publishedCaption || entry.image?.url || entry.video?.url);
   return (
-    <button
+    <div
       className={`sa-chip ${meta.cls} ${entry.inFlight ? "running" : ""}${selected ? " selected" : ""}`}
+      data-entry-id={entry.id}
       draggable={!entry.inFlight && !selectMode}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/sa-entry", entry.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => (selectMode && onToggle ? onToggle(entry.id) : onOpen(entry.id))}
-      title={`${entry.time} · ${platform.label} · ${meta.label} · ${entry.productName} · ${entry.pillar || "—"}${previewable ? " · มีพรีวิวให้ตรวจก่อนอนุมัติ" : ""}`}
+      title={`${detail}${previewable ? " · มีพรีวิวให้ตรวจก่อนอนุมัติ" : ""}${entry.tags?.length ? ` · ป้าย: ${entry.tags.join(", ")}` : ""}`}
     >
-      <span className="sa-chip-time">{entry.time}</span>
-      {previewable && (
-        <span className="sa-chip-eye" aria-hidden="true" title="เปิดดูพรีวิวภาพและข้อความก่อนอนุมัติ">
-          <Eye size={11} />
+      <button
+        type="button"
+        className="sa-chip-open"
+        onClick={() => (selectMode && onToggle ? onToggle(entry.id) : onOpen(entry.id))}
+        aria-label={`${selectMode ? "เลือกโพสต์" : "เปิดโพสต์"} ${detail}`}
+        aria-pressed={selectMode ? selected : undefined}
+      >
+        <span className="sa-chip-meta">
+          <span className="sa-chip-time">{entry.time}</span>
+          <span className={`sa-platform-chip ${platform.cls}`} title={platform.label}>{platform.short}</span>
+          {previewable && (
+            <span className="sa-chip-eye" aria-hidden="true" title="เปิดดูพรีวิวภาพและข้อความก่อนอนุมัติ">
+              <Eye size={11} />
+            </span>
+          )}
         </span>
-      )}
-      <span className={`sa-platform-chip ${platform.cls}`}>{platform.short}</span>
-      <span className="sa-chip-status">{meta.label}</span>
-      {(entry.tags?.length || 0) > 0 && (
-        <span className="sa-chip-tags">
-          {entry.tags.slice(0, 3).map((t) => <span key={t} className="sa-tag mini">{t}</span>)}
-          {entry.tags.length > 3 && <span className="sa-tag mini more">+{entry.tags.length - 3}</span>}
-        </span>
-      )}
+        <span className="sa-chip-title">{productTitle}</span>
+        {(entry.tags?.length || 0) > 0 && (
+          <span className="sa-chip-tags">
+            {entry.tags.slice(0, 3).map((t) => <span key={t} className="sa-tag mini">{t}</span>)}
+            {entry.tags.length > 3 && <span className="sa-tag mini more">+{entry.tags.length - 3}</span>}
+          </span>
+        )}
+      </button>
       {!selectMode && onDelete && (
-        <span
+        <button
+          type="button"
           className="sa-chip-del"
-          role="button"
-          aria-label="ลบรายการนี้"
+          aria-label={`ลบโพสต์ ${entry.time} · ${platform.label} · ${productTitle}`}
           title="ลบรายการนี้"
           onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
         >
           ×
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -312,7 +324,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         )}
       </div>
 
-      <div className="sa-grid">
+      <div className="sa-grid" role="region" aria-label={`ปฏิทินโพสต์ ${thaiMonthLabel(month)}`} tabIndex={0}>
         <div className="sa-grid-head">
           {WEEKDAYS.map((d, i) => <div key={d} className={i >= 5 ? "weekend" : ""}>{d}</div>)}
         </div>
@@ -323,14 +335,19 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
             return (
               <div
                 key={date || `empty-${i}`}
-                className={`sa-day ${date ? "" : "empty"} ${isToday ? "today" : ""} ${dragOver === date ? "dragover" : ""}`}
+                className={`sa-day ${date ? "" : "empty"} ${isToday ? "today" : ""} ${date && dragOver === date ? "dragover" : ""}`}
+                data-date={date || undefined}
+                role={date ? "group" : undefined}
+                aria-label={date ? `${dayNumber(date)} ${thaiMonthLabel(month)} · ${entries.length} โพสต์` : undefined}
                 onDragOver={(e) => {
                   if (!date) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                 }}
                 onDragEnter={() => date && setDragOver(date)}
-                onDragLeave={() => setDragOver((d) => (d === date ? null : d))}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOver((d) => (d === date ? null : d));
+                }}
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(null);
@@ -343,15 +360,26 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
                   <>
                     <div className="sa-day-head">
                       <span className={`sa-day-num ${isToday ? "today" : ""}`}>{dayNumber(date)}</span>
+                      {entries.length > 0 && (
+                        <span className="sa-day-count" title={entries.length > 4 ? "เลื่อนภายในช่องวันเพื่อดูโพสต์ทั้งหมด" : "จำนวนโพสต์ที่แสดงในวันนี้"}>
+                          {entries.length > 4 ? "↕ " : ""}{entries.length} โพสต์
+                        </span>
+                      )}
                       <button
+                        type="button"
                         className="sa-day-add"
-                        aria-label="เพิ่มโพสต์"
+                        aria-label={`เพิ่มโพสต์ ${dayNumber(date)} ${thaiMonthLabel(month)}`}
                         onClick={() => setNewEntryDate(date)}
                       >
                         <Plus size={12} />
                       </button>
                     </div>
-                    <div className="sa-day-chips">
+                    <div
+                      className="sa-day-chips"
+                      role="group"
+                      aria-label={`รายการโพสต์ ${dayNumber(date)} ${thaiMonthLabel(month)}`}
+                      tabIndex={entries.length > 4 ? 0 : undefined}
+                    >
                       {entries.map((entry) => (
                         <Chip key={entry.id} entry={entry} onOpen={onOpenEntry} onDelete={onDeleteEntry} onToggle={toggleChipSel} selectMode={selectMode} selected={sel.has(entry.id)} />
                       ))}
