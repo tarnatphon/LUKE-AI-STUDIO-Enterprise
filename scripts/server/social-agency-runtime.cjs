@@ -44,6 +44,7 @@ const {
 const {
   PLATFORM_RULES: PLATFORM_VERSION_RULES,
   captionFootersFor,
+  migrateCaptionFooters,
   sanitizeCaptionFooters,
   stripCaptionFooters,
   formatPostCaption,
@@ -1774,7 +1775,7 @@ class SocialAgencyRuntime {
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
       // Seed only the named client's contact copy. An explicit empty map/string
       // stays disabled across reads, imports and future updates.
-      client.captionFooters = captionFootersFor(client);
+      client.captionFooters = migrateCaptionFooters(client);
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
       for (const p of client.products) {
         const clean = cleanProductPageUrl(p.sourceUrl); // idempotent; persisted on the next write

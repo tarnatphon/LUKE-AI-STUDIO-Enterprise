@@ -3,7 +3,7 @@
 // the shared CommonJS helper; only the copy/preview components import this file.
 import postCopy from "../../../../scripts/server/social-agency-post-copy.cjs";
 
-export const { captionFootersFor, footerLimit, formatPostCaption, THAI_MODERN_BAGS_CONTACT } = postCopy;
+export const { captionFootersFor, footerLimit, formatPostCaption, THAI_MODERN_BAGS_CONTACT, THAI_MODERN_BAGS_FACEBOOK } = postCopy;
 
 // Published text is historical truth. Never append today's contact settings to
 // an old published caption; drafts and explicit platform previews are composed.

@@ -106,17 +106,32 @@ async function main() {
     test("Thai Modern Bags gets the footer on Facebook and Instagram only; other customers get none", () => {
       const footers = rt.getState().clients.find((c) => c.id === bagsId).captionFooters;
       assert.ok(footers.facebook.includes("กว่า 40 ปี ที่ Thai Modern Bags"), "facebook footer seeded");
-      assert.strictEqual(footers.facebook, footers.instagram, "same contact block on both");
+      assert.ok(footers.instagram.includes("กว่า 40 ปี ที่ Thai Modern Bags"), "instagram footer seeded");
       assert.ok(footers.facebook.includes("0-2466-3312, 02-465-3355"));
       assert.ok(footers.facebook.includes("097-469-4656, 095-226-4565"));
       assert.ok(footers.facebook.includes("@thaimodernbags"));
       assert.ok(footers.facebook.includes("ekkaphon@thaimodernbags.com"));
-      assert.ok(footers.facebook.includes("https://www.thaimodernbags.com"));
+      // Facebook cannot carry a website link in a post, so only the bare domain is written.
+      assert.ok(footers.facebook.includes("🌐 WEBSITE: thaimodernbags.com"), "facebook uses the bare domain");
+      assert.ok(!footers.facebook.includes("https://"), "facebook has no URL scheme");
+      assert.ok(footers.instagram.includes("🌐 WEBSITE: https://www.thaimodernbags.com"), "instagram keeps the full URL");
       assert.strictEqual(footers.line, "", "LINE does not get the long block by default");
       assert.strictEqual(footers.tiktok, "");
       assert.strictEqual(footers.demo, "");
       const other = rt.getState().clients.find((c) => c.id !== bagsId).captionFooters;
       for (const value of Object.values(other)) assert.strictEqual(value, "", "a different customer never inherits Thai Modern Bags' contacts");
+    });
+
+    test("an existing saved Facebook footer with the old full URL is migrated once; other edits are kept", () => {
+      const st = rt._read();
+      const c = st.clients.find((x) => x.id === bagsId);
+      c.captionFooters = { ...copy.captionFootersFor(c), facebook: copy.LEGACY_THAI_MODERN_BAGS_FACEBOOK };
+      rt._write(st);
+      assert.ok(rt.getState().clients.find((x) => x.id === bagsId).captionFooters.facebook.endsWith("🌐 WEBSITE: thaimodernbags.com"), "old value migrated on read");
+      const edited = { ...copy.captionFootersFor(bags), facebook: "ข้อความของเราเอง\n🌐 WEBSITE: https://www.thaimodernbags.com" };
+      rt.updateClient(bagsId, { captionFooters: edited });
+      assert.strictEqual(rt.getState().clients.find((x) => x.id === bagsId).captionFooters.facebook, edited.facebook, "a deliberate operator edit is never overwritten");
+      rt.updateClient(bagsId, { captionFooters: copy.defaultCaptionFooters({ id: bagsId }) });
     });
 
     test("the footer is plain text: no backticks, no Markdown link syntax, no duplicate on re-compose", () => {
@@ -159,6 +174,8 @@ async function main() {
       const feed = calls.find((c) => c.urlPath.includes("/feed"));
       const message = JSON.parse(feed.body).message;
       assert.ok(message.includes("กว่า 40 ปี ที่ Thai Modern Bags"), "footer sent");
+      assert.ok(message.includes("🌐 WEBSITE: thaimodernbags.com"), "Facebook sends the bare domain");
+      assert.ok(!message.includes("https://www.thaimodernbags.com"), "Facebook never sends the full website URL");
       assert.ok(message.includes("https://shop.example.com/p/wlb-006?utm_source=facebook"), "outbound link still gets UTM");
       assert.strictEqual(out.publishedCaption, message, "publishedCaption records exactly what was sent");
       assert.ok(preview.includes("กว่า 40 ปี"), "the preview promised the same footer");
@@ -181,6 +198,7 @@ async function main() {
       const parentBody = JSON.parse(parent.body);
       assert.strictEqual(parentBody.children.split(",").length, 2, "parent lists both children");
       assert.ok(parentBody.caption.includes("กว่า 40 ปี"), "footer in the Instagram caption");
+      assert.ok(parentBody.caption.includes("🌐 WEBSITE: https://www.thaimodernbags.com"), "Instagram keeps the full URL");
       assert.ok(calls.some((c) => c.urlPath.endsWith("/media_publish")), "carousel published");
     });
 
