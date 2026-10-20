@@ -166,36 +166,41 @@ async function main() {
       assert.ok(out.note.includes("500"), `note mentions 500px: ${out.note}`);
     });
 
-    test("a failed product-photo upload degrades to a single-photo post, never loses the whole post", async () => {
+    test("a failed product-photo upload refuses the post — never a one-photo post", async () => {
       fs.writeFileSync(path.join(photoDir, `${sku}.ref500.jpg`), REF500_JPEG);
-      const id = mk("10:30");
+      const id = mk("09:45");
       attachImage(id);
       resetFbClock();
       freshCalls();
       photoFailures = 1;
-      const out = await rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" });
-      assert.strictEqual(out.postId, "post-123");
-      assert.strictEqual(out.attachedProductRef, false);
-      assert.strictEqual(out.mediaKind, "post");
-      const feed = feedCall(calls);
-      const feedBody = JSON.parse(feed.body);
-      assert.deepStrictEqual(feedBody.attached_media, [{ media_fbid: "photo-1" }]);
-      assert.ok(out.note.includes("แนบรูปสินค้าไม่สำเร็จ"), out.note);
+      await assert.rejects(() => rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" }), /ยังไม่โพสต์|อัปโหลดรูปสินค้าคู่ไม่สำเร็จ/);
+      assert.strictEqual(feedCall(calls), undefined, "no feed post may be created with only one photo");
       photoFailures = 0;
     });
 
-    test("no local product photo at all keeps the single-photo path silently", async () => {
+    test("no local product photo: refused before any network call (the pair is required)", async () => {
       setProductImage("https://cdn.example.com/somewhere-else.png");
-      // Use a slot distinct from the demo seed's published weekend entry (11:00).
       const id = mk("11:15");
+      attachImage(id);
+      resetFbClock();
+      freshCalls();
+      await assert.rejects(() => rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" }), /รูปสินค้าจริงคู่กับภาพ AI/);
+      assert.strictEqual(calls.length, 0, "nothing leaves the machine");
+      setProductImage(`/sa-products/${clientId}/${sku}.png`);
+    });
+
+    test("the pair switched off (explicit operator choice) keeps the single-photo post", async () => {
+      rt.saveConnectors(clientId, { settings: { productRefInPost: false } });
+      setProductImage("https://cdn.example.com/somewhere-else.png");
+      const id = mk("11:45");
       attachImage(id);
       resetFbClock();
       freshCalls();
       const out = await rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" });
       assert.strictEqual(out.attachedProductRef, false);
       assert.strictEqual(photosCalls(calls).length, 1);
-      assert.strictEqual(feedCall(calls), undefined);
       setProductImage(`/sa-products/${clientId}/${sku}.png`);
+      rt.saveConnectors(clientId, { settings: { productRefInPost: true } });
     });
 
     test("ref-image-500 endpoint: status, save, validation, and client/SKU binding", () => {

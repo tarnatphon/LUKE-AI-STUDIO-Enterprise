@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Trash2, Copy, Check, Plus } from "lucide-react";
 import { api, postJson, STATUS_META, PLATFORM_META, ANGLES } from "./lib.js";
 import PostPreview from "./PostPreview.jsx";
+import CaptionFooterSettings from "./CaptionFooterSettings.jsx";
 
 const PLATFORM_ORDER = ["facebook", "instagram", "line", "tiktok", "demo"];
 
-export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
+export default function StyleTab({ activeClient, refreshKey, initialEntryId, onChanged }) {
   const clientId = activeClient?.id;
   const [shots, setShots] = useState([]);
   const [shotsError, setShotsError] = useState("");
@@ -175,6 +176,7 @@ export default function StyleTab({ activeClient, refreshKey, initialEntryId }) {
 
   return (
     <div className="sa-style">
+      <CaptionFooterSettings key={clientId} client={activeClient} onChanged={onChanged} />
       <section className="sa-style-card">
         <header>
           <Sparkles size={15} />

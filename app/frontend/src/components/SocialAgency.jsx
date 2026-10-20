@@ -512,6 +512,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               activeClient={activeClient}
               refreshKey={refreshSeq}
               initialEntryId={styleEntryId}
+              onChanged={refresh}
             />
           )}
           {tab === "insights" && (

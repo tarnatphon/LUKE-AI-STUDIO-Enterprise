@@ -42,7 +42,9 @@ async function main() {
   const imgFile = path.join(root, "gen-image.png");
   fs.writeFileSync(imgFile, PNG_A);
 
-  rt.saveConnectors(clientId, { connectors: {
+  // This file tests the review gate; the product-photo pair has its own suite
+  // (test-social-agency-fb-ref-multi-photo.cjs), so the pair is switched off here.
+  rt.saveConnectors(clientId, { settings: { productRefInPost: false }, connectors: {
     facebook: { pageId: "1234567890", accessToken: "fake-fb-token", dryRun: false },
     instagram: { igUserId: "1784", accessToken: "fake-ig-token", dryRun: false },
     line: { channelAccessToken: "fake-line-token", dryRun: false },

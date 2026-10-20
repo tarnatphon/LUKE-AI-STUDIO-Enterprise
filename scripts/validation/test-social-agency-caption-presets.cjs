@@ -241,7 +241,7 @@ async function main() {
 
   test("the component previews with the entry's own image and applies through the narrow route", () => {
     const component = read("app", "frontend", "src", "social-agency", "CaptionPresets.jsx");
-    assert.match(component, /<PostPreview entry=\{entry\} client=\{client\} product=\{product\} caption=\{draft\} \/>/);
+    assert.match(component, /<PostPreview entry=\{entry\} client=\{client\} product=\{product\} caption=\{composedDraft\} \/>/);
     assert.match(component, /\/api\/social-agency\/caption-presets\?clientId=\$\{encodeURIComponent\(clientId\)\}&entryId=\$\{encodeURIComponent\(entryId\)\}/);
     assert.match(component, /postJson\("\/api\/social-agency\/entry-caption\/preset", \{/);
     assert.match(component, /entryId,\s*presetId: active\.id,\s*caption: draft,/);
@@ -252,7 +252,7 @@ async function main() {
     assert.match(component, /รูปสินค้าต้นฉบับ/);
     assert.match(component, /ระบบจะไม่ส่งรูปนี้แทนสื่อโพสต์/);
     // Editing is bounded by the platform limit the runtime reports.
-    assert.match(component, /const tooLong = limit > 0 && draft\.length > limit/);
+    assert.match(component, /const tooLong = limit > 0 && composedDraft\.length > limit/);
     assert.match(component, /disabled=\{!editable \|\| saving \|\| busy \|\| !draft\.trim\(\) \|\| tooLong \|\| unchanged\}/);
     const agency = read("app", "frontend", "src", "components", "SocialAgency.jsx");
     assert.match(agency, /onCaptionApplied=\{refresh\}/);
