@@ -997,3 +997,7 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
   .sa-legend { display: none; }
   .sa-caption-presets .sa-preset-tabs { grid-template-columns: 1fr; }
 }
+
+/* Per-client contact copy is edited independently of account credentials. */
+.sa-caption-footer-settings textarea { resize: vertical; line-height: 1.55; }
+.sa-footer-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

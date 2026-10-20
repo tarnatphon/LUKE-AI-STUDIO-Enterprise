@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { PLATFORM_META, STATUS_META } from "./lib.js";
+import { captionForPost } from "./post-copy.js";
 
 function initials(value) {
   const chars = Array.from(String(value || "").trim());
@@ -57,8 +58,10 @@ export default function PostPreview({ entry, client, product, platform: platform
   const hasOutputMedia = Boolean(videoUrl || outputImageUrl);
   const showProductFallback = !hasOutputMedia && Boolean(productImageUrl);
   const imageForPreviewAsset = videoUrl ? imageUrl : outputImageUrl;
+  // Drafts show the same footer that publishing will send; published text is
+  // shown exactly as it went out.
   const text = captionProp === undefined
-    ? String(entry?.publishedCaption || entry?.caption || "")
+    ? String(captionForPost(entry, client, { platform }) || "")
     : String(captionProp || "");
   const publishedCaption = captionProp === undefined && Boolean(entry?.publishedCaption && entry.publishedCaption !== entry.caption);
   const hashtags = text.match(/#[^\s#]+/g) || [];
@@ -66,7 +69,7 @@ export default function PostPreview({ entry, client, product, platform: platform
     ? `${entry.date}${entry.time ? ` · ${entry.time}` : ""}`
     : "ตัวอย่างก่อนเผยแพร่";
   const postStatus = entry?.status ? (STATUS_META[entry.status]?.label || entry.status) : "ตัวอย่าง";
-  const showFacebookProductRef = platform === "facebook"
+  const showFacebookProductRef = (platform === "facebook" || platform === "instagram")
     && !videoUrl
     && Boolean(outputImageUrl)
     && productImageUrl.startsWith("/sa-products/")

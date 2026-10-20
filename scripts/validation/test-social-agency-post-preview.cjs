@@ -21,7 +21,7 @@ const saLib = read("app", "frontend", "src", "social-agency", "lib.js");
 
 const tests = [
   ["preview uses the exact published caption when it exists, otherwise the draft", () => {
-    assert.match(preview, /entry\?\.publishedCaption \|\| entry\?\.caption/);
+    assert.match(preview, /captionForPost\(entry, client, \{ platform \}\)/);
     assert.match(preview, /captionProp === undefined/);
   }],
   ["the preview renders complete copy without line clamping", () => {
@@ -34,6 +34,7 @@ const tests = [
     assert.match(preview, /platform !== "tiktok"/);
     assert.match(preview, /sendImageTextStack !== false/);
     assert.match(preview, /showFacebookProductRef/);
+    assert.match(preview, /platform === \"instagram\"/);
     assert.match(preview, /&& !videoUrl/);
     assert.match(preview, /<video[^>]*controls/);
     assert.match(css, /\.sa-post-preview\.is-instagram \.sa-post-preview-media\s*\{[^}]*aspect-ratio:\s*1 \/ 1/s);
@@ -51,7 +52,7 @@ const tests = [
   ["entry details show the full post and retain copy support", () => {
     assert.match(drawers, /พรีวิวโพสต์เต็ม/);
     assert.match(drawers, /<PostPreview entry=\{entry\} client=\{client\} product=\{product\}/);
-    assert.match(drawers, /copy\(entry\.publishedCaption \|\| entry\.caption, "caption"\)/);
+    assert.match(drawers, /copy\(captionForPost\(entry, client\), "caption"\)/);
   }],
   ["the approval queue can expand a complete post preview", () => {
     assert.match(runsTab, /<details className="sa-approval-preview">/);

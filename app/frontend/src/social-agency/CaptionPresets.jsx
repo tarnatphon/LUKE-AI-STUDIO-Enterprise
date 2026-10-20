@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkles, Check, RotateCcw, Eye } from "lucide-react";
 import PostPreview from "./PostPreview.jsx";
 import { api, postJson, PLATFORM_META } from "./lib.js";
+import { captionForPost } from "./post-copy.js";
 
 // Ready-made caption examples (ตัวอย่างสำเร็จรูป).
 //
@@ -57,7 +58,8 @@ export default function CaptionPresets({ entry, client, product, busy, onApplied
 
   const editable = Boolean(data?.editable);
   const limit = active?.limit || data?.limit || 0;
-  const tooLong = limit > 0 && draft.length > limit;
+  const composedDraft = captionForPost(entry, client, { platform, caption: draft });
+  const tooLong = limit > 0 && composedDraft.length > limit;
   const unchanged = draft.trim() === String(entry?.caption || "").trim();
   const hasPostMedia = Boolean(
     entry?.video?.url || entry?.video?.publicUrl || entry?.image?.url || entry?.image?.publicUrl
@@ -121,7 +123,7 @@ export default function CaptionPresets({ entry, client, product, busy, onApplied
 
       {active && (
         <>
-          <PostPreview entry={entry} client={client} product={product} caption={draft} />
+          <PostPreview entry={entry} client={client} product={product} caption={composedDraft} />
           {productFallback && (
             <p className="sa-form-hint" role="status">
               <Eye size={12} /> ยังไม่มีภาพ/วิดีโอของโพสต์นี้ — พรีวิว (และตัวอย่างนี้) ใช้<strong>รูปสินค้าต้นฉบับ</strong>
@@ -140,7 +142,7 @@ export default function CaptionPresets({ entry, client, product, busy, onApplied
           </label>
           <div className="sa-preset-actions">
             <span className="sa-muted">
-              {draft.length.toLocaleString()} ตัวอักษร{limit ? ` / ${limit} ของ ${PLATFORM_META[platform]?.label || platform}` : ""}
+              {composedDraft.length.toLocaleString()} ตัวอักษรรวมส่วนติดต่อ{limit ? ` / ${limit} ของ ${PLATFORM_META[platform]?.label || platform}` : ""}
             </span>
             <button className="sa-btn ghost sm" disabled={!active || loading || draft === active.text} onClick={() => setDraft(active.text)}>
               ย้อนกลับเป็นข้อความตัวอย่าง
@@ -159,7 +161,7 @@ export default function CaptionPresets({ entry, client, product, busy, onApplied
           )}
           {tooLong && (
             <p className="sa-form-error" role="alert">
-              ข้อความยาว {draft.length} ตัวอักษร เกินสำหรับ {PLATFORM_META[platform]?.label || platform} (ไม่เกิน {limit}) — ย่อก่อนใช้
+              ข้อความรวมส่วนติดต่อยาว {composedDraft.length} ตัวอักษร เกินสำหรับ {PLATFORM_META[platform]?.label || platform} (ไม่เกิน {limit}) — ย่อก่อนใช้
             </p>
           )}
         </>

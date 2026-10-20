@@ -41,6 +41,14 @@ const {
   presetClosers,
 } = require("./social-agency-content-kinds.cjs");
 
+const {
+  PLATFORM_RULES: PLATFORM_VERSION_RULES,
+  captionFootersFor,
+  sanitizeCaptionFooters,
+  stripCaptionFooters,
+  formatPostCaption,
+} = require("./social-agency-post-copy.cjs");
+
 // ── Constants ────────────────────────────────────────────────────────────────
 const TZ_LABEL = "Asia/Bangkok";
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -99,13 +107,6 @@ const MAX_RUNS_PER_CLIENT = 40;
 const MAX_FEWSHOTS_PER_CLIENT = 20;
 const MAX_PILLARS_PER_CLIENT = 8;
 const MAX_PRODUCTS_PER_CLIENT = 200;
-const PLATFORM_VERSION_RULES = {
-  demo: { maxChars: 2200, maxHashtags: 5 },
-  facebook: { maxChars: 2000, maxHashtags: 4 },
-  instagram: { maxChars: 2200, maxHashtags: 8 },
-  line: { maxChars: 400, maxHashtags: 2 },
-  tiktok: { maxChars: 2200, maxHashtags: 5 },
-};
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
@@ -394,7 +395,7 @@ function defaultSettings() {
     useProductRef: true, // ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น reference ตอนสร้างภาพปฏิทิน
     productRefMode: "img2img", // img2img = ส่งรูปสินค้าเป็นภาพตั้งต้น (backend ใช้จริง) · reference = วิธีเดิม
     productRefDenoise: PRODUCT_REF_DENOISE.def, // ยิ่งต่ำ สินค้ายิ่งตรง แต่ฉากจะคล้ายรูปสินค้ามาก
-    productRefInPost: true, // แนบรูปสินค้าจริง (ย่อด้านยาว 500px) เป็นรูปที่ 2 ของโพสต์ Facebook
+    productRefInPost: true, // โพสต์ภาพ Facebook/Instagram ต้องมีภาพ AI + Reference สินค้า (500px) ครบคู่
     imageWidth: SA_IMAGE_SIZE.width, // ขนาดภาพปฏิทินของลูกค้านี้ (default แบนเนอร์ 1024×600)
     imageHeight: SA_IMAGE_SIZE.height,
   };
@@ -1771,6 +1772,9 @@ class SocialAgencyRuntime {
       for (const p of client.pillars) if (!p.id) p.id = newId("pl");
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
       client.settings = { ...defaultSettings(), ...(client.settings || {}) };
+      // Seed only the named client's contact copy. An explicit empty map/string
+      // stays disabled across reads, imports and future updates.
+      client.captionFooters = captionFootersFor(client);
       if (!client.tone || !TONE_PRESETS.includes(client.tone)) client.tone = "เจ้าของแบรนด์";
       for (const p of client.products) {
         const clean = cleanProductPageUrl(p.sourceUrl); // idempotent; persisted on the next write
@@ -1912,6 +1916,16 @@ class SocialAgencyRuntime {
         client.contentPillarsSyncedAt = new Date().toISOString();
         client.contentPillarsSyncedKind = kind;
       }
+    }
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "captionFooters")) {
+      const next = sanitizeCaptionFooters(patch.captionFooters);
+      const previous = captionFootersFor(client);
+      if (JSON.stringify(previous) !== JSON.stringify(next)) {
+        // Removing known old blocks prevents stale/duplicated contacts when an
+        // operator changes a footer after applying/copying a composed draft.
+        client.captionFooterHistory = [...(client.captionFooterHistory || []), previous].slice(-8);
+      }
+      client.captionFooters = next;
     }
     if (patch && Array.isArray(patch.researcherRoles)) {
       client.researcherRoles = patch.researcherRoles
@@ -2082,7 +2096,7 @@ class SocialAgencyRuntime {
   // ── per-platform caption versions (group 4) ──
   buildPlatformVersions({ caption, product, angle, tone, client } = {}) {
     const base = (caption && String(caption).trim()) || buildTemplateCaption(product, { angle, platform: "facebook", tone, seed: String(product?.sku || "") + ":" + String(angle || ""), client });
-    const { body, tags } = splitHashtags(base);
+    const { body, tags } = splitHashtags(stripCaptionFooters(base, client));
     const fallbackTags = templateHashtags(product, "instagram", client);
     const fill = (have, max) => {
       const out = [...have];
@@ -2102,23 +2116,14 @@ class SocialAgencyRuntime {
       { platform: "tiktok", tagList: fill(tags, PLATFORM_VERSION_RULES.tiktok.maxHashtags) },
     ];
     for (const { platform, tagList } of jobs) {
-      const rules = PLATFORM_VERSION_RULES[platform];
-      let textBody = body;
-      // LINE broadcast budget: reserve room for hashtags, then truncate the body
-      const tagSuffix = tagList.length ? tagList.join(" ").length + 2 : 0;
-      const bodyBudget = platform === "line" ? Math.max(80, rules.maxChars - tagSuffix) : rules.maxChars;
-      const cut = truncateAtBoundary(textBody, bodyBudget);
-      textBody = cut.text;
-      let text = assemble(textBody, tagList);
-      let truncated = cut.truncated;
-      if (text.length > rules.maxChars) {
-        const recut = truncateAtBoundary(text, rules.maxChars);
-        text = recut.text;
-        truncated = true;
-      }
+      const draft = assemble(body, tagList);
+      const full = formatPostCaption(client, platform, draft);
+      const text = formatPostCaption(client, platform, draft, { truncateBody: true });
       versions[platform] = text;
-      meta[platform] = { chars: text.length, truncated, hashtags: (text.match(/#[^\s#]+/g) || []).length };
+      meta[platform] = { chars: text.length, truncated: text !== full, hashtags: (text.match(/#[^\s#]+/g) || []).length };
     }
+    versions.demo = formatPostCaption(client, "demo", stripCaptionFooters(base, client), { truncateBody: true });
+    meta.demo = { chars: versions.demo.length, truncated: versions.demo !== base, hashtags: (versions.demo.match(/#[^\s#]+/g) || []).length };
     return { base, versions, meta };
   }
 
@@ -2203,7 +2208,8 @@ class SocialAgencyRuntime {
     const edited = body.caption === undefined || body.caption === null ? "" : String(body.caption).trim();
     const text = edited || preset.build({ product, platform: entry.platform, entry, client });
     const limit = (PLATFORM_VERSION_RULES[entry.platform] || PLATFORM_VERSION_RULES.demo).maxChars;
-    if (text.length > limit) throw new Error(`ข้อความยาว ${text.length} ตัวอักษร เกินสำหรับ ${entry.platform} (ไม่เกิน ${limit}) — ย่อข้อความก่อนใช้`);
+    const composed = formatPostCaption(client, entry.platform, text);
+    if (composed.length > limit) throw new Error(`ข้อความรวมส่วนติดต่อยาว ${composed.length} ตัวอักษร เกินสำหรับ ${entry.platform} (ไม่เกิน ${limit}) — ย่อข้อความก่อนใช้`);
     entry.caption = text;
     entry.captionManual = true; // the workflow keeps a manual caption instead of writing a new one
     entry.captionSource = `preset:${preset.id}`;
@@ -6643,7 +6649,7 @@ class SocialAgencyRuntime {
       ...(entryId ? { captionPreview: (() => {
         const entry = this._findEntry(client.id, entryId).entry;
         if (entry.platform !== "tiktok") throw new Error("รายการนี้ไม่ใช่ TikTok");
-        return SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, "tiktok", entryId);
+        return SocialAgencyRuntime._tagCaptionLinks(formatPostCaption(client, "tiktok", entry.caption), client.id, "tiktok", entryId);
       })() } : {}),
       privacy_level_options: info.privacy_level_options,
       max_video_post_duration_sec: info.max_video_post_duration_sec,
@@ -6671,7 +6677,7 @@ class SocialAgencyRuntime {
     if (brandedContent && privacy === "SELF_ONLY") throw new Error("Branded content ไม่สามารถใช้ SELF_ONLY ได้");
     if (privacy !== "SELF_ONLY" && client.connectors?.tiktok?.auditApproved !== true) throw new Error("แอปที่ยังไม่ผ่าน TikTok audit อนุญาตเฉพาะ SELF_ONLY; ห้ามเลือก public");
     if (Number(entry.video?.seconds) > Number(info.max_video_post_duration_sec || 0)) throw new Error("วิดีโอยาวเกินขีดจำกัดของบัญชี TikTok");
-    const caption = SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, "tiktok", entry.id);
+    const caption = SocialAgencyRuntime._tagCaptionLinks(formatPostCaption(client, "tiktok", entry.caption), client.id, "tiktok", entry.id);
     if (caption.length > 2200) throw new Error("แคปชันหลังเติม UTM เกิน 2200 ตัวอักษร — แก้ไขก่อนยินยอม");
     if (body.previewCaption !== caption) throw new Error("แคปชันตัวอย่างเปลี่ยนไป — รีเฟรชเพื่ออ่านก่อนยินยอม");
     const post = {
@@ -6854,6 +6860,19 @@ class SocialAgencyRuntime {
     }
   }
 
+  // Facebook/Instagram image posts are a PAIR: [1] the AI image, [2] the real
+  // product photo (≤500px derivative). With productRefInPost on (default), a
+  // missing pair is refused before anything leaves the machine — never a silent
+  // one-photo post. Returns null only when the operator switched the pair off.
+  _productRefPairFor(client, entry, label) {
+    if ((client.settings || {}).productRefInPost === false) return null;
+    const ref = this._fbProductRefAttach(client, entry);
+    if (!ref.buffer) {
+      throw new Error(`ยังไม่เผยแพร่ ${label}: โพสต์ภาพต้องมีรูปสินค้าจริงคู่กับภาพ AI ${ref.note ? `· ${ref.note}` : "· ยังไม่มีรูปสินค้าในระบบ"} — ปิด \"แนบรูปสินค้าจริง\" ในการตั้งค่าลูกค้าหากต้องการโพสต์ภาพเดียว`);
+    }
+    return ref;
+  }
+
   async _publishEntry(client, entry, ctx) {
     const platform = entry.platform;
     if (platform === "demo") {
@@ -6872,9 +6891,10 @@ class SocialAgencyRuntime {
     // real send never goes out with an unreviewed / changed / regenerating image.
     this._assertImageReviewed(entry);
 
-    const caption = SocialAgencyRuntime._tagCaptionLinks(entry.caption, client.id, platform, entry.id);
-    if (caption !== String(entry.caption || "") && ((platform === "line" && caption.length > 400) || (platform === "instagram" && caption.length > 2200))) {
-      throw new Error(`ลิงก์ UTM ทำให้แคปชันเกิน ${platform === "line" ? 400 : 2200} ตัวอักษร — ย่อข้อความ/ลิงก์ก่อนเผยแพร่`);
+    const caption = SocialAgencyRuntime._tagCaptionLinks(formatPostCaption(client, platform, entry.caption), client.id, platform, entry.id);
+    const captionLimit = (PLATFORM_VERSION_RULES[platform] || PLATFORM_VERSION_RULES.demo).maxChars;
+    if (caption.length > captionLimit) {
+      throw new Error(`แคปชันรวมข้อความติดต่อและลิงก์ UTM เกิน ${captionLimit} ตัวอักษร — ย่อเนื้อหาโพสต์ก่อนเผยแพร่ (ไม่ตัดข้อมูลติดต่อทิ้ง)`);
     }
     const t0 = Date.now();
     const version = (platform === "facebook" || platform === "instagram")
@@ -6918,12 +6938,11 @@ class SocialAgencyRuntime {
       if (entry.image && (entry.image.publicUrl || entry.image.path)) {
         let buffer = entry.image.buffer;
         if (!buffer && entry.image.path) buffer = fs.readFileSync(entry.image.path);
-        // Multi-photo post: [1] the AI image (generated as usual), [2] the real
-        // product photo — unmodified apart from the 500px long-edge derivative.
-        // Falls back to the plain single-photo post whenever there is nothing to
-        // attach or the client turned the setting off.
-        const refAttach = this._fbProductRefAttach(client, entry);
-        if (refAttach.buffer) {
+        // Multi-photo post: [1] the AI image, [2] the real product photo —
+        // unmodified apart from the 500px long-edge derivative. Refused when the
+        // pair is missing (see _productRefPairFor).
+        const refAttach = this._productRefPairFor(client, entry, "Facebook");
+        if (refAttach) {
           const uploadUnpublished = async (buf, filename) => {
             const { body, contentType } = SocialAgencyRuntime._multipart(
               { published: "false", access_token: secret.accessToken },
@@ -6946,10 +6965,11 @@ class SocialAgencyRuntime {
           const mediaIds = [await uploadUnpublished(buffer, entry.image.filename || "post.jpg")]; // AI image is the post's first photo
           try {
             mediaIds.push(await uploadUnpublished(refAttach.buffer, refAttach.filename)); // the real product photo, second
-            attachedProductRef = true;
           } catch (err) {
-            postNotes.push(`แนบรูปสินค้าไม่สำเร็จ (${(err && err.message) || err}) — โพสต์เฉพาะภาพ AI`);
+            // Never publish a one-photo post in place of the pair.
+            throw new Error(`Facebook ยังไม่โพสต์: อัปโหลดรูปสินค้าคู่ไม่สำเร็จ (${(err && err.message) || err})`);
           }
+          attachedProductRef = true;
           if (refAttach.note) postNotes.push(refAttach.note);
           const feedRes = await SocialAgencyRuntime._https({
             method: "POST",
@@ -6967,7 +6987,7 @@ class SocialAgencyRuntime {
           postId = feedRes.json?.id;
           mediaKind = mediaIds.length > 1 ? "multi-photo" : "post";
         } else {
-          if (refAttach.note) postNotes.push(refAttach.note);
+          // Operator switched the product pair off: plain single-photo post.
           const { body, contentType } = SocialAgencyRuntime._multipart(
             { caption: caption, access_token: secret.accessToken },
             "source",
@@ -7052,13 +7072,37 @@ class SocialAgencyRuntime {
           throw new Error(`Instagram Reels เผยแพร่ไม่สำเร็จ (ไม่ได้โพสต์รูปแทน): ${err.message || err}`);
         }
       }
+      // Instagram image posts are a carousel of the same pair as Facebook: [1] the
+      // AI image, [2] the real product photo. Refused before any upload if missing.
+      const refAttach = this._productRefPairFor(client, entry, "Instagram");
       const imageUrl = await this._publicImageUrl(client, entry);
+      let containerPayload = { image_url: imageUrl, caption: caption };
+      if (refAttach) {
+        const secretsNow = this._getSecrets(client.id);
+        const imgbbKey = secretsNow.instagram?.imgbbApiKey || secretsNow.line?.imgbbApiKey;
+        if (!imgbbKey) throw new Error("Instagram ยังไม่โพสต์: ต้องมี imgbb API key เพื่ออัปโหลดรูปสินค้าคู่ (carousel 2 รูป)");
+        const refUrl = await this._imgbbUpload({ buffer: refAttach.buffer, filename: refAttach.filename }, imgbbKey);
+        const childIds = [];
+        for (const url of [imageUrl, refUrl]) {
+          const child = await SocialAgencyRuntime._https({
+            method: "POST",
+            host: FB_GRAPH_HOST,
+            path: `/${version}/${encodeURIComponent(secret.igUserId)}/media`,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token: secret.accessToken }),
+            timeoutMs: 60 * 1000,
+          });
+          if (child.status >= 300 || child.json?.error || !child.json?.id) throw new Error(child.json?.error?.message || `Instagram carousel item ตอบ HTTP ${child.status}`);
+          childIds.push(String(child.json.id));
+        }
+        containerPayload = { media_type: "CAROUSEL", children: childIds.join(","), caption: caption };
+      }
       const create = await SocialAgencyRuntime._https({
         method: "POST",
         host: FB_GRAPH_HOST,
         path: `/${version}/${encodeURIComponent(secret.igUserId)}/media`,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: imageUrl, caption: caption, access_token: secret.accessToken }),
+        body: JSON.stringify({ ...containerPayload, access_token: secret.accessToken }),
         timeoutMs: 60 * 1000,
       });
       if (create.status >= 300 || create.json?.error) throw new Error(create.json?.error?.message || `Instagram ตอบ HTTP ${create.status}`);
@@ -7084,7 +7128,7 @@ class SocialAgencyRuntime {
       });
       if (publish.status >= 300 || publish.json?.error) throw new Error(publish.json?.error?.message || `Instagram publish ตอบ HTTP ${publish.status}`);
       this._bumpInstagramCounter(client.id);
-      return { platform, mode: "live", publishedCaption: caption, mediaKind: "photo", postId: publish.json?.id, latencyMs: Date.now() - t0, note: `โพสต์ IG ${secret.igUserId} (คอนเทนเนอร์ ${containerId})` };
+      return { platform, mode: "live", publishedCaption: caption, mediaKind: refAttach ? "carousel" : "photo", postId: publish.json?.id, latencyMs: Date.now() - t0, attachedProductRef: Boolean(refAttach), note: `โพสต์ IG ${secret.igUserId}${refAttach ? " (carousel 2 รูป: ภาพ AI + รูปสินค้าจริง)" : ""} (คอนเทนเนอร์ ${containerId})` };
     }
 
     if (platform === "line") {

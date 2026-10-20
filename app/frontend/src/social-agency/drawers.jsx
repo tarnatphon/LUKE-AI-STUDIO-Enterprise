@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import PostPreview from "./PostPreview.jsx";
+import { captionForPost } from "./post-copy.js";
 import CaptionPresets from "./CaptionPresets.jsx";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
@@ -373,7 +374,7 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         <div className="sa-post-preview-section-head">
           <h4>พรีวิวโพสต์เต็ม {entry.captionManual ? <span className="sa-muted">(แก้เอง)</span> : ""}</h4>
           {(entry.publishedCaption || entry.caption) && (
-            <button className="sa-btn ghost sm" onClick={() => copy(entry.publishedCaption || entry.caption, "caption")}>
+            <button className="sa-btn ghost sm" onClick={() => copy(captionForPost(entry, client), "caption")}>
               <Copy size={13} /> {copied === "caption" ? "คัดลอกแล้ว" : "คัดลอกข้อความ"}
             </button>
           )}
@@ -908,7 +909,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
         <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
         <ConnectorToggle checked={form.settings.useProductRef} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, useProductRef: v } }))} label="ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น Reference ตอนสร้างภาพปฏิทิน" />
-        <ConnectorToggle checked={form.settings.productRefInPost} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefInPost: v } }))} label="แนบรูปสินค้าจริง (ย่อด้านยาว 500px แบบไม่แก้ไขอย่างอื่น) เป็นรูปที่ 2 ของโพสต์ Facebook — ภาพ AI เป็นรูปแรก" />
+        <ConnectorToggle checked={form.settings.productRefInPost} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefInPost: v } }))} label="โพสต์ภาพ Facebook/Instagram ต้องมีภาพ AI + Reference สินค้า (ย่อด้านยาว 500px) ครบ 2 รูป — หากแนบไม่สำเร็จจะไม่โพสต์ภาพเดียว" />
         {form.settings.useProductRef && (
           <>
             <label className="sa-field">
