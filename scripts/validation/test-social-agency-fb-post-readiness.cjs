@@ -172,6 +172,13 @@ async function main() {
   const clientId = state.activeClientId;
   const sku = "WLB-006";
 
+  // This fixture owns its calendar. Demo posts are seeded relative to today;
+  // otherwise the future-date check can collide with a seeded 18:30 slot
+  // (reproduced on 2026-10-20). Never depend on the current weekday's demo plan.
+  const fixture = rt._read();
+  fixture.clients.find((c) => c.id === clientId).calendar = [];
+  rt._write(fixture);
+
   // Add product WLB-006 with local photo + 500px derivative
   rt.addProduct(clientId, {
     sku,
