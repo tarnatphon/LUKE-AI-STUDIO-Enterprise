@@ -1413,6 +1413,13 @@ const OUTPUTS = path.join(ROOT, "app", "outputs");
 if (!fs.existsSync(OUTPUTS)) {
   fs.mkdirSync(OUTPUTS, { recursive: true });
 }
+// Uploaded Generator reference images live in their own folder under OUTPUTS
+// (see /api/references/upload). They are content-addressed (`ref-<sha>.png`),
+// which is what lets /api/reference-file answer with an immutable cache header.
+const REFERENCE_OUTPUTS = path.join(OUTPUTS, "references");
+if (!fs.existsSync(REFERENCE_OUTPUTS)) {
+  fs.mkdirSync(REFERENCE_OUTPUTS, { recursive: true });
+}
 
 const OPENVINO_NPU_MODELS = [
   {
@@ -28088,12 +28095,7 @@ async function routeWorkTurnToCloud(req, res, body) {
           .slice(0, 24);
 
       const outputDir =
-        path.join(
-          ROOT,
-          "app",
-          "outputs",
-          "references"
-        );
+        REFERENCE_OUTPUTS;
 
       fs.mkdirSync(
         outputDir,
@@ -28228,6 +28230,11 @@ async function routeWorkTurnToCloud(req, res, body) {
 
             existingPath:
               asset.existingPath,
+
+            // Where the stored bytes can be fetched back from. The Generator
+            // keeps this URL in localStorage instead of the base64 it uploaded.
+            url:
+              `/api/reference-file?filename=${encodeURIComponent(path.basename(outputPath))}`,
 
             referenceType,
 
@@ -29826,6 +29833,38 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     fs.readFile(filePath, (err, data) => {
       if (err) return json(res, 500, { error: err.message });
       res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+      res.end(data);
+    });
+    return;
+  }
+
+  // GET /api/reference-file?filename=... — the bytes of an uploaded reference
+  // image.
+  //
+  // The Generator keeps its references on disk and only a URL in localStorage:
+  // 20 full-resolution photos as base64 do not fit in the ~5 MB localStorage
+  // quota, and the write used to fail silently, losing the whole panel on the
+  // next reload. `/api/output-file` cannot serve these files — it takes
+  // path.basename() of the query, so a file inside `references/` never
+  // survives — so the folder gets its own route.
+  //
+  // Uploads are content-addressed (`ref-<sha256>.png`), so the same file name
+  // is always the same bytes: the response can be cached forever.
+  if (req.url.startsWith("/api/reference-file") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const requested = String(parsed.searchParams.get("filename") || "");
+    const filename = path.basename(requested);
+    const filePath = path.join(REFERENCE_OUTPUTS, filename);
+    if (!filename || !pathInside(filePath, REFERENCE_OUTPUTS) || !fs.existsSync(filePath)) {
+      return json(res, 404, { ok: false, error: "Reference file not found" });
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    fs.readFile(filePath, (err, data) => {
+      if (err) return json(res, 500, { ok: false, error: err.message });
+      res.writeHead(200, {
+        "Content-Type": MIME[ext] || "application/octet-stream",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      });
       res.end(data);
     });
     return;
