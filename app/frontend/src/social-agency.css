@@ -290,24 +290,96 @@
 .sa-score.sm { min-width: 26px; font-size: 0.7rem; padding: 1px 6px; }
 
 /* ── calendar ──────────────────────────────────────────────────────────── */
-.sa-calendar { --sa-calendar-min-width: 896px; --sa-calendar-day-height: 304px; display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-.sa-calendar-toolbar { flex: none; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.sa-calendar > .sa-filterbar { flex: none; margin: 0; }
+/* The month owns the page: a fixed header (month, status summary, actions,
+   folded planner options, folded filters) and the grid underneath. Only the
+   grid scrolls, so the weekday header never drifts from the columns. */
+.sa-calendar {
+  --sa-calendar-min-width: 896px;
+  --sa-calendar-day-height: 304px;
+  display: flex; flex-direction: column; gap: 10px;
+  height: 100%; min-height: 0;
+}
+.sa-calendar-head { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.sa-calendar-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .sa-month-nav { display: flex; align-items: center; gap: 6px; }
-.sa-month-label { font-size: 0.95rem; margin: 0 4px; }
-.sa-legend { display: flex; gap: 10px; flex-wrap: wrap; }
-.sa-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; color: var(--sa-muted); }
-.sa-legend-dot { width: 9px; height: 9px; border-radius: 3px; border: 1.5px solid var(--sa-outline-strong); }
+.sa-month-label { font-size: 1rem; margin: 0 4px; white-space: nowrap; }
+
+/* The status summary is also the legend and the status filter: one line says
+   what the month holds, and clicking a status narrows the grid to it. */
+.sa-calendar-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sa-summary-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--sa-outline); border-radius: 999px;
+  background: var(--sa-card); color: var(--sa-muted);
+  font-size: 0.7rem; white-space: nowrap;
+}
+.sa-summary-chip b { color: var(--sa-text); font-variant-numeric: tabular-nums; }
+.sa-summary-chip:hover { border-color: var(--sa-outline-strong); }
+.sa-summary-chip.active {
+  border-color: var(--sa-primary); background: var(--sa-primary-container);
+  color: var(--sa-text); box-shadow: inset 0 0 0 1px var(--sa-primary);
+}
+.sa-legend-dot { width: 9px; height: 9px; flex: none; border-radius: 3px; border: 1.5px solid var(--sa-outline-strong); }
 .sa-legend-dot.in-workflow, .sa-legend-dot.publishing { background: var(--sa-primary); border-color: var(--sa-primary); }
 .sa-legend-dot.published { background: var(--sa-success); border-color: var(--sa-success); }
 .sa-legend-dot.needs-review { background: var(--sa-warn); border-color: var(--sa-warn); }
 .sa-legend-dot.failed { background: var(--sa-error); border-color: var(--sa-error); }
 .sa-legend-dot.missed { border-style: dashed; }
-.sa-toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.sa-tz { display: inline-flex; gap: 4px; align-items: center; font-size: 0.7rem; color: var(--sa-muted); }
+.sa-calendar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Planner options: one folded line that already states the active choices, so
+   the checkbox row only appears when someone wants to change them. */
+.sa-calendar-options { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sa-planner-toggle {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  padding: 4px 10px;
+  border: 1px dashed var(--sa-outline-strong); border-radius: 999px;
+  background: transparent; color: var(--sa-muted);
+  font-size: 0.7rem;
+}
+.sa-planner-toggle:hover { border-color: var(--sa-primary); color: var(--sa-text); }
+.sa-planner-toggle.open { border-style: solid; border-color: var(--sa-primary); background: var(--sa-primary-container); color: var(--sa-text); }
+.sa-planner-toggle-label { font-weight: 700; white-space: nowrap; }
+.sa-planner-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-caret { flex: none; transition: transform 0.15s ease; }
+.sa-caret.open { transform: rotate(180deg); }
+.sa-planner-body {
+  display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
+  border: 1px solid var(--sa-outline); border-radius: var(--sa-radius);
+  background: var(--sa-card); padding: 9px 11px;
+}
+.sa-planner-switches { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; flex-wrap: wrap; }
+.sa-tz { display: inline-flex; gap: 4px; align-items: center; font-size: 0.68rem; color: var(--sa-muted); }
+.sa-tz-sep { opacity: 0.6; }
 .sa-plan-platforms { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.7rem; color: var(--sa-muted); }
 .sa-plan-platform { padding: 2px 7px; border: 1px solid var(--sa-outline); border-radius: 999px; }
 .sa-plan-platform.on { border-color: color-mix(in srgb, var(--sa-primary) 45%, transparent); background: var(--sa-primary-container); color: var(--sa-on-surface, inherit); }
+/* มุมคอนเทนต์ของเดือนนี้ — ตั้งต้นจากธุรกิจของลูกค้ารายนั้น */
+.sa-plan-angles { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--sa-muted); }
+.sa-plan-angle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--sa-outline); border-radius: 999px; background: transparent; cursor: pointer; }
+.sa-plan-angle.on { border-color: var(--sa-primary); background: var(--sa-primary-container); color: var(--sa-text); }
+.sa-plan-angle input { margin: 0; }
+/* Filters fold away too; an applied filter keeps the row open and shows how
+   many are on, so a hidden filter can never quietly empty the grid. */
+.sa-filter-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--sa-outline); border-radius: 999px;
+  background: var(--sa-card); color: var(--sa-muted);
+  font-size: 0.7rem; font-weight: 600;
+}
+.sa-filter-toggle:hover { color: var(--sa-text); border-color: var(--sa-outline-strong); }
+.sa-filter-toggle.on { border-color: var(--sa-primary); color: var(--sa-text); background: var(--sa-primary-container); }
+.sa-filter-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--sa-primary); color: var(--sa-on-primary);
+  font-size: 0.6rem;
+}
+.sa-calendar > .sa-filterbar { flex: none; margin: 0; }
+.sa-filter-result { display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; }
+.sa-filter-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
 
 /* One scroller owns the weekday header and the month, keeping the columns in
    sync even on narrow windows. A day has its own bounded list: four normal
@@ -316,109 +388,147 @@
 .sa-grid:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: -2px; }
 .sa-grid-head, .sa-grid-body { flex: none; width: 100%; min-width: var(--sa-calendar-min-width); display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .sa-grid-head { position: sticky; top: 0; z-index: 2; border-bottom: 1px solid var(--sa-outline); background: var(--sa-card); }
-.sa-grid-head div { padding: 7px 6px; text-align: center; font-size: 0.7rem; font-weight: 700; color: var(--sa-muted); }
+.sa-grid-head div { padding: 8px 6px; text-align: center; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; color: var(--sa-muted); }
 .sa-grid-head div.weekend { color: var(--sa-error); opacity: 0.75; }
 .sa-grid-body { grid-auto-rows: var(--sa-calendar-day-height); align-content: start; }
-.sa-day { border-right: 1px solid var(--sa-outline); border-bottom: 1px solid var(--sa-outline); padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; overflow: hidden; }
+.sa-day { border-right: 1px solid var(--sa-outline); border-bottom: 1px solid var(--sa-outline); padding: 6px 6px 8px; display: flex; flex-direction: column; gap: 5px; min-width: 0; min-height: 0; overflow: hidden; }
 .sa-day:nth-child(7n) { border-right: 0; }
 .sa-day.empty { background: color-mix(in srgb, var(--sa-muted) 5%, transparent); }
 .sa-day.dragover { outline: 2px dashed var(--sa-primary); outline-offset: -3px; background: var(--sa-primary-container); }
 .sa-day-head { flex: none; min-height: 22px; display: flex; align-items: center; gap: 4px; }
-.sa-day-num { font-size: 0.74rem; font-weight: 600; color: var(--sa-muted); }
-.sa-day-count { margin-left: auto; font-size: 0.62rem; color: var(--sa-muted); white-space: nowrap; }
+.sa-day-num { font-size: 0.76rem; font-weight: 700; color: var(--sa-muted); font-variant-numeric: tabular-nums; }
 .sa-day-num.today { background: var(--sa-primary); color: var(--sa-on-primary); border-radius: 999px; padding: 1px 7px; }
 .sa-day.today { background: color-mix(in srgb, var(--sa-primary) 5%, var(--sa-card-1)); }
+.sa-day-today-label { font-size: 0.6rem; font-weight: 700; color: var(--sa-primary); }
+.sa-day-count {
+  margin-left: auto; padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sa-muted) 12%, transparent);
+  font-size: 0.6rem; color: var(--sa-muted); white-space: nowrap;
+}
 .sa-day-add {
   display: inline-flex; align-items: center; justify-content: center;
-  flex: none; width: 18px; height: 18px; margin-left: auto;
+  flex: none; width: 18px; height: 18px; margin-left: 2px;
   border: 0; border-radius: 6px;
   background: transparent; color: var(--sa-muted);
   opacity: 0;
 }
-.sa-day-count + .sa-day-add { margin-left: 0; }
-
-/* มุมคอนเทนต์ของเดือนนี้ — ตั้งต้นจากธุรกิจของลูกค้ารายนั้น */
-.sa-plan-angles {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
-.sa-plan-angle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid var(--sa-border, #d8d8d8);
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.sa-plan-angle.on {
-  border-color: var(--sa-accent, #6c5ce7);
-  background: rgba(108, 92, 231, 0.12);
-}
-
-.sa-plan-angle input {
-  margin: 0;
-}
 .sa-day:hover .sa-day-add, .sa-day:focus-within .sa-day-add { opacity: 1; }
-.sa-day-add:hover { background: var(--sa-primary); color: var(--sa-on-primary); }
-.sa-day-chips { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 2px; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
+.sa-day-add:hover, .sa-day-add:focus-visible { background: var(--sa-primary); color: var(--sa-on-primary); opacity: 1; }
+.sa-day-chips { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 1px; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
 .sa-day-chips:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: -2px; border-radius: 6px; }
 
+/* A card carries its status twice: the left rail (colour, readable at a
+   glance) and the wording in the tooltip/aria-label. Platform and time share
+   the first line, the product owns the second. */
 .sa-chip {
   position: relative;
   flex: none;
-  display: flex; align-items: flex-start; gap: 3px;
+  display: flex; align-items: stretch;
   width: 100%; min-width: 0; overflow: hidden;
   border: 1px solid var(--sa-outline);
+  border-left-width: 3px;
   border-radius: 8px;
   background: var(--sa-card);
-  padding: 5px;
   font-size: 0.68rem;
   text-align: left;
   cursor: grab;
+  transition: border-color 0.15s, background 0.15s;
 }
 .sa-chip:hover { border-color: var(--sa-outline-strong); }
 .sa-chip:active { cursor: grabbing; }
-.sa-chip-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; border: 0; background: transparent; text-align: left; cursor: inherit; }
+.sa-chip-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 4px 6px 5px; border: 0; background: transparent; text-align: left; cursor: inherit; }
 .sa-chip-open:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: 1px; border-radius: 3px; }
-.sa-chip-meta { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+.sa-chip-meta { display: flex; align-items: center; gap: 4px; min-width: 0; padding-right: 16px; white-space: nowrap; }
 .sa-chip-meta > * { flex: none; }
 .sa-chip-time { font-weight: 700; font-variant-numeric: tabular-nums; line-height: 16px; }
-.sa-chip-title { width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.65rem; line-height: 1.4; color: var(--sa-muted); }
-.sa-chip.planned { border-style: dashed; }
-.sa-chip.in-workflow, .sa-chip.ready { border-color: color-mix(in srgb, var(--sa-primary) 45%, transparent); background: var(--sa-primary-container); }
-.sa-chip.publishing { border-color: var(--sa-primary); background: var(--sa-primary-container); animation: sa-pulse 1.2s ease-in-out infinite; }
-.sa-chip.published { border-color: color-mix(in srgb, var(--sa-success) 55%, transparent); background: color-mix(in srgb, var(--sa-success) 10%, transparent); }
-.sa-chip.failed { border-color: color-mix(in srgb, var(--sa-error) 55%, transparent); background: color-mix(in srgb, var(--sa-error) 8%, transparent); }
-.sa-chip.needs-review { border-color: color-mix(in srgb, var(--sa-warn) 60%, transparent); background: color-mix(in srgb, var(--sa-warn) 12%, transparent); }
-.sa-chip.missed { border-style: dashed; opacity: 0.85; }
+.sa-chip-title { width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.68rem; font-weight: 500; line-height: 1.4; color: var(--sa-text); padding-right: 14px; }
+.sa-chip-context { width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.62rem; line-height: 1.35; color: var(--sa-muted); }
+.sa-chip-live {
+  padding: 0 4px; border-radius: 999px;
+  background: var(--sa-primary); color: var(--sa-on-primary);
+  font-size: 0.55rem; font-weight: 700; line-height: 14px;
+}
+.sa-chip.planned { border-style: dashed; border-left-style: solid; border-left-color: var(--sa-outline-strong); }
+.sa-chip.in-workflow, .sa-chip.ready { border-left-color: var(--sa-primary); background: var(--sa-primary-container); }
+.sa-chip.publishing { border-left-color: var(--sa-primary); background: var(--sa-primary-container); animation: sa-pulse 1.2s ease-in-out infinite; }
+.sa-chip.published { border-left-color: var(--sa-success); background: color-mix(in srgb, var(--sa-success) 10%, transparent); }
+.sa-chip.failed { border-left-color: var(--sa-error); background: color-mix(in srgb, var(--sa-error) 8%, transparent); }
+.sa-chip.needs-review { border-left-color: var(--sa-warn); background: color-mix(in srgb, var(--sa-warn) 12%, transparent); }
+.sa-chip.missed { border-style: dashed; border-left-style: solid; opacity: 0.85; }
 .sa-chip.running { animation: sa-pulse 1.2s ease-in-out infinite; }
-/* Keep delete beside the lower text row, not in the time/platform row. */
-.sa-chip-del { position: absolute; right: 3px; bottom: 4px; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--sa-muted); line-height: 1; cursor: pointer; }
-.sa-chip-title, .sa-chip-tags { padding-right: 18px; }
-.sa-calendar.selecting .sa-chip-title, .sa-calendar.selecting .sa-chip-tags { padding-right: 0; }
+/* Delete stays out of the way at rest but is one hover/focus away; it never
+   competes with the time and platform on the first line. */
+.sa-chip-del {
+  position: absolute; top: 2px; right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0;
+  border: 0; border-radius: 4px;
+  background: var(--sa-card); color: var(--sa-muted);
+  line-height: 1; cursor: pointer; opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.sa-chip:hover .sa-chip-del, .sa-chip:focus-within .sa-chip-del { opacity: 1; }
 .sa-chip-del:hover { color: var(--sa-error); background: color-mix(in srgb, var(--sa-error) 15%, transparent); }
 .sa-chip.selected { border-color: var(--sa-primary); box-shadow: inset 0 0 0 1px var(--sa-primary); background: var(--sa-primary-container); }
 .sa-calendar.selecting .sa-chip { cursor: pointer; }
+.sa-calendar.selecting .sa-chip-del { display: none; }
 @keyframes sa-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
-/* ── workflow canvas (n8n style) ───────────────────────────────────────── */
-.sa-workflow { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-.sa-wf-topbar { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.sa-wf-entry-picker { display: flex; flex-direction: column; gap: 3px; min-width: 320px; }
-.sa-wf-entry-picker > span { font-size: 0.7rem; color: var(--sa-muted); font-weight: 600; }
-.sa-wf-entry-badges { display: flex; gap: 7px; align-items: center; padding-bottom: 2px; }
-.sa-wf-topbar-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 2px; margin-left: auto; flex-wrap: wrap; }
-.sa-wf-progress { display: inline-flex; align-items: center; gap: 7px; }
-.sa-wf-progress-track { display: inline-block; width: 92px; height: 6px; border-radius: 99px; background: var(--sa-outline); overflow: hidden; }
+/* ── workflow: header (post picker · progress · step rail) ─────────────── */
+/* min-height (not height) so a long run history extends the page instead of
+   clipping the researcher panel on a short window. */
+.sa-workflow { display: flex; flex-direction: column; gap: 10px; min-height: 100%; }
+.sa-wf-header {
+  flex: none; display: flex; flex-direction: column; gap: 9px;
+  border: 1px solid var(--sa-outline); border-radius: var(--sa-radius);
+  background: var(--sa-card); padding: 11px 12px;
+}
+.sa-wf-topbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.sa-wf-entry-picker { display: flex; flex-direction: column; gap: 3px; flex: 1 1 300px; min-width: 260px; max-width: 460px; }
+.sa-wf-entry-picker > span { font-size: 0.68rem; font-weight: 700; color: var(--sa-muted); }
+.sa-wf-entry-picker select { font-size: 0.78rem; }
+.sa-wf-entry-facts { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; padding-bottom: 3px; }
+.sa-wf-entry-when { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--sa-muted); font-variant-numeric: tabular-nums; }
+.sa-wf-entry-product { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 600; }
+.sa-wf-topbar-actions { display: flex; gap: 7px; align-items: center; margin-left: auto; padding-bottom: 2px; flex-wrap: wrap; }
+.sa-wf-progress-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.7rem; color: var(--sa-muted); }
+.sa-wf-progress-label { font-weight: 700; }
+.sa-wf-progress-track { flex: 1 1 140px; max-width: 340px; height: 7px; border-radius: 99px; background: var(--sa-outline); overflow: hidden; }
 .sa-wf-progress-fill { display: block; height: 100%; border-radius: 99px; background: var(--sa-primary); transition: width 0.4s ease; }
-.sa-wf-progress .sa-muted { font-size: 0.68rem; }
+.sa-wf-progress-state { padding: 1px 8px; border: 1px solid var(--sa-outline); border-radius: 999px; color: var(--sa-text); font-size: 0.66rem; font-weight: 600; }
+.sa-wf-run-meta { margin-left: auto; font-size: 0.66rem; }
+
+/* Step rail: all ten steps of the run, in order, on one line (wrapping only
+   when the window is genuinely narrow). Clicking a step opens its detail. */
+.sa-wf-stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 4px; }
+.sa-wf-stepper li { min-width: 0; }
+.sa-step {
+  display: flex; align-items: center; gap: 5px;
+  width: 100%; min-width: 0; padding: 4px 6px;
+  border: 1px solid var(--sa-outline); border-radius: 8px;
+  background: var(--sa-card-1); color: var(--sa-muted);
+  font-size: 0.66rem;
+}
+.sa-step:hover { color: var(--sa-text); border-color: var(--sa-outline-strong); }
+.sa-step:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: -2px; }
+.sa-step-num {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px;
+  border: 1px solid var(--sa-outline); border-radius: 999px;
+  background: var(--sa-card-high);
+  font-size: 0.56rem; font-weight: 700;
+}
+.sa-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-step.active { border-color: var(--sa-primary); box-shadow: inset 0 0 0 1px var(--sa-primary); }
+.sa-step.done { color: var(--sa-text); border-color: color-mix(in srgb, var(--sa-success) 40%, transparent); }
+.sa-step.done .sa-step-num { background: var(--sa-success); border-color: var(--sa-success); color: #fff; }
+.sa-step.running { color: var(--sa-text); border-color: var(--sa-primary); background: var(--sa-primary-container); }
+.sa-step.running .sa-step-num { background: var(--sa-primary); border-color: var(--sa-primary); color: var(--sa-on-primary); animation: sa-pulse 1.2s ease-in-out infinite; }
+.sa-step.failed { color: var(--sa-error); border-color: color-mix(in srgb, var(--sa-error) 55%, transparent); }
+.sa-step.failed .sa-step-num { background: var(--sa-error); border-color: var(--sa-error); color: #fff; }
+.sa-step.waiting { color: var(--sa-warn); border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); }
+.sa-step.waiting .sa-step-num { background: var(--sa-warn); border-color: var(--sa-warn); color: #fff; }
 .sa-wf-gate-note {
   display: flex; align-items: center; gap: 9px;
   border: 1px solid color-mix(in srgb, var(--sa-warn, #d97706) 45%, transparent);
@@ -429,7 +539,7 @@
   font-size: 0.78rem;
 }
 .sa-wf-gate-note svg { flex: 0 0 auto; }
-.sa-wf-filter { display: inline-flex; align-items: center; gap: 4px; color: var(--sa-muted); }
+.sa-wf-filter { display: inline-flex; align-items: center; gap: 4px; color: var(--sa-muted); flex-wrap: wrap; }
 .sa-wf-filter-chip {
   border: 1px solid var(--sa-outline); background: transparent; color: var(--sa-muted);
   font-size: 0.66rem; padding: 2px 8px; border-radius: 99px; cursor: pointer; font-weight: 600;
@@ -460,40 +570,63 @@
 .sa-prod-img-editor input { flex: 1; min-width: 170px; }
 .sa-prod-img-editor .sa-form-error { flex-basis: 100%; margin: 0; }
 .sa-prod-img-editor .sa-form-hint { flex-basis: 100%; margin: 0; }
-.sa-canvas-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.sa-canvas-empty p { padding: 0 30px; margin: 0; }
 
+/* ── workflow: canvas, run history, researchers ────────────────────────── */
+/* The canvas is a wrapping grid, not one long horizontal conveyor: all ten
+   steps of a run are visible at once and the numbered badge keeps the order
+   readable without a 2,000px scroll. */
 .sa-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 200px;
   border: 1px solid var(--sa-outline);
   border-radius: var(--sa-radius);
   background: var(--sa-card-1);
   overflow: auto;
-  padding: 26px 10px;
+  padding: 16px 12px;
   background-image: radial-gradient(color-mix(in srgb, var(--sa-muted) 30%, transparent) 1px, transparent 1px);
   background-size: 18px 18px;
-  min-height: 190px;
 }
-.sa-canvas { display: flex; align-items: center; gap: 0; min-width: max-content; padding: 0 14px; }
-.sa-canvas-item { display: flex; align-items: center; }
-.sa-canvas-empty { padding: 30px; color: var(--sa-muted); text-align: center; width: 100%; }
+.sa-canvas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 10px; align-content: start; }
+.sa-canvas-item { display: block; min-width: 0; }
+.sa-canvas-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; min-height: 170px; padding: 26px 12px;
+  color: var(--sa-muted); text-align: center;
+}
+.sa-canvas-empty p { margin: 0; max-width: 560px; font-size: 0.78rem; line-height: 1.6; }
 
 .sa-node {
+  position: relative;
   display: flex; gap: 10px; align-items: flex-start;
-  width: 208px; min-height: 86px;
+  width: 100%; height: 100%; min-height: 92px;
   border: 1.5px solid var(--sa-outline);
   border-radius: 13px;
   background: var(--md-sys-color-surface-container-low, var(--sa-card));
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
-  padding: 10px;
+  padding: 12px 10px 10px;
   text-align: left;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .sa-node:hover { transform: translateY(-2px); border-color: var(--sa-outline-strong); }
+.sa-node.active { border-color: var(--sa-primary); box-shadow: 0 0 0 1px var(--sa-primary), 0 3px 10px rgba(0, 0, 0, 0.08); }
+.sa-node:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: 2px; }
 .sa-node.running { border-color: var(--sa-primary); }
 .sa-node.running .sa-node-icon { animation: sa-spin-pulse 1.4s ease-in-out infinite; }
 .sa-node.done { border-color: color-mix(in srgb, var(--sa-success) 45%, transparent); }
 .sa-node.failed { border-color: var(--sa-error); }
 .sa-node.waiting { border-color: color-mix(in srgb, var(--sa-warn) 60%, transparent); }
+.sa-node-step {
+  position: absolute; top: -7px; left: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 4px;
+  border: 1px solid var(--sa-outline); border-radius: 999px;
+  background: var(--sa-card); color: var(--sa-muted);
+  font-size: 0.56rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.sa-node.running .sa-node-step { border-color: var(--sa-primary); color: var(--sa-primary); }
+.sa-node.done .sa-node-step { border-color: color-mix(in srgb, var(--sa-success) 45%, transparent); color: var(--sa-success); }
+.sa-node.failed .sa-node-step { border-color: var(--sa-error); color: var(--sa-error); }
+.sa-node.waiting .sa-node-step { border-color: var(--sa-warn); color: var(--sa-warn); }
 .sa-node-icon {
   width: 34px; height: 34px; min-width: 34px;
   display: flex; align-items: center; justify-content: center;
@@ -501,6 +634,7 @@
   background: var(--sa-card-high);
   border: 1px solid var(--sa-outline);
   color: var(--sa-on-primary-container);
+  flex: none;
 }
 .sa-node.running .sa-node-icon { background: var(--sa-primary); color: var(--sa-on-primary); border-color: var(--sa-primary); }
 .sa-node.done .sa-node-icon { color: var(--sa-success); border-color: color-mix(in srgb, var(--sa-success) 45%, transparent); }
@@ -516,41 +650,46 @@
 .sa-node-badge.failed { color: var(--sa-error); border-color: var(--sa-error); }
 .sa-node-badge.waiting { color: var(--sa-warn); border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); }
 .sa-node-output {
-  margin: 0; font-size: 0.66rem; color: var(--sa-muted);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; line-height: 1.35; min-height: 1.4em;
+  overflow: hidden; min-height: 1.4em;
+  font-size: 0.66rem; color: var(--sa-muted); line-height: 1.35;
 }
 .sa-node-duration { font-size: 0.6rem; color: var(--sa-muted); opacity: 0.8; }
 
-.sa-flow { width: 44px; min-width: 44px; height: 2px; background: var(--sa-outline); position: relative; }
-.sa-flow::after {
-  content: ""; position: absolute; right: -1px; top: -3px;
-  border-left: 6px solid var(--sa-outline-strong);
-  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-}
-.sa-flow.active { background: repeating-linear-gradient(90deg, var(--sa-primary) 0 6px, transparent 6px 12px); animation: sa-flow-move 0.7s linear infinite; }
-.sa-flow.active::after { border-left-color: var(--sa-primary); }
-@keyframes sa-flow-move { from { background-position: 0 0; } to { background-position: 12px 0; } }
-
-.sa-wf-lower { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; min-height: 0; }
+.sa-wf-lower { flex: none; display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; min-height: 0; }
 .sa-panel { border: 1px solid var(--sa-outline); border-radius: var(--sa-radius); background: var(--sa-card-1); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.sa-panel-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.sa-panel-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
 .sa-panel-head h4 { margin: 0; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 6px; }
 .sa-panel-head .sa-muted { font-size: 0.7rem; }
 
+/* A run row is a disclosure button plus two real buttons — no button nested
+   inside another, so Tab and screen readers land on each action once. */
 .sa-run-row { border: 1px solid var(--sa-outline); border-radius: 10px; background: var(--sa-card); overflow: hidden; }
-.sa-run-row-head {
-  display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 8px 10px;
-  background: none; border: 0; text-align: left; font-size: 0.74rem;
-}
+.sa-run-row-head { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 3px; }
 .sa-run-row-head:hover { background: var(--sa-card-high); }
-.sa-run-trigger { font-size: 0.68rem; color: var(--sa-muted); }
-.sa-run-when { font-size: 0.68rem; color: var(--sa-muted); margin-left: auto; }
+.sa-run-toggle {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px;
+  border: 0; background: none; text-align: left;
+  font-size: 0.74rem;
+}
+.sa-run-toggle:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: -2px; border-radius: 6px; }
+.sa-run-trigger { font-size: 0.68rem; color: var(--sa-muted); white-space: nowrap; }
+.sa-run-when { margin-left: auto; font-size: 0.68rem; color: var(--sa-muted); white-space: nowrap; }
+.sa-run-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.sa-run-action {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid var(--sa-outline); border-radius: 7px;
+  background: var(--sa-card-1); color: var(--sa-muted);
+  font-size: 0.64rem;
+}
+.sa-run-action:hover { color: var(--sa-text); border-color: var(--sa-primary); }
 .sa-run-nodes { border-top: 1px solid var(--sa-outline); padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; }
 .sa-run-node { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; flex-wrap: wrap; }
 .sa-run-node b { min-width: 86px; }
-.sa-run-node-output { color: var(--sa-muted); font-size: 0.66rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 120px; }
+.sa-run-node-output { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sa-muted); font-size: 0.66rem; }
 .sa-node-mini-dot { width: 8px; height: 8px; min-width: 8px; border-radius: 999px; border: 1.5px solid var(--sa-outline-strong); display: inline-block; }
 .sa-run-node.done .sa-node-mini-dot, .sa-node-mini-step.done .sa-node-mini-dot { background: var(--sa-success); border-color: var(--sa-success); }
 .sa-run-node.failed .sa-node-mini-dot, .sa-node-mini-step.failed .sa-node-mini-dot { background: var(--sa-error); border-color: var(--sa-error); }
@@ -564,8 +703,9 @@
 
 .sa-roles { display: flex; flex-direction: column; gap: 8px; }
 .sa-role { border: 1px solid var(--sa-outline); border-radius: 10px; background: var(--sa-card); padding: 9px 11px; }
-.sa-role-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.sa-role-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
 .sa-role-head b { font-size: 0.78rem; }
+.sa-role-meta { font-size: 0.64rem; color: var(--sa-muted); white-space: nowrap; }
 .sa-role ul { margin: 4px 0 0; padding-left: 18px; font-size: 0.7rem; color: var(--sa-muted); }
 .sa-role-form { display: flex; flex-direction: column; gap: 7px; border: 1px dashed var(--sa-outline-strong); border-radius: 10px; padding: 10px; }
 .sa-role-form-actions { display: flex; justify-content: flex-end; gap: 7px; }
@@ -984,18 +1124,29 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
 .sa-caption-presets .sa-post-preview { margin-top: 2px; }
 
 /* ── responsive ────────────────────────────────────────────────────────── */
+/* Touch has no hover, so the controls that appear on hover stay visible. */
 @media (hover: none) {
   .sa-day-add { opacity: 1; }
+  .sa-chip-del { opacity: 1; }
 }
 @media (max-width: 1100px) {
   .sa-wf-lower { grid-template-columns: 1fr; }
   .sa-header-title h2 { max-width: 200px; }
+  .sa-searchbox { max-width: none; }
+  .sa-calendar-summary { order: 3; }
 }
 @media (max-width: 860px) {
   .sa-shell { flex-direction: column; }
   .sa-rail { width: 100%; min-width: 0; max-height: 210px; border-right: 0; border-bottom: 1px solid var(--sa-outline); }
-  .sa-legend { display: none; }
   .sa-caption-presets .sa-preset-tabs { grid-template-columns: 1fr; }
+  .sa-calendar-toolbar { gap: 8px; }
+  .sa-calendar-actions { margin-left: 0; width: 100%; }
+  .sa-calendar-actions .sa-btn.primary { flex: 1; justify-content: center; }
+  .sa-planner-switches { margin-left: 0; }
+  .sa-filter-actions { margin-left: 0; }
+  .sa-wf-run-meta { margin-left: 0; flex-basis: 100%; }
+  .sa-wf-topbar-actions { margin-left: 0; width: 100%; }
+  .sa-wf-stepper { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
 }
 
 /* Per-client contact copy is edited independently of account credentials. */
