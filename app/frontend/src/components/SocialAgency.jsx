@@ -493,6 +493,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               onRunNow={runNow}
               onApprove={approve}
               onReject={reject}
+              onOpenCalendar={() => setTab("calendar")}
             />
           )}
           {tab === "runs" && (
