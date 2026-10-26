@@ -398,7 +398,7 @@ function defaultSettings() {
     useProductRef: true, // ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น reference ตอนสร้างภาพปฏิทิน
     productRefMode: "img2img", // img2img = ส่งรูปสินค้าเป็นภาพตั้งต้น (backend ใช้จริง) · reference = วิธีเดิม
     productRefDenoise: PRODUCT_REF_DENOISE.def, // ยิ่งต่ำ สินค้ายิ่งตรง แต่ฉากจะคล้ายรูปสินค้ามาก
-    productRefInPost: true, // โพสต์ภาพ Facebook/Instagram ต้องมีภาพ AI + Reference สินค้า (500px) ครบคู่
+    productRefInPost: true, // โพสต์ภาพ Facebook/Instagram/LINE ต้องมีภาพ AI + Reference สินค้า (500px) ครบคู่
     imageWidth: SA_IMAGE_SIZE.width, // ขนาดภาพปฏิทินของลูกค้านี้ (default แบนเนอร์ 1024×600)
     imageHeight: SA_IMAGE_SIZE.height,
   };
@@ -6994,6 +6994,14 @@ class SocialAgencyRuntime {
     }
   }
 
+  // LINE and Instagram host the product photo at a public URL through imgbb.
+  _imgbbKeyForPair(client) {
+    const secrets = this._getSecrets(client.id);
+    const key = secrets.instagram?.imgbbApiKey || secrets.line?.imgbbApiKey;
+    if (!key) throw new Error("ยังไม่ส่ง: ต้องมี imgbb API key เพื่ออัปโหลดรูปสินค้าคู่กับภาพ AI (2 รูป)");
+    return key;
+  }
+
   // Facebook/Instagram image posts are a PAIR: [1] the AI image, [2] the real
   // product photo (≤500px derivative). With productRefInPost on (default), a
   // missing pair is refused before anything leaves the machine — never a silent
@@ -7267,6 +7275,7 @@ class SocialAgencyRuntime {
 
     if (platform === "line") {
       const messages = [];
+      let attachedProductRef = false;
       if (this._selectPublishMedia(entry) === "video") {
         // LINE fetches both assets itself. Fail rather than mark a text/image
         // substitute as a successful video broadcast.
@@ -7277,8 +7286,17 @@ class SocialAgencyRuntime {
       }
       const wantsImage = entry.image && (entry.image.publicUrl || entry.image.path) && meta.sendImageTextStack !== false;
       if (messages.length === 0 && wantsImage) {
+        // Same pair as Facebook/Instagram: [1] the AI image, [2] the real product
+        // photo. Refused before anything is uploaded or broadcast when it is missing.
+        const refAttach = this._productRefPairFor(client, entry, "LINE");
+        const refKey = refAttach ? this._imgbbKeyForPair(client) : null;
         const url = await this._publicImageUrl(client, entry);
         messages.push({ type: "image", originalContentUrl: url, previewImageUrl: url });
+        if (refAttach) {
+          const refUrl = await this._imgbbUpload({ buffer: refAttach.buffer, filename: refAttach.filename }, refKey);
+          messages.push({ type: "image", originalContentUrl: refUrl, previewImageUrl: refUrl });
+          attachedProductRef = true;
+        }
         messages.push({ type: "text", text: caption });
       } else if (messages.length === 0) {
         messages.push({ type: "text", text: caption });
@@ -7287,7 +7305,7 @@ class SocialAgencyRuntime {
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", publishedCaption: caption, postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
+      return { platform, mode: "live", publishedCaption: caption, postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, attachedProductRef, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);

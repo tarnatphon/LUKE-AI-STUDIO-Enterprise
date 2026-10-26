@@ -909,7 +909,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <ConnectorToggle checked={form.settings.notify} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, notify: v } }))} label="แจ้งเตือน macOS เมื่อเผยแพร่/ล้มเหลว (เฉพาะ Mac)" />
         <ConnectorToggle checked={form.settings.weeklySummaryLine} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, weeklySummaryLine: v } }))} label="สรุปรายสัปดาห์อัตโนมัติทาง LINE (ทุกวันจันทร์ 09:00 น.)" />
         <ConnectorToggle checked={form.settings.useProductRef} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, useProductRef: v } }))} label="ใช้รูปสินค้าจริง (ดึงจากเว็บตาม SKU) เป็น Reference ตอนสร้างภาพปฏิทิน" />
-        <ConnectorToggle checked={form.settings.productRefInPost} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefInPost: v } }))} label="โพสต์ภาพ Facebook/Instagram ต้องมีภาพ AI + Reference สินค้า (ย่อด้านยาว 500px) ครบ 2 รูป — หากแนบไม่สำเร็จจะไม่โพสต์ภาพเดียว" />
+        <ConnectorToggle checked={form.settings.productRefInPost} onChange={(v) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefInPost: v } }))} label="โพสต์ภาพ Facebook/Instagram/LINE ต้องมีภาพ AI + Reference สินค้า (ย่อด้านยาว 500px) ครบ 2 รูป — หากแนบไม่สำเร็จจะไม่โพสต์ภาพเดียว" />
         {form.settings.useProductRef && (
           <>
             <label className="sa-field">

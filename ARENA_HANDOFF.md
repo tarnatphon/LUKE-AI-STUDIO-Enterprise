@@ -1,5 +1,7 @@
 # ARENA_HANDOFF.md — บันทึกส่งต่องานระหว่าง session
 
+> **อัปเดตล่าสุด:** 2026-10-26 (session `arena/54396cd3-luke-ai-studio-enterprise` — **LINE ส่งภาพเป็นคู่เหมือน Facebook/Instagram**: ภาพ AI + รูปสินค้าจริง (≤500px, อัปโหลด imgbb) + ข้อความ · ไม่มีรูปสินค้า/ไม่มี imgbb key → ไม่ส่งเลย · ปิด `productRefInPost` → ภาพเดียวเหมือนเดิม · เทสต์ `test-social-agency-line-ref-pair.cjs` 4 checks)
+
 > **อัปเดตล่าสุด:** 2026-10-20 (session `arena/f4609d2f-luke-ai-studio-enterprise` — **รันเลยตอนนี้ (Workflow, manual run) สร้างภาพขนานกับการเขียนข้อความ**: ภาพสร้างจาก prompt ที่ AI เพิ่งเขียน (ถ้า LLM ไม่พร้อมใช้ template เดิม) · ไม่สร้างทับภาพเดิม · รอภาพก่อนด่านภาพ · ภาพต้องถูกตรวจในหน้าโพสต์ก่อนส่งจริงเสมอ · รันตามเวลา (schedule) ไม่เปลี่ยน · เทสต์ `test-social-agency-run-now-image.cjs` 6 checks · **แก้ race:** `_generateEntryImage` เขียน state ทับจาก snapshot เก่า ตอนนี้เขียนจากการอ่านใหม่)
 
 > **อัปเดตล่าสุด:** 2026-10-20 (session `arena/9617eae1-luke-ai-studio-enterprise` — **Facebook ใช้ `thaimodernbags.com` (ไม่มี https://www.) เพราะ Facebook ไม่ให้ลิงก์เว็บในโพสต์** · Instagram ยังเป็น `https://www.thaimodernbags.com` · ค่าที่บันทึกไว้เดิมของ Facebook ถูกเปลี่ยนให้ครั้งเดียวตอนอ่านสถานะ ถ้าแก้เองแล้วจะไม่ถูกทับ · เทสต์ `test-social-agency-brand-footer.cjs` 11 checks)
