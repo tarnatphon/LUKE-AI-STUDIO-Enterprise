@@ -74,6 +74,16 @@ export default function PostPreview({ entry, client, product, platform: platform
     && Boolean(outputImageUrl)
     && productImageUrl.startsWith("/sa-products/")
     && client?.settings?.productRefInPost !== false;
+  // The pair is promised for every image post while the switch is on. When the
+  // product photo is still an external link, say why only one image shows.
+  const pairMissing = (platform === "facebook" || platform === "instagram" || platform === "line")
+    && !videoUrl
+    && Boolean(outputImageUrl)
+    && !productImageUrl.startsWith("/sa-products/")
+    && client?.settings?.productRefInPost !== false;
+  const pairMissingNote = pairMissing
+    ? <span className="sa-post-preview-media-note">ยังไม่มีรูปสินค้าจริงในเครื่อง — ไม่แนบรูปที่ 2 (ไปแท็บสินค้า แล้วดึงรูปจากเว็บ)</span>
+    : null;
   const captionPlaceholder = platform === "line"
     ? "ข้อความที่จะส่งจะแสดงตรงนี้เมื่อสร้างคอนเทนต์"
     : "ข้อความที่จะเผยแพร่จะแสดงตรงนี้เมื่อสร้างคอนเทนต์";
@@ -113,7 +123,17 @@ export default function PostPreview({ entry, client, product, platform: platform
         <div className="sa-post-preview-line-body">
           {(videoUrl || outputImageUrl || showProductFallback) && (
             <div className={`sa-post-preview-media line ${videoUrl ? "video" : "image"}`}>
-              {asset}
+              {/* LINE sends the same pair as Facebook/Instagram: AI image, then the real product photo */}
+              {showFacebookProductRef ? (
+                <div className="sa-post-preview-carousel">
+                  <div>{asset}</div>
+                  <div>
+                    <PreviewImage src={productImageUrl} alt={`รูปสินค้าจริง ${product?.name || ""}`} fallbackLabel="ไม่พบรูปสินค้าจริง" />
+                    <span className="sa-post-preview-media-note">รูปสินค้าจริง</span>
+                  </div>
+                </div>
+              ) : asset}
+              {pairMissingNote}
               {showProductFallback && <span className="sa-post-preview-media-note">รูปอ้างอิง · ยังไม่ใช่สื่อโพสต์</span>}
             </div>
           )}
@@ -134,6 +154,7 @@ export default function PostPreview({ entry, client, product, platform: platform
                 </div>
               </div>
             ) : asset}
+            {pairMissingNote}
             {showProductFallback && <span className="sa-post-preview-media-note">รูปอ้างอิง · ยังไม่ใช่สื่อโพสต์</span>}
           </div>
           <div className="sa-post-preview-social-actions" aria-hidden="true">
