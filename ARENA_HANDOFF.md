@@ -54,6 +54,20 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
+### session `arena/d8e43ee1…` (2026-10-26, PR #52) — Luke AI Workflow เผยแพร่จริง 16 ช่องทางฟรี
+
+> ที่มา: “Workflow รู้สึกว่าไม่มีประโยชน์อะไรเลย อยากให้มีอะไรที่มากกว่านี้” · ก่อนหน้านี้ workflow จบที่ “ได้ข้อความ/รูป” แล้วจบ — ไม่มีทางเอาไปใช้ต่อ
+
+- **คลังช่องทางฟรี 16 แห่ง** — `scripts/server/social-publish-channels.cjs` เป็นแหล่งความจริงเดียว (DA/PA ประมาณ, ชนิดลิงก์ dofollow/nofollow, วิธีสมัคร, ข้อจำกัดความยาว, `compose()`, `plan()`, `resultUrl()`); ฝั่งเบราว์เซอร์ import ไฟล์เดียวกันผ่าน `app/frontend/src/workflow-builder/channels.js` (แบบเดียวกับ `social-agency-post-copy.cjs`) จึงไม่มีรายการที่สองที่ค่อย ๆ ไม่ตรงกัน · `NOTES_REVIEWED = "2026-10"`
+- **โหนดใหม่ 2 ชนิด** — `publish` = “โพสต์อัตโนมัติ” (ยิง API จริง) และ `onepost` = “โพสต์คลิกเดียว” (เตรียมข้อความ + ลิงก์ที่เติมให้แล้ว) · palette แบ่งกลุ่ม เขียน / สร้าง / เผยแพร่ · sanitizer ปฏิเสธช่องทางปลอม และปฏิเสธ `publish` บนช่องทางที่ไม่มี API
+- **โพสต์ได้จริง 8 ช่องทาง:** DEV Community, Telegraph, GitHub Gist, WordPress.com, Telegram, Discord, Mastodon, Blogger · อีก 7 ช่องทางกดวางเองด้วยข้อความ+lิงก์ที่เตรียมให้ · Medium ใช้ import (API ปิดตั้งแต่ ม.ค. 2025) · Hashnode ต้อง Pro (พ.ค. 2026)
+- **relay ฝั่งเซิร์ฟเวอร์** — `scripts/server/ai-workflow-publish.cjs`: HTTPS เท่านั้น (ยกเว้น loopback เมื่อขอ `allowLocalDev`), บล็อก loopback/private/link-local/CGNAT/`.local`/`.internal`, ตรวจ DNS ซ้ำกัน rebinding, ไม่ตาม redirect, timeout 20 วิ, request ≤ 200 KB, response ≤ 64 KB, header allowlist
+- **คีย์ไม่ออกจากเซิร์ฟเวอร์** — `app/runtime-state/ai-workflow/publish-credentials.json` สิทธิ์ `0600` เขียน atomic · `/state` คืนแค่ boolean · dry run ปิดค่าเป็น `[set]` · run record เก็บแค่ `channel`/`channelName` ไม่เก็บตัวบทความ
+- **UI** — แท็บขวา “ช่องทางฟรี” (ค้นหา + ตัวกรอง ยิง API ได้/ต้องกดเอง/สมัครง่าย เรียงตาม DA), กล่องคีย์ + ปุ่มทดลองก่อน + “โพสต์เลยตอนนี้”, แถบโพสต์เหนือผืนผ้าใบ, artifact แบบโพสต์พร้อมปุ่มคัดลอก, ชิปหัวเรื่อง “16 ช่องทางฟรี”
+- **สูตรสำเร็จ 2 ชุด** — “โพสต์ฟรีหลายเว็บ (High DA) — เขียนครั้งเดียว” (DEV + Telegraph อัตโนมัติ, Medium + LinkedIn คลิกเดียว) และ “ประกาศโปรโมชัน → Telegram + Discord อัตโนมัติ”
+- **เอกสาร:** `docs/beta7/free-high-da-publishing-platforms.md` (ตาราง DA/PA + ชนิดลิงก์ + ข้อควรระวัง + ทางเลือกเชิงพาณิชย์) และอัปเดต `docs/beta7/ai-workflow-builder-v1-spec.md`
+- **เทสต์:** ใหม่ `scripts/validation/test-ai-workflow-publishing.cjs` **16 checks** (ตารางช่องทาง, compose, plan, normalise, SSRF, header allowlist, ยิง HTTP จริงบน localhost, redirect ไม่ถูกตาม, placeholder ถูกส่งต่อ, ไฟล์คีย์ `0600` และไม่โผล่ใน `/state`, dry run ปิดคีย์, ช่องทาง manual ไม่ throw, sanitizer, seed, run record, ซอร์ส UI) · `run-all --filter social` 19/19 · eslint 312 ไฟล์ 0 problems · bundle budgets ผ่าน (initial JS 293 809 B ≤ 307 200 · CSS 74 363 B)
+
 ### session `arena/4552ca9e…` (2026-10-20) — ปฏิทินโพสต์ไม่ล้นช่องวัน
 - **ต้นเหตุจากภาพหน้าจอ:** `.sa-grid-body` บีบแต่ละสัปดาห์ลงเหลือขั้นต่ำ 96px แต่ `.sa-day-chips` เป็น `overflow: visible` ทำให้ 4 โพสต์/วันวาดทับสัปดาห์ถัดไป
 - `social-agency.css` — แถววันสูง 304px (พอสำหรับ 4 โพสต์พร้อมป้าย) · day/list มี `min-height: 0` และขอบเขตชัดเจน · การ์ดไม่หด · รายการที่มากกว่านั้น **เลื่อนเฉพาะในช่องวัน** (`overflow-y: auto`, `overscroll-behavior-y: contain`) ไม่ได้ตัดข้อมูลทิ้ง

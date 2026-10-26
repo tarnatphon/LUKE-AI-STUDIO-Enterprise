@@ -318,3 +318,129 @@
 .awb-run-node .awb-muted { grid-column: 1 / -1; }
 .awb-run-node-output { grid-column: 1 / -1; color: var(--sa-muted); font-size: 0.68rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .awb-node-error-text { grid-column: 1 / -1; color: var(--sa-error); font-size: 0.68rem; }
+
+/* ═══ publishing ═══════════════════════════════════════════════════════════
+   The workflow used to stop at "here is some text". These are the pieces that
+   take the text out of the app: the channel library, the per-step credential
+   box, the post artifact on a node, and the strip of channels a run prepared. */
+
+.awb-palette-group { display: flex; flex-direction: column; gap: 6px; }
+.awb-palette-group + .awb-palette-group { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--sa-outline); }
+.awb-palette-group h4 {
+  margin: 0 0 1px; font-size: 0.64rem; font-weight: 800; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--sa-muted);
+}
+
+.awb-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--sa-outline); background: var(--sa-card-1);
+  color: var(--sa-muted); font-size: 0.62rem; font-weight: 600; white-space: nowrap;
+}
+.awb-badge.ok { border-color: color-mix(in srgb, var(--sa-success) 50%, transparent); color: var(--sa-success); }
+.awb-badge.warn { border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); color: var(--sa-warn); }
+.awb-badge.api { border-color: color-mix(in srgb, var(--sa-primary) 50%, transparent); color: var(--sa-primary); }
+
+.awb-btn.ok { color: var(--sa-success); border-color: color-mix(in srgb, var(--sa-success) 50%, transparent); }
+
+/* post artifact on a node */
+.awb-post {
+  border: 1px solid var(--sa-outline); border-radius: 10px;
+  background: var(--sa-card-1); padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.awb-post.published { border-color: color-mix(in srgb, var(--sa-success) 50%, transparent); background: color-mix(in srgb, var(--sa-success) 8%, transparent); }
+.awb-post-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.awb-post-head b { font-size: 0.74rem; }
+.awb-post-da { font-size: 0.6rem; color: var(--sa-muted); border: 1px solid var(--sa-outline); border-radius: 999px; padding: 0 5px; }
+.awb-post-state { margin-left: auto; font-size: 0.62rem; font-weight: 700; color: var(--sa-primary); }
+.awb-post.published .awb-post-state { color: var(--sa-success); }
+.awb-post-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.awb-post-actions .awb-btn { text-decoration: none; }
+.awb-post-text {
+  margin: 0; max-height: 180px; overflow: auto;
+  font-size: 0.66rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--sa-card); border: 1px solid var(--sa-outline); border-radius: 8px; padding: 8px;
+}
+.awb-post-warnings { margin: 0; padding-left: 16px; font-size: 0.62rem; color: var(--sa-warn); line-height: 1.45; }
+
+/* strip of channels prepared by the last run, above the canvas */
+.awb-post-strip {
+  position: sticky; top: 0; z-index: 3;
+  margin: 0 auto 18px; max-width: 760px;
+  border: 1px solid color-mix(in srgb, var(--sa-primary) 40%, var(--sa-outline));
+  border-radius: 12px; background: color-mix(in srgb, var(--sa-primary) 6%, var(--sa-card));
+  backdrop-filter: blur(6px);
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 8px;
+}
+.awb-post-strip header { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.awb-post-strip header b { font-size: 0.78rem; }
+.awb-post-strip header .awb-muted { font-size: 0.64rem; }
+.awb-post-strip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.awb-post-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--sa-outline); border-radius: 999px;
+  background: var(--sa-card); padding: 3px 8px; font-size: 0.68rem;
+}
+.awb-post-chip.published { border-color: color-mix(in srgb, var(--sa-success) 55%, transparent); }
+.awb-post-chip b { font-size: 0.68rem; }
+.awb-post-chip em { font-style: normal; color: var(--sa-muted); font-size: 0.6rem; }
+.awb-post-chip a { display: inline-flex; align-items: center; color: var(--sa-primary); }
+.awb-post-chip a:hover { color: var(--sa-text); }
+.awb-post-chip .awb-btn { padding: 1px 5px; min-height: 0; }
+
+/* credential box (inspector + channel card) */
+.awb-credential-box {
+  display: flex; flex-direction: column; gap: 7px;
+  border: 1px dashed var(--sa-outline-strong); border-radius: 10px;
+  background: var(--sa-card); padding: 9px 10px;
+}
+.awb-credential-box header { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 700; }
+.awb-credential-box .awb-req-hint { color: var(--sa-muted); border-color: var(--sa-outline); }
+.awb-credential-row { display: flex; flex-direction: column; gap: 3px; font-size: 0.66rem; }
+.awb-credential-row > span { display: flex; align-items: center; gap: 5px; color: var(--sa-muted); font-weight: 600; }
+.awb-set { font-style: normal; color: var(--sa-success); font-size: 0.62rem; }
+.awb-credential-row input { font-size: 0.72rem; }
+
+/* channel library */
+.awb-channels { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.awb-channels-intro { margin: 0; font-size: 0.68rem; line-height: 1.6; color: var(--sa-muted); }
+.awb-channels-tools { display: flex; flex-direction: column; gap: 7px; }
+.awb-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--sa-outline); border-radius: 9px; background: var(--sa-card);
+  padding: 5px 8px; color: var(--sa-muted);
+}
+.awb-search input { flex: 1; border: 0 !important; background: transparent !important; min-height: 0 !important; padding: 0 !important; font-size: 0.72rem; }
+.awb-wf-filter { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--sa-muted); }
+.awb-filter-chip {
+  border: 1px solid var(--sa-outline); background: transparent; color: var(--sa-muted);
+  font-size: 0.64rem; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+}
+.awb-filter-chip:hover { color: var(--sa-text); }
+.awb-filter-chip.active { background: var(--sa-primary); border-color: var(--sa-primary); color: var(--sa-on-primary, #fff); }
+.awb-channel-list { display: flex; flex-direction: column; gap: 9px; }
+.awb-channel-card {
+  border: 1px solid var(--sa-outline); border-left-width: 3px; border-left-color: var(--sa-outline-strong);
+  border-radius: 11px; background: var(--sa-card); padding: 10px; display: flex; flex-direction: column; gap: 7px;
+}
+.awb-channel-card.api { border-left-color: var(--sa-primary); }
+.awb-channel-card header { display: flex; align-items: baseline; gap: 7px; }
+.awb-channel-card header b { font-size: 0.8rem; }
+.awb-channel-da { margin-left: auto; font-size: 0.66rem; font-weight: 700; color: var(--sa-primary); white-space: nowrap; }
+.awb-channel-da em { font-style: normal; font-weight: 500; color: var(--sa-muted); }
+.awb-channel-why { margin: 0; font-size: 0.68rem; line-height: 1.55; color: var(--sa-muted); }
+.awb-channel-facts { display: flex; flex-wrap: wrap; gap: 5px; }
+.awb-channel-steps { margin: 0; padding-left: 16px; font-size: 0.66rem; line-height: 1.55; color: var(--sa-muted); }
+.awb-channel-card footer { display: flex; flex-wrap: wrap; gap: 5px; }
+.awb-channel-card footer .awb-btn { text-decoration: none; }
+
+@media (max-width: 1180px) {
+  .awb-body { grid-template-columns: 190px minmax(0, 1fr) 320px; }
+}
+@media (max-width: 980px) {
+  .awb-body { grid-template-columns: 1fr; }
+  .awb-palette { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--sa-outline); }
+  .awb-palette-group { flex: 1 1 160px; }
+  .awb-palette-foot { flex-basis: 100%; }
+  .awb-right { border-left: 0; border-top: 1px solid var(--sa-outline); }
+}

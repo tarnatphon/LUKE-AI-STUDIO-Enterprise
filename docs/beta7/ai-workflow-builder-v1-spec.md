@@ -23,6 +23,8 @@ STT — into one repeatable workflow that runs 100% offline.
 | `transform` | จัดข้อความ | client-side | Template, find/replace, truncate |
 | `condition` | เงื่อนไข | client-side | contains / not_contains / regex / min_length / max_length — a failed check halts the run |
 | `output` | ผลลัพธ์ | — | Terminal display node |
+| `publish` | โพสต์อัตโนมัติ | backend relay → API ของช่องทาง | ยิงโพสต์จริงผ่าน API (dry run ได้, คีย์เก็บฝั่งเซิร์ฟเวอร์) — ใช้ได้เฉพาะช่องทาง `automation: "api"` |
+| `onepost` | โพสต์คลิกเดียว | client-side compose | เตรียมข้อความ + ลิงก์หน้าเขียนที่เติมให้แล้ว สำหรับช่องทางที่ไม่มี API |
 
 ## Template variables
 
@@ -58,11 +60,44 @@ only `kind`, `url`, `file`, `seed` survive).
 | GET | `/runs?workflowId=&limit=` | Run history |
 | POST | `/runs` | Record a run |
 | DELETE | `/runs/:id` | Delete a run record |
+| GET | `/channels` | คลังช่องทางฟรี 16 แห่ง + กลุ่ม + ฟิลด์คีย์ + `channelsReviewedAt` |
+| GET | `/publish/credentials` | สถานะคีย์ (คืนแค่ boolean ต่อฟิลด์ ไม่คืนค่า) |
+| PATCH | `/publish/credentials` | ตั้ง/ล้างคีย์ของช่องทาง |
+| POST | `/publish/credentials` | เหมือน PATCH (ฟอร์มที่ส่งทั้งก้อน) |
+| POST | `/publish/preview` | dry run: คืน request ที่จะยิง โดยคีย์ถูกปิดเป็น `[set]` |
+| POST | `/publish/send` | โพสต์จริง `{ channelId, draft, dryRun }` |
+
+## Publishing (v1.1)
+
+การเผยแพร่ไม่เคยยิงจากเบราว์เซอร์ — คีย์และ request ทั้งหมดผ่าน backend relay
+(`scripts/server/ai-workflow-publish.cjs`) เพื่อไม่ให้กุญแจหลุดไปอยู่ใน bundle
+หรือ devtools ของผู้ใช้
+
+- **คลังช่องทาง:** `scripts/server/social-publish-channels.cjs` เป็นแหล่งความจริง
+  เดียว (registry + `compose()` + `plan()` + `resultUrl()`) ทั้งเซิร์ฟเวอร์และ
+  frontend (`app/frontend/src/workflow-builder/channels.js`) import ไฟล์เดียวกัน
+  จึงไม่มีรายการที่สองที่ค่อย ๆ ไม่ตรงกัน
+- **โหมดโพสต์:** `api` (8 ช่องทาง: DEV, Telegraph, Gist, WordPress.com, Telegram,
+  Discord, Mastodon, Blogger) · `manual` (7) · `import` (Medium)
+- **ผลลัพธ์ของโพสต์:** `artifact.kind = "post"` เก็บ `channel`, `channelName`,
+  `automation`, `url`, `published`, `da`, `pa` — **ไม่เก็บตัวบทความ** ลง state
+- **คีย์:** `app/runtime-state/ai-workflow/publish-credentials.json` สิทธิ์ `0600`
+  เขียนแบบ atomic · `/state` คืนเฉพาะ `true/false` · dry run ปิดค่าเป็น `[set]`
+- **ความปลอดภัยของ relay:** HTTPS เท่านั้น (ยกเว้น loopback เมื่อขอ `allowLocalDev`),
+  บล็อก loopback/private/link-local/CGNAT/`.local`/`.internal` และ IP ที่ฝังใน URL,
+  ตรวจ DNS อีกครั้งก่อนต่อ (กัน rebinding), ไม่ตาม redirect, timeout 20 วินาที,
+  request ≤ 200 KB, response ≤ 64 KB, header ผ่าน allowlist เท่านั้น
+- **โหมด manual ไม่ throw:** คืน `{ ok:false, manual:true, openUrl, text }` เพื่อให้
+  UI เปิดหน้าเขียนที่เติมข้อความให้แล้วได้ทันที
+
+รายละเอียดช่องทาง/DA/PA/ข้อควรระวัง: `docs/beta7/free-high-da-publishing-platforms.md`
 
 ## Limits & validation (backend)
 
 - ≤ 60 workflows, ≤ 120 runs (oldest trimmed), ≤ 30 steps per workflow
 - Step types whitelisted; per-type config sanitization (text length caps, numeric clamps)
+- `publish`/`onepost` ปฏิเสธช่องทางที่ไม่รู้จัก และปฏิเสธ `publish` บนช่องทางที่ไม่มี API
+  (ให้ใช้ `onepost` แทน เพื่อไม่ให้ตั้งใจโพสต์อัตโนมัติแล้วได้แค่หน้าต่างให้กดเอง)
 - Run node outputs stored as ≤ 8,000-char snippets
 
 ## Workflow Tab upgrades (Social Agency)
@@ -85,3 +120,5 @@ Shipped together with the builder, the Social Agency **Workflow tab** now:
 - Scheduler trigger (run a workflow on a Bangkok-time schedule, like the agency)
 - Backend-side execution queue so runs survive page reloads
 - Export/import workflows as JSON files
+- คิวโพสต์แบบตั้งเวลา (ตอนนี้ต้องกดรันเอง หรือใช้ Social Agency สำหรับ FB/LINE/IG)
+- OAuth flow ในแอปสำหรับ WordPress.com / Blogger / Mastodon (ตอนนี้ผู้ใช้วาง token เอง)
