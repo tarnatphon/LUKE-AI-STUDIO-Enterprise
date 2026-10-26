@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Play, Square, Plus, Trash2, Copy, ChevronUp, ChevronDown, History, Save,
   AlertTriangle, Workflow as WorkflowIcon, Variable, CheckCircle2, XCircle, MinusCircle, Loader2, Download,
+  Megaphone, Webhook, ExternalLink, ClipboardCheck, KeyRound, ShieldCheck, Globe2, Search, Filter,
 } from "lucide-react";
 import "../workflow-builder.css";
 import {
-  STEP_TYPES, newStep, runWorkflowSteps, RUN_STATUS_TH, formatDuration, formatDateTimeTh,
-  api, postJson,
+  STEP_TYPES, STEP_GROUPS, newStep, runWorkflowSteps, RUN_STATUS_TH, formatDuration, formatDateTimeTh,
+  api, postJson, publishDraft, resolveTemplate,
 } from "../workflow-builder/lib.js";
+import {
+  CHANNELS, channelById, composeChannelPost, CHANNEL_AUTOMATION_LABEL, CHANNEL_LINK_TYPE_LABEL,
+  CHANNELS_REVIEWED_AT,
+} from "../workflow-builder/channels.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 
 const SAMPLERS = ["euler_a", "euler", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2m_sde", "lcm"];
@@ -22,8 +27,61 @@ function NodeStatusIcon({ status }) {
   return null;
 }
 
+function CopyButton({ text, label = "คัดลอกข้อความ" }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      className={`awb-btn ghost sm ${done ? "ok" : ""}`}
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(String(text || ""));
+          setDone(true);
+          setTimeout(() => setDone(false), 1600);
+        } catch {
+          setDone(false);
+        }
+      }}
+      title="คัดลอกข้อความโพสต์ไว้ไปวางในหน้าเขียน"
+    >
+      {done ? <CheckCircle2 size={12} /> : <ClipboardCheck size={12} />} {done ? "คัดลอกแล้ว" : label}
+    </button>
+  );
+}
+
+function PostArtifact({ artifact }) {
+  const [showText, setShowText] = useState(false);
+  return (
+    <div className={`awb-post ${artifact.published ? "published" : ""}`}>
+      <div className="awb-post-head">
+        <b>{artifact.channelName || artifact.channel}</b>
+        {Number.isFinite(artifact.da) && <span className="awb-post-da">DA {artifact.da}</span>}
+        <span className="awb-post-state">{artifact.published ? "โพสต์แล้ว" : "พร้อมโพสต์"}</span>
+      </div>
+      <div className="awb-post-actions">
+        {safeExternalUrl(artifact.url) && (
+          <a className="awb-btn primary sm" href={safeExternalUrl(artifact.url)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+            <ExternalLink size={12} /> {artifact.published ? "เปิดโพสต์" : "เปิดหน้าเขียน"}
+          </a>
+        )}
+        <CopyButton text={artifact.text} />
+        <button className="awb-btn ghost sm" onClick={(e) => { e.stopPropagation(); setShowText((open) => !open); }}>
+          {showText ? "ซ่อนข้อความ" : "ดูข้อความ"}
+        </button>
+      </div>
+      {showText && <pre className="awb-post-text">{artifact.text}</pre>}
+      {(artifact.warnings || []).length > 0 && (
+        <ul className="awb-post-warnings">
+          {artifact.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ArtifactView({ artifact }) {
   if (!artifact) return null;
+  if (artifact.kind === "post") return <PostArtifact artifact={artifact} />;
   if (artifact.kind === "image" && artifact.dataUrl) {
     // The image is also the link you click to open or save it, so the value
     // meets the same guard as every other link in the interface. A value the
@@ -185,7 +243,19 @@ function VariableChips({ names, onInsert }) {
   );
 }
 
-function Inspector({ step, steps, onChange }) {
+// The inspector cannot run the workflow, so it resolves what it can and shows
+// the same text the run would produce (placeholders left as-is, not blank).
+function renderDraftText(step, steps) {
+  const draft = publishDraft(step.config || {}, { input: "", byName: {} });
+  try {
+    const channel = channelById(step.config?.channel);
+    return channel ? composeChannelPost(channel.id, draft).text : draft.body;
+  } catch {
+    return draft.body;
+  }
+}
+
+function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCredential, onPreviewChannel, sending = null, onSendNow }) {
   const cfg = step.config || {};
   const set = (key, value) => onChange({ ...step, config: { ...cfg, [key]: value } });
   const priorNames = useMemo(() => {
@@ -334,11 +404,259 @@ function Inspector({ step, steps, onChange }) {
           <p className="awb-req-hint">ถ้าไม่ผ่าน เวิร์กโฟลว์จะหยุด และโหนดหลังจากนี้ถูกข้าม</p>
         </>
       );
+    case "publish":
+    case "onepost": {
+      const isAuto = step.type === "publish";
+      const available = isAuto ? CHANNELS.filter((channel) => channel.automation === "api") : CHANNELS;
+      const channel = channelById(cfg.channel) || available[0];
+      const fields = channel?.credentialFields || [];
+      const status = channelCredentials[channel?.id] || {};
+      const missing = fields.filter((field) => !status[field.key]);
+      return (
+        <>
+          <Field label="ช่องทางที่โพสต์" hint={channel?.why || ""}>
+            <select value={channel?.id || ""} onChange={(e) => set("channel", e.target.value)}>
+              {["blog", "dev", "social", "chat", "instant"].map((group) => {
+                const list = available.filter((entry) => entry.group === group);
+                if (!list.length) return null;
+                return (
+                  <optgroup key={group} label={list[0].groupLabel}>
+                    {list.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.name} · DA {entry.da} · {CHANNEL_AUTOMATION_LABEL[entry.automation]}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </Field>
+          {channel && (
+            <div className="awb-channel-facts">
+              <span className={`awb-badge ${channel.automation}`}>{CHANNEL_AUTOMATION_LABEL[channel.automation]}</span>
+              <span className="awb-badge">DA {channel.da} · PA {channel.pa}</span>
+              <span className="awb-badge">{CHANNEL_LINK_TYPE_LABEL[channel.linkType]}</span>
+              {channel.supportsCanonical && <span className="awb-badge ok">ใส่ canonical ได้</span>}
+              <a className="awb-link" href={safeExternalUrl(channel.signupUrl) || undefined} target="_blank" rel="noreferrer">{channel.signup}</a>
+            </div>
+          )}
+          <Field label="หัวข้อโพสต์" hint="ใช้ตัวแปรได้ — เว้นว่าง = ใช้บรรทัดแรกของเนื้อหา">
+            <input value={cfg.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="{{ชื่อโหนด}}" />
+          </Field>
+          <Field label="เนื้อหาโพสต์" hint={channel?.limits?.body ? `ลิมิตของช่องนี้ ~${channel.limits.body} ตัวอักษร` : ""}>
+            <textarea rows={5} {...tracked("body")} placeholder="{{input}}" />
+          </Field>
+          <VariableChips names={priorNames.filter((n) => n !== step.name)} onInsert={(v) => insertInto("body", v)} />
+          <div className="awb-field-row">
+            <Field label="canonical URL" hint="ลิงก์ต้นฉบับบนเว็บเรา (กันอันดับชนกัน)">
+              <input value={cfg.canonicalUrl ?? ""} onChange={(e) => set("canonicalUrl", e.target.value)} placeholder="https://www.your-site.com/blog/post" />
+            </Field>
+            <Field label="รูปประกอบ (URL)">
+              <input value={cfg.imageUrl ?? ""} onChange={(e) => set("imageUrl", e.target.value)} placeholder="https://…/cover.jpg" />
+            </Field>
+          </div>
+          <Field label="แท็ก/แฮชแท็ก (คั่นด้วยจุลภาค)">
+            <input
+              value={(cfg.tags || []).join(", ")}
+              onChange={(e) => set("tags", e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))}
+              placeholder="thai, handmade, oem"
+            />
+          </Field>
+
+          {isAuto ? (
+            <div className="awb-credential-box">
+              <header><KeyRound size={13} /> คีย์ของ {channel?.name}</header>
+              {fields.length === 0 && <p className="awb-req-hint">ช่องนี้ไม่ต้องใช้คีย์ — รันแล้วโพสต์ได้เลย</p>}
+              {fields.map((field) => (
+                <label key={field.key} className="awb-credential-row">
+                  <span>{field.label}{status[field.key] ? <em className="awb-set">• ตั้งไว้แล้ว</em> : null}</span>
+                  <input
+                    type="password"
+                    placeholder={field.hint || "วางค่าแล้วกดบันทึก"}
+                    onBlur={async (e) => {
+                      const input = e.target;
+                      const value = input.value.trim();
+                      if (!value) return;
+                      const ok = await onSetCredential?.(channel.id, { [field.key]: value });
+                      if (ok !== false) input.value = "";
+                    }}
+                  />
+                </label>
+              ))}
+              <div className="awb-post-actions">
+                <button
+                  className="awb-btn ghost sm"
+                  disabled={Boolean(sending)}
+                  onClick={() => onSendNow?.(step, { dryRun: true })}
+                  title="ตรวจคำขอที่จะส่ง โดยไม่โพสต์จริง"
+                >
+                  <ShieldCheck size={12} /> ทดสอบ (dry-run)
+                </button>
+                <button
+                  className="awb-btn primary sm"
+                  disabled={Boolean(sending) || missing.length > 0}
+                  onClick={() => onSendNow?.(step, { dryRun: false })}
+                  title={missing.length ? `ยังขาด: ${missing.map((field) => field.label).join(", ")}` : "โพสต์จริงทันที"}
+                >
+                  {sending ? <Loader2 size={12} className="awb-spin" /> : <Megaphone size={12} />} โพสต์เลยตอนนี้
+                </button>
+              </div>
+              <p className="awb-field-hint">คีย์เก็บไว้ในเครื่องนี้ที่ app/runtime-state/ai-workflow/publish-credentials.json (ไม่ขึ้น git และไม่ส่งออกในรายงาน)</p>
+            </div>
+          ) : (
+            <div className="awb-credential-box">
+              <header><Globe2 size={13} /> โพสต์แบบคลิกเดียว</header>
+              <p className="awb-req-hint">
+                ตอนรัน ระบบจะประกอบข้อความ + เปิดหน้าเขียน/หน้าแชร์ที่กรอกให้แล้ว — กด Publish บนเว็บนั้นอีกครั้งเดียว
+              </p>
+              <div className="awb-post-actions">
+                <button className="awb-btn primary sm" onClick={() => onPreviewChannel?.(step)}>
+                  <ExternalLink size={12} /> เปิดหน้าโพสต์เลย
+                </button>
+                <CopyButton text={renderDraftText(step, steps)} />
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
     case "output":
       return <p className="awb-req-hint">โหนดปลายทาง — แสดงผลลัพธ์ล่าสุดของเวิร์กโฟลว์ ไม่มีค่าที่ต้องตั้ง</p>;
     default:
       return null;
   }
+}
+
+// ── channel library (free, high-authority sites) ────────────────────────────
+
+const CHANNEL_FILTERS = [
+  { id: "all", label: "ทั้งหมด" },
+  { id: "api", label: "โพสต์อัตโนมัติได้" },
+  { id: "manual", label: "คลิกเดียว" },
+  { id: "easy", label: "สมัครง่าย" },
+];
+
+function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
+  const [openKeys, setOpenKeys] = useState(false);
+  const fields = channel.credentialFields || [];
+  const status = credentials[channel.id] || {};
+  const ready = channel.automation === "api" && fields.every((field) => status[field.key]);
+  return (
+    <article className={`awb-channel-card ${channel.automation}`}>
+      <header>
+        <b>{channel.name}</b>
+        <span className="awb-channel-da">DA {channel.da} <em>PA {channel.pa}</em></span>
+      </header>
+      <p className="awb-channel-why">{channel.why}</p>
+      <div className="awb-channel-facts">
+        <span className={`awb-badge ${channel.automation}`}>{CHANNEL_AUTOMATION_LABEL[channel.automation]}</span>
+        <span className="awb-badge">{CHANNEL_LINK_TYPE_LABEL[channel.linkType]}</span>
+        <span className="awb-badge">{channel.signup}</span>
+        {channel.automation === "api" && (
+          <span className={`awb-badge ${ready ? "ok" : "warn"}`}>{ready ? "พร้อมโพสต์อัตโนมัติ" : "ยังไม่ได้ใส่คีย์"}</span>
+        )}
+      </div>
+      <ol className="awb-channel-steps">
+        {channel.steps.map((step) => <li key={step}>{step}</li>)}
+      </ol>
+      <footer>
+        <a className="awb-btn ghost sm" href={safeExternalUrl(channel.signupUrl) || undefined} target="_blank" rel="noreferrer">
+          <ExternalLink size={12} /> สมัครฟรี
+        </a>
+        {channel.automation === "api" ? (
+          <button className="awb-btn ghost sm" onClick={() => onAddStep("publish", channel.id)}>
+            <Webhook size={12} /> เพิ่มโหนดโพสต์อัตโนมัติ
+          </button>
+        ) : null}
+        <button className="awb-btn ghost sm" onClick={() => onAddStep("onepost", channel.id)}>
+          <Megaphone size={12} /> เพิ่มโหนดคลิกเดียว
+        </button>
+        {fields.length > 0 && (
+          <button className="awb-btn ghost sm" onClick={() => setOpenKeys((open) => !open)}>
+            <KeyRound size={12} /> {openKeys ? "ซ่อนคีย์" : ready ? "แก้คีย์" : "ใส่คีย์"}
+          </button>
+        )}
+      </footer>
+      {openKeys && fields.length > 0 && (
+        <div className="awb-credential-box">
+          {fields.map((field) => (
+            <label key={field.key} className="awb-credential-row">
+              <span>{field.label}{status[field.key] ? <em className="awb-set">• ตั้งไว้แล้ว</em> : null}</span>
+              <input
+                type="password"
+                placeholder={field.hint || "วางค่าแล้วกด Enter"}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  const value = e.target.value.trim();
+                  if (!value) return;
+                  onSetCredential(channel.id, { [field.key]: value });
+                  e.target.value = "";
+                }}
+                onBlur={(e) => {
+                  const value = e.target.value.trim();
+                  if (!value) return;
+                  onSetCredential(channel.id, { [field.key]: value });
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          ))}
+          <p className="awb-field-hint">เก็บในเครื่องนี้เท่านั้น (app/runtime-state/ai-workflow/publish-credentials.json)</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ChannelsPanel({ credentials, onSetCredential, onAddStep, error }) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const list = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return CHANNELS.filter((channel) => {
+      if (filter === "api" && channel.automation !== "api") return false;
+      if (filter === "manual" && channel.automation === "api") return false;
+      if (filter === "easy" && !/ไม่ต้องสมัคร|1 คลิก|ใช้บัญชี|ฟรี/.test(channel.signup)) return false;
+      if (!needle) return true;
+      return [channel.name, channel.domain, channel.signup, channel.why]
+        .join(" ").toLowerCase().includes(needle);
+    }).sort((a, b) => b.da - a.da);
+  }, [query, filter]);
+  return (
+    <div className="awb-channels">
+      <p className="awb-channels-intro">
+        ช่องทางฟรีที่ใช้ได้จริง — เรียงตาม Domain Authority (ตัวเลขเป็นค่าประมาณจากเครื่องมือ SEO ไม่ใช่ปัจจัยจัดอันดับของ Google)
+        ตัวเลข DA/PA สูงไม่ได้แปลว่าลิงก์จะส่งพลัง เพราะหลายช่องเป็น <b>nofollow</b> · สิ่งที่ได้จริงคือหน้าเนื้อหาที่ค้นเจอ
+        คนอ่านจริง และ canonical ที่ชี้กลับเว็บเรา · ตรวจสถานะ API ล่าสุด {CHANNELS_REVIEWED_AT}
+      </p>
+      <div className="awb-channels-tools">
+        <span className="awb-search">
+          <Search size={12} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาช่องทาง…" aria-label="ค้นหาช่องทางโพสต์" />
+        </span>
+        <span className="awb-wf-filter">
+          <Filter size={12} />
+          {CHANNEL_FILTERS.map((entry) => (
+            <button key={entry.id} className={`awb-filter-chip ${filter === entry.id ? "active" : ""}`} onClick={() => setFilter(entry.id)}>
+              {entry.label}
+            </button>
+          ))}
+        </span>
+      </div>
+      {error && <p className="awb-error-banner">{error}</p>}
+      <div className="awb-channel-list">
+        {list.map((channel) => (
+          <ChannelCard
+            key={channel.id}
+            channel={channel}
+            credentials={credentials}
+            onSetCredential={onSetCredential}
+            onAddStep={onAddStep}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── run history row ─────────────────────────────────────────────────────────
@@ -394,6 +712,10 @@ export default function WorkflowBuilder() {
   const [runNodes, setRunNodes] = useState({});
   const [runStatus, setRunStatus] = useState(null); // null | { status, startedAt, durationMs }
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [channelCredentials, setChannelCredentials] = useState({});
+  const [channelError, setChannelError] = useState("");
+  const [sendingStep, setSendingStep] = useState(null);
+  const [publishResults, setPublishResults] = useState([]);
   const cancelRef = useRef(false);
   const running = runStatus?.status === "running";
 
@@ -408,6 +730,12 @@ export default function WorkflowBuilder() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // The server is the only place that knows which keys are set; the values
+  // themselves never reach this component.
+  useEffect(() => {
+    if (state?.channelCredentials) setChannelCredentials(state.channelCredentials);
+  }, [state?.channelCredentials]);
 
   // pick the first workflow once state arrives
   useEffect(() => {
@@ -581,7 +909,10 @@ export default function WorkflowBuilder() {
       // report to backend (strip heavy data URLs — keep small artifact metadata only)
       const reportNodes = result.nodes.map((n) => ({
         ...n,
-        artifact: n.artifact ? { kind: n.artifact.kind, url: n.artifact.url, file: n.artifact.file, seed: n.artifact.seed } : null,
+        artifact: n.artifact ? {
+          kind: n.artifact.kind, url: n.artifact.url, file: n.artifact.file, seed: n.artifact.seed,
+          channel: n.artifact.channel, channelName: n.artifact.channelName,
+        } : null,
       }));
       try {
         await postJson("/api/ai-workflow/runs", { workflowId: activeWfId, status: result.status, nodes: reportNodes, startedAt, finishedAt: new Date().toISOString(), durationMs: result.durationMs });
@@ -626,6 +957,91 @@ export default function WorkflowBuilder() {
       setError(err.message);
     }
   };
+
+  // Returns true only when the server accepted the value, so the inspector can
+  // keep what the user typed (instead of clearing it) after a failed save.
+  const setCredential = async (channelId, values) => {
+    setChannelError("");
+    try {
+      await postJson("/api/ai-workflow/publish/credentials", { channelId, values }, "PATCH");
+      const status = await api("/api/ai-workflow/publish/credentials");
+      setChannelCredentials(status.credentials || {});
+      return true;
+    } catch (err) {
+      setChannelError(err.message);
+      return false;
+    }
+  };
+
+  // Add a publishing step already pointed at the channel that was clicked in
+  // the library — "add a step, then hunt for the channel again" is the kind of
+  // friction that makes a builder feel useless.
+  const addChannelStep = (type, channelId) => {
+    const step = newStep(type);
+    step.config = { ...step.config, channel: channelId };
+    const channel = channelById(channelId);
+    if (channel) step.name = `${type === "publish" ? "โพสต์อัตโนมัติ" : "โพสต์"} ${channel.name}`.slice(0, 60);
+    mutateSteps((prev) => { prev.push(step); return prev; });
+    setSelectedStepId(step.id);
+    setRightTab("inspector");
+  };
+
+  // Resolve a step's templates from the latest run (so "post now" sends the real
+  // text, not "{{input}}"), falling back to empty strings before the first run.
+  const resolveDraftFor = (step) => {
+    const idx = steps.findIndex((s) => s.id === step.id);
+    const byName = {};
+    steps.slice(0, Math.max(0, idx)).forEach((s) => { byName[s.name] = runNodes[s.id]?.output || ""; });
+    const previous = idx > 0 ? steps[idx - 1] : null;
+    return publishDraft(step.config || {}, { input: previous ? (runNodes[previous.id]?.output || "") : "", byName });
+  };
+
+  const previewChannel = (step) => {
+    const draft = resolveDraftFor(step);
+    const channel = channelById(step.config?.channel);
+    if (!channel) return;
+    const composed = composeChannelPost(channel.id, draft);
+    // The open URL comes from the channel library, but it is still a URL we did
+    // not write in this file — parse it like any other external link.
+    const href = safeExternalUrl(composed.openUrl);
+    if (href) window.open(href, "_blank", "noopener");
+  };
+
+  const sendNow = async (step, { dryRun = false } = {}) => {
+    setSendingStep(step.id);
+    setChannelError("");
+    try {
+      const draft = resolveDraftFor(step);
+      const data = await postJson("/api/ai-workflow/publish/send", { channelId: step.config?.channel, draft, dryRun });
+      const result = data.result || {};
+      setPublishResults((prev) => [{ ...result, at: new Date().toISOString(), dryRun }, ...prev].slice(0, 10));
+      setRunNodes((prev) => ({
+        ...prev,
+        [step.id]: {
+          ...(prev[step.id] || { id: step.id, status: "idle", output: "", error: "", durationMs: null }),
+          status: result.ok ? "done" : "failed",
+          output: result.message || "",
+          error: result.ok ? "" : (result.message || "ส่งไม่สำเร็จ"),
+          artifact: result.ok ? {
+            kind: "post", channel: result.channel, channelName: result.channelName,
+            automation: "api", url: result.url || result.openUrl || "",
+            text: draft.body, published: !dryRun && Boolean(result.url || result.status), warnings: result.warnings || [],
+          } : null,
+        },
+      }));
+    } catch (err) {
+      setChannelError(err.message);
+    } finally {
+      setSendingStep(null);
+    }
+  };
+
+  const postNodes = useMemo(
+    () => steps
+      .filter((s) => runNodes[s.id]?.artifact?.kind === "post")
+      .map((s) => ({ step: s, artifact: runNodes[s.id].artifact })),
+    [steps, runNodes]
+  );
 
   const selectedStep = steps.find((s) => s.id === selectedStepId) || null;
   const wfRuns = useMemo(
@@ -692,6 +1108,7 @@ export default function WorkflowBuilder() {
           )}
           <span className="awb-chip"><b>{state.stats.workflowCount}</b> เวิร์กโฟลว์</span>
           <span className="awb-chip ok"><b>{state.stats.successCount}</b> รันสำเร็จ</span>
+          <span className="awb-chip"><b>{CHANNELS.length}</b> ช่องทางฟรี</span>
         </div>
       </header>
 
@@ -712,21 +1129,53 @@ export default function WorkflowBuilder() {
             <b>โหนด AI</b>
             <span className="awb-muted">คลิกเพื่อเพิ่มท้ายสาย</span>
           </header>
-          {Object.entries(STEP_TYPES).map(([type, meta]) => {
-            const Icon = meta.icon;
+          {STEP_GROUPS.map((group) => {
+            const entries = Object.entries(STEP_TYPES).filter(([, meta]) => meta.group === group.id);
+            if (!entries.length) return null;
             return (
-              <button key={type} className="awb-palette-item" onClick={() => addStepAt(type, steps.length)} disabled={running}>
-                <Icon size={15} />
-                <span><b>{meta.label}</b><small>{meta.desc}</small></span>
-              </button>
+              <section key={group.id} className="awb-palette-group">
+                <h4>{group.label}</h4>
+                {entries.map(([type, meta]) => {
+                  const Icon = meta.icon;
+                  return (
+                    <button key={type} className="awb-palette-item" onClick={() => addStepAt(type, steps.length)} disabled={running}>
+                      <Icon size={15} />
+                      <span><b>{meta.label}</b><small>{meta.desc}</small></span>
+                    </button>
+                  );
+                })}
+              </section>
             );
           })}
           <footer className="awb-palette-foot">
-            <span className="awb-muted">เชื่อมต่อกับ Chat / Create Image / TTS / Speech ที่รันอยู่ในเครื่อง</span>
+            <span className="awb-muted">เชื่อมต่อกับ Chat / Create Image / TTS / Speech ที่รันอยู่ในเครื่อง — และโพสต์ออกไปช่องฟรีได้จริง</span>
           </footer>
         </aside>
 
         <div className="awb-canvas">
+          {postNodes.length > 0 && (
+            <section className="awb-post-strip" aria-label="ช่องทางที่พร้อมโพสต์จากการรันล่าสุด">
+              <header>
+                <Megaphone size={14} />
+                <b>{postNodes.length} ช่องทางจากการรันนี้</b>
+                <span className="awb-muted">กดช่องทางเพื่อเปิดหน้าโพสต์ที่กรอกข้อความไว้แล้ว (ช่องที่โพสต์อัตโนมัติแล้วมีลิงก์โพสต์จริง)</span>
+              </header>
+              <div className="awb-post-strip-list">
+                {postNodes.map(({ step, artifact }) => (
+                  <span key={step.id} className={`awb-post-chip ${artifact.published ? "published" : ""}`}>
+                    <b>{artifact.channelName}</b>
+                    {Number.isFinite(artifact.da) && <em>DA {artifact.da}</em>}
+                    {safeExternalUrl(artifact.url) && (
+                      <a href={safeExternalUrl(artifact.url)} target="_blank" rel="noreferrer" title={artifact.published ? "เปิดโพสต์ที่เผยแพร่แล้ว" : "เปิดหน้าเขียนที่กรอกข้อความไว้"}>
+                        <ExternalLink size={12} />
+                      </a>
+                    )}
+                    <CopyButton text={artifact.text} label="" />
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
           {steps.length === 0 ? (
             <div className="awb-canvas-empty">
               <WorkflowIcon size={30} />
@@ -771,6 +1220,9 @@ export default function WorkflowBuilder() {
             <button className={rightTab === "history" ? "active" : ""} onClick={() => setRightTab("history")}>
               ประวัติการรัน {wfRuns.length ? `(${wfRuns.length})` : ""}
             </button>
+            <button className={rightTab === "channels" ? "active" : ""} onClick={() => setRightTab("channels")}>
+              ช่องทางฟรี
+            </button>
           </nav>
           {rightTab === "inspector" && (
             <div className="awb-inspector">
@@ -779,12 +1231,29 @@ export default function WorkflowBuilder() {
                   <Field label="ชื่อโหนด (ใช้อ้างเป็นตัวแปรได้)">
                     <input value={selectedStep.name} onChange={(e) => updateStep({ ...selectedStep, name: e.target.value })} disabled={running} />
                   </Field>
-                  <Inspector step={selectedStep} steps={steps} onChange={updateStep} />
+                  <Inspector
+                    step={selectedStep}
+                    steps={steps}
+                    onChange={updateStep}
+                    channelCredentials={channelCredentials}
+                    onSetCredential={setCredential}
+                    onPreviewChannel={previewChannel}
+                    sending={sendingStep === selectedStep.id}
+                    onSendNow={sendNow}
+                  />
                 </>
               ) : (
                 <p className="awb-muted awb-inspector-empty">คลิกโหนดบน canvas เพื่อแก้การตั้งค่า — ใช้ตัวแปร {"{{input}}"} หมายถึงผลของโหนดก่อนหน้า และ {"{{ชื่อโหนด}}"} ดึงผลของโหนดที่ระบุ</p>
               )}
             </div>
+          )}
+          {rightTab === "channels" && (
+            <ChannelsPanel
+              credentials={channelCredentials}
+              onSetCredential={setCredential}
+              onAddStep={addChannelStep}
+              error={channelError}
+            />
           )}
           {rightTab === "history" && (
             <div className="awb-history">

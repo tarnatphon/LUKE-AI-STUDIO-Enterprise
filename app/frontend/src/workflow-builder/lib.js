@@ -4,20 +4,34 @@
 // the backend runtime for run history (app/runtime-state/ai-workflow/).
 
 import {
-  Type, MessageSquare, Image as ImageIcon, Volume2, Mic, Wand2, GitBranch, Flag,
+  Type, MessageSquare, Image as ImageIcon, Volume2, Mic, Wand2, GitBranch, Flag, Megaphone, Webhook,
 } from "lucide-react";
 import { chatWithLlm, generateImage, speakTts, transcribeSpeech } from "../services/api";
+import { CHANNELS, channelById, composeChannelPost } from "./channels.js";
+
+// The picker groups the palette by what a step does, not by which engine it
+// happens to call: build content → shape it → publish it.
+export const STEP_GROUPS = [
+  { id: "create", label: "สร้างคอนเทนต์" },
+  { id: "shape", label: "จัดรูปแบบ / เงื่อนไข" },
+  { id: "publish", label: "เผยแพร่ (ฟรี)" },
+];
 
 export const STEP_TYPES = {
-  input: { label: "ข้อความตั้งต้น", short: "Input", icon: Type, desc: "จุดเริ่มของเวิร์กโฟลว์ — หัวข้อ โจทย์ หรือข้อมูลดิบ", hasOutput: true },
-  chat: { label: "AI Chat (LLM)", short: "Chat", icon: MessageSquare, desc: "เขียน แปล สรุป หรือร่างไอเดียด้วยโมเดลแชทในเครื่อง", hasOutput: true },
-  image: { label: "สร้างภาพ", short: "Image", icon: ImageIcon, desc: "สร้างภาพจากข้อความด้วย Stable Diffusion", hasOutput: true },
-  tts: { label: "อ่านออกเสียง (TTS)", short: "TTS", icon: Volume2, desc: "แปลงข้อความเป็นเสียงพูดด้วย Kokoro", hasOutput: true },
-  stt: { label: "เสียง → ข้อความ (STT)", short: "STT", icon: Mic, desc: "ถอดเสียงจากผลลัพธ์ TTS ก่อนหน้าเป็นข้อความ (Whisper)", hasOutput: true },
-  transform: { label: "จัดข้อความ", short: "Transform", icon: Wand2, desc: "ใส่แม่แบบ ค้นหา/แทนที่ หรือตัดให้สั้น", hasOutput: true },
-  condition: { label: "เงื่อนไข", short: "If", icon: GitBranch, desc: "เช็คข้อความ — ไม่ผ่านจะหยุดเวิร์กโฟลว์", hasOutput: false },
-  output: { label: "ผลลัพธ์", short: "Output", icon: Flag, desc: "ปลายทาง — แสดงและเก็บผลรวมของเวิร์กโฟลว์", hasOutput: true },
+  input: { label: "ข้อความตั้งต้น", short: "Input", icon: Type, group: "create", desc: "จุดเริ่มของเวิร์กโฟลว์ — หัวข้อ โจทย์ หรือข้อมูลดิบ", hasOutput: true },
+  chat: { label: "AI Chat (LLM)", short: "Chat", icon: MessageSquare, group: "create", desc: "เขียน แปล สรุป หรือร่างไอเดียด้วยโมเดลแชทในเครื่อง", hasOutput: true },
+  image: { label: "สร้างภาพ", short: "Image", icon: ImageIcon, group: "create", desc: "สร้างภาพจากข้อความด้วย Stable Diffusion", hasOutput: true },
+  tts: { label: "อ่านออกเสียง (TTS)", short: "TTS", icon: Volume2, group: "create", desc: "แปลงข้อความเป็นเสียงพูดด้วย Kokoro", hasOutput: true },
+  stt: { label: "เสียง → ข้อความ (STT)", short: "STT", icon: Mic, group: "create", desc: "ถอดเสียงจากผลลัพธ์ TTS ก่อนหน้าเป็นข้อความ (Whisper)", hasOutput: true },
+  transform: { label: "จัดข้อความ", short: "Transform", icon: Wand2, group: "shape", desc: "ใส่แม่แบบ ค้นหา/แทนที่ หรือตัดให้สั้น", hasOutput: true },
+  condition: { label: "เงื่อนไข", short: "If", icon: GitBranch, group: "shape", desc: "เช็คข้อความ — ไม่ผ่านจะหยุดเวิร์กโฟลว์", hasOutput: false },
+  publish: { label: "โพสต์อัตโนมัติ", short: "Auto post", icon: Webhook, group: "publish", desc: "ยิงโพสต์จริงผ่าน API ของช่องที่รองรับ (DEV, Telegraph, Telegram, Discord, Mastodon, WordPress)", hasOutput: true },
+  onepost: { label: "โพสต์คลิกเดียว", short: "One click", icon: Megaphone, group: "publish", desc: "เตรียมโพสต์ให้ช่องฟรี High DA — เปิดหน้าเขียนพร้อมข้อความ กรอกแค่กด Publish", hasOutput: true },
+  output: { label: "ผลลัพธ์", short: "Output", icon: Flag, group: "shape", desc: "ปลายทาง — แสดงและเก็บผลรวมของเวิร์กโฟลว์", hasOutput: true },
 };
+
+export const PUBLISHABLE_CHANNELS = CHANNELS;
+export const AUTOMATED_CHANNELS = CHANNELS.filter((channel) => channel.automation === "api");
 
 export function newStep(type) {
   const base = { id: `s-${Math.random().toString(36).slice(2, 10)}`, type, name: STEP_TYPES[type]?.label || type };
@@ -29,6 +43,16 @@ export function newStep(type) {
     case "stt": return { ...base, name: "ถอดเสียง", config: { fromStep: "", language: "" } };
     case "transform": return { ...base, name: "จัดข้อความ", config: { template: "{{input}}", find: "", replace: "", truncate: 0 } };
     case "condition": return { ...base, name: "เงื่อนไข", config: { mode: "contains", value: "" } };
+    case "publish": return {
+      ...base,
+      name: "โพสต์อัตโนมัติ",
+      config: { channel: "telegram", title: "", body: "{{input}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true },
+    };
+    case "onepost": return {
+      ...base,
+      name: "โพสต์คลิกเดียว",
+      config: { channel: "devto", title: "{{input}}", body: "{{input}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true },
+    };
     case "output": return { ...base, name: "ผลลัพธ์", config: {} };
     default: return { ...base, config: {} };
   }
@@ -50,6 +74,28 @@ export function templateVariables(template) {
   const out = new Set();
   String(template ?? "").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_m, rawKey) => { out.add(rawKey.trim()); });
   return [...out];
+}
+
+// ── Publishing draft ────────────────────────────────────────────────────────
+// A publish/onepost step reads the same three fields; the title falls back to
+// the first line of the body so a workflow with only {{input}} still produces a
+// usable post instead of an empty title.
+export function publishDraft(cfg, ctx) {
+  const body = resolveTemplate(cfg.body || "{{input}}", ctx).trim();
+  const titleTemplate = String(cfg.title ?? "").trim();
+  const title = (titleTemplate ? resolveTemplate(titleTemplate, ctx) : "").trim()
+    || body.split("\n").map((line) => line.trim()).find(Boolean)
+    || "โพสต์ใหม่";
+  const canonicalUrl = resolveTemplate(cfg.canonicalUrl || "", ctx).trim();
+  const imageUrl = resolveTemplate(cfg.imageUrl || "", ctx).trim();
+  return {
+    title: title.replace(/^#+\s*/, "").slice(0, 200),
+    body: body.replace(/^#+\s+.*\n+/, ""), // drop a leading markdown title line
+    tags: Array.isArray(cfg.tags) ? cfg.tags : [],
+    canonicalUrl,
+    imageUrl,
+    siteUrl: canonicalUrl,
+  };
 }
 
 // ── Run engine ──────────────────────────────────────────────────────────────
@@ -149,6 +195,63 @@ export async function execStep(step, ctx) {
         throw err;
       }
       return { output: `${summary} — ผ่าน` };
+    }
+    case "onepost": {
+      // No network and no secret: the step composes the post (title, text,
+      // prefilled editor URL) and hands it to the run so one click can finish it.
+      const draft = publishDraft(cfg, ctx);
+      const channel = channelById(cfg.channel);
+      if (!channel) throw new Error(`ไม่รู้จักช่องทาง "${cfg.channel}"`);
+      const composed = composeChannelPost(cfg.channel, draft);
+      const summary = composed.openUrl
+        ? `${channel.name}: พร้อมโพสต์ — ${composed.openUrl}`
+        : `${channel.name}: คัดลอกข้อความแล้วโพสต์ในแอป`;
+      return {
+        output: summary,
+        artifact: {
+          kind: "post",
+          channel: composed.channel,
+          channelName: composed.channelName,
+          automation: composed.automation,
+          url: composed.openUrl,
+          text: composed.text,
+          warnings: composed.warnings,
+          da: composed.da,
+          pa: composed.pa,
+        },
+      };
+    }
+    case "publish": {
+      // Real publish through the local relay: the browser never sends the key,
+      // and only channels in the shared registry can be called.
+      const channel = channelById(cfg.channel);
+      if (!channel) throw new Error(`ไม่รู้จักช่องทาง "${cfg.channel}"`);
+      if (channel.automation !== "api") {
+        throw new Error(`${channel.name} ไม่มี API ให้โพสต์อัตโนมัติ — ใช้โหนด “โพสต์คลิกเดียว” แทน`);
+      }
+      const draft = publishDraft(cfg, ctx);
+      const data = await postJson("/api/ai-workflow/publish/send", { channelId: cfg.channel, draft });
+      const result = data.result || {};
+      if (!result.ok) {
+        const error = new Error(result.message || `${channel.name} ไม่ได้โพสต์`);
+        error.halted = Boolean(result.manual);
+        throw error;
+      }
+      return {
+        output: result.message || `${channel.name}: ส่งสำเร็จ`,
+        artifact: {
+          kind: "post",
+          channel: cfg.channel,
+          channelName: result.channelName || channel.name,
+          automation: "api",
+          url: result.url || "",
+          text: draft.body,
+          published: true,
+          warnings: [],
+          da: channel.da,
+          pa: channel.pa,
+        },
+      };
     }
     case "output": {
       return { output: String(ctx.input ?? "") };

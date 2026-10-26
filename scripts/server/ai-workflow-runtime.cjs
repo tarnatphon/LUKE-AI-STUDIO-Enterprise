@@ -7,6 +7,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const channels = require("./social-publish-channels.cjs");
+const publishRelay = require("./ai-workflow-publish.cjs");
 
 const MAX_WORKFLOWS = 60;
 const MAX_RUNS = 120;
@@ -14,7 +16,12 @@ const MAX_STEPS_PER_WORKFLOW = 30;
 const MAX_TEXT_FIELD = 20000;
 const MAX_OUTPUT_SNIPPET = 8000;
 
-const STEP_TYPES = ["input", "chat", "image", "tts", "stt", "transform", "condition", "output"];
+const STEP_TYPES = [
+  "input", "chat", "image", "tts", "stt", "transform", "condition", "output",
+  // publishing: `publish` really posts through the local relay (API channels
+  // only), `onepost` composes the same post for a channel that needs one click.
+  "publish", "onepost",
+];
 
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
@@ -79,6 +86,26 @@ function sanitizeStep(raw, index) {
       config.mode = ["contains", "not_contains", "regex", "min_length", "max_length"].includes(config.mode) ? config.mode : "contains";
       config.value = cleanText(config.value, { max: 2000 });
       break;
+    case "publish":
+    case "onepost": {
+      const channelId = cleanText(config.channel, { max: 40, allowEmpty: false });
+      const known = channels.listChannels().some((channel) => channel.id === channelId);
+      if (!known) throw new Error(`โหนดที่ ${index + 1}: ไม่รู้จักช่องทางโพสต์ "${channelId}"`);
+      if (type === "publish" && channels.getChannel(channelId).automation !== "api") {
+        throw new Error(`โหนดที่ ${index + 1}: ${channels.getChannel(channelId).name} โพสต์อัตโนมัติไม่ได้ — ใช้โหนด “โพสต์คลิกเดียว” แทน`);
+      }
+      config.channel = channelId;
+      config.title = cleanText(config.title, { max: 200 });
+      config.body = cleanText(config.body, { max: 20000 });
+      config.canonicalUrl = cleanText(config.canonicalUrl, { max: 500 });
+      config.imageUrl = cleanText(config.imageUrl, { max: 500 });
+      config.tags = (Array.isArray(config.tags) ? config.tags : [])
+        .map((tag) => cleanText(tag, { max: 40 }).trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      config.appendCanonical = config.appendCanonical !== false;
+      break;
+    }
     case "output":
       break;
     default:
@@ -111,6 +138,11 @@ function sanitizeRunNode(node) {
         url: typeof node.artifact.url === "string" ? node.artifact.url.slice(0, 500) : undefined,
         file: typeof node.artifact.file === "string" ? node.artifact.file.slice(0, 300) : undefined,
         seed: Number.isFinite(Number(node.artifact.seed)) ? Number(node.artifact.seed) : undefined,
+        // A published post keeps its channel and the link that proves it. The
+        // body itself is not copied into the state file — it is as long as the
+        // post and the workflow already holds the template that made it.
+        channel: typeof node.artifact.channel === "string" ? node.artifact.channel.slice(0, 40) : undefined,
+        channelName: typeof node.artifact.channelName === "string" ? node.artifact.channelName.slice(0, 60) : undefined,
       }
     : null;
   return {
@@ -153,6 +185,53 @@ function seedWorkflows() {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      // The "write once, publish to free high-authority sites" recipe. Two nodes
+      // really publish (dev.to via API, Telegraph with no account at all); the
+      // other two need one click, with the text already composed.
+      id: newId("wf"),
+      name: "โพสต์ฟรีหลายเว็บ (High DA) — เขียนครั้งเดียว",
+      steps: [
+        { id: newId("s"), type: "input", name: "หัวข้อ/สินค้า", config: { text: "กระเป๋าผ้า OEM รุ่น Bangkok Noon\nจุดขาย: กันน้ำ ทนทาน พิมพ์ลายไทยร่วมสมัย สั่งขั้นต่ำ 100 ใบ" } },
+        {
+          id: newId("s"), type: "chat", name: "เขียนบทความ", config: {
+            system: "คุณคือนักเขียนคอนเทนต์ SEO ภาษาไทย เขียนจริง ไม่ใส่คำโฆษณาเกินจริง ไม่แต่งราคาที่ไม่มีข้อมูล",
+            prompt: "เขียนบทความสั้น 400-600 คำ จากข้อมูลนี้ ขึ้นต้นด้วยบรรทัดชื่อเรื่องที่ขึ้นต้นด้วย # แล้วเว้นบรรทัด:\n{{input}}",
+            temperature: 0.7, maxTokens: 1400,
+          },
+        },
+        { id: newId("s"), type: "transform", name: "ตัดเอาเนื้อหา", config: { template: "{{เขียนบทความ}}", find: "^#.*\n+", replace: "", truncate: 8000 } },
+        { id: newId("s"), type: "publish", name: "DEV Community", config: { channel: "devto", title: "{{หัวข้อ/สินค้า}}", body: "{{ตัดเอาเนื้อหา}}", tags: ["thai", "smallbusiness", "ecommerce"], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "publish", name: "อัตโนมัติ: Telegraph (ไม่ต้องสมัคร)", config: { channel: "telegraph", title: "{{หัวข้อ/สินค้า}}", body: "{{ตัดเอาเนื้อหา}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "onepost", name: "คลิกเดียว: Medium (นำเข้า)", config: { channel: "medium", title: "{{หัวข้อ/สินค้า}}", body: "{{ตัดเอาเนื้อหา}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "onepost", name: "คลิกเดียว: LinkedIn", config: { channel: "linkedin", title: "{{หัวข้อ/สินค้า}}", body: "{{ตัดเอาเนื้อหา}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "output", name: "ผลลัพธ์", config: {} },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      // Automation-only recipe: the two chat channels really post, because a bot
+      // token or webhook URL needs no developer app and no review.
+      id: newId("wf"),
+      name: "ประกาศโปรโมชัน → Telegram + Discord อัตโนมัติ",
+      steps: [
+        { id: newId("s"), type: "input", name: "โปรโมชัน", config: { text: "ลด 10% กระเป๋าผ้า OEM เมื่อสั่ง 300 ใบขึ้นไป ถึงสิ้นเดือนนี้เท่านั้น" } },
+        {
+          id: newId("s"), type: "chat", name: "เขียนประกาศ", config: {
+            system: "คุณคือแอดมินเพจ เขียนประกาศสั้น กระชับ มีอีโมจิ ไม่เกิน 400 ตัวอักษร",
+            prompt: "เขียนประกาศจากข้อมูลนี้:\n{{input}}",
+            temperature: 0.6, maxTokens: 400,
+          },
+        },
+        { id: newId("s"), type: "condition", name: "เช็คความยาว", config: { mode: "max_length", value: "900" } },
+        { id: newId("s"), type: "publish", name: "Telegram", config: { channel: "telegram", title: "ประกาศโปรโมชัน", body: "{{เขียนประกาศ}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "publish", name: "Discord", config: { channel: "discord", title: "ประกาศโปรโมชัน", body: "{{เขียนประกาศ}}", tags: [], canonicalUrl: "", imageUrl: "", appendCanonical: true } },
+        { id: newId("s"), type: "output", name: "ผลลัพธ์", config: {} },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
 }
 
@@ -163,6 +242,9 @@ class AiWorkflowRuntime {
     this.root = root;
     this.stateDir = path.join(root, "app", "runtime-state", "ai-workflow");
     this.filePath = path.join(this.stateDir, "state.json");
+    // Publishing keys live in their own file and never travel in a workflow or
+    // a run record: /state does not expose them, only "which fields are set".
+    this.credentialsPath = path.join(this.stateDir, "publish-credentials.json");
     this._read(); // load or seed eagerly
   }
 
@@ -189,6 +271,128 @@ class AiWorkflowRuntime {
     this.state = state;
   }
 
+  _readCredentials() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.credentialsPath, "utf8"));
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  _writeCredentials(map) {
+    fs.mkdirSync(this.stateDir, { recursive: true });
+    const tmp = `${this.credentialsPath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(map, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, this.credentialsPath);
+    try { fs.chmodSync(this.credentialsPath, 0o600); } catch { /* best effort on non-POSIX */ }
+  }
+
+  // What the UI may see: field names that exist, never their values.
+  credentialStatus() {
+    const stored = this._readCredentials();
+    const status = {};
+    for (const channel of channels.listChannels()) {
+      const fields = channels.credentialFields(channel);
+      if (!fields.length) continue;
+      const values = stored[channel.id] || {};
+      status[channel.id] = Object.fromEntries(fields.map((field) => [field.key, Boolean(values[field.key])]));
+    }
+    return status;
+  }
+
+  updateCredentials(channelId, values) {
+    const channel = channels.getChannel(channelId);
+    if (channel.automation !== "api") throw new Error(`${channel.name} ไม่ได้ใช้คีย์ (โพสต์ด้วยมือ)`);
+    const fields = channels.credentialFields(channel);
+    if (!fields.length) throw new Error(`${channel.name} ไม่ต้องใช้คีย์`);
+    if (!values || typeof values !== "object") throw new Error("ต้องส่งค่าเป็น object");
+    const stored = this._readCredentials();
+    const current = { ...(stored[channel.id] || {}) };
+    for (const field of fields) {
+      if (!Object.prototype.hasOwnProperty.call(values, field.key)) continue;
+      const raw = String(values[field.key] ?? "").trim();
+      if (!raw) delete current[field.key];
+      else current[field.key] = raw.slice(0, 2000);
+    }
+    stored[channel.id] = current;
+    this._writeCredentials(stored);
+    return { channelId, fields: Object.fromEntries(fields.map((field) => [field.key, Boolean(current[field.key])])) };
+  }
+
+  credentialsFor(channelId) {
+    const stored = this._readCredentials();
+    return { ...(stored[channelId] || {}) };
+  }
+
+  /** Compose the one-click post for a channel (no network, no secrets). */
+  previewPublish({ channelId, draft }) {
+    return channels.composePost(channelId, draft || {});
+  }
+
+  /**
+   * Build and (unless dry-run) execute the request(s) a channel needs.
+   * A dry run returns the plan with every stored secret replaced by [set], so
+   * it can be shown in the UI and pasted into a bug report safely.
+   */
+  async sendPublish({ channelId, draft, dryRun = false }) {
+    const channel = channels.getChannel(channelId);
+    const credentials = this.credentialsFor(channelId);
+    let plan;
+    try {
+      plan = channels.buildPlan(channelId, { draft: draft || {}, credentials });
+    } catch (error) {
+      if (error.unsupported) {
+        const fallback = channels.composePost(channelId, draft || {});
+        return {
+          channel: channelId, channelName: channel.name, ok: false, manual: true,
+          message: error.message,
+          openUrl: fallback.openUrl,
+          text: fallback.text,
+          warnings: fallback.warnings,
+        };
+      }
+      throw error;
+    }
+    const mask = (value) => {
+      let out = String(value);
+      for (const secret of Object.values(credentials)) {
+        if (secret && secret.length >= 4) out = out.split(secret).join("[set]");
+      }
+      return out;
+    };
+    const redacted = plan.map((request) => ({
+      channel: request.channel,
+      method: request.method || "POST",
+      url: mask(request.url),
+      headers: Object.fromEntries(Object.entries(request.headers || {}).map(([key, value]) => [key, mask(value)])),
+      body: mask(request.body),
+    }));
+    if (dryRun) {
+      return {
+        channel: channelId, channelName: channel.name, dryRun: true, ok: true,
+        requests: redacted,
+        message: `พร้อมส่ง ${redacted.length} คำขอ — ยังไม่ได้ส่งจริง (dry-run)`,
+      };
+    }
+    const { results } = await publishRelay.runPlan(plan, { variables: {} });
+    const last = results[results.length - 1] || {};
+    const url = channels.publishedUrl(channelId, last.json) || "";
+    return {
+      channel: channelId,
+      channelName: channel.name,
+      ok: true,
+      url,
+      status: last.status,
+      steps: results.map((entry, index) => ({
+        url: redacted[index]?.url || entry.url,
+        status: entry.status,
+        ok: entry.ok,
+      })),
+      message: url ? `โพสต์แล้ว: ${url}` : `ส่งสำเร็จ (HTTP ${last.status})`,
+    };
+  }
+
   getState() {
     const state = this._read();
     return {
@@ -200,6 +404,10 @@ class AiWorkflowRuntime {
         successCount: state.runs.filter((r) => r.status === "success").length,
         failedCount: state.runs.filter((r) => r.status === "failed").length,
       },
+      channels: channels.listChannels(),
+      channelGroups: channels.channelGroups(),
+      channelCredentials: this.credentialStatus(),
+      channelsReviewedAt: channels.NOTES_REVIEWED,
       serverNow: new Date().toISOString(),
     };
   }
@@ -342,6 +550,34 @@ class AiWorkflowRuntime {
       if (pathname === "/api/ai-workflow/runs" && method === "POST") {
         const body = await readBody();
         return json(res, 201, { ok: true, run: this.recordRun(body) });
+      }
+
+      // ── publishing channels ──
+      if (pathname === "/api/ai-workflow/channels" && method === "GET") {
+        return json(res, 200, {
+          ok: true,
+          groups: channels.channelGroups(),
+          channels: channels.listChannels(),
+          credentials: this.credentialStatus(),
+          reviewedAt: channels.NOTES_REVIEWED,
+        });
+      }
+      if (pathname === "/api/ai-workflow/publish/credentials" && method === "GET") {
+        return json(res, 200, { ok: true, credentials: this.credentialStatus() });
+      }
+      if (pathname === "/api/ai-workflow/publish/credentials" && (method === "PATCH" || method === "POST")) {
+        const body = await readBody();
+        const channelId = cleanText(body.channelId, { max: 40, allowEmpty: false });
+        return json(res, 200, { ok: true, ...this.updateCredentials(channelId, body.values || body.credentials || {}) });
+      }
+      if (pathname === "/api/ai-workflow/publish/preview" && method === "POST") {
+        const body = await readBody();
+        return json(res, 200, { ok: true, preview: this.previewPublish(body) });
+      }
+      if (pathname === "/api/ai-workflow/publish/send" && method === "POST") {
+        const body = await readBody();
+        const result = await this.sendPublish(body);
+        return json(res, 200, { ok: true, result });
       }
 
       const runMatch = pathname.match(/^\/api\/ai-workflow\/runs\/([^/]+)$/);
