@@ -62,9 +62,20 @@ async function main() {
     const ids = list.map((channel) => channel.id);
     assert.equal(new Set(ids).size, ids.length, "channel ids must be unique");
     for (const channel of list) {
-      assert.ok(Number.isInteger(channel.da) && channel.da >= 60, `${channel.id} has a DA estimate`);
-      assert.ok(Number.isInteger(channel.pa) && channel.pa >= 40, `${channel.id} has a PA estimate`);
-      assert.equal(channel.authority, "approx", `${channel.id} states its numbers are estimates`);
+      assert.ok(Number.isInteger(channel.da), `${channel.id} has a DA estimate`);
+      assert.ok(Number.isInteger(channel.pa), `${channel.id} has a PA estimate`);
+      if (channel.authority === "self") {
+        // A forum or WordPress site the user hosts has no third-party authority
+        // to quote, and pretending otherwise would be a lie in the UI.
+        assert.equal(channel.da, 0, `${channel.id} does not invent a DA for a self-hosted site`);
+        assert.equal(channel.pa, 0, `${channel.id} does not invent a PA for a self-hosted site`);
+        assert.equal(channel.localAllowed, true, `${channel.id} may point at a LAN address`);
+      } else {
+        assert.ok(channel.da >= 60, `${channel.id} has a DA estimate`);
+        assert.ok(channel.pa >= 40, `${channel.id} has a PA estimate`);
+        assert.equal(channel.authority, "approx", `${channel.id} states its numbers are estimates`);
+        assert.equal(channel.localAllowed, false, `${channel.id} is a public site, not a LAN target`);
+      }
       assert.ok(["dofollow", "nofollow", "mixed", "ugc"].includes(channel.linkType), `${channel.id} link type`);
       assert.ok(["api", "manual", "import"].includes(channel.automation), `${channel.id} automation`);
       assert.match(channel.signupUrl, /^https:\/\//, `${channel.id} signup link`);
@@ -180,6 +191,123 @@ async function main() {
     assert.equal(registry.normalizeDraft({}).title, "โพสต์ใหม่");
   });
 
+  test("Bluesky and the self-hosted forum family are first-class channels", () => {
+    const byId = Object.fromEntries(registry.listChannels().map((channel) => [channel.id, channel]));
+
+    // Bluesky: free, no app review, 300 graphemes, and a two-step plan.
+    assert.equal(byId.bsky.automation, "api");
+    assert.equal(byId.bsky.limits.body, 300);
+    assert.ok(byId.bsky.steps.some((step) => /App Password/.test(step)));
+    const bsky = registry.buildPlan("bsky", {
+      draft: DRAFT,
+      credentials: { handle: "acme.bsky.social", appPassword: "abcd-efgh-ijkl-mnop" },
+    });
+    assert.equal(bsky.length, 2, "createSession then createRecord");
+    assert.match(bsky[0].url, /com\.atproto\.server\.createSession$/);
+    assert.match(bsky[1].url, /com\.atproto\.repo\.createRecord$/);
+    assert.equal(JSON.parse(bsky[0].body).identifier, "acme.bsky.social");
+    assert.match(bsky[1].headers.Authorization, /^Bearer \{\{accessJwt\}\}$/);
+    const record = JSON.parse(bsky[1].body);
+    assert.equal(record.collection, "app.bsky.feed.post");
+    assert.ok(record.record.text.length <= 300, "the text is cut to the 300-grapheme limit");
+    assert.equal(record.record.$type, "app.bsky.feed.post");
+    // A long Thai post must be cut by grapheme, never mid-character.
+    const long = registry.buildPlan("bsky", {
+      draft: { title: "ก".repeat(400), body: "ข".repeat(400) },
+      credentials: { handle: "a.bsky.social", appPassword: "x" },
+    });
+    const text = JSON.parse(long[1].body).record.text;
+    assert.equal([...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(text)].length, 300);
+    // A record uri is at://…, which is not a link a reader can click; it has to
+    // be turned into a bsky.app URL, and the DID works when no handle is stored.
+    assert.equal(registry.helpers.bskyPostUrl({
+      uri: "at://did:plc:abc/app.bsky.feed.post/3kxyz",
+    }), "https://bsky.app/profile/did:plc:abc/post/3kxyz");
+    const bskyUrl = registry.publishedUrl("bsky", { uri: "at://did:plc:abc/app.bsky.feed.post/3kxyz" }, { handle: "acme.bsky.social" });
+    assert.equal(bskyUrl, "https://bsky.app/profile/acme.bsky.social/post/3kxyz");
+
+    // The forum family: every one of them is a real POST to a URL the user owns.
+    const forums = ["discourse", "xenforo", "nodebb", "flarum", "phpbb"];
+    for (const id of forums) {
+      const channel = byId[id];
+      assert.equal(channel.automation, "api", `${id} really posts`);
+      assert.equal(channel.group, "community");
+      assert.equal(channel.authority, "self");
+      assert.equal(channel.localAllowed, true);
+      assert.ok(channel.rate.perDay > 0 && channel.rate.minIntervalSeconds >= 60, `${id} has a written limit`);
+      assert.ok(channel.credentialFields.some((field) => field.key === "baseUrl"), `${id} asks for the forum URL`);
+      assert.ok(channel.credentialFields.some((field) => field.type === "toggle"), `${id} offers the LAN opt-in`);
+      // A missing base URL is an explanation, not a stack trace.
+      assert.throws(() => registry.buildPlan(id, { draft: DRAFT, credentials: { apiKey: "k", token: "t" } }), /URL/);
+    }
+
+    const discourse = registry.buildPlan("discourse", {
+      draft: DRAFT,
+      credentials: { baseUrl: "https://forum.acme.co.th/", apiKey: "k", apiUsername: "somchai", categoryId: "5" },
+    });
+    assert.equal(discourse[0].url, "https://forum.acme.co.th/posts.json", "trailing slash is normalised");
+    assert.equal(discourse[0].headers["Api-Key"], "k");
+    assert.equal(discourse[0].headers["Api-Username"], "somchai");
+    assert.match(discourse[0].body, /"raw"/);
+
+    const xenforo = registry.buildPlan("xenforo", {
+      draft: DRAFT, credentials: { baseUrl: "https://xf.acme.co.th", apiKey: "k", nodeId: "12" },
+    });
+    assert.match(xenforo[0].url, /\/api\/threads\/$/);
+    assert.equal(xenforo[0].headers["XF-Api-Key"], "k");
+    // XenForo only reads form-encoded bodies.
+    assert.match(xenforo[0].headers["Content-Type"], /x-www-form-urlencoded/);
+    assert.match(xenforo[0].body, /node_id=12/);
+
+    const nodebb = registry.buildPlan("nodebb", {
+      draft: DRAFT, credentials: { baseUrl: "https://nb.acme.co.th", token: "t", cid: "3" },
+    });
+    assert.match(nodebb[0].url, /\/api\/v3\/topics$/);
+    assert.match(nodebb[0].headers.Authorization, /^Bearer t$/);
+
+    const flarum = registry.buildPlan("flarum", {
+      draft: DRAFT, credentials: { baseUrl: "https://fl.acme.co.th", token: "t" },
+    });
+    assert.match(flarum[0].url, /\/api\/discussions$/);
+    assert.match(flarum[0].headers.Authorization, /^Token t$/);
+    assert.match(flarum[0].body, /"type": ?"discussions"/);
+
+    const phpbb = registry.buildPlan("phpbb", {
+      draft: DRAFT, credentials: { baseUrl: "https://php.acme.co.th", apiKey: "k", forumId: "2" },
+    });
+    assert.equal(phpbb[0].url, "https://php.acme.co.th/app.php/api/v1/forums/2/topics");
+    assert.equal(phpbb[0].headers["X-API-Key"], "k");
+
+    // WordPress self-hosted: HTML body, Basic auth, dofollow when the site allows it.
+    assert.equal(byId.wordpress.linkType, "dofollow");
+    const wp = registry.buildPlan("wordpress", {
+      draft: DRAFT, credentials: { siteUrl: "https://acme.co.th", username: "admin", appPassword: "abcd efgh" },
+    });
+    assert.equal(wp[0].url, "https://acme.co.th/wp-json/wp/v2/posts");
+    assert.match(wp[0].headers.Authorization, /^Basic /);
+    assert.match(Buffer.from(wp[0].headers.Authorization.slice(6), "base64").toString(), /^admin:abcd efgh$/);
+    assert.match(wp[0].body, /<p>/, "WordPress expects HTML, not markdown");
+
+    // Pantip is manual on purpose, and the rules are stated before the click.
+    assert.equal(byId.pantip.automation, "manual");
+    assert.ok(byId.pantip.rules.length >= 2);
+    const pantip = registry.composePost("pantip", DRAFT);
+    assert.ok(pantip.warnings.some((warning) => /1 กระทู้/.test(warning)), "the daily limit is shown");
+    assert.ok(pantip.warnings.some((warning) => /บัตรประชาชน/.test(warning)), "ID verification is shown");
+  });
+
+  test("the credential form asks for a URL as text and a LAN opt-in as a toggle", () => {
+    const discourse = registry.credentialFields(registry.getChannel("discourse"));
+    const byKey = Object.fromEntries(discourse.map((field) => [field.key, field]));
+    assert.equal(byKey.baseUrl.secret, false, "a forum URL is not a secret");
+    assert.equal(byKey.apiKey.secret, true);
+    assert.equal(byKey.allowLocalNetwork.type, "toggle");
+    assert.equal(byKey.allowLocalNetwork.secret, false);
+    const bsky = registry.credentialFields(registry.getChannel("bsky"));
+    assert.deepEqual(bsky.map((field) => field.key), ["handle", "appPassword", "pds"]);
+    assert.equal(bsky.find((field) => field.key === "appPassword").secret, true);
+  });
+
   // ── outbound guard ────────────────────────────────────────────────────────
 
   test("the relay refuses loopback, LAN, metadata and non-https targets", () => {
@@ -207,6 +335,20 @@ async function main() {
     }
     // The one deliberate exception: a server the operator runs on this machine.
     assert.ok(relay.assertSafeOutboundUrl("http://localhost:8080/wp-json/wp/v2/posts", { allowLocalDev: true }));
+    // An opt-in is scoped: dev means this machine, LAN means this network, and
+    // neither of them ever reaches link-local (cloud metadata) addresses.
+    assert.throws(() => relay.assertSafeOutboundUrl("https://192.168.1.20/api"), /ไม่อนุญาต/);
+    assert.ok(relay.assertSafeOutboundUrl("https://192.168.1.20/api", { allowLocalNetwork: true }));
+    assert.ok(relay.assertSafeOutboundUrl("http://forum.local/", { allowLocalNetwork: true }));
+    assert.ok(relay.assertSafeOutboundUrl("https://[fd00::1]/", { allowLocalNetwork: true }));
+    assert.throws(() => relay.assertSafeOutboundUrl("https://169.254.169.254/latest/meta-data/", { allowLocalNetwork: true }), /ไม่อนุญาต/);
+    assert.throws(() => relay.assertSafeOutboundUrl("https://100.64.0.1/", { allowLocalNetwork: true }), /ไม่อนุญาต/);
+    assert.throws(() => relay.assertSafeOutboundUrl("https://192.168.1.20/api", { allowLocalDev: true }), /ไม่อนุญาต/);
+    assert.equal(relay.classifyAddress("192.168.1.20"), "private");
+    assert.equal(relay.classifyAddress("127.0.0.1"), "loopback");
+    assert.equal(relay.classifyAddress("169.254.169.254"), "linklocal");
+    assert.equal(relay.classifyAddress("100.64.0.1"), "cgnat");
+    assert.equal(relay.classifyAddress("8.8.8.8"), "public");
     assert.equal(relay.isPrivateIpv4("192.168.0.10"), true);
     assert.equal(relay.isPrivateIpv4("8.8.8.8"), false);
     assert.equal(relay.isPrivateIpv6("fe80::1"), true);
@@ -223,6 +365,13 @@ async function main() {
       Accept: "application/json",
     });
     assert.deepEqual(Object.keys(headers).sort(), ["accept", "authorization", "content-type"]);
+    // Forums authenticate with their own header names; those are allowlisted by
+    // name, not by letting a channel invent headers.
+    const vendor = relay.sanitizeHeaders({
+      "Api-Key": "a", "Api-Username": "b", "XF-Api-Key": "c", "XF-Api-User": "d", "X-API-Key": "e",
+      "X-Evil": "f",
+    });
+    assert.deepEqual(Object.keys(vendor).sort(), ["api-key", "api-username", "x-api-key", "xf-api-key", "xf-api-user"]);
     assert.equal(headers.authorization, "Basic abc");
     assert.equal(relay.fillPlaceholders("{{accessToken}}", { accessToken: "tok" }), "tok");
     assert.equal(relay.fillPlaceholders({ a: "{{x}}/b", n: 2 }, { x: "y" }).a, "y/b");
@@ -337,6 +486,89 @@ async function main() {
     assert.match(result.requests[0].headers.Authorization, /Basic \[set\]/);
     assert.equal(result.requests[0].url, "https://dev.to/api/articles");
     assert.match(result.requests[0].body, /canonical_url/);
+  });
+
+  test("the LAN opt-in is stored per channel, and only the forum channels get it", async () => {
+    const received = [];
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => {
+        received.push({ url: req.url, headers: req.headers, body });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: 7, topic_slug: "welcome", slug: "welcome" }));
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "0.0.0.0", resolve));
+    const port = server.address().port;
+    const { rt } = tmpRuntime();
+    try {
+      // A self-hosted forum on this machine: without the opt-in, the relay
+      // refuses before a packet is sent — the guard, not the workflow, decides.
+      rt.updateCredentials("discourse", {
+        baseUrl: `http://127.0.0.1:${port}`, apiKey: "k", apiUsername: "somchai",
+      });
+      const blocked = await rt.sendPublish({ channelId: "discourse", draft: DRAFT });
+      assert.equal(blocked.ok, undefined, "the refusal is thrown, not posted");
+    } catch (error) {
+      assert.match(error.message, /ไม่อนุญาต|ต้องเป็น https/);
+    }
+    assert.equal(received.length, 0, "nothing left the process without the opt-in");
+
+    try {
+      rt.updateCredentials("discourse", { allowLocalNetwork: "1" });
+      const sent = await rt.sendPublish({ channelId: "discourse", draft: DRAFT });
+      assert.equal(sent.ok, true, JSON.stringify(sent));
+      assert.equal(received.length, 1);
+      assert.equal(received[0].url, "/posts.json");
+      assert.equal(received[0].headers["api-key"], "k");
+      assert.equal(received[0].headers["api-username"], "somchai");
+
+      // A public channel has no LAN opt-in even if the flag is in the file, so a
+      // stray toggle can never widen the guard for dev.to.
+      assert.equal(registry.listChannels().find((c) => c.id === "devto").localAllowed, false);
+      assert.equal(rt.credentialStatus().discourse.allowLocalNetwork, true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test("a channel's daily limit and minimum interval are enforced by us, not the platform", async () => {
+    const { rt } = tmpRuntime();
+    // A first post is allowed; the second is refused before it is built, and the
+    // refusal says how long to wait — that is gap #3 closing.
+    const now = Date.now();
+    rt._recordPublish("discourse", now);
+    const status = rt.rateStatus("discourse", now + 1000);
+    assert.equal(status.usedToday, 1);
+    assert.equal(status.remainingToday, status.perDay - 1);
+    assert.equal(status.blocked, true);
+    assert.ok(status.intervalLeftSeconds > 0);
+
+    const refused = await rt.sendPublish({ channelId: "discourse", draft: DRAFT });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.rateLimited, true);
+    assert.match(refused.message, /โพสต์\/วัน/);
+    assert.ok(refused.rate.waitSeconds > 0);
+
+    // A dry run is not a post: it must still be allowed, and must not stamp.
+    rt.updateCredentials("discourse", {
+      baseUrl: "https://forum.acme.co.th", apiKey: "k", apiUsername: "somchai",
+    });
+    const dry = await rt.sendPublish({ channelId: "discourse", draft: DRAFT, dryRun: true });
+    assert.equal(dry.dryRun, true);
+    assert.equal(rt.rateStatus("discourse", now + 1000).usedToday, 1);
+
+    // Two days later the window has cleared.
+    const later = now + 2 * 24 * 60 * 60 * 1000;
+    assert.equal(rt.rateStatus("discourse", later).blocked, false);
+    assert.equal(rt.rateStatus("discourse", later).usedToday, 0);
+
+    // The rate log holds timestamps only — never a post, never a key.
+    const log = fs.readFileSync(path.join(rt.stateDir, "publish-rate.json"), "utf8");
+    assert.match(log, /^\s*\{/);
+    assert.equal(log.includes("กระเป๋า"), false);
+    assert.equal(log.includes("somchai"), false);
   });
 
   test("a channel without an API returns the one-click route instead of throwing", async () => {

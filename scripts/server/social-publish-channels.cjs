@@ -38,6 +38,11 @@ const MAX_TAGS = 8;
 
 const NOTES_REVIEWED = "2026-10";
 
+// What "don't spam" means in numbers. A platform will enforce its own limit
+// silently (shadow-delete, throttle, ban); these are deliberately stricter, so
+// a workflow hits our ceiling before theirs. Channels override them in `rate`.
+const DEFAULT_RATE = { perDay: 10, minIntervalSeconds: 120 };
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 const clean = (value, max = MAX_BODY) => String(value ?? "").slice(0, max);
@@ -136,6 +141,56 @@ function telegraphNodes(markdown) {
       }
       return { tag: "p", children: [block.replace(/^\s*>\s?/gm, "").replace(/\*\*/g, "")] };
     });
+}
+
+// A self-hosted target: the user pastes their own base URL, so it is validated
+// here rather than trusted. A forum installed in a subfolder
+// (https://acme.co.th/forum) has to keep that path, so origin + path is used
+// instead of origin alone.
+function baseUrlFor(credentials, key, label) {
+  const raw = requireCredential(credentials, key, label).replace(/\/+$/, "");
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${label} ไม่ถูกต้อง — ใส่ให้ครบรวม https:// เช่น https://forum.your-company.com`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${label} ต้องขึ้นต้นด้วย http:// หรือ https://`);
+  }
+  if (url.username || url.password) throw new Error(`${label} ต้องไม่ฝัง username/password`);
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+}
+
+// The HTML most forum/blog APIs want. Built from the same block splitter as
+// Telegraph, so a post looks the same wherever it lands.
+function markdownToHtml(markdown) {
+  const escape = (text) => String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return telegraphNodes(markdown).map((node) => {
+    if (node.tag === "ul") {
+      return `<ul>${node.children.map((item) => `<li>${escape(item.children[0])}</li>`).join("")}</ul>`;
+    }
+    if (node.tag === "h3") return `<h2>${escape(node.children[0])}</h2>`;
+    return `<p>${escape(node.children[0]).replace(/\n/g, "<br>")}</p>`;
+  }).join("\n");
+}
+
+// Bluesky counts graphemes, not bytes: a Thai emoji post is not 300 characters.
+function graphemes(text, max) {
+  return Array.from(String(text || "")).slice(0, max).join("");
+}
+
+function bskyPostUrl(json, handle = "") {
+  // {"uri":"at://did:plc:abc/app.bsky.feed.post/3lxyz","cid":"..."}
+  const match = String(json?.uri || "").match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/);
+  if (!match) return "";
+  // The handle reads better than the DID; both resolve, so either is fine.
+  const who = clean(json?.handle ?? handle, 200).trim() || match[1];
+  return `https://bsky.app/profile/${who}/post/${match[2]}`;
 }
 
 const bearer = (token) => ({ Authorization: `Bearer ${token}` });
@@ -771,12 +826,422 @@ const CHANNELS = [
     },
     resultUrl: () => "",
   },
+
+  {
+    id: "bsky",
+    group: "social",
+    name: "Bluesky",
+    domain: "bsky.app",
+    authority: "approx",
+    da: 88,
+    pa: 61,
+    linkType: "nofollow",
+    automation: "api",
+    rate: { perDay: 30, minIntervalSeconds: 30 },
+    signup: "สมัครฟรี → สร้าง App Password (ไม่ต้องรออนุมัติ)",
+    signupUrl: "https://bsky.app/",
+    docsUrl: "https://docs.bsky.app/docs/get-started",
+    supportsCanonical: true,
+    limits: { title: 0, body: 300, tags: 0 },
+    why: "ช่องทางที่เปิดที่สุดในลิสต์นี้ — AT Protocol ไม่ต้องยื่นขอ app review ไม่มีค่าใช้จ่าย และโพสต์ได้ทันทีด้วย App Password (300 ตัวอักษร)",
+    steps: [
+      "สมัคร bsky.app ฟรี แล้วไปที่ Settings → App Passwords → สร้างใหม่",
+      "ใส่ handle (เช่น yourname.bsky.social) + App Password ในโหนดนี้",
+      "ระบบจะขอ session ให้อัตโนมัติทุกครั้งที่โพสต์ (ไม่ต้องเก็บ token เอง)",
+    ],
+    compose(draft) {
+      return {
+        openUrl: "https://bsky.app/",
+        text: graphemes(`${draft.title}\n\n${withHashtags(draft)}`.trim(), 300),
+      };
+    },
+    plan({ draft, credentials }) {
+      const identifier = requireCredential(credentials, "handle", "handle ของ Bluesky");
+      const password = requireCredential(credentials, "appPassword", "App Password");
+      const pds = clean(credentials.pds ?? "", 500).trim().replace(/\/+$/, "") || "https://bsky.social";
+      const text = graphemes(`${draft.title}\n\n${withHashtags(draft)}`.trim(), 300);
+      return [
+        {
+          // App Password -> short-lived session. Nothing is stored on disk: the
+          // token is carried into the next request through `save`.
+          method: "POST",
+          url: `${pds}/xrpc/com.atproto.server.createSession`,
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: { identifier, password },
+          save: { accessJwt: "accessJwt", did: "did" },
+        },
+        {
+          method: "POST",
+          url: `${pds}/xrpc/com.atproto.repo.createRecord`,
+          headers: { Authorization: "Bearer {{accessJwt}}", "Content-Type": "application/json", Accept: "application/json" },
+          body: {
+            repo: "{{did}}",
+            collection: "app.bsky.feed.post",
+            record: {
+              $type: "app.bsky.feed.post",
+              text,
+              langs: ["th"],
+              createdAt: "{{now}}",
+            },
+          },
+        },
+      ];
+    },
+    resultUrl: (json, ctx) => bskyPostUrl(json, ctx?.credentials?.handle),
+  },
+  {
+    id: "pantip",
+    group: "social",
+    name: "Pantip",
+    domain: "pantip.com",
+    authority: "approx",
+    da: 89,
+    pa: 76,
+    linkType: "nofollow",
+    automation: "manual",
+    signup: "สมัครด้วยอีเมล (ยืนยันบัตร ปชช. เพื่อตั้งกระทู้ขายของ)",
+    signupUrl: "https://pantip.com/",
+    editorUrl: "https://pantip.com/",
+    docsUrl: "https://pantip.com/about/tos",
+    supportsCanonical: false,
+    limits: { title: 100, body: 30000, tags: 5 },
+    why: "เว็บบอร์ดไทยที่คนค้นเจอจริง — แต่ไม่มี API และมีกฎชัดเจน: สมาชิกธรรมดาตั้งกระทู้ได้ 1 กระทู้/วัน และกระทู้ขายของต้องยืนยันบัตรประชาชน",
+    rules: [
+      "สมาชิกอีเมล: ตั้ง/ตอบได้เฉพาะกระทู้คำถาม และตั้งได้วันละ 1 กระทู้",
+      "กระทู้ขายของ: ต้องยืนยันตัวตนด้วยบัตรประชาชน และใช้งานมาแล้ว 3 เดือนขึ้นไป",
+      "โพสต์ซ้ำหลายห้อง/ข้อความเดียวกันจะถูกมองว่า spam และอาจถูกลบทั้งบัญชี",
+    ],
+    steps: [
+      "เตรียมข้อความให้เป็นกระทู้จริง (มีคำถาม/ประสบการณ์ ไม่ใช่ประกาศขายล้วน)",
+      "กดปุ่ม “เปิดหน้าเขียน” แล้ววางข้อความ",
+      "เลือกห้องให้ตรงเรื่อง และอ่านกฎของห้องก่อนกดตั้งกระทู้",
+    ],
+    compose(draft) {
+      return { openUrl: "https://pantip.com/", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+  },
+  // ── communities you run yourself ─────────────────────────────────────────
+  // These four are the honest answer to "can I post to a forum automatically?".
+  // Yes — for a forum where you hold the keys. Each URL is the user's own, so
+  // the relay's LAN opt-in is offered here and only here.
+  {
+    id: "wordpress",
+    group: "community",
+    name: "WordPress (เว็บของเราเอง)",
+    domain: "wordpress.org",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "dofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 20, minIntervalSeconds: 60 },
+    signup: "มีเว็บ WordPress อยู่แล้ว = ใช้ได้เลย",
+    signupUrl: "https://wordpress.org/download/",
+    editorUrl: "",
+    docsUrl: "https://developer.wordpress.org/rest-api/reference/posts/",
+    supportsCanonical: true,
+    limits: { title: 200, body: 100000, tags: 20 },
+    why: "ช่องทางที่ดีที่สุดถ้ามีเว็บของตัวเอง — โพสต์แล้วได้ลิงก์ dofollow บนโดเมนของเรา ไม่ต้องพึ่งใคร และไม่ได้ขึ้นกับค่าอันดับของคนอื่น",
+    steps: [
+      "ในเว็บเรา: Users → Profile → Application Passwords → ตั้งชื่อแล้วคัดลอกค่า",
+      "ใส่ URL เว็บ (ไม่ต้องมี / ปิดท้าย) + username + application password",
+      "ถ้าเว็บอยู่ในเครื่อง/ในบ้าน ให้ติ๊ก “เซิร์ฟเวอร์นี้อยู่ในเครื่อง/ในบ้าน”",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "siteUrl", "URL เว็บ WordPress");
+      const username = requireCredential(credentials, "username", "username ของ WordPress");
+      const password = requireCredential(credentials, "appPassword", "Application Password");
+      return [{
+        method: "POST",
+        url: `${base}/wp-json/wp/v2/posts`,
+        headers: {
+          ...basic(Buffer.from(`${username}:${password}`, "utf8").toString("base64")),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: {
+          title: draft.title,
+          content: markdownToHtml(withHashtags(draft)),
+          status: "publish",
+          ...(draft.canonicalUrl ? { meta: { canonical: draft.canonicalUrl } } : {}),
+        },
+      }];
+    },
+    resultUrl: (json) => json?.link || "",
+  },
+  {
+    id: "discourse",
+    group: "community",
+    name: "Discourse (ฟอรัมของเรา)",
+    domain: "discourse.org",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "nofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 10, minIntervalSeconds: 300 },
+    signup: "ต้องมีสิทธิ์สร้างคีย์ในฟอรัม (แอดมิน)",
+    signupUrl: "https://www.discourse.org/",
+    docsUrl: "https://meta.discourse.org/t/create-and-configure-an-api-key/230124",
+    supportsCanonical: false,
+    limits: { title: 255, body: 30000, tags: 0 },
+    why: "ฟอรัมชุมชนที่บริษัทดัง ๆ ใช้ — โพสต์เป็นกระทู้ได้จริงผ่าน /posts.json แต่คีย์ต้องสร้างจากหน้าแอดมินของฟอรัมนั้น",
+    steps: [
+      "ในฟอรัม: Admin → Advanced → API keys → New API key",
+      "เลือก User level = Single User และให้สิทธิ์ Topics (write)",
+      "ใส่ URL ฟอรัม + Api-Key + Api-Username (ชื่อผู้ใช้ที่จะเป็นเจ้าของกระทู้)",
+      "ถ้าต้องการลงหมวดใดหมวดหนึ่ง ใส่เลข category id (ดูได้จาก URL ของหมวด)",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "baseUrl", "URL ฟอรัม Discourse");
+      const apiKey = requireCredential(credentials, "apiKey", "Api-Key");
+      const apiUsername = requireCredential(credentials, "apiUsername", "Api-Username");
+      const category = clean(credentials.categoryId ?? "", 20).trim();
+      return [{
+        method: "POST",
+        url: `${base}/posts.json`,
+        headers: {
+          "Api-Key": apiKey,
+          "Api-Username": apiUsername,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: {
+          title: draft.title,
+          raw: withHashtags(draft),
+          ...(/^\d+$/.test(category) ? { category: Number(category) } : {}),
+        },
+      }];
+    },
+    resultUrl: (json, ctx) => {
+      const base = ctx?.baseUrl || "";
+      const id = json?.topic_id;
+      const slug = json?.topic_slug || "topic";
+      return base && id ? `${base}/t/${slug}/${id}` : "";
+    },
+  },
+  {
+    id: "xenforo",
+    group: "community",
+    name: "XenForo (ฟอรัมของเรา)",
+    domain: "xenforo.com",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "nofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 10, minIntervalSeconds: 300 },
+    signup: "ต้องมี super admin สร้างคีย์",
+    signupUrl: "https://xenforo.com/",
+    docsUrl: "https://xenforo.com/docs/dev/rest-api/",
+    supportsCanonical: false,
+    limits: { title: 200, body: 30000, tags: 0 },
+    why: "ฟอรัมที่องค์กรไทยหลายแห่งใช้ — REST API สร้างกระทู้ได้ แต่คีย์สร้างได้จาก super admin เท่านั้น และ body ต้องเป็น form-encoded ไม่ใช่ JSON",
+    steps: [
+      "ใน XenForo: Setup → API keys → Add key (ต้องเป็น super admin)",
+      "ให้สิทธิ์ thread:write และผูกกับผู้ใช้ที่จะเป็นเจ้าของกระทู้",
+      "ใส่ URL ฟอรัม + XF-Api-Key + node id ของบอร์ดที่จะลง (เลขจาก URL ของบอร์ด)",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "baseUrl", "URL ฟอรัม XenForo");
+      const apiKey = requireCredential(credentials, "apiKey", "XF-Api-Key");
+      const nodeId = requireCredential(credentials, "nodeId", "node id ของบอร์ด");
+      const userId = clean(credentials.userId ?? "", 20).trim();
+      // XenForo reads form fields, not JSON.
+      const body = new URLSearchParams({ node_id: nodeId, title: draft.title, message: withHashtags(draft) }).toString();
+      return [{
+        method: "POST",
+        url: `${base}/api/threads/`,
+        headers: {
+          "XF-Api-Key": apiKey,
+          ...(/^\d+$/.test(userId) ? { "XF-Api-User": userId } : {}),
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body,
+      }];
+    },
+    resultUrl: (json, ctx) => {
+      const id = json?.thread?.thread_id;
+      return ctx?.baseUrl && id ? `${ctx.baseUrl}/threads/${id}/` : "";
+    },
+  },
+  {
+    id: "nodebb",
+    group: "community",
+    name: "NodeBB (ฟอรัมของเรา)",
+    domain: "nodebb.org",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "nofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 10, minIntervalSeconds: 300 },
+    signup: "ต้องมี token (แอดมินสร้าง หรือ plugin)",
+    signupUrl: "https://nodebb.org/",
+    docsUrl: "https://docs.nodebb.org/api/write/",
+    supportsCanonical: false,
+    limits: { title: 200, body: 30000, tags: 5 },
+    why: "ฟอรัม Node.js ที่ติดตั้งง่าย — มี Write API ในตัว (v3) สร้างกระทู้ได้ด้วย Bearer token และ cid ของหมวด",
+    steps: [
+      "ติดตั้ง/เปิด nodebb-plugin-write-api แล้วสร้าง API token ใน ACP",
+      "ใส่ URL ฟอรัม + token + cid ของหมวด (ตัวเลข)",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "baseUrl", "URL ฟอรัม NodeBB");
+      const token = requireCredential(credentials, "token", "API token ของ NodeBB");
+      const cid = requireCredential(credentials, "cid", "cid ของหมวด");
+      return [{
+        method: "POST",
+        url: `${base}/api/v3/topics`,
+        headers: { ...bearer(token), "Content-Type": "application/json", Accept: "application/json" },
+        body: {
+          cid: /^\d+$/.test(cid) ? Number(cid) : cid,
+          title: draft.title,
+          content: withHashtags(draft),
+          ...(draft.tags.length ? { tags: draft.tags.slice(0, 5) } : {}),
+        },
+      }];
+    },
+    resultUrl: (json, ctx) => {
+      const topic = json?.response?.topicData || json?.topicData || {};
+      return ctx?.baseUrl && topic.slug ? `${ctx.baseUrl}/topic/${topic.slug}` : "";
+    },
+  },
+  {
+    id: "flarum",
+    group: "community",
+    name: "Flarum (ฟอรัมของเรา)",
+    domain: "flarum.org",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "nofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 10, minIntervalSeconds: 300 },
+    signup: "มี token ในหน้าโปรไฟล์ของสมาชิก",
+    signupUrl: "https://flarum.org/",
+    docsUrl: "https://docs.flarum.org/rest-api/",
+    supportsCanonical: false,
+    limits: { title: 200, body: 30000, tags: 0 },
+    why: "ฟอรัมเบา ๆ ที่ติดตั้งง่ายที่สุด — สมาชิกสร้าง access token ได้เองไม่ต้องรอแอดมิน แต่ API เป็น JSON:API ซึ่งมีโครงซ้อนกว่าช่องอื่น",
+    steps: [
+      "ใน Flarum: Settings → Access tokens → สร้าง token (หรือ POST /api/token ด้วย username/password)",
+      "ใส่ URL ฟอรัม + token",
+      "ถ้าต้องการตอบในกระทู้เดิม ใส่ discussion id; ถ้าเว้นว่าง ระบบจะตั้งกระทู้ใหม่",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "baseUrl", "URL ฟอรัม Flarum");
+      const token = requireCredential(credentials, "token", "access token ของ Flarum");
+      const discussionId = clean(credentials.discussionId ?? "", 20).trim();
+      const headers = { Authorization: `Token ${token}`, "Content-Type": "application/json", Accept: "application/json" };
+      if (/^\d+$/.test(discussionId)) {
+        return [{
+          method: "POST",
+          url: `${base}/api/posts`,
+          headers,
+          body: {
+            data: {
+              type: "posts",
+              attributes: { content: markdownToHtml(withHashtags(draft)) },
+              relationships: { discussion: { data: { type: "discussions", id: discussionId } } },
+            },
+          },
+        }];
+      }
+      return [{
+        method: "POST",
+        url: `${base}/api/discussions`,
+        headers,
+        body: {
+          data: {
+            type: "discussions",
+            attributes: { title: draft.title },
+            relationships: {
+              posts: {
+                data: [{
+                  type: "posts",
+                  attributes: { content: markdownToHtml(withHashtags(draft)) },
+                }],
+              },
+            },
+          },
+        },
+      }];
+    },
+    resultUrl: (json, ctx) => {
+      const id = json?.data?.id;
+      return ctx?.baseUrl && id ? `${ctx.baseUrl}/d/${id}` : "";
+    },
+  },
+  {
+    id: "phpbb",
+    group: "community",
+    name: "phpBB (ฟอรัมของเรา)",
+    domain: "phpbb.com",
+    authority: "self",
+    da: 0,
+    pa: 0,
+    linkType: "nofollow",
+    automation: "api",
+    localAllowed: true,
+    rate: { perDay: 10, minIntervalSeconds: 300 },
+    signup: "ต้องติดตั้ง extension REST API",
+    signupUrl: "https://www.phpbb.com/",
+    docsUrl: "https://www.phpbb.com/community/viewtopic.php?t=2672614",
+    supportsCanonical: false,
+    limits: { title: 200, body: 30000, tags: 0 },
+    why: "เว็บบอร์ดไทยจำนวนมากเป็น phpBB — แต่ตัวหลักไม่มี API ต้องติดตั้ง extension (เช่น dmzx/phpbbapi) ก่อนจึงจะโพสต์อัตโนมัติได้",
+    steps: [
+      "ติดตั้ง extension REST API บน phpBB 3.3+ แล้วสร้างคีย์ผูกกับสมาชิก",
+      "ใส่ URL ฟอรัม + X-API-Key + forum id ที่จะตั้งกระทู้",
+    ],
+    compose(draft) {
+      return { openUrl: "", text: `${draft.title}\n\n${withHashtags(draft)}` };
+    },
+    plan({ draft, credentials }) {
+      const base = baseUrlFor(credentials, "baseUrl", "URL ฟอรัม phpBB");
+      const apiKey = requireCredential(credentials, "apiKey", "X-API-Key");
+      const forumId = requireCredential(credentials, "forumId", "forum id");
+      return [{
+        method: "POST",
+        url: `${base}/app.php/api/v1/forums/${encodeURIComponent(forumId)}/topics`,
+        headers: { "X-API-Key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
+        body: { title: draft.title, content: withHashtags(draft) },
+      }];
+    },
+    resultUrl: (json, ctx) => {
+      const id = json?.topic_id || json?.data?.topic_id;
+      return ctx?.baseUrl && id ? `${ctx.baseUrl}/viewtopic.php?t=${id}` : "";
+    },
+  },
 ];
 
 const BY_ID = new Map(CHANNELS.map((channel) => [channel.id, channel]));
 
 const GROUP_LABEL = {
   blog: "บล็อก/บทความ",
+  community: "ฟอรัม/เว็บของเราเอง",
   dev: "นักพัฒนา",
   social: "โซเชียล",
   chat: "แชท/คอมมิวนิตี้",
@@ -807,6 +1272,12 @@ function listChannels() {
     importUrl: channel.importUrl || "",
     docsUrl: channel.docsUrl || "",
     supportsCanonical: Boolean(channel.supportsCanonical),
+    // Self-hosted channels accept a URL the user owns, so they are the only
+    // ones offered the "this server is on my machine/LAN" opt-in.
+    localAllowed: Boolean(channel.localAllowed),
+    // Stated per channel so the UI can warn before a platform does it for you.
+    rate: channel.rate || DEFAULT_RATE,
+    rules: channel.rules || [],
     limits: channel.limits,
     why: channel.why,
     steps: channel.steps,
@@ -818,7 +1289,15 @@ function listChannels() {
 // without a second switch statement that could drift from `plan()`.
 function credentialFields(channel) {
   const fields = [];
-  const add = (key, label, hint = "") => fields.push({ key, label, hint, secret: /token|key|secret/i.test(key) });
+  const add = (key, label, hint = "", opts = {}) => fields.push({
+    key,
+    label,
+    hint,
+    // A key is never echoed back, and `type` lets the UI draw a checkbox for a
+    // setting that only looks like a credential.
+    secret: opts.secret ?? /token|key|secret|password/i.test(key),
+    type: opts.type || "text",
+  });
   if (channel.id === "telegraph") return fields; // no account needed
   if (channel.id === "discord") add("webhookUrl", "Discord webhook URL", "Channel → Integrations → Webhooks");
   if (channel.id === "telegram") {
@@ -836,8 +1315,49 @@ function credentialFields(channel) {
     add("token", "Access token", "Preferences → Development");
   }
   if (channel.id === "blogger") {
-    add("blogId", "Blog ID", "จาก URL ของ Blogger", false);
+    add("blogId", "Blog ID", "จาก URL ของ Blogger", { secret: false });
     add("token", "Google OAuth token", "scope: blogger");
+  }
+  if (channel.id === "bsky") {
+    add("handle", "handle", "เช่น yourname.bsky.social", { secret: false });
+    add("appPassword", "App Password", "bsky.app → Settings → App Passwords");
+    add("pds", "PDS (ไม่ต้องใส่ก็ได้)", "ค่าเริ่มต้น https://bsky.social", { secret: false });
+  }
+  // Self-hosted: the address of the forum is a setting, not a secret; the key
+  // is a secret. The LAN opt-in is a checkbox and is offered here only.
+  if (channel.localAllowed) {
+    add("baseUrl", channel.id === "wordpress" ? "URL เว็บของเรา" : "URL ฟอรัมของเรา",
+      "เช่น https://forum.your-company.com", { secret: false });
+  }
+  if (channel.id === "wordpress") {
+    add("username", "username", "ผู้ใช้ WordPress ที่จะโพสต์ในนามของเขา", { secret: false });
+    add("appPassword", "Application Password", "Users → Profile → Application Passwords");
+  }
+  if (channel.id === "discourse") {
+    add("apiKey", "Api-Key", "Admin → Advanced → API keys");
+    add("apiUsername", "Api-Username", "ชื่อผู้ใช้ที่จะเป็นเจ้าของกระทู้", { secret: false });
+    add("categoryId", "category id (ไม่บังคับ)", "เลขหมวดจาก URL ของหมวด", { secret: false });
+  }
+  if (channel.id === "xenforo") {
+    add("apiKey", "XF-Api-Key", "Setup → API keys (super admin)");
+    add("nodeId", "node id ของบอร์ด", "เลขบอร์ดปลายทาง", { secret: false });
+    add("userId", "XF-Api-User (ไม่บังคับ)", "ใส่เมื่อใช้ super user key", { secret: false });
+  }
+  if (channel.id === "nodebb") {
+    add("token", "API token", "ACP → Plugins → Write API");
+    add("cid", "cid ของหมวด", "เลขหมวดปลายทาง", { secret: false });
+  }
+  if (channel.id === "flarum") {
+    add("token", "access token", "Settings → Access tokens");
+    add("discussionId", "discussion id (ไม่บังคับ)", "เว้นว่าง = ตั้งกระทู้ใหม่", { secret: false });
+  }
+  if (channel.id === "phpbb") {
+    add("apiKey", "X-API-Key", "จาก extension REST API");
+    add("forumId", "forum id", "เลขบอร์ดปลายทาง", { secret: false });
+  }
+  if (channel.localAllowed) {
+    add("allowLocalNetwork", "เซิร์ฟเวอร์นี้อยู่ในเครื่อง/ในบ้าน",
+      "เปิดเฉพาะเมื่อ URL ข้างบนเป็นเซิร์ฟเวอร์ของคุณเอง (192.168.x, 10.x, localhost)", { secret: false, type: "toggle" });
   }
   return fields;
 }
@@ -861,6 +1381,7 @@ function composePost(channelId, draftInput) {
     warnings.push("ยังไม่ได้ใส่ canonical URL — ถ้าโพสต์สำเนา ควรชี้กลับเว็บต้นฉบับเพื่อไม่ให้แย่งอันดับกัน");
   }
   if (channel.automation === "manual") warnings.push("ช่องนี้ต้องกดโพสต์เองบนเว็บ (ระบบเตรียมข้อความและลิงก์ให้แล้ว)");
+  for (const rule of channel.rules || []) warnings.push(rule);
   if (channel.automation === "import") warnings.push("ช่องนี้ใช้วิธี Import/วางข้อความด้วยมือ — API ปิดแล้ว");
   return {
     channel: channel.id,
@@ -898,10 +1419,12 @@ function buildPlan(channelId, { draft: draftInput, credentials = {} } = {}) {
   }));
 }
 
-function publishedUrl(channelId, json) {
+function publishedUrl(channelId, json, credentials = {}) {
   try {
     const channel = getChannel(channelId);
-    return channel.resultUrl?.(json) || "";
+    // Self-hosted channels build their link from the base URL the user gave.
+    const baseUrl = String(credentials.baseUrl || credentials.siteUrl || "").replace(/\/+$/, "");
+    return channel.resultUrl?.(json, { baseUrl, credentials }) || "";
   } catch {
     return "";
   }
@@ -931,5 +1454,5 @@ module.exports = {
   publishedUrl,
   telegraphNodes,
   // exported for tests and for the UI preview
-  helpers: { normalizeTags, hashtagLine, urlWith, stripHtml, firstLine },
+  helpers: { normalizeTags, hashtagLine, urlWith, stripHtml, firstLine, baseUrlFor, markdownToHtml, graphemes, bskyPostUrl },
 };
