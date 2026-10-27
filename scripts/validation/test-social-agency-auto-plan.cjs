@@ -9,7 +9,7 @@
  * day and no unused product. These checks pin the new contract:
  *
  * - one day can carry several posts side by side (Facebook + Instagram +
- *   LINE + เว็บ), one slot per selected platform, staggered times;
+ *   LINE + LinkedIn + เว็บ), one slot per selected platform, staggered times;
  * - one product per day is cross-posted across those platforms, and two
  *   different days never share a product while unused products remain;
  * - auto-plan is repeatable inside the same month: a later run fills only the
@@ -52,6 +52,8 @@ async function main() {
   const clientOf = (id) => rt._read().clients.find((c) => c.id === id);
   const month = futureMonth(2);
   const days = daysInMonth(month);
+  // What a plan fills when nobody picks platforms — LinkedIn included.
+  const PLATFORMS5 = ["facebook", "instagram", "line", "linkedin", "demo"];
   const PLATFORMS4 = ["facebook", "instagram", "line", "demo"];
 
   const makeClient = (name, productCount) => {
@@ -62,17 +64,23 @@ async function main() {
 
   // ── one day, many jobs ──────────────────────────────────────────────────
 
-  test("one day carries every selected platform: 4 posts/day, staggered times, one product cross-posted", async () => {
-    const id = makeClient("วันละสี่ช่อง", days + 5);
+  test("one day carries every selected platform: 5 posts/day (LinkedIn included), staggered times, one product cross-posted", async () => {
+    const id = makeClient("วันละห้าช่อง", days + 5);
     const plan = await rt.autoPlanPreview(id, { month, onePerDay: true });
     assert.strictEqual(plan.mode, "one-per-day");
-    assert.deepStrictEqual(plan.platforms, PLATFORMS4);
-    assert.strictEqual(plan.slots.length, days * 4, `every day × 4 platforms (got ${plan.slots.length})`);
+    assert.deepStrictEqual(plan.platforms, PLATFORMS5, "the default plan now includes LinkedIn");
+    assert.strictEqual(plan.slots.length, days * 5, `every day × 5 platforms (got ${plan.slots.length})`);
     for (const date of new Set(plan.slots.map((s) => s.date))) {
       const day = plan.slots.filter((s) => s.date === date);
-      assert.deepStrictEqual(day.map((s) => s.platform).sort(), [...PLATFORMS4].sort(), `${date}: FB+IG+LINE+web together`);
-      assert.strictEqual(new Set(day.map((s) => s.time)).size, 4, `${date}: times must not collide`);
+      assert.deepStrictEqual(day.map((s) => s.platform).sort(), [...PLATFORMS5].sort(), `${date}: FB+IG+LINE+LinkedIn+web together`);
+      assert.strictEqual(new Set(day.map((s) => s.time)).size, 5, `${date}: times must not collide`);
       assert.strictEqual(new Set(day.map((s) => s.sku)).size, 1, `${date}: one product per day, cross-posted`);
+    }
+    // LinkedIn reads best before the workday: 08:00 on a weekday, 09:30 on a
+    // weekend — never the Facebook anchor time.
+    for (const slot of plan.slots.filter((s) => s.platform === "linkedin")) {
+      const weekday = (new Date(Date.parse(`${slot.date}T00:00:00Z`)).getUTCDay() + 6) % 7;
+      assert.strictEqual(slot.time, weekday >= 5 ? "09:30" : "08:00", `${slot.date}: LinkedIn keeps its own time`);
     }
     assert.strictEqual(new Set(plan.slots.map((s) => s.sku)).size, days, "a product must not repeat between days");
     assert.strictEqual(plan.shortBy, 0);
@@ -118,14 +126,24 @@ async function main() {
     const applied = rt.applyAutoPlan(id, { month, slots: second.slots, enforceUniqueProducts: true });
     assert.strictEqual(applied.count, days * 3);
 
+    // The default run still has LinkedIn open for every day — it fills exactly
+    // that leftover slot, nothing else.
     const third = await rt.autoPlanPreview(id, { month, onePerDay: true });
-    assert.strictEqual(third.slots.length, 0, "every platform of every day now has a post");
+    assert.deepStrictEqual(third.platforms, PLATFORMS5);
+    assert.strictEqual(third.slots.length, days, "only the LinkedIn slot per day is left");
+    assert.ok(third.slots.every((s) => s.platform === "linkedin"));
+    const thirdApplied = rt.applyAutoPlan(id, { month, slots: third.slots, enforceUniqueProducts: true });
+    assert.strictEqual(thirdApplied.count, days);
+
+    const fourth = await rt.autoPlanPreview(id, { month, onePerDay: true });
+    assert.strictEqual(fourth.slots.length, 0, "every platform of every day now has a post");
 
     const all = clientOf(id).calendar;
-    assert.strictEqual(all.length, days * 4);
+    assert.strictEqual(all.length, days * 5);
     for (const date of new Set(all.map((e) => e.date))) {
-      assert.strictEqual(all.filter((e) => e.date === date).length, 4, `${date}: 4 jobs in one day`);
-      assert.strictEqual(new Set(all.filter((e) => e.date === date).map((e) => e.time)).size, 4);
+      assert.strictEqual(all.filter((e) => e.date === date).length, 5, `${date}: 5 jobs in one day`);
+      assert.strictEqual(new Set(all.filter((e) => e.date === date).map((e) => e.time)).size, 5);
+      assert.ok(all.some((e) => e.date === date && e.platform === "linkedin"), `${date}: LinkedIn planned by default`);
     }
   });
 
@@ -216,7 +234,7 @@ async function main() {
   test("a short product pool covers only the days it can — and deleting frees products for a re-plan", async () => {
     const id = makeClient("สินค้าน้อย", 1);
     const plan = await rt.autoPlanPreview(id, { month, onePerDay: true });
-    assert.strictEqual(plan.slots.length, 4, "1 product covers 1 day × 4 platforms");
+    assert.strictEqual(plan.slots.length, 5, "1 product covers 1 day × 5 platforms");
     assert.strictEqual(new Set(plan.slots.map((s) => s.sku)).size, 1);
     assert.strictEqual(plan.shortBy, days - 1);
     rt.applyAutoPlan(id, { month, slots: plan.slots, enforceUniqueProducts: true });
@@ -224,7 +242,7 @@ async function main() {
     assert.strictEqual(again.slots.length, 0, "the single product is used up");
     rt.deleteCalendarEntriesBatch(id, { ids: clientOf(id).calendar.map((e) => e.id) });
     const refreed = await rt.autoPlanPreview(id, { month, onePerDay: true });
-    assert.strictEqual(refreed.slots.length, 4, "deleting the entries frees the product for planning again");
+    assert.strictEqual(refreed.slots.length, 5, "deleting the entries frees the product for planning again");
   });
 
   // ── weekly cadence mode ─────────────────────────────────────────────────
@@ -243,8 +261,8 @@ async function main() {
 
   test("_autoPlanPlatforms validates input and _nudgeFreeTime never returns a taken time", () => {
     assert.deepStrictEqual(rt._autoPlanPlatforms(["line", "line", "tiktok", "demo", "bogus"]), ["line", "demo"]);
-    assert.deepStrictEqual(rt._autoPlanPlatforms(null), ["facebook", "instagram", "line", "demo"]);
-    assert.deepStrictEqual(rt._autoPlanPlatforms([]), ["facebook", "instagram", "line", "demo"]);
+    assert.deepStrictEqual(rt._autoPlanPlatforms(null), ["facebook", "instagram", "line", "linkedin", "demo"]);
+    assert.deepStrictEqual(rt._autoPlanPlatforms([]), ["facebook", "instagram", "line", "linkedin", "demo"]);
     const taken = new Set(["18:30", "19:00", "18:00"]);
     const moved = SocialAgencyRuntime._nudgeFreeTime(taken, "18:30");
     assert.ok(!taken.has(moved), `nudged time ${moved} must be free`);
@@ -256,8 +274,10 @@ async function main() {
   test("the calendar toolbar picks platforms per day and can re-plan", () => {
     const calendar = read("app", "frontend", "src", "social-agency", "CalendarTab.jsx");
     assert.match(calendar, /sa-plan-platforms/);
-    assert.match(calendar, /\["facebook", "instagram", "line", "demo"\]\.map/);
-    assert.match(calendar, /platforms: \["facebook", "instagram", "line", "demo"\]\.filter\(\(p\) => planPlatforms\.has\(p\)\)/);
+    assert.match(calendar, /const PLAN_PLATFORMS = \["facebook", "instagram", "line", "linkedin", "demo"\]/);
+    assert.match(calendar, /const \[planPlatforms, setPlanPlatforms\] = useState\(\(\) => new Set\(PLAN_PLATFORMS\)\)/, "LinkedIn is ticked by default");
+    assert.match(calendar, /\{PLAN_PLATFORMS\.map\(\(p\) => \(/, "every plan platform gets a checkbox");
+    assert.match(calendar, /platforms: PLAN_PLATFORMS\.filter\(\(p\) => planPlatforms\.has\(p\)\)/);
     assert.match(calendar, /replacePlanned/);
     assert.match(calendar, /แทนที่แผนเดิม/);
     assert.match(calendar, /แพลตฟอร์ม\/วัน/);

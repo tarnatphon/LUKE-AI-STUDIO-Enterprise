@@ -10,6 +10,10 @@ import {
 import { NewEntryModal, AutoPlanModal } from "./modals.jsx";
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+// Every platform "วางแผนอัตโนมัติทั้งเดือน" can fill, in the order the chips
+// read. All of them are ticked to start with (LinkedIn included) — the checkbox
+// is the off switch, so a post can still be planned as a draft and copied over
+// by hand when the client has no LinkedIn token yet.
 const PLAN_PLATFORMS = ["facebook", "instagram", "line", "linkedin", "demo"];
 // The statuses an operator actually scans for, in the order they matter: what
 // needs a decision first, then what is live, then what is only planned.
@@ -90,8 +94,8 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
   const [planPreview, setPlanPreview] = useState(null);
   const [planBusy, setPlanBusy] = useState(false);
   // P5w: 1 สินค้า/วัน ไม่ซ้ำระหว่างวัน — fanned out to every selected platform
-  // so one day can carry Facebook + Instagram + LINE + web posts side by side.
-  const [planPlatforms, setPlanPlatforms] = useState(() => new Set(["facebook", "instagram", "line", "demo"]));
+  // so one day can carry Facebook + Instagram + LINE + LinkedIn + web posts.
+  const [planPlatforms, setPlanPlatforms] = useState(() => new Set(PLAN_PLATFORMS));
   const [onePerDay, setOnePerDay] = useState(true);
   const [replacePlanned, setReplacePlanned] = useState(false); // วางแผนซ้ำได้เรื่อย ๆ
   // ตัวเลือกการวางแผนถูกพับเก็บไว้เป็นค่าเริ่มต้น — หน้าปฏิทินจึงเหลือแค่
@@ -227,7 +231,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     try {
       const preview = await onAutoPlan(month, activeClient?.settings?.postsPerWeek || 5, {
         onePerDay,
-        platforms: ["facebook", "instagram", "line", "demo"].filter((p) => planPlatforms.has(p)),
+        platforms: PLAN_PLATFORMS.filter((p) => planPlatforms.has(p)),
         angles: [...planAngles],
         replacePlanned,
       });
@@ -323,10 +327,16 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
 
         {plannerOpen && (
           <div className="sa-planner-body">
-            <span className="sa-plan-platforms" title="เลือกแพลตฟอร์มที่จะโพสต์ในแต่ละวัน — เลือกได้หลายอัน วันเดียวโพสต์ได้ทั้ง Facebook, Instagram, LINE และเว็บ">
+            <span className="sa-plan-platforms" title="เลือกแพลตฟอร์มที่จะโพสต์ในแต่ละวัน — เลือกได้หลายอัน วันเดียวโพสต์ได้ทั้ง Facebook, Instagram, LINE, LinkedIn และเว็บ">
               แพลตฟอร์ม/วัน:
-              {["facebook", "instagram", "line", "demo"].map((p) => (
-                <label key={p} className={`sa-check sa-plan-platform ${PLATFORM_META[p].cls}${planPlatforms.has(p) ? " on" : ""}`}>
+              {PLAN_PLATFORMS.map((p) => (
+                <label
+                  key={p}
+                  className={`sa-check sa-plan-platform ${PLATFORM_META[p].cls}${planPlatforms.has(p) ? " on" : ""}`}
+                  title={p === "linkedin"
+                    ? "LinkedIn ต้องมี token ใน Connectors ถึงจะส่งจริง — ถ้ายังไม่มี ก็วางแผน/เขียนไว้แล้วกด “คัดลอกข้อความ” + “เปิด LinkedIn” เพื่อโพสต์เองได้"
+                    : undefined}
+                >
                   <input
                     type="checkbox"
                     checked={planPlatforms.has(p)}

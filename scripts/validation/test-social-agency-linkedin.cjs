@@ -110,11 +110,16 @@ async function main() {
       assert.ok(long.meta.linkedin.hashtags <= 5, "hashtags are capped at 5");
     });
 
-    test("an entry can be planned on LinkedIn and auto-plan accepts it", () => {
+    test("an entry can be planned on LinkedIn and auto-plan fills it by default", () => {
       const id = mk({ image: false });
       const entry = getEntry(id);
       assert.equal(entry.platform, "linkedin");
       assert.deepEqual(rt._autoPlanPlatforms(["linkedin", "linkedin", "tiktok"]), ["linkedin"], "auto-plan accepts linkedin, de-dupes, still excludes tiktok");
+      // LinkedIn is part of the default set now — "วางแผนอัตโนมัติทั้งเดือน"
+      // must not need a special request. TikTok still never joins.
+      const defaults = rt._autoPlanPlatforms(null);
+      assert.ok(defaults.includes("linkedin"), "the default plan includes LinkedIn");
+      assert.ok(!defaults.includes("tiktok"), "TikTok still stays out of unattended planning");
     });
 
     // ── escaping ─────────────────────────────────────────────────────────────
@@ -311,6 +316,7 @@ async function main() {
       assert.match(lib, /linkedin: \{ label: "LinkedIn", short: "in", cls: "linkedin" \}/);
       const calendar = read("app", "frontend", "src", "social-agency", "CalendarTab.jsx");
       assert.match(calendar, /const PLAN_PLATFORMS = \["facebook", "instagram", "line", "linkedin", "demo"\]/);
+      assert.match(calendar, /useState\(\(\) => new Set\(PLAN_PLATFORMS\)\)/, "LinkedIn's plan checkbox starts ticked");
       const css = read("app", "frontend", "src", "social-agency.css");
       assert.match(css, /\.sa-platform-chip\.linkedin/);
       // The footer editor must not keep its own platform list that can drift.
