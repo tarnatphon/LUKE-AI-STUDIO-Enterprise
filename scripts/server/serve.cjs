@@ -1218,6 +1218,41 @@ function makeSocialAgencyLlmClient() {
   };
 }
 const DIST    = path.join(ROOT, "app", "dist");
+
+// "Which code am I actually serving?" — the checkout's commit, and the commit
+// recorded by the last frontend build. Both are reported by /api/health so the
+// UI can tell a stale bundle from a stale build instead of leaving the user to
+// guess why a shipped feature is missing.
+const { readSourceInfo, createSourceInfoReader } = require("./source-info.cjs");
+const readRuntimeSource = createSourceInfoReader(ROOT);
+
+let distBuildCache = { at: 0, value: null };
+function getDistBuildInfo() {
+  const now = Date.now();
+  if (distBuildCache.value && now - distBuildCache.at < 15000) return distBuildCache.value;
+  let value = null;
+  try {
+    const raw = fs.readFileSync(path.join(DIST, "build-info.json"), "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.commit === "string") {
+      value = {
+        commit: parsed.commit,
+        shortCommit: parsed.shortCommit || parsed.commit.slice(0, 7),
+        branch: parsed.branch || "",
+        dirty: Boolean(parsed.dirty),
+        commitDate: parsed.commitDate || "",
+        builtAt: parsed.builtAt || "",
+        version: parsed.version || "",
+      };
+    }
+  } catch {
+    // No build-info.json: the dist predates this feature, or was built outside
+    // this repo. Either way there is nothing honest to report.
+    value = null;
+  }
+  distBuildCache = { at: now, value };
+  return value;
+}
 const TOOLS   = path.join(ROOT, "app", "tools");
 const osPlatform = process.platform;
 const BACKEND_PATHS = {
@@ -5127,10 +5162,22 @@ async function getHealth() {
   if (!backendInstalled) {
     issues.push(`No ${osPlatform === "win32" ? "Windows" : osPlatform === "darwin" ? "macOS" : "Linux"} backend binary is installed.`);
   }
+  const source = readRuntimeSource();
+  const frontendBuild = getDistBuildInfo();
   return {
     ok: criticalOk && ports.backend.ok,
     build: SERVER_BUILD,
     root: ROOT,
+    // The checkout this process runs from, and the commit the served bundle was
+    // built from. When they differ, `frontend.stale` says so and the sidebar
+    // shows the repair command instead of the user re-reading release notes.
+    source,
+    frontend: {
+      ...(frontendBuild || {}),
+      // Unknown is not the same as stale: a dist without a stamp proves nothing.
+      stale: Boolean(frontendBuild && source.available && frontendBuild.commit && frontendBuild.commit !== source.commit),
+      sourceCommit: source.available ? source.shortCommit : "",
+    },
     platform: osPlatform,
     checks,
     ports,

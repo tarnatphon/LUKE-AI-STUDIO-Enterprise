@@ -14,6 +14,7 @@ import {
   CHANNELS_REVIEWED_AT,
 } from "../workflow-builder/channels.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
+import BuildStamp from "./BuildStamp";
 
 const SAMPLERS = ["euler_a", "euler", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2m_sde", "lcm"];
 
@@ -1119,6 +1120,8 @@ export default function WorkflowBuilder() {
           >
             <Megaphone size={12} /> <b>{CHANNELS.length}</b> ช่องทางฟรี
           </button>
+          {/* The question behind every "the new feature is not there" report. */}
+          <BuildStamp compact />
         </div>
       </header>
 
