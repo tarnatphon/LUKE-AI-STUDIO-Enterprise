@@ -11,10 +11,21 @@ import { CHANNELS, channelById, composeChannelPost } from "./channels.js";
 
 // The picker groups the palette by what a step does, not by which engine it
 // happens to call: build content → shape it → publish it.
+//
+// `short` is what the palette tabs say. The palette column is only ~218px wide
+// and one screen tall, so the ten nodes are shown one group at a time behind
+// those tabs: stacked, the third group sat below the fold with no scrollbar on
+// macOS and looked like it did not exist.
 export const STEP_GROUPS = [
-  { id: "create", label: "สร้างคอนเทนต์" },
-  { id: "shape", label: "จัดรูปแบบ / เงื่อนไข" },
-  { id: "publish", label: "เผยแพร่ (ฟรี)" },
+  { id: "create", label: "สร้างคอนเทนต์", short: "สร้าง", hint: "ข้อความตั้งต้น · AI Chat · ภาพ · เสียง · ถอดเสียง" },
+  { id: "shape", label: "จัดรูปแบบ / เงื่อนไข", short: "จัดรูปแบบ", hint: "จัดข้อความ · เงื่อนไขหยุด · ผลลัพธ์" },
+  {
+    id: "publish",
+    label: "เผยแพร่ (ฟรี)",
+    short: "เผยแพร่",
+    hint: "16 ช่องทางฟรี — เลือกช่องทางในโหนด หรือเปิดแท็บ “ช่องทางฟรี” ทางขวา",
+    isNew: true,
+  },
 ];
 
 export const STEP_TYPES = {

@@ -438,9 +438,54 @@ async function main() {
     assert.match(builder, /nofollow/);
     assert.match(builder, /ไม่ใช่ปัจจัยจัดอันดับของ Google/);
     const css = read("app", "frontend", "src", "workflow-builder.css");
-    for (const selector of [".awb-channel-card", ".awb-post-strip", ".awb-credential-box", ".awb-palette-group"]) {
+    for (const selector of [".awb-channel-card", ".awb-post-strip", ".awb-credential-box", ".awb-palette-group", ".awb-palette-tab"]) {
       assert.ok(css.includes(selector), `missing ${selector}`);
     }
+  });
+
+  // Reported from the app: "เข้าเมนู Luke AI Workflow ไม่เห็น palette กลุ่ม
+  // เผยแพร่ (ฟรี)". The group existed but the palette stacked all ten nodes in a
+  // 218px column that scrolled, so the last group sat below the fold with no
+  // visible scrollbar. The palette now shows one group at a time behind tabs.
+  test("every node is reachable from a palette tab", () => {
+    const lib = read("app", "frontend", "src", "workflow-builder", "lib.js");
+    const groupsBlock = lib.slice(lib.indexOf("export const STEP_GROUPS"), lib.indexOf("export const STEP_TYPES"));
+    const declared = [...groupsBlock.matchAll(/id: "(\w+)"/g)].map((match) => match[1]);
+    assert.ok(declared.length >= 3, `the palette declares its groups (${declared.length})`);
+
+    const typesBlock = lib.slice(lib.indexOf("export const STEP_TYPES"), lib.indexOf("export const PUBLISHABLE_CHANNELS"));
+    const used = [...new Set([...typesBlock.matchAll(/group: "(\w+)"/g)].map((match) => match[1]))];
+
+    // A node whose group has no tab is a node no user can add.
+    const orphans = used.filter((group) => !declared.includes(group));
+    assert.deepEqual(orphans, [], `no node sits in a group without a tab: ${orphans.join(", ")}`);
+    const empty = declared.filter((group) => !used.includes(group));
+    assert.deepEqual(empty, [], `no tab opens onto an empty group: ${empty.join(", ")}`);
+
+    // The tab labels have to be short enough for the column.
+    for (const match of groupsBlock.matchAll(/id: "(\w+)", label: "[^"]+", short: "([^"]+)"/g)) {
+      assert.ok(match[2].length <= 12, `${match[1]} has a short tab label (${match[2]})`);
+    }
+    assert.match(groupsBlock, /short: "เผยแพร่"/, "the publishing group is titled เผยแพร่");
+  });
+
+  test("the palette shows one group at a time, behind real tabs", () => {
+    const builder = read("app", "frontend", "src", "components", "WorkflowBuilder.jsx");
+    assert.match(builder, /const \[paletteGroup, setPaletteGroup\] = useState\(STEP_GROUPS\[0\]\.id\)/);
+    assert.match(builder, /className="awb-palette-tabs" role="tablist"/);
+    assert.match(builder, /role="tab"/);
+    assert.match(builder, /aria-selected=\{active\}/);
+    assert.match(builder, /aria-controls=\{`awb-panel-\$\{group\.id\}`\}/);
+    // Only the selected group's nodes are rendered — that is what fixes the fold.
+    assert.match(builder, /STEP_GROUPS\.find\(\(entry\) => entry\.id === paletteGroup\)/);
+    assert.match(builder, /Object\.entries\(STEP_TYPES\)\.filter\(\(\[, meta\]\) => meta\.group === group\.id\)/);
+    // ...and there is a one-click way in that does not depend on finding the tab.
+    assert.match(builder, /className="awb-chip action"/);
+    assert.match(builder, /setPaletteGroup\("publish"\); setRightTab\("channels"\)/);
+
+    const css = read("app", "frontend", "src", "workflow-builder.css");
+    assert.match(css, /\.awb-palette-tabs \{[^}]*flex-wrap: wrap/, "the tab row wraps instead of overflowing the column");
+    assert.match(css, /\.awb-palette-tab\.active \{/, "the selected tab is visible");
   });
 
   for (const [name, fn] of tests) {

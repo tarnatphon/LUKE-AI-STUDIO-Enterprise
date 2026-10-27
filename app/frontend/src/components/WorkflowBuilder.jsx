@@ -708,6 +708,7 @@ export default function WorkflowBuilder() {
   const [savedAt, setSavedAt] = useState(null);
   const [selectedStepId, setSelectedStepId] = useState(null);
   const [rightTab, setRightTab] = useState("inspector");
+  const [paletteGroup, setPaletteGroup] = useState(STEP_GROUPS[0].id);
   const [addMenuAt, setAddMenuAt] = useState(null);
   const [runNodes, setRunNodes] = useState({});
   const [runStatus, setRunStatus] = useState(null); // null | { status, startedAt, durationMs }
@@ -1108,7 +1109,16 @@ export default function WorkflowBuilder() {
           )}
           <span className="awb-chip"><b>{state.stats.workflowCount}</b> เวิร์กโฟลว์</span>
           <span className="awb-chip ok"><b>{state.stats.successCount}</b> รันสำเร็จ</span>
-          <span className="awb-chip"><b>{CHANNELS.length}</b> ช่องทางฟรี</span>
+          {/* A way in, not just a number: jump straight to the publishing
+              nodes and the channel library from here. */}
+          <button
+            type="button"
+            className="awb-chip action"
+            onClick={() => { setPaletteGroup("publish"); setRightTab("channels"); }}
+            title="เปิดโหนดเผยแพร่และคลังช่องทางฟรี"
+          >
+            <Megaphone size={12} /> <b>{CHANNELS.length}</b> ช่องทางฟรี
+          </button>
         </div>
       </header>
 
@@ -1127,14 +1137,46 @@ export default function WorkflowBuilder() {
         <aside className="awb-palette">
           <header>
             <b>โหนด AI</b>
-            <span className="awb-muted">คลิกเพื่อเพิ่มท้ายสาย</span>
+            <span className="awb-muted">เลือกกลุ่ม แล้วคลิกโหนดเพื่อเพิ่มท้ายสาย</span>
           </header>
-          {STEP_GROUPS.map((group) => {
+          {/* One group at a time. Stacked, the ten nodes did not fit the column
+              and the publishing group fell below the fold unseen. */}
+          <div className="awb-palette-tabs" role="tablist" aria-label="กลุ่มโหนด">
+            {STEP_GROUPS.map((group) => {
+              const count = Object.values(STEP_TYPES).filter((meta) => meta.group === group.id).length;
+              const active = paletteGroup === group.id;
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  role="tab"
+                  id={`awb-tab-${group.id}`}
+                  aria-selected={active}
+                  aria-controls={`awb-panel-${group.id}`}
+                  className={`awb-palette-tab ${active ? "active" : ""}`}
+                  onClick={() => setPaletteGroup(group.id)}
+                  title={`${group.label} — ${count} โหนด`}
+                >
+                  <span>{group.short || group.label}</span>
+                  <em>{count}</em>
+                  {group.isNew && <i className="awb-tab-new">ใหม่</i>}
+                </button>
+              );
+            })}
+          </div>
+          {(() => {
+            const group = STEP_GROUPS.find((entry) => entry.id === paletteGroup) || STEP_GROUPS[0];
             const entries = Object.entries(STEP_TYPES).filter(([, meta]) => meta.group === group.id);
-            if (!entries.length) return null;
             return (
-              <section key={group.id} className="awb-palette-group">
+              <section
+                key={group.id}
+                id={`awb-panel-${group.id}`}
+                role="tabpanel"
+                aria-labelledby={`awb-tab-${group.id}`}
+                className="awb-palette-group"
+              >
                 <h4>{group.label}</h4>
+                {group.hint && <p className="awb-palette-hint">{group.hint}</p>}
                 {entries.map(([type, meta]) => {
                   const Icon = meta.icon;
                   return (
@@ -1146,7 +1188,7 @@ export default function WorkflowBuilder() {
                 })}
               </section>
             );
-          })}
+          })()}
           <footer className="awb-palette-foot">
             <span className="awb-muted">เชื่อมต่อกับ Chat / Create Image / TTS / Speech ที่รันอยู่ในเครื่อง — และโพสต์ออกไปช่องฟรีได้จริง</span>
           </footer>
