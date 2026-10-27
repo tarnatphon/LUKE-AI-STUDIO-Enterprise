@@ -54,3 +54,23 @@ The source is ready for the existing macOS first-run frontend build. The validat
   in it. A `test-ai-workflow-publishing` check fails if a node is ever put in a
   group that has no tab.
 
+## Build stamp — "am I looking at the build I just made?" (2026-10-27)
+- Reported twice in a row: "the new palette group is not there", after the fix
+  had shipped. The code was fine; the tab was running a bundle built from an
+  older commit, and nothing on screen could say so.
+- The build now stamps its own commit: the bundle carries it
+  (`import.meta.env.VITE_LUKE_BUILD`), `app/dist/build-info.json` records it, and
+  `/api/health` reports both the checkout the server runs from and the commit the
+  served dist was built from.
+- **Sidebar footer** prints `1.0.0-beta.16 · main@562a58d` with a state chip:
+  ตรงกับซอร์ส · ต้อง build ใหม่ · ต้องรีเฟรช · ไม่ทราบรุ่น. When it is not
+  current, the repair step is printed next to it — `cd app/frontend && npx vite
+  build` for a stale dist, `Cmd+Shift+R` for a cached tab — instead of leaving
+  the user to compare chunk hashes in devtools.
+- The Workflow header carries the same stamp, compact, because that is the page
+  where the question usually comes up.
+- The stamp deliberately contains **no wall-clock time**: the repo rebuilds the
+  frontend and compares it with the committed `app/dist` byte for byte, so two
+  builds of one commit must stay identical (`test-frontend-build-stamp.cjs`
+  enforces it).
+

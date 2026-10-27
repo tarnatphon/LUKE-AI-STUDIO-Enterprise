@@ -1057,6 +1057,7 @@ function App() {
       setActiveTab={setActiveTab}
       prefetchWorkspace={prefetchWorkspace}
       specs={specs}
+      health={health}
       conversations={conversations}
       activeConversationId={activeConversationId}
       setActiveConversationId={setActiveConversationId}

@@ -54,6 +54,20 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
+### session `arena/042377dc…` (2026-10-27, PR #54) — build stamp: ตอบคำถาม “นี่ UI ใหม่หรือยัง”
+
+> ที่มา: ผู้ใช้รายงานสองรอบว่า “ไม่เห็น palette กลุ่มเผยแพร่” ทั้งที่แก้และ merge แล้ว — ต้นเหตุจริงคือเบราว์เซอร์รัน bundle จาก commit เก่า (`WorkflowBuilder` chunk 35.94 kB = ก่อน PR #52) ไม่มีอะไรบนจอบอกได้
+
+- **bundle พก commit ของตัวเอง** — `vite.config.js` อ่าน `git rev-parse HEAD` ตอน build แล้ว inject ผ่าน `import.meta.env.VITE_LUKE_BUILD` (ไม่ต้องประกาศ global ให้ eslint) พร้อมเขียน `app/dist/build-info.json` (plugin ใช้ `config.build.outDir` ที่ resolve แล้ว จึงรองรับ `--outDir` ของเทสต์)
+- **`scripts/server/source-info.cjs`** — อ่าน commit/branch/dirty/commitDate ของ checkout ที่เซิร์ฟเวอร์รันอยู่ · ไม่ throw เมื่อไม่มี git (fallback `available:false`) · มี cache 15 วินาที (`createSourceInfoReader`) เพื่อให้ health ที่ถูก poll ไม่รัน `git status` ถี่ และยังตาม `git pull` ระหว่างเซิร์ฟเวอร์เปิดอยู่ได้
+- **`/api/health`** เพิ่ม `source` (commit ของ checkout) และ `frontend` (commit ของ dist + `stale` + `sourceCommit`) — เซิร์ฟเวอร์เป็นคนตัดสินว่า dist เก่าหรือไม่ ไม่ปล่อยให้เบราว์เซอร์เดา
+- **`app/frontend/src/lib/build-info.mjs`** — `diagnoseBuild()` แยก 4 สถานะ: `ok` (ตรงกัน) · `stale` (dist เก่ากว่าซอร์ส → บอกคำสั่ง `npx vite build`) · `cached` (แท็บเก่ากว่าไฟล์บนดิสก์ → บอก `Cmd+Shift+R`) · `info`/`unknown` (ไม่รู้ = ไม่รายงานว่าโอเค)
+- **UI** — `BuildStamp.jsx` อยู่ท้าย Sidebar (เห็นได้ทุกหน้า) และแบบ compact ในหัว Workflow · ขึ้น `1.0.0-beta.16 · main@562a58d` + ชิปสถานะ + คำสั่งแก้เมื่อไม่ตรง
+- **determinism:** stamp **ไม่มี** เวลาที่ build — เพราะ `test-frontend-dist-freshness` build ซ้ำแล้วเทียบ byte-for-byte (ตรวจจริง: build สองครั้งได้ hash เท่ากัน)
+- **เทสต์ใหม่ `test-frontend-build-stamp.cjs` 6 checks** — source-info ตรงกับ `git rev-parse HEAD`, fallback นอก repo, cache/invalidate, config inject + ห้ามมี `Date.now()` ในก้อน stamp, bundle จริงมี sha, สถานะทั้ง 4, สาย serve.cjs/health, และ UI (Sidebar/App/WorkflowBuilder/CSS ทุก state)
+- **ตรวจกับเซิร์ฟเวอร์จริง:** `GET /api/health` คืน `source.commit` + `frontend.commit` ตรงกัน · จำลอง dist เก่า (เขียน build-info.json เป็น `a7aaec1`) → `frontend.stale: true` ภายใน 15 วินาทีโดยไม่ต้องรีสตาร์ท · คืนไฟล์แล้วกลับเป็น `false`
+- **ผลตรวจ:** `run-all --timeout 300` → 172 suites ผ่าน (ดูรายงานใน `validation-reports/`) · eslint 0 problems · bundle budgets ผ่าน (initial JS 288 145 B · CSS 75 331 B)
+
 ### session `arena/32507958…` (2026-10-27, PR #53) — แก้ palette ที่มองไม่เห็นกลุ่ม “เผยแพร่”
 
 > ที่มา: “เข้าเมนู Luke AI Workflow ไม่เห็น palette กลุ่ม เผยแพร่ (ฟรี)”

@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState } from "react";
 import { Archive, BriefcaseBusiness, Image, Megaphone, FolderDown, MessageSquare, Mic, Settings, Sparkles, Home, Terminal, ChevronDown, ChevronUp, Trash2, Volume2, Film, Workflow } from "lucide-react";
 import ChatProjects from "./ChatProjects";
+import BuildStamp from "./BuildStamp";
 
 function formatSidebarDate(value) {
   const date = new Date(value);
@@ -16,6 +17,7 @@ function Sidebar({
   setActiveTab, 
   prefetchWorkspace,
   specs,
+  health = null,
   conversations = [],
   activeConversationId,
   setActiveConversationId,
@@ -594,6 +596,9 @@ function Sidebar({
         <div className="sidebar-specs-os">
           OS: {specs.os_name}
         </div>
+        {/* Which commit this UI was built from — and a warning with the fix
+            when the running bundle does not match the code on disk. */}
+        <BuildStamp health={health} />
       </div>
     </div>
   );

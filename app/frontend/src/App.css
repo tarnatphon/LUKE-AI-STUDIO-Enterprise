@@ -1762,6 +1762,46 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
   margin-top: 4px;
 }
 
+/* Build stamp — "am I looking at the build I just made?"
+   A stale bundle looks exactly like a broken feature, so the answer lives on
+   screen instead of in devtools. Grey when it knows nothing, green when the
+   bundle matches the source, amber with the repair command when it does not. */
+.build-stamp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--md-sys-color-outline-variant, #94a3b8) 70%, transparent);
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: var(--md-sys-color-on-surface-variant, #475569);
+}
+.build-stamp svg { flex: 0 0 auto; }
+.build-stamp-label { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.build-stamp-state {
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.56rem;
+  font-weight: 700;
+  opacity: 0.9;
+}
+.build-stamp.ok { color: #10b981; }
+.build-stamp.ok .build-stamp-label { color: var(--md-sys-color-on-surface-variant, #475569); }
+.build-stamp.info, .build-stamp.unknown { color: var(--md-sys-color-outline, #64748b); }
+.build-stamp.stale, .build-stamp.cached { color: #f59e0b; }
+.build-stamp-hint {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.build-stamp.compact { border-top: 0; margin: 0; padding: 0; font-size: 0.6rem; }
+
 /* Chat History Sidebar styling */
 .chat-history-sidebar {
   width: 240px;
