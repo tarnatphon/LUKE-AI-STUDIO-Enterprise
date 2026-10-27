@@ -205,7 +205,7 @@ async function main() {
       assert.match(calendarSource, /onePerDay \? "ทุกวัน" : "เฉพาะวันที่ว่าง"/);
       assert.match(calendarSource, /planAngles\.size \? `\$\{planAngles\.size\} มุม` : "ทุกมุม"/);
       assert.match(calendarSource, /replacePlanned \? "แทนที่แผนเดิม" : ""/);
-      assert.match(calendarMarkup, /class="sa-planner-summary">Facebook · Instagram · LINE · เว็บ \(Demo\) · ทุกวัน · ทุกมุม/);
+      assert.match(calendarMarkup, /class="sa-planner-summary">Facebook · Instagram · LINE · LinkedIn · เว็บ \(Demo\) · ทุกวัน · ทุกมุม/, "the summary lists every ticked platform, LinkedIn included");
     });
 
     test("filters keep the grid honest when they are folded out of sight", () => {

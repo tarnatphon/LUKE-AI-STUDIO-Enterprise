@@ -65,13 +65,16 @@ const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดม�
 
 const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok", "linkedin"];
 // Auto-plan fills ONE slot per selected platform per day, so a single day can
-// carry Facebook + Instagram + LINE + web ("demo" = เว็บโพสต์) side by side.
-// TikTok never joins unattended planning (it needs creator consent per post).
-// What a plan uses when the user does not pick platforms.
-const AUTO_PLAN_PLATFORMS = ["facebook", "instagram", "line", "demo"];
-// Every platform a plan MAY fill when the user asks for it. LinkedIn is opt-in
-// on purpose: a calendar that suddenly starts drafting LinkedIn posts is a
-// surprise, and a real LinkedIn send needs a token most installs do not have.
+// carry Facebook + Instagram + LINE + LinkedIn + web ("demo" = เว็บโพสต์) side by
+// side. TikTok never joins unattended planning (it needs creator consent per
+// post). What a plan uses when the user does not pick platforms — LinkedIn is in
+// here because the calendar doubles as a drafting board: a LinkedIn entry is
+// still useful (write → review → คัดลอกข้อความ + เปิด LinkedIn) on installs with
+// no token, where the run itself just reports dry-run.
+const AUTO_PLAN_PLATFORMS = ["facebook", "instagram", "line", "linkedin", "demo"];
+// Every platform a plan MAY fill when the user asks for it. Today this is the
+// same set as the defaults; it stays a separate list so a platform can be
+// offered without being planned behind the user's back.
 const AUTO_PLAN_ALLOWED = ["facebook", "instagram", "line", "linkedin", "demo"];
 // Default posting times for the non-anchor platforms of a multi-post day. The
 // first selected platform anchors on the learned weekday/weekend time instead,
@@ -2638,7 +2641,8 @@ class SocialAgencyRuntime {
     return defaults;
   }
 
-  // Platforms auto-plan may fill: validated, de-duped, TikTok excluded.
+  // Platforms auto-plan may fill: validated, de-duped, TikTok (and anything not
+  // in AUTO_PLAN_ALLOWED) excluded.
   _autoPlanPlatforms(input) {
     const list = Array.isArray(input) ? input : null;
     const picked = (list || AUTO_PLAN_PLATFORMS)
