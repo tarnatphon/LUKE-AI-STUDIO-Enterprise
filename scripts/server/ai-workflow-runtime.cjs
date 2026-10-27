@@ -245,6 +245,9 @@ class AiWorkflowRuntime {
     // Publishing keys live in their own file and never travel in a workflow or
     // a run record: /state does not expose them, only "which fields are set".
     this.credentialsPath = path.join(this.stateDir, "publish-credentials.json");
+    // Only timestamps live here — never text, never keys. It exists so a
+    // workflow cannot out-run a platform's own spam threshold (gap #3).
+    this.ratePath = path.join(this.stateDir, "publish-rate.json");
     this._read(); // load or seed eagerly
   }
 
@@ -288,6 +291,66 @@ class AiWorkflowRuntime {
     try { fs.chmodSync(this.credentialsPath, 0o600); } catch { /* best effort on non-POSIX */ }
   }
 
+  _readRateLog() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.ratePath, "utf8"));
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  _writeRateLog(log) {
+    fs.mkdirSync(this.stateDir, { recursive: true });
+    const tmp = `${this.ratePath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(log, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, this.ratePath);
+  }
+
+  /**
+   * How much of a channel's allowance is left. `blocked` is true when the last
+   * post was too recent or today's quota is spent; `waitSeconds` is what the
+   * user has to wait. This is checked before any request leaves the process.
+   */
+  rateStatus(channelId, now = Date.now()) {
+    const channel = channels.getChannel(channelId);
+    const rate = channel.rate || { perDay: 10, minIntervalSeconds: 120 };
+    const log = this._readRateLog();
+    const stamps = (Array.isArray(log[channelId]) ? log[channelId] : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value))
+      .filter((value) => now - value < 24 * 60 * 60 * 1000);
+    const last = stamps.length ? Math.max(...stamps) : 0;
+    const minIntervalMs = Math.max(0, Number(rate.minIntervalSeconds) || 0) * 1000;
+    const intervalLeft = last ? Math.max(0, last + minIntervalMs - now) : 0;
+    const perDay = Number(rate.perDay) || 0;
+    const perDayLeft = Math.max(0, perDay - stamps.length);
+    // Quota refills 24h after the oldest post in the window, not at midnight.
+    const quotaReset = perDayLeft === 0 && stamps.length
+      ? Math.max(0, Math.min(...stamps) + 24 * 60 * 60 * 1000 - now)
+      : 0;
+    return {
+      perDay,
+      minIntervalSeconds: Number(rate.minIntervalSeconds) || 0,
+      usedToday: stamps.length,
+      remainingToday: perDayLeft,
+      intervalLeftSeconds: Math.ceil(intervalLeft / 1000),
+      waitSeconds: Math.ceil(Math.max(intervalLeft, quotaReset) / 1000),
+      blocked: intervalLeft > 0 || perDayLeft === 0,
+    };
+  }
+
+  _recordPublish(channelId, now = Date.now()) {
+    const log = this._readRateLog();
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    const stamps = (Array.isArray(log[channelId]) ? log[channelId] : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > dayAgo);
+    stamps.push(now);
+    log[channelId] = stamps;
+    this._writeRateLog(log);
+  }
+
   // What the UI may see: field names that exist, never their values.
   credentialStatus() {
     const stored = this._readCredentials();
@@ -299,6 +362,15 @@ class AiWorkflowRuntime {
       status[channel.id] = Object.fromEntries(fields.map((field) => [field.key, Boolean(values[field.key])]));
     }
     return status;
+  }
+
+  /** Per-channel allowance, for the UI. Timestamps only — no text, no keys. */
+  publishRates() {
+    const rates = {};
+    for (const channel of channels.listChannels()) {
+      if (channel.automation === "api") rates[channel.id] = this.rateStatus(channel.id);
+    }
+    return rates;
   }
 
   updateCredentials(channelId, values) {
@@ -338,6 +410,29 @@ class AiWorkflowRuntime {
   async sendPublish({ channelId, draft, dryRun = false }) {
     const channel = channels.getChannel(channelId);
     const credentials = this.credentialsFor(channelId);
+    // A self-hosted forum may live on the LAN. The opt-in is a stored setting
+    // per channel, and only channels marked `localAllowed` ever see it.
+    const allowLocalNetwork = Boolean(channel.localAllowed)
+      && /^(1|true|yes|on)$/i.test(String(credentials.allowLocalNetwork ?? ""));
+    // Gap #3: our own ceiling is checked before a plan is even built, so a
+    // workflow that runs in a loop is stopped here instead of by the platform.
+    // A dry run is not a post: it must stay available for inspecting the request.
+    if (!dryRun) {
+      const rate = this.rateStatus(channelId);
+      if (rate.blocked) {
+        const wait = rate.intervalLeftSeconds > 0
+          ? `รออีก ${rate.intervalLeftSeconds} วินาที`
+          : "โควตาวันนี้ครบแล้ว พรุ่งนี้ลองใหม่";
+        return {
+          channel: channelId,
+          channelName: channel.name,
+          ok: false,
+          rateLimited: true,
+          rate,
+          message: `${channel.name} จำกัด ${rate.perDay} โพสต์/วัน และห่างกันอย่างน้อย ${rate.minIntervalSeconds} วินาที — ${wait}`,
+        };
+      }
+    }
     let plan;
     try {
       plan = channels.buildPlan(channelId, { draft: draft || {}, credentials });
@@ -375,9 +470,14 @@ class AiWorkflowRuntime {
         message: `พร้อมส่ง ${redacted.length} คำขอ — ยังไม่ได้ส่งจริง (dry-run)`,
       };
     }
-    const { results } = await publishRelay.runPlan(plan, { variables: {} });
+    const { results } = await publishRelay.runPlan(plan, {
+      variables: {},
+      allowLocalNetwork,
+    });
     const last = results[results.length - 1] || {};
-    const url = channels.publishedUrl(channelId, last.json) || "";
+    // Only a request the platform actually accepted earns a rate stamp.
+    if (last.ok) this._recordPublish(channelId);
+    const url = channels.publishedUrl(channelId, last.json, credentials) || "";
     return {
       channel: channelId,
       channelName: channel.name,
@@ -405,6 +505,7 @@ class AiWorkflowRuntime {
         failedCount: state.runs.filter((r) => r.status === "failed").length,
       },
       channels: channels.listChannels(),
+      publishRates: this.publishRates(),
       channelGroups: channels.channelGroups(),
       channelCredentials: this.credentialStatus(),
       channelsReviewedAt: channels.NOTES_REVIEWED,
@@ -559,11 +660,16 @@ class AiWorkflowRuntime {
           groups: channels.channelGroups(),
           channels: channels.listChannels(),
           credentials: this.credentialStatus(),
+          rates: this.publishRates(),
           reviewedAt: channels.NOTES_REVIEWED,
         });
       }
       if (pathname === "/api/ai-workflow/publish/credentials" && method === "GET") {
-        return json(res, 200, { ok: true, credentials: this.credentialStatus() });
+        return json(res, 200, {
+          ok: true,
+          credentials: this.credentialStatus(),
+          rates: this.publishRates(),
+        });
       }
       if (pathname === "/api/ai-workflow/publish/credentials" && (method === "PATCH" || method === "POST")) {
         const body = await readBody();

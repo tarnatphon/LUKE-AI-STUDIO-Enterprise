@@ -54,6 +54,19 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
+### session `arena/555d6656…` (2026-10-27, PR #55) — 24 ช่องทาง: Bluesky + WordPress ติดตั้งเอง + ฟอรัม 5 ตัว และปิด 3 ช่องโหว่ของ relay
+
+> ที่มา: “โพสต์เข้าเว็บบอร์ด/ชุมชนอัตโนมัติได้ไหม” · คำตอบเดิมคือ “ไม่มี” เพราะคลังมีแต่บล็อกสาธารณะ — รอบนี้เพิ่มช่องทางที่ **โพสต์ได้จริง** และบอกตรง ๆ ว่าช่องไหนทำไม่ได้เพราะอะไร
+
+- **ช่องทางใหม่ 8 ตัว (รวมเป็น 24)** — `Bluesky` (App Password → `createSession` → `createRecord`, ตัดข้อความ 300 grapheme), `WordPress (ติดตั้งเอง)` (`/wp-json/wp/v2/posts`, Basic app password, HTML), `Discourse` (`/posts.json`, `Api-Key`+`Api-Username`), `XenForo` (`/api/threads/`, form-encoded, `XF-Api-Key`), `NodeBB` (`/api/v3/topics`), `Flarum` (JSON:API discussions/posts), `phpBB` (`/app.php/api/v1/forums/:id/topics`) และ `Pantip` (คลิกเดียว + แสดงกฎ 1 กระทู้/วัน/บัตร ปชช. ก่อนกด) · กลุ่มใหม่ `community` = “ฟอรัม/เว็บของเราเอง” · ช่อง self-hosted ตั้ง `da: 0` โดยเจตนา (ไม่มี third-party authority ให้อ้าง)
+- **ช่องโหว่ #1 ปิด: header allowlist** — เพิ่ม `api-key`, `api-username`, `xf-api-key`, `xf-api-user`, `x-api-key` (รายชื่อยังเป็น static — ช่องทางประกาศ header เองไม่ได้)
+- **ช่องโหว่ #2 ปิด: LAN ไปถึง relay จริง** — `runPlan(..., { allowLocalNetwork })` ส่งต่อจาก runtime ทุกครั้ง · สวิตช์ “เซิร์ฟเวอร์นี้อยู่ในเครื่อง/ในบ้าน” เป็น checkbox ต่อช่องทาง เก็บในไฟล์ credential และ **มีผลเฉพาะช่องที่ประกาศ `localAllowed`** · link-local/CGNAT/reserved ยังถูกบล็อกแม้เปิดสวิตช์
+- **ช่องโหว่ #3 ปิด: เพดานของเราเอง** — `rateStatus()`/`_recordPublish()` + `app/runtime-state/ai-workflow/publish-rate.json` (เก็บแค่ timestamps, `0600`) · ตรวจ **ก่อนสร้าง plan** เพื่อไม่ให้ workflow ที่รันวนยิงถี่ · dry-run ไม่กินโควตาและยังใช้ตรวจ request ได้ · UI แสดง “เหลืออีก N โพสต์วันนี้ / รออีก Ns” และรีเฟรชหลังโพสต์จริง
+- **UI** — ตัวกรองกลุ่มสร้างจาก registry (ไม่ hardcode 5 กลุ่มอีกต่อไป) · ช่องทาง self-hosted แสดง “เซิร์ฟเวอร์ของเราเอง” · ฟิลด์ URL/handle เป็น text (อ่านกลับได้ด้วยตา) ส่วนคีย์ยังเป็น password · แสดง `≤ N/วัน · ห่าง ≥ Ns` บนการ์ดทุกใบ
+- **เอกสาร** — `docs/beta7/forum-and-community-posting.md` (3 ระดับ A/B/C, ตาราง 8 ช่องทาง, เพดานที่ระบบบังคับ, LAN opt-in, ทำไมไม่ทำแบบเครื่องมือ auto-post, สถานะ Pantip/Reddit/FB Groups, checklist ตั้งค่าคีย์) + ชี้ต่อจากเอกสาร 16 ช่องทางเดิม
+- **เทสต์** — `test-ai-workflow-publishing.cjs` เพิ่มเป็น **22 checks**: Bluesky 2-step + grapheme, ฟอรัมทั้ง 5 ตัว (header/body/ผลลัพธ์), WordPress Basic auth + HTML, credential fields (URL=text, opt-in=toggle), policy matrix (LAN/dev/scoped, metadata บล็อกทุกกรณี), LAN opt-in ยิงจริงไป localhost ได้/ไม่ได้, rate gate + ไฟล์ rate ไม่มีข้อความ/คีย์
+- **ผลตรวจ:** `run-all` (ติดตั้ง frontend deps + build dist แล้ว) → **ทุก suite ผ่าน ยกเว้น `test_image_to_video_duration_worker.py` ที่ขาด `imageio_ffmpeg` ในเครื่อง sandbox** (ข้ามได้ตามดีไซน์) · eslint ผ่าน · bundle budgets ผ่าน
+
 ### session `arena/042377dc…` (2026-10-27, PR #54) — build stamp: ตอบคำถาม “นี่ UI ใหม่หรือยัง”
 
 > ที่มา: ผู้ใช้รายงานสองรอบว่า “ไม่เห็น palette กลุ่มเผยแพร่” ทั้งที่แก้และ merge แล้ว — ต้นเหตุจริงคือเบราว์เซอร์รัน bundle จาก commit เก่า (`WorkflowBuilder` chunk 35.94 kB = ก่อน PR #52) ไม่มีอะไรบนจอบอกได้

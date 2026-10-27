@@ -10,8 +10,8 @@ import {
   api, postJson, publishDraft, resolveTemplate,
 } from "../workflow-builder/lib.js";
 import {
-  CHANNELS, channelById, composeChannelPost, CHANNEL_AUTOMATION_LABEL, CHANNEL_LINK_TYPE_LABEL,
-  CHANNELS_REVIEWED_AT,
+  CHANNELS, CHANNEL_GROUPS, channelById, composeChannelPost, CHANNEL_AUTOMATION_LABEL,
+  CHANNEL_LINK_TYPE_LABEL, CHANNELS_REVIEWED_AT,
 } from "../workflow-builder/channels.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import BuildStamp from "./BuildStamp";
@@ -412,16 +412,16 @@ function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCreden
       const channel = channelById(cfg.channel) || available[0];
       const fields = channel?.credentialFields || [];
       const status = channelCredentials[channel?.id] || {};
-      const missing = fields.filter((field) => !status[field.key]);
+      const missing = fields.filter((field) => field.type !== "toggle" && !status[field.key]);
       return (
         <>
           <Field label="ช่องทางที่โพสต์" hint={channel?.why || ""}>
             <select value={channel?.id || ""} onChange={(e) => set("channel", e.target.value)}>
-              {["blog", "dev", "social", "chat", "instant"].map((group) => {
-                const list = available.filter((entry) => entry.group === group);
+              {CHANNEL_GROUPS.map((group) => {
+                const list = available.filter((entry) => entry.group === group.id);
                 if (!list.length) return null;
                 return (
-                  <optgroup key={group} label={list[0].groupLabel}>
+                  <optgroup key={group.id} label={group.label}>
                     {list.map((entry) => (
                       <option key={entry.id} value={entry.id}>
                         {entry.name} · DA {entry.da} · {CHANNEL_AUTOMATION_LABEL[entry.automation]}
@@ -438,6 +438,8 @@ function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCreden
               <span className="awb-badge">DA {channel.da} · PA {channel.pa}</span>
               <span className="awb-badge">{CHANNEL_LINK_TYPE_LABEL[channel.linkType]}</span>
               {channel.supportsCanonical && <span className="awb-badge ok">ใส่ canonical ได้</span>}
+              <span className="awb-badge">≤ {channel.rate.perDay}/วัน · ห่าง ≥ {channel.rate.minIntervalSeconds}s</span>
+              {channel.localAllowed && <span className="awb-badge">เซิร์ฟเวอร์ของเราเอง</span>}
               <a className="awb-link" href={safeExternalUrl(channel.signupUrl) || undefined} target="_blank" rel="noreferrer">{channel.signup}</a>
             </div>
           )}
@@ -468,11 +470,23 @@ function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCreden
             <div className="awb-credential-box">
               <header><KeyRound size={13} /> คีย์ของ {channel?.name}</header>
               {fields.length === 0 && <p className="awb-req-hint">ช่องนี้ไม่ต้องใช้คีย์ — รันแล้วโพสต์ได้เลย</p>}
-              {fields.map((field) => (
+              {fields.map((field) => (field.type === "toggle" ? (
+                <label key={field.key} className="awb-credential-row toggle">
+                  <span>{field.label}{status[field.key] ? <em className="awb-set">• เปิดอยู่</em> : null}</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(status[field.key])}
+                    onChange={(e) => onSetCredential?.(channel.id, { [field.key]: e.target.checked ? "1" : "" })}
+                  />
+                  {field.hint ? <em className="awb-field-hint">{field.hint}</em> : null}
+                </label>
+              ) : (
                 <label key={field.key} className="awb-credential-row">
                   <span>{field.label}{status[field.key] ? <em className="awb-set">• ตั้งไว้แล้ว</em> : null}</span>
                   <input
-                    type="password"
+                    type={field.secret ? "password" : "text"}
+                    autoComplete="off"
+                    spellCheck={false}
                     placeholder={field.hint || "วางค่าแล้วกดบันทึก"}
                     onBlur={async (e) => {
                       const input = e.target;
@@ -483,7 +497,7 @@ function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCreden
                     }}
                   />
                 </label>
-              ))}
+              )))}
               <div className="awb-post-actions">
                 <button
                   className="awb-btn ghost sm"
@@ -535,13 +549,19 @@ const CHANNEL_FILTERS = [
   { id: "api", label: "โพสต์อัตโนมัติได้" },
   { id: "manual", label: "คลิกเดียว" },
   { id: "easy", label: "สมัครง่าย" },
+  // One tab per registry group, added here so a new group (forum/self-hosted)
+  // shows up without touching this file again.
+  ...CHANNEL_GROUPS.map((group) => ({ id: `group:${group.id}`, label: group.label })),
 ];
 
-function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
+function ChannelCard({ channel, credentials, rates = {}, onSetCredential, onAddStep }) {
   const [openKeys, setOpenKeys] = useState(false);
   const fields = channel.credentialFields || [];
   const status = credentials[channel.id] || {};
-  const ready = channel.automation === "api" && fields.every((field) => status[field.key]);
+  const rate = rates[channel.id] || null;
+  // A toggle is a setting, not a missing credential — it must not block "ready".
+  const required = fields.filter((field) => field.type !== "toggle");
+  const ready = channel.automation === "api" && required.every((field) => status[field.key]);
   return (
     <article className={`awb-channel-card ${channel.automation}`}>
       <header>
@@ -553,6 +573,16 @@ function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
         <span className={`awb-badge ${channel.automation}`}>{CHANNEL_AUTOMATION_LABEL[channel.automation]}</span>
         <span className="awb-badge">{CHANNEL_LINK_TYPE_LABEL[channel.linkType]}</span>
         <span className="awb-badge">{channel.signup}</span>
+        <span className="awb-badge" title="ขีดจำกัดที่ระบบเราบังคับก่อนแพลตฟอร์มจะบังคับ">
+          ≤ {channel.rate.perDay}/วัน · ห่าง ≥ {channel.rate.minIntervalSeconds}s
+        </span>
+        {rate && (
+          <span className={`awb-badge ${rate.blocked ? "warn" : "ok"}`}>
+            {rate.blocked
+              ? `รออีก ${rate.intervalLeftSeconds > 0 ? `${rate.intervalLeftSeconds}s` : "ถึงพรุ่งนี้"}`
+              : `เหลืออีก ${rate.remainingToday} โพสต์วันนี้`}
+          </span>
+        )}
         {channel.automation === "api" && (
           <span className={`awb-badge ${ready ? "ok" : "warn"}`}>{ready ? "พร้อมโพสต์อัตโนมัติ" : "ยังไม่ได้ใส่คีย์"}</span>
         )}
@@ -560,6 +590,11 @@ function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
       <ol className="awb-channel-steps">
         {channel.steps.map((step) => <li key={step}>{step}</li>)}
       </ol>
+      {channel.rules.length > 0 && (
+        <ul className="awb-channel-rules">
+          {channel.rules.map((rule) => <li key={rule}>{rule}</li>)}
+        </ul>
+      )}
       <footer>
         <a className="awb-btn ghost sm" href={safeExternalUrl(channel.signupUrl) || undefined} target="_blank" rel="noreferrer">
           <ExternalLink size={12} /> สมัครฟรี
@@ -580,11 +615,25 @@ function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
       </footer>
       {openKeys && fields.length > 0 && (
         <div className="awb-credential-box">
-          {fields.map((field) => (
+          {fields.map((field) => (field.type === "toggle" ? (
+            <label key={field.key} className="awb-credential-row toggle">
+              <span>{field.label}{status[field.key] ? <em className="awb-set">• เปิดอยู่</em> : null}</span>
+              <input
+                type="checkbox"
+                checked={Boolean(status[field.key])}
+                onChange={(e) => onSetCredential(channel.id, { [field.key]: e.target.checked ? "1" : "" })}
+              />
+              {field.hint ? <em className="awb-field-hint">{field.hint}</em> : null}
+            </label>
+          ) : (
             <label key={field.key} className="awb-credential-row">
               <span>{field.label}{status[field.key] ? <em className="awb-set">• ตั้งไว้แล้ว</em> : null}</span>
               <input
-                type="password"
+                // A key is typed blind; a URL/handle/user id is meant to be read
+                // back by eye, so it is a plain text field.
+                type={field.secret ? "password" : "text"}
+                autoComplete="off"
+                spellCheck={false}
                 placeholder={field.hint || "วางค่าแล้วกด Enter"}
                 onKeyDown={(e) => {
                   if (e.key !== "Enter") return;
@@ -601,7 +650,7 @@ function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
                 }}
               />
             </label>
-          ))}
+          )))}
           <p className="awb-field-hint">เก็บในเครื่องนี้เท่านั้น (app/runtime-state/ai-workflow/publish-credentials.json)</p>
         </div>
       )}
@@ -609,7 +658,7 @@ function ChannelCard({ channel, credentials, onSetCredential, onAddStep }) {
   );
 }
 
-function ChannelsPanel({ credentials, onSetCredential, onAddStep, error }) {
+function ChannelsPanel({ credentials, rates = {}, onSetCredential, onAddStep, error }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const list = useMemo(() => {
@@ -618,6 +667,7 @@ function ChannelsPanel({ credentials, onSetCredential, onAddStep, error }) {
       if (filter === "api" && channel.automation !== "api") return false;
       if (filter === "manual" && channel.automation === "api") return false;
       if (filter === "easy" && !/ไม่ต้องสมัคร|1 คลิก|ใช้บัญชี|ฟรี/.test(channel.signup)) return false;
+      if (filter.startsWith("group:") && channel.group !== filter.slice(6)) return false;
       if (!needle) return true;
       return [channel.name, channel.domain, channel.signup, channel.why]
         .join(" ").toLowerCase().includes(needle);
@@ -651,6 +701,7 @@ function ChannelsPanel({ credentials, onSetCredential, onAddStep, error }) {
             key={channel.id}
             channel={channel}
             credentials={credentials}
+            rates={rates}
             onSetCredential={onSetCredential}
             onAddStep={onAddStep}
           />
@@ -715,6 +766,8 @@ export default function WorkflowBuilder() {
   const [runStatus, setRunStatus] = useState(null); // null | { status, startedAt, durationMs }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [channelCredentials, setChannelCredentials] = useState({});
+  // How much of each channel's allowance is left, as the server counts it.
+  const [publishRates, setPublishRates] = useState({});
   const [channelError, setChannelError] = useState("");
   const [sendingStep, setSendingStep] = useState(null);
   const [publishResults, setPublishResults] = useState([]);
@@ -737,6 +790,7 @@ export default function WorkflowBuilder() {
   // themselves never reach this component.
   useEffect(() => {
     if (state?.channelCredentials) setChannelCredentials(state.channelCredentials);
+    if (state?.publishRates) setPublishRates(state.publishRates);
   }, [state?.channelCredentials]);
 
   // pick the first workflow once state arrives
@@ -968,6 +1022,7 @@ export default function WorkflowBuilder() {
       await postJson("/api/ai-workflow/publish/credentials", { channelId, values }, "PATCH");
       const status = await api("/api/ai-workflow/publish/credentials");
       setChannelCredentials(status.credentials || {});
+      setPublishRates(status.rates || {});
       return true;
     } catch (err) {
       setChannelError(err.message);
@@ -1017,6 +1072,11 @@ export default function WorkflowBuilder() {
       const data = await postJson("/api/ai-workflow/publish/send", { channelId: step.config?.channel, draft, dryRun });
       const result = data.result || {};
       setPublishResults((prev) => [{ ...result, at: new Date().toISOString(), dryRun }, ...prev].slice(0, 10));
+      // A real post consumes part of the channel's allowance: refresh the
+      // counter so the next click shows the truth instead of a stale badge.
+      if (result.ok && !dryRun) api("/api/ai-workflow/publish/credentials")
+        .then((status) => setPublishRates(status.rates || {}))
+        .catch(() => {});
       setRunNodes((prev) => ({
         ...prev,
         [step.id]: {
@@ -1295,6 +1355,7 @@ export default function WorkflowBuilder() {
           {rightTab === "channels" && (
             <ChannelsPanel
               credentials={channelCredentials}
+              rates={publishRates}
               onSetCredential={setCredential}
               onAddStep={addChannelStep}
               error={channelError}

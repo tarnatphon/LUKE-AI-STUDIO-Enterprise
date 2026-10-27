@@ -35,25 +35,82 @@ const MAX_REQUEST_BYTES = 200 * 1024;
 // or Mastodon instance you run yourself). Everything else must be https.
 const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
-function isPrivateIpv4(ip) {
-  const parts = ip.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+/**
+ * Where does this address live, and may we call it?
+ *
+ * Self-hosted forums are the reason this is not a boolean. A company Discourse
+ * on 192.168.1.20 is a legitimate target when the owner says so; the cloud
+ * metadata service on 169.254.169.254 never is. So addresses are classified
+ * first, and the caller's policy decides afterwards:
+ *
+ *   loopback  127.0.0.0/8, ::1   — a server on this machine
+ *   private   10/8, 172.16/12, 192.168/16, fc00::/7 — a server on this LAN
+ *   linklocal 169.254/16, fe80::/10 — includes the metadata endpoint: NEVER
+ *   cgnat     100.64/10          — carrier NAT, not your network: never
+ *   reserved  0/8, 224+/4, ::    — not a real host: never
+ *   public    everything else
+ */
+function classifyIpv4(ip) {
+  const parts = String(ip).split(".").map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return "reserved";
   const [a, b] = parts;
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 169 && b === 254) return true; // link-local / metadata
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  if (a >= 224) return true; // multicast/reserved
-  return false;
+  if (a === 127) return "loopback";
+  if (a === 10) return "private";
+  if (a === 172 && b >= 16 && b <= 31) return "private";
+  if (a === 192 && b === 168) return "private";
+  if (a === 169 && b === 254) return "linklocal";
+  if (a === 100 && b >= 64 && b <= 127) return "cgnat";
+  if (a === 0 || a >= 224) return "reserved";
+  return "public";
+}
+
+function classifyIpv6(ip) {
+  const value = String(ip).toLowerCase().replace(/^\[(.+)\]$/, "$1");
+  if (value === "::1") return "loopback";
+  if (value === "::") return "reserved";
+  if (value.startsWith("fe80")) return "linklocal";
+  if (value.startsWith("fc") || value.startsWith("fd")) return "private";
+  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return classifyIpv4(mapped[1]);
+  return "public";
+}
+
+function classifyAddress(address) {
+  const family = net.isIP(String(address));
+  if (family === 4) return classifyIpv4(address);
+  if (family === 6) return classifyIpv6(address);
+  return "reserved";
+}
+
+// `isPrivateIpv4`/`isPrivateIpv6` are the older, blunter question ("not public")
+// that tests and callers use; the classifier above is the one the guard needs.
+function isPrivateIpv4(ip) {
+  return classifyIpv4(ip) !== "public";
 }
 
 function isPrivateIpv6(ip) {
-  const value = ip.toLowerCase();
-  if (value === "::1" || value === "::") return true;
-  if (value.startsWith("fe80") || value.startsWith("fc") || value.startsWith("fd")) return true;
-  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIpv4(mapped[1]);
+  return classifyIpv6(ip) !== "public";
+}
+
+/**
+ * Turn the caller's options into something answerable.
+ *   (nothing)               public only
+ *   allowLocalDev           + loopback, + http (a server on this machine)
+ *   allowLocalNetwork       + loopback, + private LAN, + http (a forum you run)
+ * link-local, CGNAT and reserved space are refused under every policy.
+ */
+function networkPolicy(options = {}) {
+  if (options.allowLocalNetwork) return { name: "local", allowHttp: true, loopback: true, private: true };
+  if (options.allowLocalDev) return { name: "loopback", allowHttp: true, loopback: true, private: false };
+  return { name: "public", allowHttp: false, loopback: false, private: false };
+}
+
+function addressAllowed(kind, policy) {
+  if (kind === "public") return true;
+  if (kind === "loopback") return policy.loopback;
+  if (kind === "private") return policy.private;
+  // linklocal (cloud metadata), cgnat and reserved are never a legitimate
+  // publishing target, so no policy opens them.
   return false;
 }
 
@@ -62,7 +119,8 @@ function isPrivateIpv6(ip) {
  * URL on success. Exported because the tests (and the UI preview) need exactly
  * the same rule the request will use.
  */
-function assertSafeOutboundUrl(rawUrl, { allowLocalDev = false } = {}) {
+function assertSafeOutboundUrl(rawUrl, options = {}) {
+  const policy = networkPolicy(options);
   let url;
   try {
     url = new URL(String(rawUrl || ""));
@@ -70,43 +128,57 @@ function assertSafeOutboundUrl(rawUrl, { allowLocalDev = false } = {}) {
     throw new Error("URL ปลายทางไม่ถูกต้อง");
   }
   if (url.username || url.password) throw new Error("URL ต้องไม่ฝัง username/password");
-  // URL keeps the brackets on IPv6 literals ("[::1]"); strip them so the IP
-  // checks below see the address the socket will actually use.
-  const host = url.hostname.toLowerCase().replace(/^\[(.+)\]$/, "$1");
-  const localHost = LOCAL_DEV_HOSTS.has(host);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowLocalDev && localHost)) {
-    throw new Error("ปลายทางต้องเป็น https:// (หรือ http://localhost สำหรับเซิร์ฟเวอร์ที่รันเองในเครื่อง)");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && policy.allowHttp)) {
+    throw new Error(
+      policy.allowHttp
+        ? "ปลายทางต้องเป็น http:// หรือ https://"
+        : "ปลายทางต้องเป็น https:// (เปิด “เซิร์ฟเวอร์นี้อยู่ในเครื่อง/ในบ้าน” เฉพาะตอนที่มันเป็นเซิร์ฟเวอร์ของคุณเอง)"
+    );
   }
+  // URL keeps the brackets on IPv6 literals ("[::1]"); strip them so the
+  // classifier sees the address the socket will actually use.
+  const host = url.hostname.toLowerCase().replace(/^\[(.+)\]$/, "$1");
   if (!host) throw new Error("URL ไม่มีชื่อโฮสต์");
-  // IP literal: check directly. Hostname: it is checked after DNS resolution in
-  // resolveAndCheck(), because a public name can point at 127.0.0.1.
+
   const family = net.isIP(host);
   if (family) {
-    // Pick the checker by family: running the IPv4 parser on an IPv6 literal
-    // would flag every public address as private.
-    const isPrivate = family === 4 ? isPrivateIpv4(host) : isPrivateIpv6(host);
-    // The deliberate exception is loopback only (a WordPress/Mastodon install on
-    // this machine), and only when the caller asks for it. LAN ranges and the
-    // cloud metadata address stay blocked even then.
-    const loopback = localHost && allowLocalDev;
-    if (isPrivate && !loopback) throw new Error("ไม่อนุญาตให้ยิงไปยัง IP ภายใน/เครื่องนี้");
-  } else if (/^localhost$/.test(host) || host.endsWith(".local") || host.endsWith(".internal")) {
-    if (!(allowLocalDev && localHost)) throw new Error("ไม่อนุญาตให้ยิงไปยังที่อยู่ในเครื่อง/เครือข่ายภายใน");
+    const kind = classifyAddress(host);
+    if (!addressAllowed(kind, policy)) throw blockMessage(kind, host, policy);
+  } else if (host === "localhost") {
+    if (!policy.loopback) throw blockMessage("loopback", host, policy);
+  } else if (host.endsWith(".local") || host.endsWith(".internal")) {
+    // mDNS/.internal names resolve on the local network only; they are never a
+    // public publishing target, so they need the same opt-in as a LAN address.
+    if (!policy.private) throw blockMessage("private", host, policy);
   }
-  if (url.port && !(allowLocalDev && localHost)) {
-    // A non-standard port on a public host is allowed (some self-hosted
-    // WordPress/Mastodon setups use one), but never together with a private IP —
-    // that combination is already rejected above or below.
+
+  if (url.port) {
     const port = Number(url.port);
-    if (port < 1 || port > 65535) throw new Error("พอร์ตปลายทางไม่ถูกต้อง");
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("พอร์ตปลายทางไม่ถูกต้อง");
   }
   return url;
 }
 
-async function resolveAndCheck(url, { allowLocalDev = false } = {}) {
-  const host = url.hostname;
+function blockMessage(kind, host, policy) {
+  const where = {
+    loopback: "เครื่องนี้ (loopback)",
+    private: "เครือข่ายภายใน (LAN)",
+    linklocal: "ที่อยู่ link-local / cloud metadata",
+    cgnat: "ช่วง CGNAT ของผู้ให้บริการ",
+    reserved: "ที่อยู่สงวน",
+  }[kind] || "ที่อยู่ภายใน";
+  const hint = kind === "private" && !policy.private
+    ? " — ถ้าเป็นฟอรัมของคุณเอง ให้เปิด “เซิร์ฟเวอร์นี้อยู่ในเครื่อง/ในบ้าน” ในช่องทางนั้น"
+    : "";
+  return new Error(`ไม่อนุญาตให้ยิงไปยัง${where} (${host})${hint}`);
+}
+
+async function resolveAndCheck(url, options = {}) {
+  const policy = networkPolicy(options);
+  const host = url.hostname.toLowerCase().replace(/^\[(.+)\]$/, "$1");
   if (net.isIP(host)) return; // already checked
-  if (allowLocalDev && LOCAL_DEV_HOSTS.has(host.toLowerCase())) return;
+  // A literal name for this machine, or a LAN-only name, was decided above.
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return;
   let addresses = [];
   try {
     addresses = await dns.lookup(host, { all: true });
@@ -114,20 +186,38 @@ async function resolveAndCheck(url, { allowLocalDev = false } = {}) {
     throw new Error(`หาโดเมน ${host} ไม่พบ (${error.code || error.message})`);
   }
   if (!addresses.length) throw new Error(`หาโดเมน ${host} ไม่พบ`);
+  // A public name can point at 127.0.0.1 or at the metadata endpoint: the answer
+  // is checked with the same policy as a literal address.
   for (const entry of addresses) {
-    if (entry.family === 4 && isPrivateIpv4(entry.address)) {
-      throw new Error(`โดเมน ${host} ชี้ไปยัง IP ภายใน (${entry.address}) — ไม่อนุญาต`);
-    }
-    if (entry.family === 6 && isPrivateIpv6(entry.address)) {
-      throw new Error(`โดเมน ${host} ชี้ไปยัง IP ภายใน (${entry.address}) — ไม่อนุญาต`);
-    }
+    const kind = entry.family === 4 ? classifyIpv4(entry.address) : classifyIpv6(entry.address);
+    if (!addressAllowed(kind, policy)) throw blockMessage(kind, `${host} → ${entry.address}`, policy);
   }
 }
 
 // Only headers a publishing API actually needs. Anything cookie-ish, and any
 // header that could rewrite the request (Host, Content-Length, X-HTTP-Method…),
 // is dropped before sending.
-const ALLOWED_HEADERS = new Set(["content-type", "authorization", "accept", "user-agent"]);
+//
+// The forum entries are not decoration: Discourse authenticates with
+// `Api-Key`/`Api-Username`, XenForo with `XF-Api-Key` (+ `XF-Api-User` for a
+// super-user key), and the phpBB extension with `X-API-Key`. Without them a
+// forum post is sent unauthenticated and comes back 401, which reads as "the
+// forum does not allow posting" instead of "the key header was dropped".
+//
+// The list stays static on purpose. Letting a channel declare its own extra
+// headers would turn this from an allowlist into a pass-through the first time
+// someone added a plan that needed one.
+const ALLOWED_HEADERS = new Set([
+  "content-type",
+  "authorization",
+  "accept",
+  "user-agent",
+  "api-key",
+  "api-username",
+  "xf-api-key",
+  "xf-api-user",
+  "x-api-key",
+]);
 
 function sanitizeHeaders(headers) {
   const out = {};
@@ -225,7 +315,7 @@ function pickPath(json, path) {
  * Returns every step's outcome so the run history can show what actually
  * happened (and so a half-published post is visible, not silent).
  */
-async function runPlan(plan, { variables = {}, allowLocalDev = false } = {}) {
+async function runPlan(plan, { variables = {}, allowLocalDev = false, allowLocalNetwork = false } = {}) {
   const results = [];
   const vars = { ...variables };
   for (const request of plan) {
@@ -236,7 +326,10 @@ async function runPlan(plan, { variables = {}, allowLocalDev = false } = {}) {
       body: fillPlaceholders(request.body, vars),
     };
     const bodyText = typeof filled.body === "string" ? filled.body : JSON.stringify(filled.body);
-    const response = await sendRequest({ method: filled.method, url: filled.url, headers: filled.headers, body: bodyText }, { allowLocalDev });
+    const response = await sendRequest(
+      { method: filled.method, url: filled.url, headers: filled.headers, body: bodyText },
+      { allowLocalDev, allowLocalNetwork },
+    );
     results.push({ url: filled.url, method: filled.method || "POST", status: response.status, ok: response.ok, json: response.json, text: response.text });
     if (!response.ok) {
       const detail = response.json?.error?.message || response.json?.error || response.json?.message || response.text || "";
@@ -253,13 +346,19 @@ async function runPlan(plan, { variables = {}, allowLocalDev = false } = {}) {
 }
 
 module.exports = {
+  ALLOWED_HEADERS,
   MAX_REQUEST_BYTES,
   MAX_RESPONSE_BYTES,
   TIMEOUT_MS,
+  addressAllowed,
   assertSafeOutboundUrl,
+  classifyAddress,
+  classifyIpv4,
+  classifyIpv6,
   fillPlaceholders,
   isPrivateIpv4,
   isPrivateIpv6,
+  networkPolicy,
   resolveAndCheck,
   runPlan,
   sanitizeHeaders,
