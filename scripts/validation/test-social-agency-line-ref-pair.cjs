@@ -86,6 +86,13 @@ async function main() {
     uploads.push({ filename: image.filename, key, bytes: image.buffer ? Buffer.from(image.buffer) : null });
     return `https://i.ibb.example/${uploads.length}-${image.filename}`;
   };
+  // Keyless free host — the whole point of the chain is that LINE can post
+  // without an imgbb account.
+  let freeUploads = 0;
+  rt._uploadToCatbox = async (bytes) => {
+    freeUploads += 1;
+    return `https://files.catbox.example/${freeUploads}-${bytes.filename}`;
+  };
   const resetLineClock = () => {
     const st = rt._read();
     delete st.clients.find((c) => c.id === clientId).connectors.line.lastPublishAt;
@@ -127,16 +134,37 @@ async function main() {
     setProductImage(localPhoto);
   });
 
-  test("ไม่มี imgbb API key → ไม่ส่งภาพเดียวแทน", async () => {
+  test("ไม่มี imgbb API key → ใช้โฮสต์ฟรีที่ไม่มี key แทน (ยังส่ง 2 รูป)", async () => {
     broadcasts = [];
     uploads = [];
+    freeUploads = 0;
     rt.saveConnectors(clientId, { connectors: { instagram: { imgbbApiKey: "" } } });
     const id = mk();
     attachImage(id);
     resetLineClock();
-    await assert.rejects(() => publish(id), /imgbb/, "refused without the key");
-    assert.strictEqual(broadcasts.length, 0, "nothing broadcast");
+    const out = await publish(id);
+    assert.strictEqual(out.mode, "live", "no key needed any more");
+    assert.deepStrictEqual(broadcasts[0].map((m) => m.type), ["image", "image", "text"], "still the pair, never one image");
+    assert.ok(broadcasts[0][1].originalContentUrl.startsWith("https://files.catbox.example/"), "product photo on the free host");
+    assert.strictEqual(freeUploads, 1, "exactly one free upload for the product photo");
+    assert.strictEqual(uploads.length, 0, "imgbb is skipped when there is no key");
+    assert.deepStrictEqual(out.imageHost, ["publicUrl", "catbox"], "the result says where each picture came from");
     rt.saveConnectors(clientId, { connectors: { instagram: { imgbbApiKey: "fake-imgbb-key" } } });
+  });
+
+  test("ไม่มีที่พักรูปเลย → ไม่ส่งภาพเดียวแทน", async () => {
+    broadcasts = [];
+    uploads = [];
+    freeUploads = 0;
+    // "own" with no address = no provider can run; the post must fail, not degrade.
+    rt.saveConnectors(clientId, { settings: { imageHost: { provider: "own", ownUrl: "" } } });
+    const id = mk();
+    attachImage(id);
+    resetLineClock();
+    await assert.rejects(() => publish(id), /ที่พักสาธารณะ|ที่พักรูป/, "refused when nothing can host the photo");
+    assert.strictEqual(broadcasts.length, 0, "nothing broadcast");
+    assert.strictEqual(freeUploads, 0, "the free host is not used when the operator picked another provider");
+    rt.saveConnectors(clientId, { settings: { imageHost: { provider: "auto", ownUrl: "" } } });
   });
 
   test("productRefInPost ปิด → LINE ส่งภาพเดียวเหมือนเดิม", async () => {

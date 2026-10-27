@@ -735,6 +735,9 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
     line: { channelAccessToken: connectors?.line?.channelAccessToken || "", dryRun: connectors?.line?.dryRun !== false, sendImageTextStack: connectors?.line?.sendImageTextStack !== false },
     tiktok: { accessToken: connectors?.tiktok?.accessToken || "", dryRun: connectors?.tiktok?.dryRun !== false, auditApproved: connectors?.tiktok?.auditApproved === true },
     linkedin: { accessToken: connectors?.linkedin?.accessToken || "", authorUrn: connectors?.linkedin?.authorUrn || "", apiVersion: connectors?.linkedin?.apiVersion || "202601", dryRun: connectors?.linkedin?.dryRun !== false },
+    // Where Instagram/LINE pictures are parked so those two platforms can fetch
+    // them by URL. Facebook and LinkedIn take the bytes directly and never use it.
+    imageHost: { provider: connectors?.imageHost?.provider || "auto", ownUrl: connectors?.imageHost?.ownUrl || "", ownToken: connectors?.imageHost?.ownToken || "" },
     settings: {
       threshold: connectors?.settings?.threshold ?? 80,
       postsPerWeek: connectors?.settings?.postsPerWeek ?? 5,
@@ -867,7 +870,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <label className="sa-field"><span>Access Token (Meta app เดียวกับ Facebook)</span><input value={form.instagram.accessToken} onChange={setField("instagram", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
         {versionField("instagram")}
         <label className="sa-field"><span>User Access Token สำหรับอ่าน Insights (instagram_manage_insights; เว้นว่างเพื่อทดลองใช้ token เผยแพร่เดิม)</span><input value={form.instagram.insightsAccessToken} onChange={setField("instagram", "insightsAccessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
-        <label className="sa-field"><span>imgbb API key (อัปโหลดรูปเป็นสาธารณะ)</span><input value={form.instagram.imgbbApiKey} onChange={setField("instagram", "imgbbApiKey")} placeholder="••••xxxx" autoComplete="off" /></label>
+        <label className="sa-field"><span>imgbb API key (ทางเลือก — ถ้าไม่ใส่ ระบบใช้ที่พักรูปที่ตั้งไว้ในหัวข้อ “ที่พักรูปสาธารณะ” ด้านล่าง)</span><input value={form.instagram.imgbbApiKey} onChange={setField("instagram", "imgbbApiKey")} placeholder="••••xxxx" autoComplete="off" /></label>
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.instagram.dryRun} onChange={setFlag("instagram", "dryRun")} label="โหมดทดลอง (dry-run)" />
           <button className="sa-btn ghost sm" disabled={busy || tests.instagram?.loading} onClick={() => runTest("instagram")}>
@@ -929,6 +932,51 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
           · รองรับข้อความ + รูป และต้องมีคนอนุมัติรูปก่อนส่งจริงเหมือน Facebook/Instagram
           · เปิด “แนบรูปสินค้าจริงในโพสต์” = ส่ง <b>รูปคู่</b> (ภาพ AI + รูปสินค้าจริง) เป็นโพสต์หลายรูปเหมือน Facebook; ถ้าไม่พบรูปสินค้าในเครื่องจะไม่โพสต์และบอกเหตุผล (ปิดสวิตช์ = รูปเดียว)
           · ไม่มี token ก็ใช้ปฏิทินได้ตามปกติ: เขียน/ตรวจแคปชัน แล้วกด “คัดลอกข้อความ” + “เปิด LinkedIn” ในหน้าโพสต์
+        </p>
+      </section>
+
+      <section className="sa-connector">
+        <header>
+          <h4>ที่พักรูปสาธารณะ (Instagram / LINE)</h4>
+          {tests.imagehost ? testBadge("imagehost") : (
+            <span className={`sa-pill ${connectors?.imageHost?.active ? "published" : "planned"}`}>
+              {connectors?.imageHost?.active ? `ใช้ ${connectors.imageHost.active}` : "ยังไม่มีที่พักรูป"}
+            </span>
+          )}
+        </header>
+        <p className="sa-form-hint">
+          Facebook และ LinkedIn ส่งไฟล์รูปตรงไปแพลตฟอร์ม ไม่ต้องใช้หัวข้อนี้ ·
+          <b> Instagram และ LINE ไม่รับไฟล์</b> — ทั้งสองดึงรูปจาก URL สาธารณะ (https) เท่านั้น
+          จึงต้องมีที่พักรูปหนึ่งที่ ระบบจะอัปโหลดแล้วส่งลิงก์ให้
+        </p>
+        <label className="sa-field"><span>ที่พักรูป</span>
+          <select value={form.imageHost.provider} onChange={setField("imageHost", "provider")}>
+            <option value="auto">อัตโนมัติ (เว็บของเรา → imgbb → โฮสต์ฟรี)</option>
+            <option value="own">เว็บของเราเอง (ไม่ต้องใช้บุคคลที่สาม)</option>
+            <option value="imgbb">imgbb (ต้องมี API key)</option>
+            <option value="catbox">catbox.moe (ฟรี ไม่ต้องมี key)</option>
+            <option value="litterbox">litterbox (ฟรี ไม่ต้องมี key · ลบเองใน 72 ชม.)</option>
+          </select>
+        </label>
+        {(form.imageHost.provider === "auto" || form.imageHost.provider === "own") && (
+          <>
+            <label className="sa-field"><span>URL เว็บอัปโหลดของเราเอง (https)</span><input value={form.imageHost.ownUrl} onChange={setField("imageHost", "ownUrl")} placeholder="https://www.example.com/luke-upload.php" autoComplete="off" /></label>
+            <label className="sa-field"><span>Token สำหรับเว็บอัปโหลด (ถ้ามี — ส่งเป็น Authorization: Bearer)</span><input value={form.imageHost.ownToken} onChange={setField("imageHost", "ownToken")} placeholder="••••xxxx" autoComplete="off" /></label>
+          </>
+        )}
+        <div className="sa-connector-row">
+          <button className="sa-btn ghost sm" disabled={busy || tests.imagehost?.loading} onClick={() => runTest("imagehost")}>
+            <RefreshCw size={13} /> ทดสอบอัปโหลด
+          </button>
+          <span className="sa-muted" style={{ fontSize: "0.7rem" }}>
+            ส่งรูปสินค้าจริง 1 รูป (หรือไฟล์ทดสอบ) แล้วบอก URL ที่ได้กลับมา — ไม่บันทึกค่าให้ก่อนกดบันทึก
+          </span>
+        </div>
+        {tests.imagehost?.message && <p className={`sa-test-msg ${tests.imagehost.ok ? "ok" : "err"}`}>{tests.imagehost.message}</p>}
+        <p className="sa-form-hint">
+          โฮสต์ฟรี (catbox / litterbox) ไม่มีค่าใช้จ่ายและไม่ต้องสมัคร แต่รูปจะอยู่บนเซิร์ฟเวอร์ของบุคคลที่สามที่ใครก็เปิดดูได้ —
+          ถ้าเป็นรูปสินค้าที่ไม่อยากให้หลุด ใช้เว็บของเราเองหรือ imgbb จะเหมาะกว่า ·
+          สัญญาการอัปโหลดของเว็บตัวเอง: POST multipart ช่อง <b>file</b> → ตอบ JSON <b>{`{"url":"https://…"}`}</b>
         </p>
       </section>
 

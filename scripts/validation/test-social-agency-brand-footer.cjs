@@ -213,17 +213,46 @@ async function main() {
       setProductImage(`/sa-products/${bagsId}/${sku}.png`);
     });
 
-    test("Instagram refuses a carousel without an imgbb key, not a silent one-photo post", async () => {
+    test("Instagram posts the carousel without an imgbb key (free host) and never degrades to one photo", async () => {
       const id = mk("instagram", "13:04");
       attachImage(id);
       resetClocks();
       rt.saveConnectors(bagsId, { connectors: { instagram: { imgbbApiKey: "" } } });
+      // The keyless host answers with a bare URL, the way catbox.moe does.
+      const realHttps = SocialAgencyRuntime._https;
+      SocialAgencyRuntime._https = async (opts = {}) => {
+        if (opts.host === "catbox.moe") {
+          calls.push({ method: opts.method, host: opts.host, urlPath: opts.path, body: "" });
+          return { status: 200, json: null, text: "https://files.catbox.moe/ref-photo.jpg" };
+        }
+        return realHttps(opts);
+      };
       calls = [];
       try {
-        await assert.rejects(() => rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" }), /imgbb API key/);
+        const out = await rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" });
+        assert.strictEqual(out.mediaKind, "carousel", "still two pictures");
+        assert.deepStrictEqual(out.imageHost, ["publicUrl", "catbox"], "AI image reused its public URL, product photo went to the keyless host");
+        assert.ok(calls.some((c) => c.host === "catbox.moe"), "the product photo went to the keyless host");
+        const publishCall = calls.find((c) => c.urlPath.includes("/media") && c.body.includes("is_carousel_item"));
+        assert.ok(publishCall, "carousel items were created");
+        assert.ok(!calls.some((c) => c.urlPath.endsWith("/media_publish") && c.body.includes("image_url")), "no one-photo fallback");
+      } finally {
+        SocialAgencyRuntime._https = realHttps;
+        rt.saveConnectors(bagsId, { connectors: { instagram: { imgbbApiKey: "fake-imgbb-key" } } });
+      }
+    });
+
+    test("Instagram refuses when no host can take the picture, not a silent one-photo post", async () => {
+      const id = mk("instagram", "13:06");
+      attachImage(id);
+      resetClocks();
+      rt.saveConnectors(bagsId, { connectors: { instagram: { imgbbApiKey: "" } }, settings: { imageHost: { provider: "own", ownUrl: "" } } });
+      calls = [];
+      try {
+        await assert.rejects(() => rt._publishEntry(getClient(), getEntry(id), { trigger: "manual" }), /ที่พักสาธารณะ/);
         assert.ok(!calls.some((c) => c.urlPath.endsWith("/media_publish")), "nothing published");
       } finally {
-        rt.saveConnectors(bagsId, { connectors: { instagram: { imgbbApiKey: "fake-imgbb-key" } } });
+        rt.saveConnectors(bagsId, { connectors: { instagram: { imgbbApiKey: "fake-imgbb-key" } }, settings: { imageHost: { provider: "auto", ownUrl: "" } } });
       }
     });
 

@@ -135,6 +135,24 @@ const FB_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const IG_24H_LIMIT = 50;
 const LINE_HOST = "api.line.me";
 const IMGBB_HOST = "api.imgbb.com";
+// Instagram and LINE image messages cannot be sent as bytes: both fetch the
+// picture from a public https URL that the platform can reach (Instagram Reels
+// and Facebook/LinkedIn post images DO take the bytes directly, which is why
+// video and those two platforms never touch a host). This is the list of ways
+// that public URL can be produced, in the order "auto" tries them:
+//   own      — a small upload endpoint on the operator's own website (no third
+//              party, no key; the documented contract is in docs/beta7/image-hosting.md)
+//   imgbb    — the API key path that used to be the only one
+//   catbox   — free, keyless, permanent, returns a plain-text URL
+//   litterbox— same API family, keyless, auto-deletes after 72h
+const CATBOX_HOST = "catbox.moe";
+const LITTERBOX_HOST = "litterbox.catbox.moe";
+const IMAGE_HOST_PROVIDERS = ["auto", "own", "imgbb", "catbox", "litterbox"];
+const FREE_IMAGE_HOSTS = ["catbox", "litterbox"];
+const AUTO_IMAGE_HOST_ORDER = ["own", "imgbb", ...FREE_IMAGE_HOSTS];
+// 1×1 PNG, only for the "ทดสอบอัปโหลด" button when the client has no product
+// photo on disk yet. Never used for a real post.
+const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const IG_UPLOAD_HOST = "rupload.facebook.com";
 const LINKEDIN_HOST = "api.linkedin.com";
 // LinkedIn versions its REST API by header (YYYYMM) and supports each version
@@ -449,6 +467,9 @@ function defaultSettings() {
     productRefInPost: true, // โพสต์ภาพ Facebook/Instagram/LINE ต้องมีภาพ AI + Reference สินค้า (500px) ครบคู่
     imageWidth: SA_IMAGE_SIZE.width, // ขนาดภาพปฏิทินของลูกค้านี้ (default แบนเนอร์ 1024×600)
     imageHeight: SA_IMAGE_SIZE.height,
+    // ที่พักรูปสาธารณะสำหรับ Instagram/LINE (สองช่องนี้ดึงรูปจาก URL เท่านั้น).
+    // provider = auto → own → imgbb → catbox → litterbox (ข้ามอันที่ยังไม่ตั้งค่า)
+    imageHost: { provider: "auto", ownUrl: "" },
   };
 }
 
@@ -1822,7 +1843,11 @@ class SocialAgencyRuntime {
       if (!client.pillars.length) client.pillars = defaultPillars(detectContentKind(client));
       for (const p of client.pillars) if (!p.id) p.id = newId("pl");
       client.connectors = { ...defaultConnectorMeta(), ...(client.connectors || {}) };
-      client.settings = { ...defaultSettings(), ...(client.settings || {}) };
+      const settingDefaults = defaultSettings();
+      client.settings = { ...settingDefaults, ...(client.settings || {}) };
+      // nested object: a partial stored value must not wipe the defaults
+      client.settings.imageHost = { ...settingDefaults.imageHost, ...(client.settings.imageHost || {}) };
+      if (!IMAGE_HOST_PROVIDERS.includes(client.settings.imageHost.provider)) client.settings.imageHost.provider = "auto";
       // Seed only the named client's contact copy. An explicit empty map/string
       // stays disabled across reads, imports and future updates.
       client.captionFooters = migrateCaptionFooters(client);
@@ -5679,6 +5704,7 @@ class SocialAgencyRuntime {
     const secrets = this._getSecrets(client.id);
     const meta = client.connectors || defaultConnectorMeta();
     const mask = SocialAgencyRuntime._maskToken;
+    const hostCfg = this._imageHostConfig(client);
     return {
       clientId: client.id,
       settings: client.settings,
@@ -5716,6 +5742,22 @@ class SocialAgencyRuntime {
         channelAccessToken: mask(secrets.line?.channelAccessToken),
         hasToken: Boolean(secrets.line?.channelAccessToken),
         ...meta.line,
+      },
+      // Not a platform: the place Instagram/LINE pictures are parked so those
+      // two platforms can fetch them by URL. Shown next to the connectors
+      // because that is where an operator looks when a post is refused.
+      imageHost: {
+        provider: hostCfg.provider,
+        ownUrl: hostCfg.ownUrl,
+        ownToken: SocialAgencyRuntime._maskToken(hostCfg.ownToken),
+        hasOwnToken: Boolean(hostCfg.ownToken),
+        imgbbApiKey: SocialAgencyRuntime._maskToken(hostCfg.imgbbKey),
+        hasImgbbKey: Boolean(hostCfg.imgbbKey),
+        providers: [...IMAGE_HOST_PROVIDERS],
+        freeHosts: [...FREE_IMAGE_HOSTS],
+        needsUrlPlatforms: ["instagram", "line"],
+        directUploadPlatforms: ["facebook", "linkedin"],
+        active: hostCfg.provider === "auto" ? AUTO_IMAGE_HOST_ORDER.find((id) => this._imageHostReady(id, hostCfg)) || "" : hostCfg.provider,
       },
       linkedin: {
         configured: this._connectorConfigured("linkedin", secrets.linkedin),
@@ -5756,10 +5798,43 @@ class SocialAgencyRuntime {
       if (platform === "linkedin" && patch.apiVersion !== undefined) {
         client.connectors.linkedin.apiVersion = SocialAgencyRuntime._linkedInVersion(patch.apiVersion);
       }
+      // LinkedIn tokens live 60 days and the API never tells us when one was
+      // issued, so remember when it was pasted in — the readiness checker uses
+      // this to warn before the calendar hits a 401.
+      if (platform === "linkedin" && patch.accessToken !== undefined && !SocialAgencyRuntime._isMasked(patch.accessToken) && String(patch.accessToken || "").trim()) {
+        client.connectors.linkedin.tokenSavedAt = new Date().toISOString();
+      }
       if (platform === "tiktok" && typeof patch.auditApproved === "boolean") client.connectors.tiktok.auditApproved = patch.auditApproved;
       if (platform === "line" && typeof patch.sendImageTextStack === "boolean") {
         client.connectors.line.sendImageTextStack = patch.sendImageTextStack;
       }
+    }
+    // The public image host lives beside the connectors: provider + address are
+    // ordinary settings, the optional bearer token stays in connectors.json.
+    // The UI sends it as connectors.imageHost; a script may send it as
+    // settings.imageHost. The bearer token is only accepted on the connector side
+    // so it can never be echoed back through the settings object.
+    const hostSettings = body && body.settings && typeof body.settings.imageHost === "object" ? body.settings.imageHost : {};
+    const hostConnector = incoming.imageHost && typeof incoming.imageHost === "object" ? incoming.imageHost : {};
+    const hostPatch = { ...hostSettings, ...hostConnector };
+    if (Object.keys(hostPatch).length) {
+      const merged = { ...(client.settings.imageHost || {}) };
+      if (hostPatch.provider !== undefined && IMAGE_HOST_PROVIDERS.includes(String(hostPatch.provider))) {
+        merged.provider = String(hostPatch.provider);
+      }
+      if (hostPatch.ownUrl !== undefined) {
+        const raw = String(hostPatch.ownUrl || "").trim();
+        if (raw && !/^https:\/\//i.test(raw)) throw new Error("ที่อยู่เว็บอัปโหลดต้องขึ้นต้นด้วย https://");
+        merged.ownUrl = raw;
+      }
+      client.settings = { ...client.settings, imageHost: merged };
+      const hostSecrets = { ...(secrets.imagehost || {}) };
+      let changed = false;
+      if (hostConnector.ownToken !== undefined && !SocialAgencyRuntime._isMasked(hostConnector.ownToken)) {
+        hostSecrets.ownToken = String(hostPatch.ownToken || "").trim();
+        changed = true;
+      }
+      if (changed) secrets.imagehost = hostSecrets;
     }
     this._setSecrets(client.id, secrets);
     if (body && body.settings && typeof body.settings === "object") {
@@ -5783,8 +5858,45 @@ class SocialAgencyRuntime {
     return this.getConnectorsView(client.id);
   }
 
+  // "ทดสอบอัปโหลด" for the public image host: pushes one real file through the
+  // configured chain and reports the URL that came back. Prefers the client's own
+  // product photo (same size/format as a real post) and falls back to a 1×1 PNG.
+  // Reads only — the trial values are not saved by this call.
+  async testImageHost(clientId, fieldsOverride = {}) {
+    const state = this._read();
+    const client = state.clients.find((c) => c.id === (clientId || state.activeClientId));
+    if (!client) throw new Error("ไม่พบลูกค้ารายนี้");
+    const cfg = { ...this._imageHostConfig(client) };
+    for (const [key, value] of Object.entries(fieldsOverride || {})) {
+      if (value === undefined || SocialAgencyRuntime._isMasked(value)) continue;
+      if (key === "provider" && IMAGE_HOST_PROVIDERS.includes(String(value))) cfg.provider = String(value);
+      if (key === "ownUrl") cfg.ownUrl = String(value || "").trim();
+      if (key === "ownToken") cfg.ownToken = String(value || "").trim();
+      if (key === "imgbbApiKey") cfg.imgbbKey = String(value || "").trim();
+    }
+    let bytes = null;
+    let source = "";
+    for (const product of client.products || []) {
+      const found = this._resolveProductImageFile(client, product);
+      if (found.error) continue;
+      bytes = SocialAgencyRuntime._imageBytes({ path: found.file });
+      if (bytes) { source = `รูปสินค้า ${product.sku}`; break; }
+    }
+    if (!bytes) {
+      bytes = { buffer: Buffer.from(TEST_PNG_BASE64, "base64"), filename: "luke-ai-test.png" };
+      source = "ไฟล์ทดสอบ 1×1 px";
+    }
+    try {
+      const out = await this._publicHostUpload(client, bytes, { config: cfg });
+      return { ok: true, host: out.host, url: out.url, source, message: `อัปโหลดทดสอบสำเร็จผ่าน ${out.host} (${source}) — ${out.url}` };
+    } catch (err) {
+      return { ok: false, host: "", url: "", source, message: String(err.message || err) };
+    }
+  }
+
   async testConnector(clientId, platform, fieldsOverride) {
     const { client } = this._resolveClient(clientId);
+    if (platform === "imagehost") return this.testImageHost(client.id, fieldsOverride);
     if (!PLATFORMS.includes(platform)) throw new Error("ไม่รู้จักแพลตฟอร์มนี้");
     const secrets = this._getSecrets(client.id);
     const override = fieldsOverride || {};
@@ -5814,8 +5926,17 @@ class SocialAgencyRuntime {
           path: `/${version}/${encodeURIComponent(merged.igUserId)}?fields=username&access_token=${encodeURIComponent(merged.accessToken)}`,
         });
         if (res.status >= 300 || res.json?.error) throw new Error(res.json?.error?.message || `Instagram ตอบ HTTP ${res.status}`);
-        const imgbbNote = merged.imgbbApiKey ? "" : " (ยังไม่ได้ใส่ imgbb API key — จะอัปโหลดรูปเป็นสาธารณะไม่ได้)";
-        result = { ok: true, message: `เชื่อมต่อสำเร็จ — บัญชี @${res.json?.username || merged.igUserId}${imgbbNote}`, name: res.json?.username };
+        // Instagram needs a public URL for every picture; say which host will
+        // serve it rather than blocking on one specific service's API key.
+        const cfg = this._imageHostConfig(client);
+        if (merged.imgbbApiKey) cfg.imgbbKey = String(merged.imgbbApiKey);
+        const activeHost = cfg.provider === "auto"
+          ? AUTO_IMAGE_HOST_ORDER.find((id) => this._imageHostReady(id, cfg)) || ""
+          : cfg.provider;
+        const hostNote = activeHost
+          ? ` (รูปจะอัปโหลดผ่าน ${activeHost})`
+          : " (ยังไม่มีที่พักรูป — ตั้งค่า Connectors → “ที่พักรูปสาธารณะ” ก่อนโพสต์รูป)";
+        result = { ok: true, message: `เชื่อมต่อสำเร็จ — บัญชี @${res.json?.username || merged.igUserId}${hostNote}`, name: res.json?.username };
       } else if (platform === "tiktok") {
         if (!merged.accessToken) throw new Error("ใส่ User Access Token ที่อนุญาต video.publish ก่อน");
         const creator = await this._tiktokCreatorInfo(merged.accessToken);
@@ -5982,6 +6103,122 @@ class SocialAgencyRuntime {
     });
     if (res.status >= 300 || !res.json?.data) throw new Error(`อัปโหลดรูปไป imgbb ไม่สำเร็จ (HTTP ${res.status})`);
     return res.json.data.display_url || res.json.data.url;
+  }
+
+  // ── public image host chain (Instagram / LINE only) ──────────────────────
+  // Facebook and LinkedIn upload the bytes themselves; the two platforms that
+  // only accept a URL go through here. This replaces the "imgbb key or nothing"
+  // rule that used to block a post the calendar had already planned.
+  _imageHostConfig(client) {
+    const stored = (client?.settings || {}).imageHost || {};
+    const secrets = this._getSecrets(client.id);
+    return {
+      provider: IMAGE_HOST_PROVIDERS.includes(stored.provider) ? stored.provider : "auto",
+      ownUrl: String(stored.ownUrl || "").trim(),
+      ownToken: String(secrets.imagehost?.ownToken || "").trim(),
+      imgbbKey: String(secrets.instagram?.imgbbApiKey || secrets.line?.imgbbApiKey || "").trim(),
+    };
+  }
+
+  // Can this provider run at all with the current configuration? "auto" walks
+  // the order and uses the first one that can.
+  _imageHostReady(id, config) {
+    if (id === "own") return Boolean(config.ownUrl);
+    if (id === "imgbb") return Boolean(config.imgbbKey);
+    return FREE_IMAGE_HOSTS.includes(id);
+  }
+
+  static _imageBytes(image) {
+    if (image?.buffer?.length) return { buffer: image.buffer, filename: image.filename || "post.jpg" };
+    if (image?.path && fs.existsSync(image.path)) {
+      return { buffer: fs.readFileSync(image.path), filename: image.filename || path.basename(image.path) };
+    }
+    return null;
+  }
+
+  // Contract for the operator's own host (documented in docs/beta7/image-hosting.md):
+  // POST multipart/form-data with the file in `file`, optional `Authorization:
+  // Bearer <token>`, answer JSON { "url": "https://…" } (or plain text URL).
+  async _uploadToOwnHost(config, bytes) {
+    const target = new URL(config.ownUrl);
+    if (target.protocol !== "https:") throw new Error("ที่อยู่เว็บอัปโหลดต้องขึ้นต้นด้วย https://");
+    const { body, contentType } = SocialAgencyRuntime._multipart({ name: bytes.filename }, "file", bytes.buffer, bytes.filename);
+    const headers = { "Content-Type": contentType };
+    if (config.ownToken) headers.Authorization = `Bearer ${config.ownToken}`;
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: target.hostname,
+      path: `${target.pathname}${target.search}`,
+      headers,
+      body,
+      timeoutMs: 60 * 1000,
+    });
+    const text = String(res.text || "").trim();
+    const url = res.json?.url || res.json?.data?.url || (/^https:\/\/\S+$/.test(text) ? text : "");
+    if (res.status >= 300 || !url) {
+      throw new Error(res.json?.error || `เว็บอัปโหลดตอบ HTTP ${res.status}${url ? "" : " โดยไม่ได้ URL รูปกลับมา"}`);
+    }
+    return url;
+  }
+
+  // Catbox answers with a bare URL (not JSON); litterbox is the same API with a
+  // retention parameter. Both are keyless — that is why a post no longer needs
+  // an imgbb account to go out.
+  async _uploadToCatbox(bytes, { temp = false } = {}) {
+    const fields = temp ? { reqtype: "fileupload", time: "72h" } : { reqtype: "fileupload" };
+    const { body, contentType } = SocialAgencyRuntime._multipart(fields, "fileToUpload", bytes.buffer, bytes.filename);
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: temp ? LITTERBOX_HOST : CATBOX_HOST,
+      path: temp ? "/resources/internals/api.php" : "/user/api.php",
+      headers: { "Content-Type": contentType, "User-Agent": "LUKE-AI-STUDIO (social-agency)" },
+      body,
+      timeoutMs: 60 * 1000,
+    });
+    const text = String(res.text || "").trim();
+    if (res.status >= 300 || !/^https:\/\/\S+$/.test(text)) {
+      throw new Error(`โฮสต์ฟรีตอบ HTTP ${res.status}${text && text.length <= 120 ? `: ${text}` : ""}`);
+    }
+    return text;
+  }
+
+  // Upload one image and return { url, host }. Tries the configured provider, or
+  // the whole chain for "auto"; every provider that fails is reported at the end
+  // so the message says what to fix instead of a bare network error.
+  async _publicHostUpload(client, image, opts = {}) {
+    const bytes = SocialAgencyRuntime._imageBytes(image);
+    if (!bytes) throw new Error("ไม่มีไฟล์รูปภาพให้อัปโหลด");
+    const cfg = opts.config || this._imageHostConfig(client);
+    const order = cfg.provider === "auto" ? AUTO_IMAGE_HOST_ORDER : [cfg.provider];
+    const skipped = [];
+    for (const id of order) {
+      try {
+        if (id === "own") {
+          if (!cfg.ownUrl) { skipped.push("own: ยังไม่ได้ใส่ที่อยู่เว็บอัปโหลด"); continue; }
+          return { url: await this._uploadToOwnHost(cfg, bytes), host: "own" };
+        }
+        if (id === "imgbb") {
+          if (!cfg.imgbbKey) { skipped.push("imgbb: ยังไม่ได้ใส่ API key"); continue; }
+          return { url: await this._imgbbUpload(image, cfg.imgbbKey), host: "imgbb" };
+        }
+        if (id === "catbox") return { url: await this._uploadToCatbox(bytes), host: "catbox" };
+        if (id === "litterbox") return { url: await this._uploadToCatbox(bytes, { temp: true }), host: "litterbox" };
+      } catch (err) {
+        skipped.push(`${id}: ${err.message || err}`);
+      }
+    }
+    const why = skipped.join(" · ") || "ยังไม่ได้ตั้งค่าที่พักรูป";
+    throw new Error(
+      `อัปโหลดรูปขึ้นที่พักสาธารณะไม่สำเร็จ (${why}) — Instagram/LINE ต้องมี URL รูปสาธารณะ ` +
+      `ตั้งค่าได้ที่ Connectors → “ที่พักรูปสาธารณะ” (เว็บของคุณเอง / imgbb key / หรือปล่อยเป็น อัตโนมัติ เพื่อใช้โฮสต์ฟรี)`
+    );
+  }
+
+  // { url, host } — reuse an already-public URL before uploading anything.
+  async _publicImageUpload(client, entry) {
+    const image = entry.image || {};
+    if (image.publicUrl && /^https:\/\//.test(image.publicUrl)) return { url: image.publicUrl, host: "publicUrl" };
+    return this._publicHostUpload(client, image);
   }
 
   // ── inline entry image generation (preview before publish) ──
@@ -6777,13 +7014,8 @@ class SocialAgencyRuntime {
   }
 
   async _publicImageUrl(client, entry) {
-    const image = entry.image || {};
-    if (image.publicUrl && /^https:\/\//.test(image.publicUrl)) return image.publicUrl;
-    const secrets = this._getSecrets(client.id);
-    const apiKey = secrets.instagram?.imgbbApiKey || secrets.line?.imgbbApiKey;
-    if (!apiKey) throw new Error("ต้องมี URL รูปแบบสาธารณะ (https) หรือใส่ imgbb API key เพื่ออัปโหลดรูปก่อน");
-    if (!image.path && !image.buffer) throw new Error("ไม่มีรูปภาพแนบอยู่ในรายการนี้");
-    return this._imgbbUpload(image, apiKey);
+    const { url } = await this._publicImageUpload(client, entry);
+    return url;
   }
 
   // ── video attach for live publish (FB video / IG Reels / LINE video) ──
@@ -7096,14 +7328,6 @@ class SocialAgencyRuntime {
     }
   }
 
-  // LINE and Instagram host the product photo at a public URL through imgbb.
-  _imgbbKeyForPair(client) {
-    const secrets = this._getSecrets(client.id);
-    const key = secrets.instagram?.imgbbApiKey || secrets.line?.imgbbApiKey;
-    if (!key) throw new Error("ยังไม่ส่ง: ต้องมี imgbb API key เพื่ออัปโหลดรูปสินค้าคู่กับภาพ AI (2 รูป)");
-    return key;
-  }
-
   // Facebook/Instagram image posts are a PAIR: [1] the AI image, [2] the real
   // product photo (≤500px derivative). With productRefInPost on (default), a
   // missing pair is refused before anything leaves the machine — never a silent
@@ -7320,13 +7544,16 @@ class SocialAgencyRuntime {
       // Instagram image posts are a carousel of the same pair as Facebook: [1] the
       // AI image, [2] the real product photo. Refused before any upload if missing.
       const refAttach = this._productRefPairFor(client, entry, "Instagram");
-      const imageUrl = await this._publicImageUrl(client, entry);
+      // Both pictures still need a public URL (IG fetches them), but the host is
+      // now the operator's choice — no imgbb account required.
+      const imageUp = await this._publicImageUpload(client, entry);
+      const imageUrl = imageUp.url;
+      let refHost = "";
       let containerPayload = { image_url: imageUrl, caption: caption };
       if (refAttach) {
-        const secretsNow = this._getSecrets(client.id);
-        const imgbbKey = secretsNow.instagram?.imgbbApiKey || secretsNow.line?.imgbbApiKey;
-        if (!imgbbKey) throw new Error("Instagram ยังไม่โพสต์: ต้องมี imgbb API key เพื่ออัปโหลดรูปสินค้าคู่ (carousel 2 รูป)");
-        const refUrl = await this._imgbbUpload({ buffer: refAttach.buffer, filename: refAttach.filename }, imgbbKey);
+        const refUp = await this._publicHostUpload(client, { buffer: refAttach.buffer, filename: refAttach.filename });
+        refHost = refUp.host;
+        const refUrl = refUp.url;
         const childIds = [];
         for (const url of [imageUrl, refUrl]) {
           const child = await SocialAgencyRuntime._https({
@@ -7373,12 +7600,14 @@ class SocialAgencyRuntime {
       });
       if (publish.status >= 300 || publish.json?.error) throw new Error(publish.json?.error?.message || `Instagram publish ตอบ HTTP ${publish.status}`);
       this._bumpInstagramCounter(client.id);
-      return { platform, mode: "live", publishedCaption: caption, mediaKind: refAttach ? "carousel" : "photo", postId: publish.json?.id, latencyMs: Date.now() - t0, attachedProductRef: Boolean(refAttach), note: `โพสต์ IG ${secret.igUserId}${refAttach ? " (carousel 2 รูป: ภาพ AI + รูปสินค้าจริง)" : ""} (คอนเทนเนอร์ ${containerId})` };
+      const hostNote = refAttach ? ` · อัปโหลดรูปผ่าน ${[...new Set([imageUp.host, refHost])].join("/")}` : "";
+      return { platform, mode: "live", publishedCaption: caption, mediaKind: refAttach ? "carousel" : "photo", postId: publish.json?.id, latencyMs: Date.now() - t0, attachedProductRef: Boolean(refAttach), imageHost: refAttach ? [imageUp.host, refHost] : [imageUp.host], note: `โพสต์ IG ${secret.igUserId}${refAttach ? " (carousel 2 รูป: ภาพ AI + รูปสินค้าจริง)" : ""} (คอนเทนเนอร์ ${containerId})${hostNote}` };
     }
 
     if (platform === "line") {
       const messages = [];
       let attachedProductRef = false;
+      const imageHosts = [];
       if (this._selectPublishMedia(entry) === "video") {
         // LINE fetches both assets itself. Fail rather than mark a text/image
         // substitute as a successful video broadcast.
@@ -7392,12 +7621,13 @@ class SocialAgencyRuntime {
         // Same pair as Facebook/Instagram: [1] the AI image, [2] the real product
         // photo. Refused before anything is uploaded or broadcast when it is missing.
         const refAttach = this._productRefPairFor(client, entry, "LINE");
-        const refKey = refAttach ? this._imgbbKeyForPair(client) : null;
-        const url = await this._publicImageUrl(client, entry);
-        messages.push({ type: "image", originalContentUrl: url, previewImageUrl: url });
+        const imageUp = await this._publicImageUpload(client, entry);
+        imageHosts.push(imageUp.host);
+        messages.push({ type: "image", originalContentUrl: imageUp.url, previewImageUrl: imageUp.url });
         if (refAttach) {
-          const refUrl = await this._imgbbUpload({ buffer: refAttach.buffer, filename: refAttach.filename }, refKey);
-          messages.push({ type: "image", originalContentUrl: refUrl, previewImageUrl: refUrl });
+          const refUp = await this._publicHostUpload(client, { buffer: refAttach.buffer, filename: refAttach.filename });
+          imageHosts.push(refUp.host);
+          messages.push({ type: "image", originalContentUrl: refUp.url, previewImageUrl: refUp.url });
           attachedProductRef = true;
         }
         messages.push({ type: "text", text: caption });
@@ -7408,7 +7638,8 @@ class SocialAgencyRuntime {
       this._mutateClient(client.id, (c) => {
         c.connectors.line.lastPublishAt = new Date().toISOString();
       });
-      return { platform, mode: "live", publishedCaption: caption, postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, attachedProductRef, note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}` };
+      const hostNote = imageHosts.length ? ` · อัปโหลดรูปผ่าน ${[...new Set(imageHosts)].join("/")}` : "";
+      return { platform, mode: "live", publishedCaption: caption, postId: `line-broadcast-${crypto.randomBytes(4).toString("hex")}`, latencyMs: Date.now() - t0, attachedProductRef, imageHost: [...new Set(imageHosts)], note: `ส่ง broadcast ถึงผู้ติดตามทุกคน${quotaNote}${hostNote}` };
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
