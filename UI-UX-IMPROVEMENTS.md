@@ -42,3 +42,15 @@ The source is ready for the existing macOS first-run frontend build. The validat
 - **Results are visible.** A post node shows the published link, the channel, and
   whether it was automatic or one click, with a copy button for the text.
 
+## Luke AI Workflow — palette fix (2026-10-27)
+- Reported: "เข้าเมนู Luke AI Workflow ไม่เห็น palette กลุ่ม เผยแพร่ (ฟรี)".
+  The group existed, but the palette stacked all ten nodes in a 218px column
+  that scrolled; the publishing group fell below the fold with no visible
+  scrollbar (macOS hides it), so it looked like the nodes did not exist.
+- The palette now shows **one group at a time behind tabs** (สร้าง 5 · จัดรูปแบบ 3 ·
+  เผยแพร่ 2 with a ใหม่ badge), so every group is always on screen.
+- The header chip **16 ช่องทางฟรี** is now a button that opens the publishing
+  nodes *and* the channel library in one click, and each group states what is
+  in it. A `test-ai-workflow-publishing` check fails if a node is ever put in a
+  group that has no tab.
+
