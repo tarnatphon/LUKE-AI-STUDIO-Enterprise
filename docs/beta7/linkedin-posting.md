@@ -88,7 +88,37 @@ LinkedIn อ่าน `commentary` เป็นรูปแบบ **“little te
 
 ---
 
-## 5. Checklist ก่อนใช้จริง
+## 5. ตรวจความพร้อมก่อนถึงเวลาจริง (สคริปต์)
+
+ก่อนวันโพสต์ ให้รันตัวตรวจที่อ่านอย่างเดียว (ไม่แก้สถานะ ไม่โพสต์อะไร):
+
+```bash
+node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006
+node scripts/verify-linkedin-post-readiness.cjs --entry cal-xxxx --trigger manual
+node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
+```
+
+ด่านที่ตรวจ: ไฟล์สถานะ/ลูกค้า · token + dry-run · **Linkedin-Version ไม่หมดอายุ** ·
+**Author URN เป็น `urn:li:person:`** (URN ของเพจบริษัทจะไม่ผ่าน พร้อมบอกเหตุผล) ·
+**อายุ token 60 วัน** (นับจากวันที่วาง token) · **รูปสินค้าจริงสำหรับรูปที่ 2** ·
+รายการในปฏิทิน (ไม่ใช่วิดีโอ/ไม่ได้โพสต์ไปแล้ว) · **ด่านตรวจภาพ** ·
+แคปชันหลัง escape เป็น little text (≤3,000 ตัวอักษร, แฮชแท็ก ≤5, มีตัวอย่างข้อความจริง) ·
+**จังหวะการกดส่ง** (`รันเลยตอนนี้` บนโพสต์อนาคตจะกลายเป็น dry-run)
+
+`--online` เพิ่มการยิง LinkedIn แบบอ่านอย่างเดียว:
+
+- `GET /v2/userinfo` → ยืนยันว่า token เป็นของคนเดียวกับ `authorUrn` (จับเคส “วาง token ผิดบัญชี”
+  ที่ปุ่มทดสอบในแอปจับไม่ได้เสมอ) และบอกชื่อบัญชี
+- `POST /rest/images?action=initializeUpload` → ยืนยันว่ามีสิทธิ์อัปโหลดรูปจริง
+  (จองสิทธิ์เท่านั้น **ไม่อัปโหลดไบต์และไม่สร้างโพสต์**)
+- token ถูกปิดบังเสมอ (`li-m…567890`) และถ้า LinkedIn ส่ง token กลับมาในข้อความ error จะถูกแทนด้วย `‹redacted›`
+
+`--strict` ทำให้คำเตือนใด ๆ นับเป็น “ไม่พร้อม” (exit 1) เหมาะกับใช้ก่อนปล่อยโพสต์สำคัญ
+ผลรวม exit code: **0 = พร้อม**, **1 = ยังไม่พร้อม** (ใช้ใน CI หรือก่อนกดส่งได้)
+
+---
+
+## 6. Checklist ก่อนใช้จริง
 
 1. token สิทธิ์ `w_member_social` + `openid profile` และยังไม่หมดอายุ 60 วัน
 2. `authorUrn` ขึ้นต้นด้วย `urn:li:person:` และเป็นบัญชีที่คุณต้องการโพสต์
@@ -100,7 +130,7 @@ LinkedIn อ่าน `commentary` เป็นรูปแบบ **“little te
 
 ---
 
-## 6. แหล่งอ้างอิง
+## 7. แหล่งอ้างอิง
 
 - Posts API: <https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api>
 - Images API: <https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api>
