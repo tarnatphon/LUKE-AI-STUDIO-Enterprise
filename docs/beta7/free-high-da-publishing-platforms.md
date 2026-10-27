@@ -29,6 +29,10 @@
 
 ## 2. ตารางช่องทางทั้งหมด (16 ช่องทางแรก)
 
+> **LinkedIn ในปฏิทิน Social Agency** มีเส้นทางโพสต์จริงผ่าน Posts API (token ของคุณเอง)
+> แยกอธิบายไว้ที่ [`linkedin-posting.md`](./linkedin-posting.md) — ตารางนี้พูดถึง
+> คลังช่องทางของ Workflow ซึ่ง LinkedIn ยังเป็นการ “คัดลอก + เปิดหน้าเขียน”
+>
 > ช่องทางที่เพิ่มมาอีก 8 ตัว (Bluesky, WordPress ติดตั้งเอง, Discourse, XenForo,
 > NodeBB, Flarum, phpBB, Pantip) อยู่ในเอกสารแยก
 > [`forum-and-community-posting.md`](./forum-and-community-posting.md)

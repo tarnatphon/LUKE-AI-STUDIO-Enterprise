@@ -3,7 +3,9 @@ import { Save, MessageSquare } from "lucide-react";
 import { postJson, PLATFORM_META } from "./lib.js";
 import { captionFootersFor, footerLimit } from "./post-copy.js";
 
-const PLATFORMS = ["facebook", "instagram", "line", "tiktok", "demo"];
+// Every platform the calendar knows, taken from the one label map so a new
+// platform cannot be missing from the footer editor.
+const PLATFORMS = Object.keys(PLATFORM_META);
 
 export default function CaptionFooterSettings({ client, onChanged }) {
   const [footers, setFooters] = useState(() => captionFootersFor(client));

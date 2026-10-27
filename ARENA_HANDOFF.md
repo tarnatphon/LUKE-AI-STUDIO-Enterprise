@@ -54,6 +54,19 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
+### session `arena/c0c7cc07…` (2026-10-27) — LinkedIn เข้าปฏิทินโพสต์ (วางแผนฟรี + โพสต์จริงเมื่อมี token)
+
+> ที่มา: “หากต้องการเพิ่ม LinkedIn เข้าไปด้วยในปฏิทินได้ไหม”
+
+- **LinkedIn เป็นแพลตฟอร์มที่ 6 ของปฏิทิน** — `PLATFORMS` + `AUTO_PLAN_ALLOWED` (แต่ **ไม่** อยู่ในชุดเริ่มต้นของ auto-plan: ปฏิทินไม่ควรเริ่มร่างโพสต์ LinkedIn เองโดยไม่มีการเลือก) · ลิมิตแคปชัน 3,000 ตัวอักษร / แฮชแท็ก 5 · เข้าด่านตรวจภาพเหมือน FB/IG · มีฉบับต่อแพลตฟอร์ม + ตัวแก้ข้อความปิดท้าย
+- **โพสต์จริงผ่าน Posts API** — `POST /rest/posts` พร้อม `Linkedin-Version: YYYYMM` + `X-Restli-Protocol-Version: 2.0.0`, `author: urn:li:person:…` · รูป: `initializeUpload` → PUT ไบต์ → `content.media.id` · Post ID มาจาก `x-restli-id` (ขยาย `_https` ให้คืน response headers) · `_linkedInVersion()` ปฏิเสธเวอร์ชันที่หมดอายุ/มั่วก่อนยิง
+- **little-text escaping** — LinkedIn ตัดโพสต์เงียบ ๆ ที่ตัวอักษร `\|{}@[]()<>#*_~` ตัวแรก แล้วยังตอบ 201 · `linkedInCommentary()` escape รอบเดียว และแปลง `#แท็ก` เป็น `{hashtag|\#|แท็ก}` (ทดสอบแล้วกับภาษาไทย/`C#`/`#1`)
+- **ความจริงเรื่อง OAuth** — ไม่มี OAuth ในแอป (เหมือน TikTok): ต้องสร้างแอป LinkedIn เอง เอา token มาวาง · ปุ่ม “ทดสอบและดึง URN” เรียก `/v2/userinfo` แล้วจำ `authorUrn` ให้ · token อายุ 60 วัน · **เพจบริษัท** ต้องขอ Community Management (อนุมัติรายแอป) จึงไม่รองรับ
+- **ไม่มี token ก็ยังใช้ได้** — dry-run พร้อมข้อความบอกทางออก (“คัดลอกข้อความไปโพสต์เองได้ที่ปุ่ม เปิด LinkedIn”) · ปุ่ม **เปิด LinkedIn** ในหน้าโพสต์ · วิดีโอถูกปฏิเสธพร้อมเหตุผล ไม่ปล่อยผ่านเงียบ ๆ
+- **UI** — ชิปสี LinkedIn, ตัวเลือกแพลตฟอร์มในฟอร์มสร้างโพสต์, ชิป auto-plan, ตัวแก้ข้อความปิดท้าย (เปลี่ยนจากลิสต์ตายตัวเป็น `Object.keys(PLATFORM_META)`), การ์ด Connectors พร้อมคำอธิบายข้อจำกัด
+- **เอกสาร** — `docs/beta7/linkedin-posting.md` (ทำได้/ทำไม่ได้, วิธีเอา token, กับดัก little text, checklist)
+- **เทสต์** — ใหม่ `scripts/validation/test-social-agency-linkedin.cjs` **12 checks** (แพลตฟอร์ม/ลิมิต, escaping, masking token, version ที่หมดอายุ, ดึง URN, ลำดับ 3 คำขอของโพสต์มีรูป, โพสต์ข้อความล้วน, ด่านตรวจภาพ, วิดีโอ, dry-run เมื่อไม่มี token, สาย UI) · `run-all` ผ่านครบ (168 suites; python duration-worker ข้ามตามดีไซน์)
+
 ### session `arena/555d6656…` (2026-10-27, PR #55) — 24 ช่องทาง: Bluesky + WordPress ติดตั้งเอง + ฟอรัม 5 ตัว และปิด 3 ช่องโหว่ของ relay
 
 > ที่มา: “โพสต์เข้าเว็บบอร์ด/ชุมชนอัตโนมัติได้ไหม” · คำตอบเดิมคือ “ไม่มี” เพราะคลังมีแต่บล็อกสาธารณะ — รอบนี้เพิ่มช่องทางที่ **โพสต์ได้จริง** และบอกตรง ๆ ว่าช่องไหนทำไม่ได้เพราะอะไร

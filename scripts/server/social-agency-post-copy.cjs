@@ -8,6 +8,9 @@ const PLATFORM_RULES = Object.freeze({
   instagram: { maxChars: 2200, maxHashtags: 8 },
   line: { maxChars: 400, maxHashtags: 2 },
   tiktok: { maxChars: 2200, maxHashtags: 5 },
+  // LinkedIn allows 3000 characters per post (comments are shorter). Hashtags
+  // past ~5 stop helping and read as spam on a professional feed.
+  linkedin: { maxChars: 3000, maxHashtags: 5 },
 });
 
 const THAI_MODERN_BAGS_ABOUT = "กว่า 40 ปี ที่ Thai Modern Bags มุ่งมั่นผลิตกระเป๋า OEM / ODM คุณภาพมาตรฐาน ให้กับองค์กรชั้นนำทั่วประเทศ";
