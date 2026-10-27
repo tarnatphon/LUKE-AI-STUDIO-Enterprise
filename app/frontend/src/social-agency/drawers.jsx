@@ -334,6 +334,18 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           {onOpenStyle && (
             <button className="sa-btn ghost" onClick={() => onOpenStyle(entry.id)}><Copy size={14} /> ฉบับต่อแพลตฟอร์ม</button>
           )}
+          {entry.platform === "linkedin" && (
+            <button
+              className="sa-btn ghost"
+              title="เปิด LinkedIn ในแท็บใหม่ แล้ววางข้อความที่คัดลอกไว้"
+              onClick={() => {
+                const href = safeExternalUrl("https://www.linkedin.com/feed/?shareActive=true");
+                if (href) window.open(href, "_blank", "noopener");
+              }}
+            >
+              <ExternalLink size={14} /> เปิด LinkedIn
+            </button>
+          )}
           {entry.caption && onRepurpose && (
             <button
               className="sa-btn ghost"
@@ -722,6 +734,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
     instagram: { igUserId: connectors?.instagram?.igUserId || "", accessToken: connectors?.instagram?.accessToken || "", imgbbApiKey: connectors?.instagram?.imgbbApiKey || "", insightsAccessToken: connectors?.instagram?.insightsAccessToken || "", apiVersion: connectors?.instagram?.apiVersion || "v25.0", dryRun: connectors?.instagram?.dryRun !== false },
     line: { channelAccessToken: connectors?.line?.channelAccessToken || "", dryRun: connectors?.line?.dryRun !== false, sendImageTextStack: connectors?.line?.sendImageTextStack !== false },
     tiktok: { accessToken: connectors?.tiktok?.accessToken || "", dryRun: connectors?.tiktok?.dryRun !== false, auditApproved: connectors?.tiktok?.auditApproved === true },
+    linkedin: { accessToken: connectors?.linkedin?.accessToken || "", authorUrn: connectors?.linkedin?.authorUrn || "", apiVersion: connectors?.linkedin?.apiVersion || "202601", dryRun: connectors?.linkedin?.dryRun !== false },
     settings: {
       threshold: connectors?.settings?.threshold ?? 80,
       postsPerWeek: connectors?.settings?.postsPerWeek ?? 5,
@@ -882,6 +895,32 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <ConnectorToggle checked={form.tiktok.auditApproved} onChange={setFlag("tiktok", "auditApproved")} label="ยืนยันว่า TikTok ตรวจ audit และอนุมัติแอปสำหรับ public Direct Post แล้ว (ไม่ใช่ผลจากปุ่มทดสอบ)" />
         {tests.tiktok?.message && <p className={`sa-test-msg ${tests.tiktok.ok ? "ok" : "err"}`}>{tests.tiktok.message}</p>}
         <p className="sa-form-hint">ต้องเปิด Content Posting API และขอสิทธิ์ video.publish ผ่าน OAuth ของ TikTok ก่อน · แอปนี้ยังไม่มี OAuth/refresh token ในตัว: ต้องใส่ token ที่ได้รับโดยชอบด้วยตนเองและอาจหมดอายุก่อนถึงเวลาตั้งโพสต์ · ค่าเริ่มต้น dry-run; unaudited จำกัด SELF_ONLY และข้อจำกัดการใช้ตาม TikTok · ทุกโพสต์ต้องยืนยัน privacy/สิทธิ์เสียง/การส่งก่อนรัน</p>
+      </section>
+
+      <section className="sa-connector">
+        <header><h4>LinkedIn (โปรไฟล์ส่วนตัว · Posts API)</h4>
+          {connectors?.linkedin?.configured ? testBadge("linkedin") : <span className="sa-pill planned">ยังไม่ตั้งค่า</span>}
+        </header>
+        <label className="sa-field"><span>Member Access Token (สิทธิ์ w_member_social + openid profile)</span><input value={form.linkedin.accessToken} onChange={setField("linkedin", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
+        <label className="sa-field"><span>Author URN (เว้นว่างแล้วกดทดสอบ ระบบจะเติมให้)</span><input value={form.linkedin.authorUrn} onChange={setField("linkedin", "authorUrn")} placeholder="urn:li:person:xxxxxxx" /></label>
+        <label className="sa-field"><span>LinkedIn-Version</span>
+          <select value={form.linkedin.apiVersion} onChange={setField("linkedin", "apiVersion")}>
+            {["202601", "202604", "202609"].map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <div className="sa-connector-row">
+          <ConnectorToggle checked={form.linkedin.dryRun} onChange={setFlag("linkedin", "dryRun")} label="โหมดทดลอง (dry-run)" />
+          <button className="sa-btn ghost sm" disabled={busy || tests.linkedin?.loading} onClick={() => runTest("linkedin")}>
+            <RefreshCw size={13} /> ทดสอบและดึง URN
+          </button>
+        </div>
+        {tests.linkedin?.message && <p className={`sa-test-msg ${tests.linkedin.ok ? "ok" : "err"}`}>{tests.linkedin.message}</p>}
+        <p className="sa-form-hint">
+          LinkedIn ไม่มีหน้า “สร้าง token” ให้กดเอง: ต้องสร้างแอปที่ developer.linkedin.com (ผลิตภัณฑ์ Share on LinkedIn) แล้วทำ OAuth 2.0 ฝั่งคุณเพื่อขอ token สิทธิ์ w_member_social — token อายุ 60 วัน และแอปนี้ยังไม่มี OAuth/refresh ในตัว
+          · โพสต์ในนาม <b>โปรไฟล์ส่วนตัว</b>เท่านั้น (เพจบริษัทต้องขอผลิตภัณฑ์ Community Management ซึ่งต้องผ่านการอนุมัติ)
+          · รองรับข้อความ + รูป 1 รูป และต้องมีคนอนุมัติรูปก่อนส่งจริงเหมือน Facebook/Instagram
+          · ไม่มี token ก็ใช้ปฏิทินได้ตามปกติ: เขียน/ตรวจแคปชัน แล้วกด “คัดลอกข้อความ” + “เปิด LinkedIn” ในหน้าโพสต์
+        </p>
       </section>
 
       <section className="sa-connector">

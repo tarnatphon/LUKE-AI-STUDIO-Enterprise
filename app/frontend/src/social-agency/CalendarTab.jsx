@@ -10,7 +10,7 @@ import {
 import { NewEntryModal, AutoPlanModal } from "./modals.jsx";
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
-const PLAN_PLATFORMS = ["facebook", "instagram", "line", "demo"];
+const PLAN_PLATFORMS = ["facebook", "instagram", "line", "linkedin", "demo"];
 // The statuses an operator actually scans for, in the order they matter: what
 // needs a decision first, then what is live, then what is only planned.
 const SUMMARY_STATUSES = ["needs_review", "failed", "publishing", "in_workflow", "published", "planned", "missed"];

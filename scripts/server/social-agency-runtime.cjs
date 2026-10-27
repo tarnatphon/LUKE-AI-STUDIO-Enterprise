@@ -63,11 +63,16 @@ const DEFAULT_ANGLE = "เปิดตัวสินค้า";
 const DEFAULT_CONTENT_KIND = "goods";
 const TONE_PRESETS = ["เจ้าของแบรนด์", "แอดมินเพจ", "พนักงานขาย"];
 
-const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok"];
+const PLATFORMS = ["demo", "facebook", "instagram", "line", "tiktok", "linkedin"];
 // Auto-plan fills ONE slot per selected platform per day, so a single day can
 // carry Facebook + Instagram + LINE + web ("demo" = เว็บโพสต์) side by side.
 // TikTok never joins unattended planning (it needs creator consent per post).
+// What a plan uses when the user does not pick platforms.
 const AUTO_PLAN_PLATFORMS = ["facebook", "instagram", "line", "demo"];
+// Every platform a plan MAY fill when the user asks for it. LinkedIn is opt-in
+// on purpose: a calendar that suddenly starts drafting LinkedIn posts is a
+// surprise, and a real LinkedIn send needs a token most installs do not have.
+const AUTO_PLAN_ALLOWED = ["facebook", "instagram", "line", "linkedin", "demo"];
 // Default posting times for the non-anchor platforms of a multi-post day. The
 // first selected platform anchors on the learned weekday/weekend time instead,
 // and colliding times are nudged 30' apart so date+time stays unique.
@@ -75,11 +80,13 @@ const AUTO_PLAN_PLATFORM_TIMES = {
   facebook: { weekday: "18:30", weekend: "11:00" },
   instagram: { weekday: "12:30", weekend: "12:30" },
   line: { weekday: "10:00", weekend: "10:00" },
+  // LinkedIn reads best on a weekday morning, when people check it before work.
+  linkedin: { weekday: "08:00", weekend: "09:30" },
   demo: { weekday: "15:00", weekend: "15:00" },
 };
 // Platforms where a real send puts an image in front of the public. Those need a
 // human image review (separate from caption approval) before going live.
-const IMAGE_REVIEW_PLATFORMS = ["facebook", "instagram", "line"];
+const IMAGE_REVIEW_PLATFORMS = ["facebook", "instagram", "line", "linkedin"];
 const PRODUCT_IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const ENTRY_STATUSES = [
   "planned",
@@ -126,6 +133,43 @@ const IG_24H_LIMIT = 50;
 const LINE_HOST = "api.line.me";
 const IMGBB_HOST = "api.imgbb.com";
 const IG_UPLOAD_HOST = "rupload.facebook.com";
+const LINKEDIN_HOST = "api.linkedin.com";
+// LinkedIn versions its REST API by header (YYYYMM) and supports each version
+// for at least a year, then starts rejecting it. Keep this in one place so the
+// bump is a one-line change; `versionExpiresAt` is shown in the connector card.
+const LINKEDIN_API_VERSION = "202601";
+const LINKEDIN_VERSION_EXPIRY = Object.freeze({ "202601": "2027-01-31", "202604": "2027-04-30", "202609": "2027-09-30" });
+// LinkedIn's "Little Text" reserves these characters: sent raw, the post is
+// silently truncated at the first one (a price in brackets is enough) and the
+// API still answers 201. #word hashtags are special-cased so they stay links.
+const LINKEDIN_RESERVED_CHARS = "\\|{}@[]()<>#*_~";
+
+/**
+ * Escape a caption for LinkedIn's commentary field.
+ * One pass only: the backslash is itself reserved, so escaping an escaped
+ * string would publish a literal backslash. A hashtag becomes the documented
+ * {hashtag|\#|tag} template so it stays clickable; a '#' that is not a hashtag
+ * ("C#", "#1") is escaped like ordinary text.
+ */
+function linkedInCommentary(value) {
+  const src = String(value || "");
+  let out = "";
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    if (ch === "#") {
+      const atWordStart = i === 0 || /\s/.test(src[i - 1]);
+      const tag = atWordStart ? /^[\p{L}][\p{L}\p{N}\p{M}_]{0,99}/u.exec(src.slice(i + 1)) : null;
+      if (tag) {
+        out += `{hashtag|\\#|${tag[0]}}`;
+        i += tag[0].length;
+        continue;
+      }
+    }
+    out += LINKEDIN_RESERVED_CHARS.includes(ch) ? `\\${ch}` : ch;
+  }
+  return out;
+}
+
 const TIKTOK_HOST = "open.tiktokapis.com";
 const TIKTOK_UPLOAD_HOST = "open-upload.tiktokapis.com";
 const TIKTOK_CHUNK_BYTES = 10 * 1000 * 1000;
@@ -384,6 +428,7 @@ function defaultConnectorMeta() {
     instagram: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null, counter: null },
     line: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null, sendImageTextStack: true },
     tiktok: { dryRun: true, testedAt: null, testOk: false, auditApproved: false },
+    linkedin: { dryRun: true, testedAt: null, testOk: false, lastPublishAt: null, apiVersion: LINKEDIN_API_VERSION },
   };
 }
 
@@ -2117,6 +2162,7 @@ class SocialAgencyRuntime {
       { platform: "instagram", tagList: fill(tags, PLATFORM_VERSION_RULES.instagram.maxHashtags) },
       { platform: "line", tagList: tags.slice(0, PLATFORM_VERSION_RULES.line.maxHashtags) },
       { platform: "tiktok", tagList: fill(tags, PLATFORM_VERSION_RULES.tiktok.maxHashtags) },
+      { platform: "linkedin", tagList: tags.slice(0, PLATFORM_VERSION_RULES.linkedin.maxHashtags) },
     ];
     for (const { platform, tagList } of jobs) {
       const draft = assemble(body, tagList);
@@ -2597,7 +2643,7 @@ class SocialAgencyRuntime {
     const list = Array.isArray(input) ? input : null;
     const picked = (list || AUTO_PLAN_PLATFORMS)
       .map((p) => String(p || "").toLowerCase())
-      .filter((p, i, arr) => AUTO_PLAN_PLATFORMS.includes(p) && arr.indexOf(p) === i);
+      .filter((p, i, arr) => AUTO_PLAN_ALLOWED.includes(p) && arr.indexOf(p) === i);
     return picked.length ? picked : [...AUTO_PLAN_PLATFORMS];
   }
 
@@ -5144,7 +5190,7 @@ class SocialAgencyRuntime {
       this._mutateRun(clientId, runId, (run) => {
         run.publish = { ...result, at: new Date().toISOString() };
       });
-      const platformLabel = { demo: "Demo", facebook: "Facebook Page", instagram: "Instagram", line: "LINE OA", tiktok: "TikTok" }[entry.platform] || entry.platform;
+      const platformLabel = { demo: "Demo", facebook: "Facebook Page", instagram: "Instagram", line: "LINE OA", tiktok: "TikTok", linkedin: "LinkedIn" }[entry.platform] || entry.platform;
       return {
         output: `${platformLabel} · ${result.pending ? "รอ TikTok ประมวลผล" : `โหมด ${result.mode}`} · ID ${result.postId} · ${result.latencyMs}ms`,
         detail: `แพลตฟอร์ม: ${platformLabel}\nโหมด: ${result.mode}${result.note ? `\nหมายเหตุ: ${result.note}` : ""}\n${result.pending ? "publish_id (ยังไม่เผยแพร่)" : "post/message ID"}: ${result.postId}\nเวลาที่ใช้: ${result.latencyMs}ms`,
@@ -5527,7 +5573,7 @@ class SocialAgencyRuntime {
           try {
             parsed = JSON.parse(text);
           } catch {}
-          resolve({ status: res.statusCode || 0, json: parsed, text });
+          resolve({ status: res.statusCode || 0, json: parsed, text, headers: res.headers || {} });
         });
       });
       req.on("timeout", () => req.destroy(new Error("network timeout")));
@@ -5620,6 +5666,7 @@ class SocialAgencyRuntime {
     if (platform === "instagram") return Boolean(s.igUserId && s.accessToken);
     if (platform === "line") return Boolean(s.channelAccessToken);
     if (platform === "tiktok") return Boolean(s.accessToken);
+    if (platform === "linkedin") return Boolean(s.accessToken && s.authorUrn);
     return platform === "demo";
   }
 
@@ -5666,6 +5713,15 @@ class SocialAgencyRuntime {
         hasToken: Boolean(secrets.line?.channelAccessToken),
         ...meta.line,
       },
+      linkedin: {
+        configured: this._connectorConfigured("linkedin", secrets.linkedin),
+        accessToken: mask(secrets.linkedin?.accessToken),
+        hasToken: Boolean(secrets.linkedin?.accessToken),
+        authorUrn: secrets.linkedin?.authorUrn || "",
+        ...meta.linkedin,
+        apiVersion: meta.linkedin?.apiVersion || LINKEDIN_API_VERSION,
+        versionExpiresAt: LINKEDIN_VERSION_EXPIRY[meta.linkedin?.apiVersion || LINKEDIN_API_VERSION],
+      },
     };
   }
 
@@ -5677,6 +5733,7 @@ class SocialAgencyRuntime {
       instagram: ["igUserId", "accessToken", "insightsAccessToken", "imgbbApiKey"],
       line: ["channelAccessToken"],
       tiktok: ["accessToken"],
+      linkedin: ["accessToken", "authorUrn"],
     };
     const secrets = this._getSecrets(client.id);
     for (const [platform, fields] of Object.entries(platformSecretFields)) {
@@ -5691,6 +5748,9 @@ class SocialAgencyRuntime {
       if (typeof patch.dryRun === "boolean") client.connectors[platform].dryRun = patch.dryRun;
       if ((platform === "facebook" || platform === "instagram") && patch.apiVersion !== undefined) {
         client.connectors[platform].apiVersion = SocialAgencyRuntime._graphVersion(patch.apiVersion);
+      }
+      if (platform === "linkedin" && patch.apiVersion !== undefined) {
+        client.connectors.linkedin.apiVersion = SocialAgencyRuntime._linkedInVersion(patch.apiVersion);
       }
       if (platform === "tiktok" && typeof patch.auditApproved === "boolean") client.connectors.tiktok.auditApproved = patch.auditApproved;
       if (platform === "line" && typeof patch.sendImageTextStack === "boolean") {
@@ -5756,6 +5816,29 @@ class SocialAgencyRuntime {
         if (!merged.accessToken) throw new Error("ใส่ User Access Token ที่อนุญาต video.publish ก่อน");
         const creator = await this._tiktokCreatorInfo(merged.accessToken);
         result = { ok: true, message: `เชื่อมต่อ @${creator.creator_username || "TikTok"} (การทดสอบนี้ไม่ยืนยันว่าผ่าน audit)`, name: creator.creator_username };
+      } else if (platform === "linkedin") {
+        if (!merged.accessToken) throw new Error("กรอก Member Access Token (สิทธิ์ w_member_social) ก่อนทดสอบ");
+        // /v2/userinfo is the documented way to get the member id (sub) that the
+        // author URN is built from — nothing is posted here.
+        const res = await SocialAgencyRuntime._https({
+          host: LINKEDIN_HOST,
+          path: "/v2/userinfo",
+          headers: { Authorization: `Bearer ${merged.accessToken}` },
+        });
+        if (res.status >= 300 || !res.json?.sub) {
+          throw new Error(res.json?.message || `LinkedIn ตอบ HTTP ${res.status} — token อาจหมดอายุ (60 วัน) หรือขาดสิทธิ์ openid/profile`);
+        }
+        const authorUrn = `urn:li:person:${res.json.sub}`;
+        if (!merged.authorUrn) {
+          secrets.linkedin = { ...(secrets.linkedin || {}), authorUrn };
+          this._setSecrets(client.id, secrets);
+        }
+        result = {
+          ok: true,
+          message: `เชื่อมต่อสำเร็จ — ${res.json.name || res.json.sub} · ${authorUrn}`,
+          name: res.json.name,
+          authorUrn,
+        };
       } else if (platform === "line") {
         if (!merged.channelAccessToken) throw new Error("กรอก Messaging API Channel Access Token ก่อนทดสอบ");
         const res = await SocialAgencyRuntime._https({
@@ -5780,6 +5863,15 @@ class SocialAgencyRuntime {
       c.connectors[platform].testOk = true;
     });
     return result;
+  }
+
+  static _linkedInVersion(value) {
+    const version = String(value || "").trim() || LINKEDIN_API_VERSION;
+    if (!/^\d{6}$/.test(version)) throw new Error("LinkedIn-Version ต้องอยู่ในรูป YYYYMM เช่น 202601");
+    if (!Object.hasOwn(LINKEDIN_VERSION_EXPIRY, version)) throw new Error("LinkedIn-Version นี้ยังไม่รองรับในแอป — เลือก 202601, 202604 หรือ 202609");
+    const expires = LINKEDIN_VERSION_EXPIRY[version];
+    if (expires && Date.now() >= Date.parse(`${expires}T00:00:00Z`)) throw new Error(`LinkedIn-Version ${version} หมดอายุแล้ว — เลือกเวอร์ชันใหม่`);
+    return version;
   }
 
   // Calendar image edge must be a sane multiple of 8 (backend requirement).
@@ -5850,9 +5942,15 @@ class SocialAgencyRuntime {
     await sleep(800);
     let note;
     if (!configured) {
-      note = "ยังไม่ได้ตั้งค่า connector จึงจำลองการเผยแพร่";
+      // LinkedIn needs a token the user mints themselves, so the note says what
+      // to do instead of leaving a bare "simulated".
+      note = platform === "linkedin"
+        ? "ยังไม่ได้เชื่อม LinkedIn จึงจำลองการเผยแพร่ — คัดลอกข้อความไปโพสต์เองได้ที่ปุ่ม “เปิด LinkedIn” ในหน้าโพสต์"
+        : "ยังไม่ได้ตั้งค่า connector จึงจำลองการเผยแพร่";
     } else if (opts.manualEarly && opts.dryRun === false) {
       note = "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง เพราะวัน/เวลานัดโพสต์ยังมาไม่ถึง — กด \"อนุมัติและเผยแพร่\" หรือเลื่อนเวลาโพสต์ให้ไม่เกินเวลาปัจจุบันหากต้องการส่งจริงทันที";
+    } else if (platform === "linkedin") {
+      note = "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง — เปิด dry-run ใน Connectors เมื่อพร้อม หรือคัดลอกข้อความไปโพสต์เองที่ลิงก์ในหน้าโพสต์";
     } else {
       note = "โหมดทดลอง (dry-run) ยังไม่ได้ส่งจริง — ปิด dry-run ใน Connectors เมื่อพร้อม";
     }
@@ -7042,6 +7140,7 @@ class SocialAgencyRuntime {
     const version = (platform === "facebook" || platform === "instagram")
       ? SocialAgencyRuntime._graphVersion(meta.apiVersion) : null;
     if (platform === "tiktok") return this._publishTikTok(client, entry, secret, meta, caption);
+    if (platform === "linkedin") return this._publishLinkedIn(client, entry, secret, meta, caption);
     if (platform === "facebook") {
       if (meta.lastPublishAt && Date.now() - Date.parse(meta.lastPublishAt) < FB_MIN_INTERVAL_MS) {
         throw new Error("Facebook Page ควรเว้นจังหวะโพสต์อย่างน้อย 5 นาที — ลองอีกครั้งเร็วๆ นี้");
@@ -7309,6 +7408,86 @@ class SocialAgencyRuntime {
     }
 
     throw new Error(`ไม่รู้จักแพลตฟอร์ม "${platform}"`);
+  }
+
+  // ── LinkedIn (versioned Posts API, member profile) ──────────────────────────
+  // Posts as the person whose token is stored. A company Page needs the vetted
+  // Community Management product, so it is out of scope here — the entry drawer
+  // says so instead of failing with a 403 later. Video is refused rather than
+  // silently dropped; text and one image are what this path supports.
+  async _publishLinkedIn(client, entry, secret, meta, caption) {
+    const t0 = Date.now();
+    if (!secret.accessToken) throw new Error("ยังไม่มี LinkedIn access token — ใส่ใน Connectors ก่อน");
+    if (!secret.authorUrn) throw new Error("ยังไม่มี author URN — กด “ทดสอบการเชื่อมต่อ” ใน Connectors เพื่อรับมาอัตโนมัติ");
+    if (entry.video && (entry.video.path || entry.video.publicUrl)) {
+      throw new Error("LinkedIn ผ่าน API ในแอปนี้รองรับข้อความและรูปภาพ — วิดีโอต้องอัปโหลดเองบน LinkedIn");
+    }
+    const version = SocialAgencyRuntime._linkedInVersion(meta.apiVersion);
+    const headers = {
+      Authorization: `Bearer ${secret.accessToken}`,
+      "Linkedin-Version": version,
+      "X-Restli-Protocol-Version": "2.0.0",
+    };
+    // 1) image, when the entry has one: initializeUpload → PUT the bytes → keep
+    // the returned urn for the post. The upload URL is single-use.
+    let media = null;
+    const hasImage = entry.image && (entry.image.buffer?.length || entry.image.path);
+    if (hasImage) {
+      const buffer = entry.image.buffer?.length ? entry.image.buffer : fs.readFileSync(entry.image.path);
+      const init = await SocialAgencyRuntime._https({
+        method: "POST",
+        host: LINKEDIN_HOST,
+        path: "/rest/images?action=initializeUpload",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ initializeUploadRequest: { owner: secret.authorUrn } }),
+      });
+      const uploadUrl = init.json?.value?.uploadUrl;
+      const imageUrn = init.json?.value?.image;
+      if (init.status >= 300 || !uploadUrl || !imageUrn) {
+        throw new Error(init.json?.message || `LinkedIn อนุมัติการอัปโหลดรูปไม่สำเร็จ (HTTP ${init.status})`);
+      }
+      const target = new URL(uploadUrl);
+      const put = await SocialAgencyRuntime._https({
+        method: "PUT",
+        host: target.hostname,
+        path: `${target.pathname}${target.search}`,
+        headers: { ...headers, "Content-Type": "application/octet-stream" },
+        body: buffer,
+      });
+      if (put.status >= 300) throw new Error(`อัปโหลดรูปไป LinkedIn ไม่สำเร็จ (HTTP ${put.status})`);
+      media = { id: imageUrn };
+    }
+    // 2) the post. `commentary` is little-text: it must be escaped or LinkedIn
+    // silently cuts the body at the first reserved character.
+    const res = await SocialAgencyRuntime._https({
+      method: "POST",
+      host: LINKEDIN_HOST,
+      path: "/rest/posts",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        author: secret.authorUrn,
+        commentary: linkedInCommentary(caption),
+        visibility: "PUBLIC",
+        distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
+        ...(media ? { content: { media } } : {}),
+      }),
+    });
+    if (res.status >= 300) throw new Error(res.json?.message || `LinkedIn ตอบ HTTP ${res.status}`);
+    const postId = res.headers?.["x-restli-id"] || res.json?.id || "";
+    this._mutateClient(client.id, (c) => {
+      c.connectors.linkedin.lastPublishAt = new Date().toISOString();
+    });
+    return {
+      platform: "linkedin",
+      mode: "live",
+      publishedCaption: caption,
+      postId,
+      mediaKind: media ? "image" : "post",
+      latencyMs: Date.now() - t0,
+      note: `โพสต์ในนาม ${secret.authorUrn}${media ? " พร้อมรูป" : " (ข้อความเท่านั้น)"}`,
+    };
   }
 
   // ── LINE broadcast primitive (quota-guarded; shared by publish + weekly summary) ──
@@ -8136,4 +8315,14 @@ SocialAgencyRuntime._extractProducts = extractProductsFromHtml;
 SocialAgencyRuntime._templateCaption = buildTemplateCaption;
 SocialAgencyRuntime._captionPresets = CAPTION_PRESETS;
 
-module.exports = { SocialAgencyRuntime, NODE_DEFS, CONTENT_ANGLES, TONE_PRESETS, PLATFORMS, ENTRY_STATUSES };
+module.exports = {
+  SocialAgencyRuntime,
+  NODE_DEFS,
+  CONTENT_ANGLES,
+  TONE_PRESETS,
+  PLATFORMS,
+  ENTRY_STATUSES,
+  // exposed so the escaping contract can be tested without a network call
+  linkedInCommentary,
+  LINKEDIN_API_VERSION,
+};
