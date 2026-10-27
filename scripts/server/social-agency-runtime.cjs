@@ -7428,34 +7428,46 @@ class SocialAgencyRuntime {
       "Linkedin-Version": version,
       "X-Restli-Protocol-Version": "2.0.0",
     };
-    // 1) image, when the entry has one: initializeUpload → PUT the bytes → keep
-    // the returned urn for the post. The upload URL is single-use.
-    let media = null;
+    // 1) images: the same pair Facebook/Instagram send — the AI image first, the
+    // real product photo second. _productRefPairFor refuses (with the reason)
+    // when the switch is on but the photo is not on disk, so LinkedIn can never
+    // quietly post one image in place of the pair. Each upload URL is single-use.
+    let content = null;
     const hasImage = entry.image && (entry.image.buffer?.length || entry.image.path);
     if (hasImage) {
-      const buffer = entry.image.buffer?.length ? entry.image.buffer : fs.readFileSync(entry.image.path);
-      const init = await SocialAgencyRuntime._https({
-        method: "POST",
-        host: LINKEDIN_HOST,
-        path: "/rest/images?action=initializeUpload",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ initializeUploadRequest: { owner: secret.authorUrn } }),
-      });
-      const uploadUrl = init.json?.value?.uploadUrl;
-      const imageUrn = init.json?.value?.image;
-      if (init.status >= 300 || !uploadUrl || !imageUrn) {
-        throw new Error(init.json?.message || `LinkedIn อนุมัติการอัปโหลดรูปไม่สำเร็จ (HTTP ${init.status})`);
-      }
-      const target = new URL(uploadUrl);
-      const put = await SocialAgencyRuntime._https({
-        method: "PUT",
-        host: target.hostname,
-        path: `${target.pathname}${target.search}`,
-        headers: { ...headers, "Content-Type": "application/octet-stream" },
-        body: buffer,
-      });
-      if (put.status >= 300) throw new Error(`อัปโหลดรูปไป LinkedIn ไม่สำเร็จ (HTTP ${put.status})`);
-      media = { id: imageUrn };
+      const uploadImage = async (buffer) => {
+        const init = await SocialAgencyRuntime._https({
+          method: "POST",
+          host: LINKEDIN_HOST,
+          path: "/rest/images?action=initializeUpload",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ initializeUploadRequest: { owner: secret.authorUrn } }),
+        });
+        const uploadUrl = init.json?.value?.uploadUrl;
+        const imageUrn = init.json?.value?.image;
+        if (init.status >= 300 || !uploadUrl || !imageUrn) {
+          throw new Error(init.json?.message || `LinkedIn อนุมัติการอัปโหลดรูปไม่สำเร็จ (HTTP ${init.status})`);
+        }
+        const target = new URL(uploadUrl);
+        const put = await SocialAgencyRuntime._https({
+          method: "PUT",
+          host: target.hostname,
+          path: `${target.pathname}${target.search}`,
+          headers: { ...headers, "Content-Type": "application/octet-stream" },
+          body: buffer,
+        });
+        if (put.status >= 300) throw new Error(`อัปโหลดรูปไป LinkedIn ไม่สำเร็จ (HTTP ${put.status})`);
+        return imageUrn;
+      };
+      const refAttach = this._productRefPairFor(client, entry, "LinkedIn");
+      const urns = [await uploadImage(
+        entry.image.buffer?.length ? entry.image.buffer : fs.readFileSync(entry.image.path),
+      )];
+      if (refAttach) urns.push(await uploadImage(refAttach.buffer));
+      // 1 รูป → media · คู่ → multiImage (บล็อกรูปหลายใบของ LinkedIn)
+      content = urns.length > 1
+        ? { multiImage: { images: urns.map((id) => ({ id })) } }
+        : { media: { id: urns[0] } };
     }
     // 2) the post. `commentary` is little-text: it must be escaped or LinkedIn
     // silently cuts the body at the first reserved character.
@@ -7471,7 +7483,7 @@ class SocialAgencyRuntime {
         distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
         lifecycleState: "PUBLISHED",
         isReshareDisabledByAuthor: false,
-        ...(media ? { content: { media } } : {}),
+        ...(content ? { content } : {}),
       }),
     });
     if (res.status >= 300) throw new Error(res.json?.message || `LinkedIn ตอบ HTTP ${res.status}`);
@@ -7484,9 +7496,9 @@ class SocialAgencyRuntime {
       mode: "live",
       publishedCaption: caption,
       postId,
-      mediaKind: media ? "image" : "post",
+      mediaKind: content ? (content.multiImage ? "carousel" : "image") : "post",
       latencyMs: Date.now() - t0,
-      note: `โพสต์ในนาม ${secret.authorUrn}${media ? " พร้อมรูป" : " (ข้อความเท่านั้น)"}`,
+      note: `โพสต์ในนาม ${secret.authorUrn}${content ? (content.multiImage ? " พร้อมรูปคู่ (AI + รูปสินค้าจริง)" : " พร้อมรูป") : " (ข้อความเท่านั้น)"}`,
     };
   }
 

@@ -59,6 +59,15 @@ const tests = [
     assert.match(runsTab, /พรีวิวข้อความและเลย์เอาต์โพสต์เต็ม/);
     assert.match(runsTab, /<PostPreview entry=\{entry\} client=\{activeClient\} product=\{product\}/);
   }],
+  ["LinkedIn previews the same image pair and platform chrome as Facebook", () => {
+    // Both flags gate the two-image carousel; LinkedIn has to be in both or the
+    // preview would promise one image while the publisher sends two.
+    const flags = preview.match(/platform === "linkedin"\)/g) || [];
+    assert.ok(flags.length >= 2, "showFacebookProductRef and pairMissing both include LinkedIn");
+    assert.match(preview, /platform === "linkedin" \? <><span>Like<\/span><span>Comment<\/span><span>Repost<\/span><span>Send<\/span><\/>/);
+    assert.match(drawers, /\{versionField\("linkedin"\)\}/);
+    assert.match(drawers, /linkedin: \{ "202601": "2027-01-31"/);
+  }],
 ];
 
 for (const [name, test] of tests) {

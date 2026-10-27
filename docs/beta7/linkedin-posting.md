@@ -50,8 +50,14 @@ LinkedIn ไม่มีหน้า “สร้าง token” ให้กด
 ## 3. สิ่งที่ระบบทำจริงตอนโพสต์
 
 1. **รูป** (ถ้ามี): `POST /rest/images?action=initializeUpload` → อัปโหลดไบต์ไปที่
-   `uploadUrl` ที่ได้ → เก็บ `urn:li:image:…`
+   `uploadUrl` ที่ได้ → เก็บ `urn:li:image:…` (URL อัปโหลดใช้ได้ครั้งเดียว)
    (รูปต้องผ่าน **ด่านตรวจภาพ** เหมือน Facebook/Instagram — คนต้องกดยืนยันก่อน)
+   - **รูปคู่เหมือน Facebook/Instagram:** ถ้าเปิดสวิตช์ *แนบรูปสินค้าจริงในโพสต์*
+     ระบบอัปโหลด **2 รูป** — รูป AI ก่อน แล้วรูปสินค้าจริง — และส่งเป็นโพสต์หลายรูป
+     `content.multiImage.images = [รูป AI, รูปจริง]`
+   - เปิดสวิตช์ไว้แต่ไม่พบรูปสินค้าจริงในเครื่อง → **ไม่โพสต์** และบอกเหตุผล
+     (ไม่ลดรูปเหลือรูปเดียวเงียบ ๆ) เหมือนช่อง Facebook
+   - ปิดสวิตช์ → โพสต์รูปเดียว `content.media` ตามปกติ
 2. **โพสต์**: `POST /rest/posts` พร้อม header ที่ LinkedIn บังคับ
    `Linkedin-Version: YYYYMM` + `X-Restli-Protocol-Version: 2.0.0`
    และ `author: urn:li:person:…`

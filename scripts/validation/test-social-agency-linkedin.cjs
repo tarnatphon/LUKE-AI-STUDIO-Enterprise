@@ -243,6 +243,68 @@ async function main() {
       assert.equal(rt.getConnectorsView(clientId).linkedin.configured, false);
     });
 
+    // ── the product-photo pair (Facebook/Instagram parity) ───────────────────
+    test("an image post carries the same pair Facebook/Instagram send", async () => {
+      // A real product photo on disk, like the one the app stores after "ดึงรูปจากเว็บ".
+      const photoDir = path.join(root, "app", "outputs", "sa-products", clientId);
+      fs.mkdirSync(photoDir, { recursive: true });
+      fs.writeFileSync(path.join(photoDir, `${sku}.png`), PNG);
+      const st = rt._read();
+      st.clients.find((c) => c.id === clientId).products.find((x) => x.sku === sku).image = `/sa-products/${clientId}/${sku}.png`;
+      rt._write(st);
+      rt.saveConnectors(clientId, {
+        settings: { productRefInPost: true },
+        connectors: { linkedin: { accessToken: "li-token-abcdef123456", authorUrn: "urn:li:person:AbC123", dryRun: false } },
+      });
+
+      const id = mk({ caption: "คู่รูป (AI + รูปจริง)" });
+      rt.reviewEntryImage(clientId, id, { confirmed: true });
+      calls.length = 0;
+      const out = await rt._publishEntry(getClient(), getEntry(id), { trigger: "schedule" });
+
+      assert.equal(out.mode, "live");
+      assert.equal(out.mediaKind, "carousel", "two images is a multi-image post");
+      assert.match(out.note, /รูปคู่/);
+      assert.deepEqual(
+        calls.map((c) => `${c.method} ${c.path}`),
+        [
+          "POST /rest/images?action=initializeUpload",
+          "PUT /dms-uploads/abc?sig=1",
+          "POST /rest/images?action=initializeUpload",
+          "PUT /dms-uploads/abc?sig=1",
+          "POST /rest/posts",
+        ],
+        "AI image first, product photo second, then one post",
+      );
+      const body = JSON.parse(calls[4].body);
+      assert.deepEqual(body.content, { multiImage: { images: [{ id: "urn:li:image:C4E10AQ" }, { id: "urn:li:image:C4E10AQ" }] } });
+      assert.equal(body.content.media, undefined, "multiImage replaces the single media block");
+
+      // Same rule as Facebook: with the switch on and no photo on disk, the post
+      // is refused before anything is uploaded — never a silent one-image post.
+      const st2 = rt._read();
+      st2.clients.find((c) => c.id === clientId).products.find((x) => x.sku === sku).image = "https://shop.example.com/remote.jpg";
+      rt._write(st2);
+      const noPhoto = mk({ caption: "ไม่มีรูปสินค้าในเครื่อง" });
+      rt.reviewEntryImage(clientId, noPhoto, { confirmed: true });
+      const before = calls.length;
+      await assert.rejects(
+        () => rt._publishEntry(getClient(), getEntry(noPhoto), { trigger: "schedule" }),
+        /รูปสินค้าจริง/,
+      );
+      assert.equal(calls.length, before, "refused before uploading anything");
+
+      // Switch off → the single-image path Facebook keeps, and it still works.
+      rt.saveConnectors(clientId, { settings: { productRefInPost: false } });
+      const single = mk({ caption: "รูปเดียว" });
+      rt.reviewEntryImage(clientId, single, { confirmed: true });
+      calls.length = 0;
+      const one = await rt._publishEntry(getClient(), getEntry(single), { trigger: "schedule" });
+      assert.equal(one.mediaKind, "image");
+      assert.deepEqual(Object.keys(JSON.parse(calls[2].body).content), ["media"]);
+      assert.equal(calls.length, 3);
+    });
+
     // ── UI wiring ────────────────────────────────────────────────────────────
     test("the UI offers LinkedIn everywhere a platform is chosen or labelled", () => {
       const lib = read("app", "frontend", "src", "social-agency", "lib.js");

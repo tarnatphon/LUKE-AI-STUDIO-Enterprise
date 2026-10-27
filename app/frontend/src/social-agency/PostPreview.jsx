@@ -69,14 +69,14 @@ export default function PostPreview({ entry, client, product, platform: platform
     ? `${entry.date}${entry.time ? ` · ${entry.time}` : ""}`
     : "ตัวอย่างก่อนเผยแพร่";
   const postStatus = entry?.status ? (STATUS_META[entry.status]?.label || entry.status) : "ตัวอย่าง";
-  const showFacebookProductRef = (platform === "facebook" || platform === "instagram" || platform === "line")
+  const showFacebookProductRef = (platform === "facebook" || platform === "instagram" || platform === "line" || platform === "linkedin")
     && !videoUrl
     && Boolean(outputImageUrl)
     && productImageUrl.startsWith("/sa-products/")
     && client?.settings?.productRefInPost !== false;
   // The pair is promised for every image post while the switch is on. When the
   // product photo is still an external link, say why only one image shows.
-  const pairMissing = (platform === "facebook" || platform === "instagram" || platform === "line")
+  const pairMissing = (platform === "facebook" || platform === "instagram" || platform === "line" || platform === "linkedin")
     && !videoUrl
     && Boolean(outputImageUrl)
     && !productImageUrl.startsWith("/sa-products/")
@@ -161,6 +161,7 @@ export default function PostPreview({ entry, client, product, platform: platform
             {platform === "facebook" ? <><span>Like</span><span>Comment</span><span>Share</span></> :
               platform === "instagram" ? <><span>♡</span><span>Comment</span><span>Send</span><span className="bookmark">Save</span></> :
                 platform === "tiktok" ? <><span>♡ Like</span><span>Comment</span><span>Share</span></> :
+                  platform === "linkedin" ? <><span>Like</span><span>Comment</span><span>Repost</span><span>Send</span></> :
                   <><span>Like</span><span>Comment</span><span>Share</span></>}
           </div>
           <div className="sa-post-preview-caption">

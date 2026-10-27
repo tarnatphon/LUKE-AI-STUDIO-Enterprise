@@ -764,17 +764,29 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       setTests((t) => ({ ...t, [platform]: { ok: false, message: err.message } }));
     }
   };
+  // One implementation for every versioned connector: Meta (v21.0 …) and
+  // LinkedIn (YYYYMM). A sunset version is rejected outright, so the card says
+  // how long is left before that happens instead of failing at publish time.
+  const VERSION_FALLBACK = {
+    meta: {
+      "v21.0": "2027-01-21", "v22.0": "2027-05-20", "v23.0": "2027-10-08",
+      "v24.0": "2028-02-18", "v25.0": "2028-07-29",
+    },
+    linkedin: { "202601": "2027-01-31", "202604": "2027-04-30", "202609": "2027-09-30" },
+  };
   const versionField = (platform) => {
+    const linkedin = platform === "linkedin";
     const expires = connectors?.[platform]?.apiVersion === form[platform].apiVersion
-      ? connectors?.[platform]?.versionExpiresAt : {
-        "v21.0": "2027-01-21", "v22.0": "2027-05-20", "v23.0": "2027-10-08",
-        "v24.0": "2028-02-18", "v25.0": "2028-07-29",
-      }[form[platform].apiVersion];
+      ? connectors?.[platform]?.versionExpiresAt
+      : VERSION_FALLBACK[linkedin ? "linkedin" : "meta"][form[platform].apiVersion];
     const daysLeft = expires ? Math.ceil((Date.parse(`${expires}T00:00:00Z`) - Date.now()) / 86400000) : null;
     return <>
-      <label className="sa-field"><span>Meta Graph API version</span>
+      <label className="sa-field"><span>{linkedin ? "LinkedIn-Version" : "Meta Graph API version"}</span>
         <select value={form[platform].apiVersion} onChange={setField(platform, "apiVersion")}>
-          {["v21.0", "v22.0", "v23.0", "v24.0", "v25.0", "v26.0"].map((v) => <option key={v} value={v}>{v}</option>)}
+          {(linkedin
+            ? ["202601", "202604", "202609"]
+            : ["v21.0", "v22.0", "v23.0", "v24.0", "v25.0", "v26.0"]
+          ).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
       </label>
       {daysLeft !== null && daysLeft <= 120 && <p className="sa-form-error" role="alert">
@@ -903,11 +915,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         </header>
         <label className="sa-field"><span>Member Access Token (สิทธิ์ w_member_social + openid profile)</span><input value={form.linkedin.accessToken} onChange={setField("linkedin", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
         <label className="sa-field"><span>Author URN (เว้นว่างแล้วกดทดสอบ ระบบจะเติมให้)</span><input value={form.linkedin.authorUrn} onChange={setField("linkedin", "authorUrn")} placeholder="urn:li:person:xxxxxxx" /></label>
-        <label className="sa-field"><span>LinkedIn-Version</span>
-          <select value={form.linkedin.apiVersion} onChange={setField("linkedin", "apiVersion")}>
-            {["202601", "202604", "202609"].map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </label>
+        {versionField("linkedin")}
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.linkedin.dryRun} onChange={setFlag("linkedin", "dryRun")} label="โหมดทดลอง (dry-run)" />
           <button className="sa-btn ghost sm" disabled={busy || tests.linkedin?.loading} onClick={() => runTest("linkedin")}>
@@ -918,7 +926,8 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <p className="sa-form-hint">
           LinkedIn ไม่มีหน้า “สร้าง token” ให้กดเอง: ต้องสร้างแอปที่ developer.linkedin.com (ผลิตภัณฑ์ Share on LinkedIn) แล้วทำ OAuth 2.0 ฝั่งคุณเพื่อขอ token สิทธิ์ w_member_social — token อายุ 60 วัน และแอปนี้ยังไม่มี OAuth/refresh ในตัว
           · โพสต์ในนาม <b>โปรไฟล์ส่วนตัว</b>เท่านั้น (เพจบริษัทต้องขอผลิตภัณฑ์ Community Management ซึ่งต้องผ่านการอนุมัติ)
-          · รองรับข้อความ + รูป 1 รูป และต้องมีคนอนุมัติรูปก่อนส่งจริงเหมือน Facebook/Instagram
+          · รองรับข้อความ + รูป และต้องมีคนอนุมัติรูปก่อนส่งจริงเหมือน Facebook/Instagram
+          · เปิด “แนบรูปสินค้าจริงในโพสต์” = ส่ง <b>รูปคู่</b> (ภาพ AI + รูปสินค้าจริง) เป็นโพสต์หลายรูปเหมือน Facebook; ถ้าไม่พบรูปสินค้าในเครื่องจะไม่โพสต์และบอกเหตุผล (ปิดสวิตช์ = รูปเดียว)
           · ไม่มี token ก็ใช้ปฏิทินได้ตามปกติ: เขียน/ตรวจแคปชัน แล้วกด “คัดลอกข้อความ” + “เปิด LinkedIn” ในหน้าโพสต์
         </p>
       </section>
