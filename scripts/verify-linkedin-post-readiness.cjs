@@ -270,7 +270,7 @@ function formatInventory(inv) {
     lines.push(`  ลูกค้า: ${c.name} (${c.id})${inv.activeClientId === c.id ? " · กำลังใช้งาน" : ""}`);
     const liState = li.configured
       ? `ตั้งค่าแล้ว · ${li.authorUrn || "(ยังไม่มี URN)"} · ${li.dryRun ? "dry-run เปิดอยู่" : "dry-run ปิด (ส่งจริงได้)"}`
-      : "ยังไม่ได้ตั้งค่า token/URN — ใส่ใน Connectors → LinkedIn ก่อน";
+      : "ยังไม่ได้ตั้งค่า token/URN — ขอได้ด้วย node scripts/social-agency-linkedin-token.cjs --prompt --save";
     lines.push(`  LinkedIn: ${liState}`);
     lines.push(`  สินค้า (${c.products.length}${c.products.length ? ` · มีรูปในเครื่อง ${withPhoto}` : ""}):`);
     for (const p of c.products.slice(0, 20)) {
@@ -375,7 +375,7 @@ async function inspectLinkedInPostReadiness(options = {}) {
       "LinkedIn connector",
       "fail",
       `ยังไม่ได้ตั้งค่า ${missing} สำหรับลูกค้า ${client.id}`,
-      "Social Agency → Connectors → LinkedIn: ใส่ Member Access Token (w_member_social) แล้วกด “ทดสอบและดึง URN”",
+      "ขอ token ด้วยคำสั่งเดียว: node scripts/social-agency-linkedin-token.cjs --prompt --save (หรือ Social Agency → Connectors → LinkedIn: ใส่ Member Access Token แล้วกด “ทดสอบและดึง URN”)",
     );
   } else if (meta.dryRun !== false) {
     addCheck(

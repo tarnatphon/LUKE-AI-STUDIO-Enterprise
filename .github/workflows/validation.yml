@@ -78,6 +78,20 @@ jobs:
       - name: Run validation suites
         run: node scripts/validation/run-all.cjs --timeout 300
 
+      # A failing suite's name only exists in the job log, which needs a login
+      # (and a network path some sandboxes do not have) to read. Mirror the FAIL
+      # lines into annotations so the run page says which suite broke.
+      - name: Name the failing suites
+        if: failure()
+        run: |
+          latest=""
+          for report in validation-reports/run-all-*.txt; do latest="$report"; done
+          [ -n "$latest" ] || exit 0
+          echo "report: $latest"
+          grep -E '^FAIL' "$latest" | head -10 | while IFS= read -r line; do
+            echo "::error title=Validation suite failed::${line}"
+          done
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v7

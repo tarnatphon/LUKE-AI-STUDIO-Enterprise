@@ -25,6 +25,8 @@ Social Agency · ต่อจาก `free-high-da-publishing-platforms.md` (ช�
    (เกินแล้วจะบอกก่อน ไม่ตัดเงียบ ๆ) และมี `ตัวอย่างสำเร็จรูป` ให้เลือกได้เหมือนช่องอื่น
 3. ถ้าต้องการให้โพสต์จริง: **Connectors → LinkedIn** ใส่ token → กด
    **ทดสอบและดึง URN** → ปิด dry-run ของ LinkedIn
+   (ยังไม่มี token? รัน `node scripts/social-agency-linkedin-token.cjs --prompt --save`
+   คำสั่งเดียวจบ — ดูข้อ 2.2)
    ถ้าไม่ใส่ token: กด **รันเลยตอนนี้** ได้ตามปกติ แต่ผลจะเป็น dry-run (ไม่มีอะไรถูกส่ง)
    และใช้ปุ่ม **คัดลอกข้อความ** + **เปิด LinkedIn** ในหน้าโพสต์เพื่อวางเอง
 
@@ -32,20 +34,60 @@ Social Agency · ต่อจาก `free-high-da-publishing-platforms.md` (ช�
 
 ## 2. ตั้งค่า token (ต้องทำเองฝั่ง LinkedIn — แอปนี้ไม่มี OAuth ในตัว)
 
-LinkedIn ไม่มีหน้า “สร้าง token” ให้กดเหมือน LINE/Discord ต้องสร้างแอปของตัวเอง:
+LinkedIn **ไม่มีปุ่ม “สร้าง token”** ให้กดเหมือน LINE/Discord หรือ Facebook
+ต้องสร้างแอปของตัวเองแล้วทำ OAuth 2.0 authorization-code flow หนึ่งครั้ง
+สคริปต์ `scripts/social-agency-linkedin-token.cjs` พาเดินทั้ง flow ให้
+(ไม่ต้องพิมพ์ `curl` เอง ไม่ต้องเปิดเซิร์ฟเวอร์รับ callback)
+
+### 2.1 เตรียมแอปฝั่ง LinkedIn (ทำครั้งเดียว)
 
 1. ไปที่ <https://developer.linkedin.com/> → **Create app** (ผูกกับ Page ของบริษัทได้
    แม้จะโพสต์ในนามบุคคล) แล้วเพิ่มผลิตภัณฑ์ **Share on LinkedIn** (ให้สิทธิ์
    `w_member_social` — ไม่ต้องรอรีวิว) และ **Sign In with LinkedIn using OpenID
    Connect** (ให้ `openid profile` มาดึงชื่อ/URN)
-2. ในหน้า **Auth** ของแอป ใส่ Redirect URL และคัดลอก **Client ID / Client Secret**
-3. ทำ OAuth 2.0 authorization-code flow หนึ่งครั้ง (เบราว์เซอร์ + `curl` หรือสคริปต์
-   ของคุณเอง) เพื่อแลกเป็น access token
-4. วาง token ในช่อง **Member Access Token** แล้วกด **ทดสอบและดึง URN**
-   ระบบจะเรียก `/v2/userinfo` แล้วเติม `urn:li:person:…` ให้อัตโนมัติ
+2. ในหน้า **Auth** ของแอป เพิ่ม **Authorized redirect URL** — ต้องเป็น `https://…`
+   ที่ไม่ใช่ `localhost` และ **ตรงทุกตัวอักษร** กับที่ใส่ในสคริปต์
+   (หน้านั้นจะเปิดขึ้นมาเป็น error/404 ก็ไม่เป็นไร เราแค่ต้องการ `?code=…` ในแถบที่อยู่)
+3. คัดลอก **Client ID / Client Secret** ไว้
 
-> **อายุ token 60 วัน** และแอปนี้ยังไม่มี refresh-token flow — เมื่อหมดอายุให้ทำ
-> ข้อ 3 ใหม่ (ระบบจะบอกว่า “token อาจหมดอายุ” ตอนทดสอบ)
+### 2.2 ขอ token + เขียนลงแอปด้วยคำสั่งเดียว
+
+```bash
+node scripts/social-agency-linkedin-token.cjs --prompt --save --client thai-modern-bags
+```
+
+1. สคริปต์ถาม **Client ID / Client Secret / Redirect URL** (ค่าที่เป็นความลับไม่แสดงบนจอ
+   และไม่ลง shell history — ไม่ต้องพิมพ์ต่อท้าย command)
+2. เปิดเบราว์เซอร์ให้เอง (หรือก๊อป URL ที่พิมพ์ออกมาไปเปิด) → กด **Allow**
+3. เบราว์เซอร์เด้งไปที่ Redirect URL — **ก๊อป URL จากแถบที่อยู่ทั้งบรรทัด** มาวาง
+   (มี `?code=…&state=…`) สคริปต์ตรวจ `state` ว่าเป็นรอบที่เพิ่งเริ่มจริง
+4. สคริปต์แลก code เป็น token → เรียก `/v2/userinfo` → ได้ `urn:li:person:…`
+   แล้ว **เขียน `accessToken` + `authorUrn` + `tokenSavedAt` ลง `connectors.json`**
+   ของลูกค้ารายนั้นให้เลย (**dry-run ยังเปิดอยู่** ต้องไปปิดเองใน Connectors)
+
+คำสั่งอื่นที่ใช้บ่อย:
+
+```bash
+node scripts/social-agency-linkedin-token.cjs                    # ขอ token แล้วพิมพ์ให้คัดลอก (ไม่บันทึก)
+node scripts/social-agency-linkedin-token.cjs --check --client thai-modern-bags   # token ที่บันทึกไว้ยังใช้ได้ไหม + URN ตรงหรือเปล่า
+node scripts/social-agency-linkedin-token.cjs --curl              # ไม่ต่อเน็ต: พิมพ์คำสั่ง curl เทียบเท่าให้ไปรันเอง
+node scripts/social-agency-linkedin-token.cjs --json --reveal     # ผลเป็น JSON พร้อม token เต็ม (เฉพาะตอนต้องการจริง ๆ)
+```
+
+`--client` ต้องเป็น **ID ลูกค้าในแอป** (เช่น `thai-modern-bags` หรือ `client-1a2b3c4d`)
+ไม่ใช่ชื่อที่แสดง — ดู ID จริงได้จาก `node scripts/verify-linkedin-post-readiness.cjs --list`
+
+> token ถูกปิดบังเสมอในผลลัพธ์ปกติ (`li-m…567890`) · Client Secret ไม่ถูกพิมพ์กลับ
+> · ไม่มี `--listen`/localhost callback เพราะ LinkedIn ไม่รับ redirect แบบนั้น
+
+### 2.3 หลังได้ token
+
+เปิดแอป → **Connectors → LinkedIn** → กด **ทดสอบและดึง URN** (จะขึ้นชื่อบัญชีที่ token
+เป็นของเจ้าของ) → **ปิด dry-run** ของ LinkedIn → จากนั้นโพสต์จะส่งจริง
+
+> **อายุ token ~60 วัน และ LinkedIn ไม่มี refresh token สำหรับ member token** —
+> หมดอายุแล้วต้องรัน `--prompt --save` ใหม่ (สคริปต์บอกวันหมดอายุให้ตอนได้ token
+> และ `--check` บอกว่าเหลืออีกกี่วัน)
 
 ---
 
@@ -102,7 +144,8 @@ node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009 --online
 > **อย่าพิมพ์ `<id>` ใน terminal** — zsh อ่าน `<` เป็นการ redirect แล้วจะขึ้น
 > `no such file or directory: id` · ในเครื่องหมาย help/เอกสารนี้ ช่องที่ต้องแทนค่าจริง
 > เขียนเป็น `ENTRY_ID` / `SKU` / `CLIENT_ID` (ตัวพิมพ์ใหญ่ ไม่มีวงเล็บมุม)
-> และ `--list` จะพิมพ์บรรทัด `→ node … --entry <id จริง>` ให้คัดลอกไปรันได้เลย
+> และ `--list` จะพิมพ์บรรทัด `→ node … --entry …` **ด้วย ID จริงของรายการนั้น**
+> ให้คัดลอกไปรันได้เลย
 
 > `cal-xxxx` ในตัวอย่างคือ **ชื่อสมมติ** ไม่ใช่ ID จริง — ถ้าพิมพ์ตามตรง ตัวตรวจจะบอกว่า
 > “เป็นตัวอย่างจากวิธีใช้งาน ต้องใส่ ID จริง” และแนะนำให้รัน `--list` เพื่อดู ID ที่มีอยู่
@@ -133,6 +176,7 @@ node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009 --online
 ## 6. Checklist ก่อนใช้จริง
 
 1. token สิทธิ์ `w_member_social` + `openid profile` และยังไม่หมดอายุ 60 วัน
+   (เช็กเร็ว ๆ: `node scripts/social-agency-linkedin-token.cjs --check --client thai-modern-bags`)
 2. `authorUrn` ขึ้นต้นด้วย `urn:li:person:` และเป็นบัญชีที่คุณต้องการโพสต์
 3. ปิด **dry-run ของ LinkedIn** ใน Connectors (ค่าเริ่มต้นคือเปิด)
 4. ถ้าโพสต์มีรูป: กดยืนยัน **ด่านตรวจภาพ** ในหน้าโพสต์ก่อน ไม่งั้นระบบจะไม่ส่ง
@@ -148,4 +192,6 @@ node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009 --online
 - Images API: <https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api>
 - little text (การ escape): <https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format>
 - Versioning (`Linkedin-Version`): <https://learn.microsoft.com/en-us/linkedin/marketing/versioning>
+- OAuth 2.0 (authorization code + `/oauth/v2/accessToken`): <https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow>
+- OpenID Connect `/v2/userinfo`: <https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2>
 - Share on LinkedIn (ผลิตภัณฑ์ self-serve): <https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin>

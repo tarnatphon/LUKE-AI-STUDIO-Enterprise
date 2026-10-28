@@ -136,6 +136,10 @@ async function main() {
     const report = await run();
     assert.strictEqual(checkOf(report, "connector").status, "fail");
     assert.match(checkOf(report, "connector").detail, /Member Access Token/);
+    // The fix line has to say how to get a token: LinkedIn has no "generate
+    // token" button, so "go to Connectors" alone leaves the operator stuck.
+    assert.match(checkOf(report, "connector").fix, /social-agency-linkedin-token\.cjs --prompt --save/);
+    assert.doesNotMatch(checkOf(report, "connector").fix, /[<>]/);
     assert.strictEqual(report.readyForLiveLinkedIn, false);
   });
 
@@ -458,8 +462,15 @@ async function main() {
     assert.strictEqual(entryRow.reviewed, true);
     const text = formatInventory(inv);
     assert.match(text, /รายการ LinkedIn ในปฏิทิน/);
-    assert.match(text, new RegExp(`--entry ${id}`));
     assert.ok(!text.includes(TOKEN), "no secrets in the inventory");
+    assert.match(text, new RegExp(`--entry ${id}`));
+  });
+
+  test("--list ตอนยังไม่มี token → บอกคำสั่งขอ token ตรง ๆ (ไม่ปล่อยให้ไปหาเอง)", async () => {
+    rt.saveConnectors(clientId, { connectors: { linkedin: { accessToken: "", authorUrn: "" } } });
+    const text = formatInventory(buildInventory(root, { clientId }));
+    assert.match(text, /social-agency-linkedin-token\.cjs --prompt --save/);
+    assert.doesNotMatch(text, /[<>]/);
   });
 
   test("ข้อความที่ผู้ใช้คัดลอกไปรัน ต้องไม่มี < > (zsh จะอ่านเป็นการ redirect)", async () => {
