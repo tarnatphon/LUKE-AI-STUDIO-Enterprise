@@ -517,4 +517,7 @@ if (require.main === module) {
 
 // Exported for scripts/validation/test-social-agency-fb-token.cjs — the hidden-input
 // path can't be exercised by piping, because a pipe is never a TTY.
-module.exports = { parseArgs, sanitizeHiddenLine, stripEscapeSequences, looksLikeToken, describeValue, validateInputs };
+// promptHidden/ask are exported too: the LinkedIn helper (social-agency-linkedin-token.cjs)
+// needs the exact same terminal handling, and bracketed-paste corruption is fixed in
+// one place instead of two.
+module.exports = { parseArgs, sanitizeHiddenLine, stripEscapeSequences, looksLikeToken, describeValue, validateInputs, promptHidden, ask };
