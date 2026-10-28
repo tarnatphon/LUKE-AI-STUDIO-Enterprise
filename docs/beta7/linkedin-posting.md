@@ -48,6 +48,8 @@ LinkedIn **ไม่มีปุ่ม “สร้าง token”** ให้�
 2. ในหน้า **Auth** ของแอป เพิ่ม **Authorized redirect URL** — ต้องเป็น `https://…`
    ที่ไม่ใช่ `localhost` และ **ตรงทุกตัวอักษร** กับที่ใส่ในสคริปต์
    (หน้านั้นจะเปิดขึ้นมาเป็น error/404 ก็ไม่เป็นไร เราแค่ต้องการ `?code=…` ในแถบที่อยู่)
+   ⚠️ **สำคัญ:** ถ้าเว็บปลายทางเด้งต่อไปหน้าอื่น (เช่น 404 → หน้าแรก) `?code=…`
+   จะหายไปก่อนคุณก๊อป — เลือก URL ที่ **ไม่เด้ง** เช่นไฟล์นิ่งที่มีอยู่จริงบนเว็บคุณ
 3. คัดลอก **Client ID / Client Secret** ไว้
 
 ### 2.2 ขอ token + เขียนลงแอปด้วยคำสั่งเดียว
@@ -61,6 +63,12 @@ node scripts/social-agency-linkedin-token.cjs --prompt --save --client thai-mode
 2. เปิดเบราว์เซอร์ให้เอง (หรือก๊อป URL ที่พิมพ์ออกมาไปเปิด) → กด **Allow**
 3. เบราว์เซอร์เด้งไปที่ Redirect URL — **ก๊อป URL จากแถบที่อยู่ทั้งบรรทัด** มาวาง
    (มี `?code=…&state=…`) สคริปต์ตรวจ `state` ว่าเป็นรอบที่เพิ่งเริ่มจริง
+   · วางเฉพาะ **ค่าที่อยู่หลัง `code=`** ก็ได้ (บางคนก๊อปจากแถบที่อยู่ได้ไม่ครบ)
+   · วางผิด ระบบ **ไม่ตัดจบ** — จะบอกว่า "ได้รับอะไรมา" (เช่น
+   `ได้รับ: thaimodernbags.com/li-callback · ไม่มีพารามิเตอร์`) แล้วถามซ้ำได้อีก 2 ครั้ง
+   · ถ้าข้อความบอกว่าเป็นหน้า **"ขออนุญาต"** แปลว่า LinkedIn ยังไม่เด้งกลับ →
+   ตรวจว่าแท็บ Products มีผลิตภัณฑ์ครบทั้งสองตัว และ Redirect URL ตรงทุกตัวอักษร
+   · ถ้าขึ้นว่าให้ Client Secret ได้ Client ID มา → ระบบหยุดทันที (ยังไม่ยิงเน็ต)
 4. สคริปต์แลก code เป็น token → เรียก `/v2/userinfo` → ได้ `urn:li:person:…`
    แล้ว **เขียน `accessToken` + `authorUrn` + `tokenSavedAt` ลง `connectors.json`**
    ของลูกค้ารายนั้นให้เลย (**dry-run ยังเปิดอยู่** ต้องไปปิดเองใน Connectors)
@@ -72,6 +80,7 @@ node scripts/social-agency-linkedin-token.cjs                    # ขอ token 
 node scripts/social-agency-linkedin-token.cjs --check --client thai-modern-bags   # token ที่บันทึกไว้ยังใช้ได้ไหม + URN ตรงหรือเปล่า
 node scripts/social-agency-linkedin-token.cjs --curl              # ไม่ต่อเน็ต: พิมพ์คำสั่ง curl เทียบเท่าให้ไปรันเอง
 node scripts/social-agency-linkedin-token.cjs --json --reveal     # ผลเป็น JSON พร้อม token เต็ม (เฉพาะตอนต้องการจริง ๆ)
+node scripts/social-agency-linkedin-token.cjs --code CODE_THAT_YOU_COPIED --redirect https://thaimodernbags.com/li-callback --prompt --save   # ใส่เฉพาะ code (ไม่ตรวจ state)
 ```
 
 `--client` ต้องเป็น **ID ลูกค้าในแอป** (เช่น `thai-modern-bags` หรือ `client-1a2b3c4d`)
