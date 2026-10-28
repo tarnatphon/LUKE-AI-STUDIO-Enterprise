@@ -287,11 +287,18 @@ function extractCode(input, { state } = {}) {
   const code = params.get("code") || salvageCode(raw);
   if (!code) {
     const looksAuthorize = /response_type=code/.test(raw) && /client_id=/.test(raw);
+    // The browser that was opened is not signed in to LinkedIn, so LinkedIn
+    // serves its login wall instead of the Allow page and nothing redirects.
+    // That URL carries session_redirect/trk, never a code — worth naming.
+    const looksLogin = /linkedin\.com\/(uas\/)?(login|checkpoint)/.test(raw)
+      || (params.has("session_redirect") && params.has("trk"));
     throw new Error([
       `URL ที่วางมาไม่มี code — ได้รับ: ${describeReceived(raw)}`,
-      looksAuthorize
-        ? "หน้านี้คือหน้า “ขออนุญาต” ของ LinkedIn ไม่ใช่หน้าที่เด้งกลับ — ต้องกด Allow ให้จบก่อน ถ้าหน้าไม่เด้งกลับ มักเป็นเพราะแอปยังไม่มีผลิตภัณฑ์ Share on LinkedIn / Sign In with LinkedIn using OpenID Connect หรือ Redirect URL ไม่ตรงกับที่ลงทะเบียน"
-        : "ถ้าเว็บปลายทางเด้งต่อไปหน้าอื่นจน query หาย ให้ลงทะเบียน Redirect URL ที่ไม่เด้ง (ไฟล์นิ่งที่มีอยู่จริงบนเว็บคุณ) แล้วเริ่มใหม่ — หรือวางเฉพาะค่าที่อยู่หลัง code= ก็ได้",
+      looksLogin
+        ? "หน้านี้คือหน้า “เข้าสู่ระบบ” ของ LinkedIn — เบราว์เซอร์ที่เปิดลิงก์ยังไม่ได้ล็อกอิน จึงยังไม่ถึงหน้า Allow ให้ล็อกอินให้เสร็จ แล้วระบบจะพาไปหน้า Allow เอง กด Allow แล้วค่อยก๊อป URL ที่มี code="
+        : looksAuthorize
+          ? "หน้านี้คือหน้า “ขออนุญาต” ของ LinkedIn ไม่ใช่หน้าที่เด้งกลับ — ต้องกด Allow ให้จบก่อน ถ้าหน้าไม่เด้งกลับ มักเป็นเพราะแอปยังไม่มีผลิตภัณฑ์ Share on LinkedIn / Sign In with LinkedIn using OpenID Connect หรือ Redirect URL ไม่ตรงกับที่ลงทะเบียน"
+          : "ถ้าเว็บปลายทางเด้งต่อไปหน้าอื่นจน query หาย ให้ลงทะเบียน Redirect URL ที่ไม่เด้ง (ไฟล์นิ่งที่มีอยู่จริงบนเว็บคุณ) แล้วเริ่มใหม่ — หรือวางเฉพาะค่าที่อยู่หลัง code= ก็ได้",
     ].join("\n   "));
   }
   if (state && gotState && gotState !== state) {

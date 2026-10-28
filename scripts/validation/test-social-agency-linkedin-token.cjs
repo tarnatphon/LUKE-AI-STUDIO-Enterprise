@@ -174,6 +174,22 @@ async function main2() {
     });
   });
 
+  test("วางหน้าเข้าสู่ระบบของ LinkedIn → บอกว่ายังไม่ได้ล็อกอิน ไม่ใช่โทษ Products", () => {
+    const login = "https://www.linkedin.com/uas/login?session_redirect=%2Foauth%2Fv2%2Fauthorization&fromSignIn=true&trk=oauth2&cancel_redirect=1";
+    assert.throws(() => extractCode(login, {}), (err) => {
+      assert.match(err.message, /เข้าสู่ระบบ/, "names the login wall");
+      assert.match(err.message, /ล็อกอินให้เสร็จ[\s\S]*Allow/);
+      assert.match(err.message, /ได้รับ: www\.linkedin\.com\/uas\/login/);
+      assert.doesNotMatch(err.message, /ผลิตภัณฑ์/, "a login wall is not a Products problem");
+      return true;
+    });
+    // The checkpoint variant of the same wall
+    assert.throws(
+      () => extractCode("https://www.linkedin.com/checkpoint/lg/login?session_redirect=x&trk=y", {}),
+      /เข้าสู่ระบบ/,
+    );
+  });
+
   test("วางหน้าที่ไม่มี query → บอกว่าได้รับอะไร (host/พารามิเตอร์) ไม่ใช่แค่ปฏิเสธ", () => {
     assert.throws(() => extractCode("https://thaimodernbags.test/li-callback", {}), (err) => {
       assert.match(err.message, /ได้รับ: thaimodernbags\.test\/li-callback · ไม่มีพารามิเตอร์ · ยาว \d+ ตัวอักษร/);
