@@ -69,27 +69,31 @@ function parseArgs(argv) {
 const HELP = `
 Social Agency — ตรวจความพร้อมก่อนโพสต์ LinkedIn จริง
 
-  --sku <SKU>              ระบุ SKU สินค้าที่ต้องการตรวจ
-  --entry <entryId>        ระบุรายการในปฏิทินโดยตรง (เช่น --entry cal-xxxx)
-  --client <clientId>      ระบุลูกค้า (ค่าเริ่มต้น: ลูกค้าที่เลือกอยู่ในแอป)
-  --trigger <approve|manual>  ปุ่มที่จะกดส่ง ("approve" = อนุมัติและเผยแพร่, "manual" = รันเลยตอนนี้)
+  --list                   แสดงสินค้าและรายการ LinkedIn ที่มีอยู่ (ไม่มีคำตัดสิน ไม่มี exit 1)
+  --sku SKU                ระบุ SKU สินค้าที่ต้องการตรวจ (เช่น --sku SSB-009)
+  --entry ENTRY_ID         ระบุรายการในปฏิทินโดยตรง (เอา ID จริงจาก --list)
+  --client CLIENT_ID       ระบุลูกค้า (ค่าเริ่มต้น: ลูกค้าที่เลือกอยู่ในแอป)
+  --trigger approve|manual ปุ่มที่จะกดส่ง ("approve" = อนุมัติและเผยแพร่, "manual" = รันเลยตอนนี้)
   --strict                 คำเตือนใด ๆ ก็นับเป็นไม่พร้อม (exit 1)
   --online                 ยิง LinkedIn แบบอ่านอย่างเดียว: /v2/userinfo + ทดสอบ initializeUpload ของรูป
   --no-probe-images        ใช้คู่กับ --online เพื่อข้ามการทดสอบ initializeUpload
-  --host <host>            เปลี่ยนโฮสต์ LinkedIn (สำหรับทดสอบกับ mock server)
-  --root <path>            พาธรากของโปรเจกต์ (ค่าเริ่มต้น: โฟลเดอร์ repo นี้)
-  --list                   แสดงสินค้าและรายการ LinkedIn ที่มีอยู่ (ไม่มีคำตัดสิน ไม่มี exit 1)
+  --host HOST              เปลี่ยนโฮสต์ LinkedIn (สำหรับทดสอบกับ mock server)
+  --root PATH              พาธรากของโปรเจกต์ (ค่าเริ่มต้น: โฟลเดอร์ repo นี้)
   --json                   แสดงผลเป็น JSON (token ถูกปิดบังเสมอ)
   -h, --help               แสดงวิธีใช้งานนี้
+
+คำพิมพ์ใหญ่ (SKU, ENTRY_ID, CLIENT_ID) คือช่องที่ต้องแทนด้วยค่าจริง — ไม่ต้องใส่ < >
+เพราะ shell (zsh) จะอ่าน < เป็นการ redirect แล้วขึ้นว่า no such file or directory
 
 สคริปต์นี้อ่านอย่างเดียว — ไม่แก้ไขไฟล์สถานะ ไม่เริ่มเวิร์กโฟลว์ และไม่โพสต์จริง
 (initializeUpload จองสิทธิ์อัปโหลดเท่านั้น ไม่อัปโหลดไบต์และไม่สร้างโพสต์)
 
 ตัวอย่าง
   node scripts/verify-linkedin-post-readiness.cjs --list
-  node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006
-  node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
-  node scripts/verify-linkedin-post-readiness.cjs --entry cal-123 --trigger manual --json
+  node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009
+  node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009 --online
+  node scripts/verify-linkedin-post-readiness.cjs --entry ENTRY_ID --trigger manual --json
+  (ENTRY_ID = ค่าจริงจากคอลัมน์ --entry ในผลของ --list)
 `;
 
 function mask(token) {
@@ -245,37 +249,61 @@ function buildInventory(root, { clientId } = {}) {
 
 function formatInventory(inv) {
   const lines = [];
+  const SCRIPT = "node scripts/verify-linkedin-post-readiness.cjs";
   lines.push("══ รายการที่มีให้ตรวจ (LinkedIn) ═════════════════════════════════");
   if (!inv.ok) {
     lines.push(`  ✗ ${inv.error}`);
     return lines.join("\n");
   }
   if (!inv.clients.length) {
-    lines.push("  (ไม่พบลูกค้า — ระบุ --client <clientId>)");
+    lines.push("  (ไม่พบลูกค้า — ระบุ --client CLIENT_ID โดยใช้ id ในวงเล็บของแต่ละลูกค้า)");
     return lines.join("\n");
   }
+  let commands = 0;
+  let explainedEmpty = false;
   for (const c of inv.clients) {
     const li = c.linkedin;
+    const withPhoto = c.products.filter((p) => p.hasPhoto).length;
+    // A non-active client needs --client, otherwise the checker would look at
+    // whichever client the app happens to have open.
+    const clientArg = inv.activeClientId === c.id ? "" : ` --client ${c.id}`;
     lines.push(`  ลูกค้า: ${c.name} (${c.id})${inv.activeClientId === c.id ? " · กำลังใช้งาน" : ""}`);
-    lines.push(
-      `  LinkedIn: ${li.configured ? `ตั้งค่าแล้ว · ${li.authorUrn || "(ยังไม่มี URN)"} · ${li.dryRun ? "dry-run เปิดอยู่" : "dry-run ปิด (ส่งจริงได้)"}` : "ยังไม่ได้ตั้งค่า token/URN"}`,
-    );
-    lines.push(`  สินค้า (${c.products.length}):`);
+    const liState = li.configured
+      ? `ตั้งค่าแล้ว · ${li.authorUrn || "(ยังไม่มี URN)"} · ${li.dryRun ? "dry-run เปิดอยู่" : "dry-run ปิด (ส่งจริงได้)"}`
+      : "ยังไม่ได้ตั้งค่า token/URN — ใส่ใน Connectors → LinkedIn ก่อน";
+    lines.push(`  LinkedIn: ${liState}`);
+    lines.push(`  สินค้า (${c.products.length}${c.products.length ? ` · มีรูปในเครื่อง ${withPhoto}` : ""}):`);
     for (const p of c.products.slice(0, 20)) {
       lines.push(`    - ${p.sku} · ${p.name} · ${p.hasPhoto ? `มีรูป (${p.photoFile})` : "ยังไม่มีรูปในเครื่อง"}`);
     }
-    if (c.products.length > 20) lines.push(`    … อีก ${c.products.length - 20} รายการ`);
+    if (c.products.length > 20) lines.push(`    … อีก ${c.products.length - 20} รายการ (ดูได้ในแท็บ สินค้า)`);
     lines.push(`  รายการ LinkedIn ในปฏิทิน (${c.entries.length}):`);
     if (!c.entries.length) {
-      lines.push("    (ยังไม่มี — ไปที่แท็บ ปฏิทิน แล้วกด “วางแผนอัตโนมัติทั้งเดือน” ซึ่งมี LinkedIn อยู่แล้ว)");
+      // Explain the path once; repeating it for every empty client is noise.
+      if (!explainedEmpty) {
+        explainedEmpty = true;
+        lines.push("    ยังไม่มีรายการ — สร้างก่อนแล้วค่อยกลับมาตรวจ:");
+        lines.push("    1) เปิดแอป → แท็บ ปฏิทิน → เลือกเดือน");
+        lines.push("    2) กด “วางแผนอัตโนมัติทั้งเดือน” (LinkedIn ติ๊กไว้แล้ว) หรือกด “เพิ่มโพสต์” แล้วเลือกแพลตฟอร์ม LinkedIn");
+        lines.push("    3) สร้างภาพ AI แล้วกด “ตรวจภาพแล้ว” ในหน้ารายการ");
+        lines.push(`    4) กลับมารัน: ${SCRIPT} --list`);
+      } else {
+        lines.push("    ยังไม่มีรายการ LinkedIn (วิธีสร้างดูด้านบน)");
+      }
     } else {
       for (const e of c.entries) {
-        lines.push(`    - --entry ${e.id} · ${e.date} ${e.time} · ${e.sku} · ${e.status} · ${e.hasImage ? (e.reviewed ? "มีภาพ (ตรวจแล้ว)" : "มีภาพ (ยังไม่ตรวจ)") : "ยังไม่มีภาพ"}`);
+        lines.push(`    - ${e.id} · ${e.date} ${e.time} · ${e.sku} · ${e.status} · ${e.hasImage ? (e.reviewed ? "มีภาพ (ตรวจแล้ว)" : "มีภาพ (ยังไม่ตรวจ)") : "ยังไม่มีภาพ"}`);
+        lines.push(`      → ${SCRIPT}${clientArg} --entry ${e.id}`);
+        commands += 1;
       }
     }
     lines.push("");
   }
-  lines.push("ตรวจรายการใดรายการหนึ่ง: node scripts/verify-linkedin-post-readiness.cjs --entry <id>");
+  if (commands) {
+    lines.push("คัดลอกบรรทัด “→” ไปรันได้เลย (ใส่ --online ต่อท้ายถ้าต้องการตรวจกับ LinkedIn จริง)");
+  } else {
+    lines.push(`ตรวจรายการใดรายการหนึ่ง (หลังสร้างเสร็จ): ${SCRIPT} --entry ENTRY_ID`);
+  }
   lines.push("══════════════════════════════════════════════════════════════════");
   return lines.join("\n");
 }
@@ -327,7 +355,7 @@ async function inspectLinkedInPostReadiness(options = {}) {
   const client = clients.find((c) => c.id === targetClientId);
   if (!client) {
     const known = clients.map((c) => `${c.id} (${c.name})`).join(", ") || "(ไม่มี)";
-    addCheck("state", "ไฟล์สถานะ Social Agency", "fail", `ไม่พบลูกค้า "${targetClientId}" — ลูกค้าที่มี: ${known}`, "ระบุ --client <clientId> ให้ตรงกับลูกค้าในระบบ");
+    addCheck("state", "ไฟล์สถานะ Social Agency", "fail", `ไม่พบลูกค้า "${targetClientId}" — ลูกค้าที่มี: ${known}`, "ระบุ --client CLIENT_ID ให้ตรงกับ id ที่แสดงใน --list");
     return emptyReport({ root, clientId: targetClientId, entryId: options.entryId || null, sku: options.sku || null, checks, blockers, warnings, nextSteps });
   }
   rt._ensureClientShapes(rawState);
@@ -487,9 +515,9 @@ async function inspectLinkedInPostReadiness(options = {}) {
       "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
     );
   } else if (options.sku && entry.sku !== options.sku) {
-    addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry <id> ของ ${options.sku}`);
+    addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry ENTRY_ID ของ ${options.sku} (ดูได้จาก --list)`);
   } else if (entry.platform !== "linkedin") {
-    addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} ตั้งแพลตฟอร์มเป็น "${entry.platform}" ไม่ใช่ "linkedin"`, "เลือกรายการที่เป็น LinkedIn ด้วย --entry <id>");
+    addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} ตั้งแพลตฟอร์มเป็น "${entry.platform}" ไม่ใช่ "linkedin"`, "เลือกรายการที่เป็น LinkedIn ด้วย --entry ENTRY_ID (ดูได้จาก --list)");
   } else if (entry.inFlight || entry.status === "publishing" || entry.status === "published") {
     addCheck(
       "entry_media",

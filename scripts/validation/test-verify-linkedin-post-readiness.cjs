@@ -33,6 +33,10 @@ const {
   parseArgs,
 } = require("../verify-linkedin-post-readiness.cjs");
 
+// Every string an operator might copy into zsh: help text + the messages the
+// checker prints. A bare < inside one of them is a redirect, not a placeholder.
+const SCRIPT_SRC = fs.readFileSync(path.join(__dirname, "..", "verify-linkedin-post-readiness.cjs"), "utf8");
+
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
@@ -456,6 +460,57 @@ async function main() {
     assert.match(text, /รายการ LinkedIn ในปฏิทิน/);
     assert.match(text, new RegExp(`--entry ${id}`));
     assert.ok(!text.includes(TOKEN), "no secrets in the inventory");
+  });
+
+  test("ข้อความที่ผู้ใช้คัดลอกไปรัน ต้องไม่มี < > (zsh จะอ่านเป็นการ redirect)", async () => {
+    const { execFileSync } = require("node:child_process");
+    const script = path.join(__dirname, "..", "verify-linkedin-post-readiness.cjs");
+    const help = execFileSync(process.execPath, [script, "--help"], { encoding: "utf8" });
+    // the flag list itself must stay copy-pasteable
+    for (const line of help.split("\n").filter((l) => /^\s+--/.test(l))) {
+      assert.doesNotMatch(line, /[<>]/, `placeholder brackets in help: ${line.trim()}`);
+    }
+    assert.match(help, /--entry ENTRY_ID/, "placeholders are plain uppercase words");
+    assert.match(help, /อย่าใส่|ไม่ต้องใส่ < >/, "the help explains why brackets are wrong");
+
+    // and so must the fix lines a failed run prints
+    ready();
+    const report = await run({ entryId: "cal-does-not-exist" });
+    const fixes = report.checks.map((c) => c.fix || "").join(" ");
+    assert.doesNotMatch(fixes, /--(sku|entry|client)\s*</, `angle-bracket placeholder in a fix hint: ${fixes}`);
+    assert.doesNotMatch(SCRIPT_SRC, /--entry <|--sku <|--client </, "no angle-bracket placeholders in the script's own messages");
+  });
+
+  test("--list พิมพ์คำสั่งที่คัดลอกรันได้จริง (มี id จริง ไม่มีวงเล็บ)", async () => {
+    ready();
+    const id = makeEntry();
+    const inv = buildInventory(root, { clientId });
+    const text = formatInventory(inv);
+    assert.ok(text.includes(`--entry ${id}`), "the real entry id is in the command");
+    assert.doesNotMatch(text, /--entry </, "no placeholder in the ready-to-run line");
+    assert.match(text, /คัดลอกบรรทัด/, "tells the operator the line is copy-pasteable");
+    // a client that is not the active one gets --client, otherwise the checker
+    // would silently inspect the wrong client
+    const otherId = rt.createClient({ name: "ลูกค้าอื่น", industry: "ของใช้", tone: "เจ้าของแบรนด์", firstProduct: "ของใช้" }).id;
+    const st = rt._read();
+    st.activeClientId = otherId;
+    rt._write(st);
+    const inv2 = buildInventory(root, {});
+    const text2 = formatInventory(inv2);
+    assert.ok(text2.includes(`--client ${clientId} --entry ${id}`), "non-active client commands carry --client");
+    const st2 = rt._read();
+    st2.activeClientId = clientId;
+    rt._write(st2);
+  });
+
+  test("--list ตอนยังไม่มีรายการ บอกขั้นตอนสร้างให้ครบและไม่พูดซ้ำทุกคน", async () => {
+    const inv = buildInventory(root, {});
+    const empty = { ...inv, clients: inv.clients.map((c) => ({ ...c, entries: [] })) };
+    const text = formatInventory(empty);
+    assert.match(text, /วางแผนอัตโนมัติทั้งเดือน/, "points at the planner");
+    assert.match(text, /ตรวจภาพแล้ว/, "reminds about the image gate");
+    assert.strictEqual((text.match(/ยังไม่มีรายการ — สร้างก่อน/g) || []).length, 1, "explained once, not per client");
+    assert.match(text, /--entry ENTRY_ID/, "the fallback is bracket-free");
   });
 
   test("parseArgs อ่านค่าที่ตัวตรวจต้องใช้ครบ", () => {
