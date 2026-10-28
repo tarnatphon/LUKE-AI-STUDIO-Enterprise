@@ -94,10 +94,15 @@ LinkedIn อ่าน `commentary` เป็นรูปแบบ **“little te
 
 ```bash
 node scripts/verify-linkedin-post-readiness.cjs --list          # ดูว่ามี SKU / รายการอะไรให้ตรวจ
-node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006
-node scripts/verify-linkedin-post-readiness.cjs --entry <id จริงจาก --list> --trigger manual
-node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
+node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009
+node scripts/verify-linkedin-post-readiness.cjs --entry cal-12345678-abc --trigger manual
+node scripts/verify-linkedin-post-readiness.cjs --sku SSB-009 --online
 ```
+
+> **อย่าพิมพ์ `<id>` ใน terminal** — zsh อ่าน `<` เป็นการ redirect แล้วจะขึ้น
+> `no such file or directory: id` · ในเครื่องหมาย help/เอกสารนี้ ช่องที่ต้องแทนค่าจริง
+> เขียนเป็น `ENTRY_ID` / `SKU` / `CLIENT_ID` (ตัวพิมพ์ใหญ่ ไม่มีวงเล็บมุม)
+> และ `--list` จะพิมพ์บรรทัด `→ node … --entry <id จริง>` ให้คัดลอกไปรันได้เลย
 
 > `cal-xxxx` ในตัวอย่างคือ **ชื่อสมมติ** ไม่ใช่ ID จริง — ถ้าพิมพ์ตามตรง ตัวตรวจจะบอกว่า
 > “เป็นตัวอย่างจากวิธีใช้งาน ต้องใส่ ID จริง” และแนะนำให้รัน `--list` เพื่อดู ID ที่มีอยู่
