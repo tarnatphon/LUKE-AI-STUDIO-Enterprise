@@ -45,7 +45,7 @@ const TOKEN_LIFETIME_DAYS = 60;
 const DEFAULT_API_HOST = "api.linkedin.com";
 const NEEDED_SCOPES = ["w_member_social"];
 
-const BOOLEAN_FLAGS = new Set(["help", "json", "strict", "online", "live", "probe-images"]);
+const BOOLEAN_FLAGS = new Set(["help", "json", "strict", "online", "live", "probe-images", "list"]);
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -78,6 +78,7 @@ Social Agency — ตรวจความพร้อมก่อนโพส�
   --no-probe-images        ใช้คู่กับ --online เพื่อข้ามการทดสอบ initializeUpload
   --host <host>            เปลี่ยนโฮสต์ LinkedIn (สำหรับทดสอบกับ mock server)
   --root <path>            พาธรากของโปรเจกต์ (ค่าเริ่มต้น: โฟลเดอร์ repo นี้)
+  --list                   แสดงสินค้าและรายการ LinkedIn ที่มีอยู่ (ไม่มีคำตัดสิน ไม่มี exit 1)
   --json                   แสดงผลเป็น JSON (token ถูกปิดบังเสมอ)
   -h, --help               แสดงวิธีใช้งานนี้
 
@@ -85,6 +86,7 @@ Social Agency — ตรวจความพร้อมก่อนโพส�
 (initializeUpload จองสิทธิ์อัปโหลดเท่านั้น ไม่อัปโหลดไบต์และไม่สร้างโพสต์)
 
 ตัวอย่าง
+  node scripts/verify-linkedin-post-readiness.cjs --list
   node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006
   node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
   node scripts/verify-linkedin-post-readiness.cjs --entry cal-123 --trigger manual --json
@@ -189,6 +191,95 @@ function emptyReport(extra = {}) {
   };
 }
 
+// What can be passed to --sku / --entry. Without this an operator only finds out
+// that "cal-xxxx" (the placeholder from the help text) does not exist, which is
+// exactly what a first run looks like.
+function buildInventory(root, { clientId } = {}) {
+  const stateFile = stateFileFor(root);
+  if (!fs.existsSync(stateFile)) {
+    return { ok: false, root, error: `ยังไม่มีไฟล์ ${path.relative(root, stateFile) || stateFile}`, clients: [] };
+  }
+  let rawState;
+  try {
+    rawState = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  } catch (err) {
+    return { ok: false, root, error: `อ่านไฟล์สถานะไม่สำเร็จ: ${err.message}`, clients: [] };
+  }
+  const rt = new SocialAgencyRuntime({ root });
+  rt._ensureClientShapes(rawState);
+  const clients = (rawState.clients || []).filter((c) => !clientId || c.id === clientId);
+  return {
+    ok: true,
+    root,
+    activeClientId: rawState.activeClientId || null,
+    clients: clients.map((c) => ({
+      id: c.id,
+      name: c.name,
+      linkedin: {
+        configured: Boolean((c.connectors || {}).linkedin && rt._connectorConfigured("linkedin", rt._getSecrets(c.id).linkedin || {})),
+        dryRun: (c.connectors || {}).linkedin?.dryRun !== false,
+        authorUrn: rt._getSecrets(c.id).linkedin?.authorUrn || "",
+        version: (c.connectors || {}).linkedin?.apiVersion || null,
+      },
+      products: (c.products || []).map((p) => {
+        const ref = rt._resolveProductImageFile(c, p);
+        return { sku: p.sku, name: p.name, hasPhoto: !ref.error, photoFile: ref.error ? null : path.basename(ref.file) };
+      }),
+      entries: (c.calendar || [])
+        .filter((e) => e.platform === "linkedin")
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.time).localeCompare(String(b.time)))
+        .map((e) => ({
+          id: e.id,
+          date: e.date,
+          time: e.time,
+          sku: e.sku,
+          status: e.status,
+          hasImage: Boolean(e.image && (e.image.path || e.image.buffer || e.image.publicUrl)),
+          reviewed: (() => {
+            try { return rt._imageGateInfo(e).ok; } catch { return false; }
+          })(),
+        })),
+    })),
+  };
+}
+
+function formatInventory(inv) {
+  const lines = [];
+  lines.push("══ รายการที่มีให้ตรวจ (LinkedIn) ═════════════════════════════════");
+  if (!inv.ok) {
+    lines.push(`  ✗ ${inv.error}`);
+    return lines.join("\n");
+  }
+  if (!inv.clients.length) {
+    lines.push("  (ไม่พบลูกค้า — ระบุ --client <clientId>)");
+    return lines.join("\n");
+  }
+  for (const c of inv.clients) {
+    const li = c.linkedin;
+    lines.push(`  ลูกค้า: ${c.name} (${c.id})${inv.activeClientId === c.id ? " · กำลังใช้งาน" : ""}`);
+    lines.push(
+      `  LinkedIn: ${li.configured ? `ตั้งค่าแล้ว · ${li.authorUrn || "(ยังไม่มี URN)"} · ${li.dryRun ? "dry-run เปิดอยู่" : "dry-run ปิด (ส่งจริงได้)"}` : "ยังไม่ได้ตั้งค่า token/URN"}`,
+    );
+    lines.push(`  สินค้า (${c.products.length}):`);
+    for (const p of c.products.slice(0, 20)) {
+      lines.push(`    - ${p.sku} · ${p.name} · ${p.hasPhoto ? `มีรูป (${p.photoFile})` : "ยังไม่มีรูปในเครื่อง"}`);
+    }
+    if (c.products.length > 20) lines.push(`    … อีก ${c.products.length - 20} รายการ`);
+    lines.push(`  รายการ LinkedIn ในปฏิทิน (${c.entries.length}):`);
+    if (!c.entries.length) {
+      lines.push("    (ยังไม่มี — ไปที่แท็บ ปฏิทิน แล้วกด “วางแผนอัตโนมัติทั้งเดือน” ซึ่งมี LinkedIn อยู่แล้ว)");
+    } else {
+      for (const e of c.entries) {
+        lines.push(`    - --entry ${e.id} · ${e.date} ${e.time} · ${e.sku} · ${e.status} · ${e.hasImage ? (e.reviewed ? "มีภาพ (ตรวจแล้ว)" : "มีภาพ (ยังไม่ตรวจ)") : "ยังไม่มีภาพ"}`);
+      }
+    }
+    lines.push("");
+  }
+  lines.push("ตรวจรายการใดรายการหนึ่ง: node scripts/verify-linkedin-post-readiness.cjs --entry <id>");
+  lines.push("══════════════════════════════════════════════════════════════════");
+  return lines.join("\n");
+}
+
 async function inspectLinkedInPostReadiness(options = {}) {
   const root = path.resolve(options.root || process.env.LUKE_SA_ROOT || DEFAULT_ROOT);
   const stateFile = stateFileFor(root);
@@ -196,6 +287,10 @@ async function inspectLinkedInPostReadiness(options = {}) {
   const blockers = [];
   const warnings = [];
   const nextSteps = [];
+  // status: pass | warn | fail | skip
+  // "skip" means the gate was deliberately not run (e.g. --online without a
+  // token). It is reported so nobody mistakes silence for a pass, but it never
+  // counts as a blocker or a warning.
   const addCheck = (key, label, status, detail, fix = "") => {
     checks.push({ key, label, status, detail, ...(fix ? { fix } : {}) });
     if (status === "fail") {
@@ -345,7 +440,14 @@ async function inspectLinkedInPostReadiness(options = {}) {
       "ถ้าต้องการรูปคู่เหมือน Facebook ให้เปิดสวิตช์ “แนบรูปสินค้าจริง” ใน Connectors",
     );
   } else if (!product) {
-    addCheck("product_photo", "รูปสินค้าจริง (รูปที่ 2)", "fail", `ไม่พบสินค้า SKU "${sku || "(ไม่ได้ระบุ)"}" ของลูกค้านี้`, "ระบุ --sku <SKU> หรือเพิ่มสินค้าในแท็บ สินค้า");
+    const knownSkus = (client.products || []).map((p) => p.sku).slice(0, 12) || [];
+    addCheck(
+      "product_photo",
+      "รูปสินค้าจริง (รูปที่ 2)",
+      "fail",
+      `ไม่พบสินค้า SKU "${sku || "(ไม่ได้ระบุ)"}" ของลูกค้านี้ — SKU ที่มี: ${knownSkus.join(", ") || "(ยังไม่มีสินค้า)"}`,
+      `ระบุ --sku ด้วย SKU ที่มีจริง (หรือรัน --list เพื่อดูรายการทั้งหมด)`,
+    );
   } else {
     const ref = rt._fbProductRefAttach(client, entry || { sku: product.sku });
     if (ref.buffer) {
@@ -370,12 +472,19 @@ async function inspectLinkedInPostReadiness(options = {}) {
   // ── 7. entry + AI image ─────────────────────────────────────────────────
   let entryMeta = null;
   if (!entry) {
+    const linkedinEntries = (client.calendar || []).filter((e) => e.platform === "linkedin").slice(0, 8);
+    const inventory = linkedinEntries
+      .map((e) => `${e.id} (${e.date} ${e.time} · ${e.sku} · ${e.status})`)
+      .join(" · ");
+    const placeholder = options.entryId && /^cal-?x+$/i.test(String(options.entryId).trim());
     addCheck(
       "entry_media",
       "รายการโพสต์และภาพ AI (รูปที่ 1)",
       "fail",
-      options.entryId ? `ไม่พบรายการปฏิทิน ID "${options.entryId}"` : `ไม่พบรายการโพสต์ LinkedIn ในปฏิทิน${sku ? ` ของ SKU ${sku}` : ""}`,
-      "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI",
+      options.entryId
+        ? `ไม่พบรายการปฏิทิน ID "${options.entryId}"${placeholder ? " — cal-xxxx คือตัวอย่างจากวิธีใช้งาน ต้องแทนด้วย ID จริง" : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`
+        : `ไม่พบรายการโพสต์ LinkedIn ในปฏิทิน${sku ? ` ของ SKU ${sku}` : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`,
+      "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
     );
   } else if (options.sku && entry.sku !== options.sku) {
     addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry <id> ของ ${options.sku}`);
@@ -501,7 +610,15 @@ async function inspectLinkedInPostReadiness(options = {}) {
   }
 
   // ── 11. online (read-only) ──────────────────────────────────────────────
-  if (options.online && accessToken && authorUrn) {
+  if (options.online && (!accessToken || !authorUrn)) {
+    addCheck(
+      "online_graph",
+      "ตรวจ token กับ LinkedIn (--online)",
+      "skip",
+      "ข้ามการตรวจออนไลน์ — ยังไม่มี Member Access Token / Author URN ใน Connectors (ด่านอื่นตรวจให้แล้ว)",
+      "ใส่ token ใน Connectors แล้วรันซ้ำด้วย --online เพื่อยืนยันว่า token เป็นของบัญชีเดียวกับ Author URN",
+    );
+  } else if (options.online && accessToken && authorUrn) {
     const secretsToRedact = [accessToken];
     const apiHost = options.host || process.env.LUKE_LI_HOST || DEFAULT_API_HOST;
     const apiPort = options.port ?? (process.env.LUKE_LI_PORT ? Number(process.env.LUKE_LI_PORT) : undefined);
@@ -590,7 +707,7 @@ async function inspectLinkedInPostReadiness(options = {}) {
     authorUrn: authorUrn || null,
     tokenMasked: mask(accessToken),
     willAttachSecondPhoto,
-    mediaKind: entry && entry.image ? (willAttachSecondPhoto ? "carousel" : "image") : "post",
+    mediaKind: !entry ? null : entry.image ? (willAttachSecondPhoto ? "carousel" : "image") : "post",
     entry: entryMeta,
     checks,
     blockers,
@@ -604,10 +721,10 @@ function formatHumanReport(report, opts = {}) {
   lines.push("══ ตรวจความพร้อมโพสต์ LinkedIn จริง ══════════════════════════════");
   lines.push(`  ลูกค้า: ${report.clientName ? `${report.clientName} (${report.clientId})` : report.clientId || "(ไม่พบ)"}`);
   lines.push(`  สินค้า (SKU): ${report.sku || "(ไม่พบ)"} · รายการปฏิทิน: ${report.entryId || "(ไม่พบ)"}`);
-  lines.push(`  รูปแบบที่จะส่ง: ${report.mediaKind === "carousel" ? "รูปคู่ (ภาพ AI + รูปสินค้าจริง)" : report.mediaKind === "image" ? "รูปเดียว" : "ข้อความเท่านั้น"}`);
+  lines.push(`  รูปแบบที่จะส่ง: ${report.mediaKind === null ? "(ยังไม่มีรายการให้ตรวจ)" : report.mediaKind === "carousel" ? "รูปคู่ (ภาพ AI + รูปสินค้าจริง)" : report.mediaKind === "image" ? "รูปเดียว" : "ข้อความเท่านั้น"}`);
   lines.push("");
   for (const c of report.checks) {
-    const icon = c.status === "pass" ? "✓" : c.status === "warn" ? "!" : "✗";
+    const icon = c.status === "pass" ? "✓" : c.status === "warn" ? "!" : c.status === "skip" ? "–" : "✗";
     lines.push(`  ${icon} [${c.key}] ${c.label}`);
     lines.push(`      ${c.detail}`);
     if (c.fix && c.status !== "pass") lines.push(`      → วิธีแก้: ${c.fix}`);
@@ -626,6 +743,12 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(HELP);
+    return 0;
+  }
+  if (args.list) {
+    const inventory = buildInventory(path.resolve(args.root || process.env.LUKE_SA_ROOT || DEFAULT_ROOT), { clientId: args.client });
+    if (args.json) process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
+    else process.stdout.write(`${formatInventory(inventory)}\n`);
     return 0;
   }
   const report = await inspectLinkedInPostReadiness({
@@ -653,6 +776,8 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  buildInventory,
+  formatInventory,
   inspectLinkedInPostReadiness,
   formatHumanReport,
   mask,

@@ -28,6 +28,8 @@ const { SocialAgencyRuntime } = require("../server/social-agency-runtime.cjs");
 const {
   inspectLinkedInPostReadiness,
   formatHumanReport,
+  buildInventory,
+  formatInventory,
   parseArgs,
 } = require("../verify-linkedin-post-readiness.cjs");
 
@@ -388,6 +390,72 @@ async function main() {
     const parsed = JSON.parse(json.out);
     assert.strictEqual(parsed.readyForLiveLinkedIn, true);
     assert.ok(!json.out.includes(TOKEN), "token never printed in --json either");
+  });
+
+  // ── what the first real run actually looks like ──────────────────────────
+
+  test("ยังไม่มี token แต่ขอ --online → บอกว่าข้าม ไม่ปล่อยเงียบ", async () => {
+    const st = rt._read();
+    st.clients.find((x) => x.id === clientId).connectors.linkedin.dryRun = false;
+    rt._write(st);
+    rt.saveConnectors(clientId, { connectors: { linkedin: { accessToken: "", authorUrn: "" } } });
+    const report = await run({ online: true });
+    const c = checkOf(report, "online_graph");
+    assert.ok(c, "the online gate is reported even though it did not run");
+    assert.strictEqual(c.status, "skip");
+    assert.match(c.detail, /ข้ามการตรวจออนไลน์/);
+    assert.strictEqual(report.blockers.some((b) => b.includes("ตรวจ token กับ LinkedIn")), false, "a skip is never a blocker");
+    assert.match(formatHumanReport(report), /– \[online_graph\]/, "shown with its own marker, not an ✗");
+    ready();
+  });
+
+  test("SKU ที่ไม่มีจริง → บอก SKU ที่มีให้เลือก", async () => {
+    ready();
+    const report = await run({ sku: "WLB-006" });
+    const c = checkOf(report, "product_photo");
+    assert.strictEqual(c.status, "fail");
+    assert.match(c.detail, /SKU ที่มี: .*SKU-01-01|SKU ที่มี: /);
+    assert.ok(c.detail.includes(sku), "lists the real SKU of this client");
+    assert.match(c.fix, /--list/);
+  });
+
+  test("ยังไม่มีรายการ LinkedIn → บอกว่ายังไม่มี และชี้ไป --list", async () => {
+    // a brand-new client: nothing in the calendar yet
+    const freshId = rt.createClient({ name: "ลูกค้าใหม่ยังไม่วางแผน", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋าใหม่" }).id;
+    const report = await run({ clientId: freshId });
+    const c = checkOf(report, "entry_media");
+    assert.strictEqual(c.status, "fail");
+    assert.match(c.detail, /ยังไม่มีรายการ LinkedIn ในปฏิทินเลย|รายการ LinkedIn ที่มี/);
+    assert.match(c.fix, /--list/);
+    assert.strictEqual(report.mediaKind, null, "no entry is not a text-only post");
+    assert.match(formatHumanReport(report), /รูปแบบที่จะส่ง: \(ยังไม่มีรายการให้ตรวจ\)/);
+  });
+
+  test("ส่ง cal-xxxx (ตัวอย่างจาก help) มาตามตรง → บอกว่าเป็นตัวอย่าง ต้องใส่ ID จริง", async () => {
+    ready();
+    const report = await run({ entryId: "cal-xxxx" });
+    assert.match(checkOf(report, "entry_media").detail, /ตัวอย่างจากวิธีใช้งาน/);
+  });
+
+  test("--list แสดงสินค้า + รายการ LinkedIn + สถานะ connector โดยไม่ตัดสิน", async () => {
+    ready();
+    const id = makeEntry();
+    rt.reviewEntryImage(clientId, id, { confirmed: true });
+    const inv = buildInventory(root, { clientId });
+    assert.strictEqual(inv.ok, true);
+    const c = inv.clients[0];
+    assert.strictEqual(c.id, clientId);
+    assert.strictEqual(c.linkedin.configured, true);
+    assert.strictEqual(c.linkedin.dryRun, false);
+    assert.ok(c.products.some((p) => p.sku === sku && p.hasPhoto), "product photo state");
+    const entryRow = c.entries.find((e) => e.id === id);
+    assert.ok(entryRow, "the entry is listed");
+    assert.strictEqual(entryRow.hasImage, true);
+    assert.strictEqual(entryRow.reviewed, true);
+    const text = formatInventory(inv);
+    assert.match(text, /รายการ LinkedIn ในปฏิทิน/);
+    assert.match(text, new RegExp(`--entry ${id}`));
+    assert.ok(!text.includes(TOKEN), "no secrets in the inventory");
   });
 
   test("parseArgs อ่านค่าที่ตัวตรวจต้องใช้ครบ", () => {
