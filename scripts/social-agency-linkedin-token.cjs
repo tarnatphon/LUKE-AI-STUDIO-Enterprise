@@ -92,7 +92,7 @@ Social Agency — LinkedIn member token helper (OAuth 2.0 แบบ authorizatio
   --redirect URL               Redirect URL ที่ลงทะเบียนไว้ในแอป LinkedIn ต้องตรงทุกตัวอักษร (หรือ env LUKE_LI_REDIRECT)
   --callback URL               วาง URL ที่เบราว์เซอร์เด้งไปหลังกดอนุญาต (มี ?code=…&state=…) — ไม่ต้องมีเซิร์ฟเวอร์รัน
   --state STATE                ใช้ state ที่กำหนดเอง (ปกติสคริปต์สุ่มให้ และต้องตรงกับที่อยู่ใน --callback)
-  --code CODE                  ใส่เฉพาะ code ก็ได้ (ใช้คู่กับ --redirect)
+  --code CODE                  ใส่เฉพาะ code ก็ได้ (ใช้คู่กับ --redirect) — ไม่ต้องมี URL และไม่ตรวจ state
   --save                       เขียน token + Author URN ลง connectors.json ให้เลย (ไม่พิมพ์ token ออกจอ)
   --client CLIENT_ID           ลูกค้าในแอปที่จะบันทึกด้วย (ใช้กับ --save / --check)
   --check                      ตรวจ token ที่บันทึกไว้อยู่แล้ว (ไม่ต้องทำ OAuth ใหม่)
@@ -107,9 +107,13 @@ Social Agency — LinkedIn member token helper (OAuth 2.0 แบบ authorizatio
 
 ขั้นตอน (ทำครั้งเดียว ใช้ได้ ~60 วัน)
   1) developer.linkedin.com → Create app → เพิ่มผลิตภัณฑ์ "Share on LinkedIn"
-     และ "Sign In with LinkedIn using OpenID Connect"
-  2) ใส่ Redirect URL ในช่อง Authorized redirect URLs ของแอป (https://… ก็ได้ ไม่ต้องมีเซิร์ฟเวอร์)
+     และ "Sign In with LinkedIn using OpenID Connect" (ต้องเห็นทั้งคู่ในแท็บ Products)
+  2) ใส่ Redirect URL ในช่อง Authorized redirect URLs ของแอป ต้องเป็น https และตรงทุกตัวอักษร
+     แนะนำ URL ที่ "ไม่เด้งไปหน้าอื่น" (เช่นไฟล์นิ่งที่มีอยู่จริงบนเว็บคุณ) เพราะถ้าเว็บเด้ง
+     ต่อไปหน้าแรก query code= จะหายไปก่อนคุณก๊อป
   3) node scripts/social-agency-linkedin-token.cjs --prompt --save --client CLIENT_ID
+     กด Allow แล้ววางได้ทั้ง URL เต็ม หรือเฉพาะค่าที่อยู่หลัง code= (วางผิดได้ 3 ครั้ง
+     ระบบจะบอกว่าได้รับอะไรมาบ้างแล้วถามซ้ำ ไม่ตัดจบ)
   4) เปิดแอป → Connectors → LinkedIn → กด "ทดสอบและดึง URN" → ปิด dry-run
 
 env: LUKE_LI_CLIENT_ID, LUKE_LI_CLIENT_SECRET, LUKE_LI_REDIRECT
@@ -205,11 +209,54 @@ function newState() {
   return crypto.randomBytes(16).toString("hex");
 }
 
+// "code=" anywhere in the text, with or without a well-formed URL around it.
+// Browsers and WordPress both mangle this in ways URLSearchParams never sees:
+// `#?code=…`, a query that arrived percent-encoded (%3Fcode%3D…), or the value
+// pasted on its own.
+const CODE_PATTERN = /code=([^&\s#]+)/;
+
+function salvageCode(input) {
+  const text = String(input || "");
+  if (!text) return "";
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(text);
+  } catch {
+    decoded = "";
+  }
+  for (const candidate of [text, decoded]) {
+    if (!candidate) continue;
+    const match = CODE_PATTERN.exec(candidate);
+    if (match && match[1]) return match[1].trim();
+  }
+  return "";
+}
+
+// What we actually received, in a form that is safe to print: host + path + the
+// names of the parameters, never the values (a code is a credential).
+function describeReceived(input) {
+  const raw = String(input || "");
+  if (!raw.trim()) return "(ว่าง — ไม่มีอะไรถูกวางเข้ามา)";
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    parsed = null;
+  }
+  if (parsed) {
+    const keys = [...new Set(parsed.searchParams.keys())];
+    return `${parsed.host}${parsed.pathname}${keys.length ? ` · พารามิเตอร์: ${keys.join(", ")}` : " · ไม่มีพารามิเตอร์"} · ยาว ${raw.length} ตัวอักษร`;
+  }
+  const head = raw.slice(0, 32);
+  return `${head}${raw.length > 32 ? "…" : ""} (ยาว ${raw.length} ตัวอักษร)`;
+}
+
 // Pull `code` (and the state we sent) out of whatever the browser landed on:
-// a full URL, a bare query string, or the code pasted on its own.
+// a full URL, a bare query string, or the code pasted on its own. Every failure
+// names what was received, because "URL นี้ไม่มี code" alone cannot be acted on.
 function extractCode(input, { state } = {}) {
   const raw = sanitizeHiddenLine(input || "");
-  if (!raw) throw new Error("ไม่มีข้อมูลให้อ่าน — วาง URL ที่เบราว์เซอร์เด้งไปหลังกดอนุญาต");
+  if (!raw) throw new Error("ไม่มีข้อมูลให้อ่าน — วาง URL ที่เบราว์เซอร์เด้งไปหลังกดอนุญาต หรือเฉพาะค่าหลัง code=");
   let params = null;
   try {
     params = new URL(raw).searchParams;
@@ -218,22 +265,64 @@ function extractCode(input, { state } = {}) {
     if (/code=|error=|state=/.test(qs)) params = new URLSearchParams(qs);
   }
   if (!params) {
-    // a bare code: LinkedIn codes are long, opaque and contain no spaces
-    if (raw.length >= 20 && !/\s/.test(raw)) return { code: raw, state: null };
-    throw new Error(`อ่าน URL ไม่ได้: ${raw.slice(0, 60)} — ต้องเป็น URL ที่มี ?code=…`);
+    // A query that arrived percent-encoded is not a well-formed URL, but the
+    // code inside it is still there once the text is decoded.
+    const salvaged = salvageCode(raw);
+    if (salvaged) return { code: salvaged, state: null };
+    // a bare code: LinkedIn codes are long, opaque and contain no spaces.
+    // Anything still carrying %XX is an encoded URL, not a code.
+    if (raw.length >= 20 && !/\s/.test(raw) && !/%[0-9A-Fa-f]{2}/.test(raw)) return { code: raw, state: null };
+    throw new Error(`อ่าน URL ไม่ได้: ${describeReceived(raw)} — ต้องเป็น URL ที่มี code= หรือเฉพาะค่าหลัง code=`);
   }
   const error = params.get("error");
   if (error) {
     const desc = params.get("error_description") || "";
-    throw new Error(`LinkedIn ปฏิเสธการอนุญาต: ${error}${desc ? ` — ${desc}` : ""}${error === "user_cancelled_login" || error === "user_cancelled_authorize" ? " (กดยกเลิกในหน้า LinkedIn)" : ""}`);
+    const cancelled = error === "user_cancelled_login" || error === "user_cancelled_authorize";
+    throw new Error([
+      `LinkedIn ปฏิเสธการอนุญาต: ${error}${desc ? ` — ${desc}` : ""}${cancelled ? " (กดยกเลิกในหน้า LinkedIn)" : ""}`,
+      cancelled ? "" : "มักเป็นเพราะแอปยังไม่ได้เพิ่มผลิตภัณฑ์ Share on LinkedIn / Sign In with LinkedIn using OpenID Connect หรือ Redirect URL ไม่ตรงกับที่ลงทะเบียนไว้",
+    ].filter(Boolean).join("\n   "));
   }
-  const code = params.get("code");
   const gotState = params.get("state");
-  if (!code) throw new Error("URL นี้ไม่มี ?code= — อาจก๊อปหน้าผิด หรือแอปยังไม่ได้อนุญาต");
+  const code = params.get("code") || salvageCode(raw);
+  if (!code) {
+    const looksAuthorize = /response_type=code/.test(raw) && /client_id=/.test(raw);
+    throw new Error([
+      `URL ที่วางมาไม่มี code — ได้รับ: ${describeReceived(raw)}`,
+      looksAuthorize
+        ? "หน้านี้คือหน้า “ขออนุญาต” ของ LinkedIn ไม่ใช่หน้าที่เด้งกลับ — ต้องกด Allow ให้จบก่อน ถ้าหน้าไม่เด้งกลับ มักเป็นเพราะแอปยังไม่มีผลิตภัณฑ์ Share on LinkedIn / Sign In with LinkedIn using OpenID Connect หรือ Redirect URL ไม่ตรงกับที่ลงทะเบียน"
+        : "ถ้าเว็บปลายทางเด้งต่อไปหน้าอื่นจน query หาย ให้ลงทะเบียน Redirect URL ที่ไม่เด้ง (ไฟล์นิ่งที่มีอยู่จริงบนเว็บคุณ) แล้วเริ่มใหม่ — หรือวางเฉพาะค่าที่อยู่หลัง code= ก็ได้",
+    ].join("\n   "));
+  }
   if (state && gotState && gotState !== state) {
     throw new Error(`state ไม่ตรง (ได้ ${gotState.slice(0, 8)}… ไม่ใช่ ${state.slice(0, 8)}…) — URL นี้มาจากการเข้าสู่ระบบครั้งก่อน ให้เริ่มใหม่ด้วยการรันสคริปต์อีกครั้ง`);
   }
   return { code, state: gotState || null };
+}
+
+// The paste step is where people get stuck, so a bad paste is a question, not an
+// exit: say what arrived, then ask again.
+const writeLine = (line = "") => process.stdout.write(`${line}\n`);
+
+async function readCallback({
+  state,
+  askFn = () => promptHidden("วาง URL ที่ได้: "),
+  tries = 3,
+  sayFn = writeLine,
+} = {}) {
+  if (typeof askFn !== "function") throw new Error("readCallback ต้องได้ฟังก์ชัน askFn สำหรับถามค่า (หรือปล่อยว่างเพื่ออ่านจากคีย์บอร์ด)");
+  let last = null;
+  for (let attempt = 1; attempt <= tries; attempt += 1) {
+    const pasted = await askFn({ attempt, tries });
+    try {
+      return extractCode(pasted, { state });
+    } catch (err) {
+      last = err;
+      sayFn(`✗ ${err.message}`);
+      if (attempt < tries) sayFn(`  ลองอีกครั้งได้ (${attempt}/${tries}) — วาง URL ที่มี code= หรือเฉพาะค่าหลัง code=`);
+    }
+  }
+  throw last;
 }
 
 async function exchangeCode({ clientId, clientSecret, redirect, code, host = DEFAULT_OAUTH_HOST }) {
@@ -424,6 +513,11 @@ async function main(args = parseArgs(process.argv.slice(2))) {
       say(`  = ${redirect || "(ว่าง)"}`);
     }
   }
+  // Hidden prompts give no feedback, so the Client ID lands in the Client Secret
+  // box sooner or later; without this it only surfaces as a 401 from LinkedIn.
+  if (clientId && clientSecret && clientSecret === clientId) {
+    throw new Error("ช่อง Client Secret ได้ Client ID มา (ค่าเดียวกัน) — Client Secret คืออีกค่าหนึ่งในหน้า Auth ของแอป (มักขึ้นต้น WPL_) ไม่ใช่ Client ID");
+  }
   if (!clientId) throw new Error("ต้องมี Client ID — ใส่ --client-id หรือรันด้วย --prompt");
   if (!clientSecret) throw new Error("ต้องมี Client Secret — ใส่ --client-secret หรือรันด้วย --prompt");
   if (!redirect) throw new Error("ต้องมี Redirect URL — ใส่ --redirect หรือรันด้วย --prompt");
@@ -451,8 +545,7 @@ async function main(args = parseArgs(process.argv.slice(2))) {
     }
     say("2) เบราว์เซอร์จะเด้งไปที่ Redirect URL ของคุณ — หน้านั้นอาจขึ้น error ก็ไม่เป็นไร");
     say("   ก๊อป URL จากแถบที่อยู่ทั้งบรรทัด (มี ?code=…&state=…) มาวางด้านล่าง");
-    const pasted = await promptHidden("วาง URL ที่ได้: ");
-    const parsed = extractCode(pasted, { state });
+    const parsed = await readCallback({ state, sayFn: say });
     code = parsed.code;
     callbackState = parsed.state;
   }
@@ -510,6 +603,9 @@ module.exports = {
   parseArgs,
   buildAuthorizeUrl,
   extractCode,
+  salvageCode,
+  describeReceived,
+  readCallback,
   exchangeCode,
   fetchMember,
   expiryDate,

@@ -23,6 +23,9 @@ const {
   parseArgs,
   buildAuthorizeUrl,
   extractCode,
+  salvageCode,
+  describeReceived,
+  readCallback,
   exchangeCode,
   fetchMember,
   expiryDate,
@@ -141,12 +144,77 @@ async function main2() {
 
   test("state ไม่ตรง / ไม่มี code / ผู้ใช้กดยกเลิก → บอกสาเหตุภาษาไทย", () => {
     assert.throws(() => extractCode("https://x.test/cb?code=AAA&state=othe", { state: "abc123" }), /state ไม่ตรง/);
-    assert.throws(() => extractCode("https://x.test/cb?state=abc123", { state: "abc123" }), /ไม่มี \?code=/);
+    assert.throws(() => extractCode("https://x.test/cb?state=abc123", { state: "abc123" }), /ไม่มี code[\s\S]*ได้รับ: x\.test\/cb/);
     assert.throws(
       () => extractCode("https://x.test/cb?error=user_cancelled_authorize&error_description=The+user+cancelled", { state: "abc123" }),
       /user_cancelled_authorize[\s\S]*กดยกเลิก/,
     );
     assert.throws(() => extractCode("", {}), /ไม่มีข้อมูลให้อ่าน/);
+  });
+
+  // ── the paste step, hardened against what browsers actually hand people ──
+
+  test("ได้ code แม้ URL มาแปลก: อยู่หลัง #, ถูก encode มา, หรือเป็นค่าล้วน", () => {
+    assert.strictEqual(extractCode("https://x.test/cb#?code=AQShash1&state=s1", {}).code, "AQShash1");
+    const encoded = encodeURIComponent("https://x.test/cb?code=AQSpct1&state=s1");
+    assert.strictEqual(extractCode(encoded, {}).code, "AQSpct1", "a fully percent-encoded URL still yields the code");
+    assert.strictEqual(salvageCode("anything code=AQSwild9 more"), "AQSwild9");
+    assert.strictEqual(salvageCode("no code here"), "");
+    assert.strictEqual(salvageCode(""), "");
+  });
+
+  test("วางหน้า authorize มา → บอกว่าไม่ใช่หน้า callback และชี้ไปที่ Products", () => {
+    const authorize = buildAuthorizeUrl({ clientId: CLIENT_ID, redirect: REDIRECT, state: "s1" });
+    assert.throws(() => extractCode(authorize, { state: "s1" }), (err) => {
+      assert.match(err.message, /ขออนุญาต/, "names the page that was pasted");
+      assert.match(err.message, /Share on LinkedIn/, "points at the product to check");
+      assert.match(err.message, /ได้รับ: www\.linkedin\.com\/oauth\/v2\/authorization/);
+      assert.ok(!err.message.includes("s1"), "state value is not echoed");
+      return true;
+    });
+  });
+
+  test("วางหน้าที่ไม่มี query → บอกว่าได้รับอะไร (host/พารามิเตอร์) ไม่ใช่แค่ปฏิเสธ", () => {
+    assert.throws(() => extractCode("https://thaimodernbags.test/li-callback", {}), (err) => {
+      assert.match(err.message, /ได้รับ: thaimodernbags\.test\/li-callback · ไม่มีพารามิเตอร์ · ยาว \d+ ตัวอักษร/);
+      assert.match(err.message, /วางเฉพาะค่าที่อยู่หลัง code=/);
+      return true;
+    });
+  });
+
+  test("describeReceived ไม่พิมพ์ค่าของ code/state ออกมา", () => {
+    const described = describeReceived("https://x.test/cb?code=SECRETCODE123&state=SECRETSTATE456");
+    assert.match(described, /พารามิเตอร์: code, state/);
+    assert.ok(!described.includes("SECRETCODE123"), "the code is a credential");
+    assert.ok(!described.includes("SECRETSTATE456"));
+    assert.match(describeReceived(""), /ว่าง/);
+  });
+
+  test("วางผิดครั้งแรกไม่ตัดจบ — ถามซ้ำแล้วรับ code ที่ถูกต้อง", async () => {
+    const answers = ["https://x.test/cb", "https://x.test/cb?code=AQSretry1&state=st1"];
+    const lines = [];
+    const out = await readCallback({
+      state: "st1",
+      askFn: async () => answers.shift(),
+      sayFn: (line) => lines.push(line),
+    });
+    assert.deepStrictEqual(out, { code: "AQSretry1", state: "st1" });
+    assert.strictEqual(lines.filter((l) => l.startsWith("✗")).length, 1, "one complaint, then it accepts");
+    assert.ok(!lines.join("\n").includes("AQSretry1"), "the code is never echoed back");
+  });
+
+  test("วางผิดครบ 3 ครั้ง → หยุดพร้อมสาเหตุของครั้งสุดท้าย", async () => {
+    const lines = [];
+    await assert.rejects(
+      () => readCallback({
+        state: "st1",
+        askFn: async () => "https://x.test/cb",
+        sayFn: (line) => lines.push(line),
+      }),
+      /ไม่มี code/,
+    );
+    assert.strictEqual(lines.filter((l) => l.startsWith("✗")).length, 3, "three attempts are reported");
+    assert.match(lines.join("\n"), /\(1\/3\)/);
   });
 
   // ── exchange ────────────────────────────────────────────────────────────
@@ -384,6 +452,21 @@ async function main2() {
     assert.strictEqual(args.client, "abc");
     assert.strictEqual(args.check, true);
     assert.throws(() => parseArgs(["--redirect"]), /ต้องการค่าสำหรับ --redirect/);
+  });
+
+  test("วาง Client ID ลงช่อง Client Secret → หยุดก่อนยิงเน็ต และบอกว่าผิดช่อง", async () => {
+    seen.length = 0;
+    await assert.rejects(
+      () => capture(() => main({
+        "client-id": CLIENT_ID,
+        "client-secret": CLIENT_ID,
+        redirect: REDIRECT,
+        code: "AQScode123",
+        _: [],
+      })),
+      /Client Secret ได้ Client ID มา/,
+    );
+    assert.strictEqual(seen.length, 0, "no request is made with a swapped secret");
   });
 
   test("ขาด Client Secret → หยุดก่อนยิงเน็ต พร้อมบอกทาง", async () => {
