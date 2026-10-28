@@ -93,10 +93,14 @@ LinkedIn อ่าน `commentary` เป็นรูปแบบ **“little te
 ก่อนวันโพสต์ ให้รันตัวตรวจที่อ่านอย่างเดียว (ไม่แก้สถานะ ไม่โพสต์อะไร):
 
 ```bash
+node scripts/verify-linkedin-post-readiness.cjs --list          # ดูว่ามี SKU / รายการอะไรให้ตรวจ
 node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006
-node scripts/verify-linkedin-post-readiness.cjs --entry cal-xxxx --trigger manual
+node scripts/verify-linkedin-post-readiness.cjs --entry <id จริงจาก --list> --trigger manual
 node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
 ```
+
+> `cal-xxxx` ในตัวอย่างคือ **ชื่อสมมติ** ไม่ใช่ ID จริง — ถ้าพิมพ์ตามตรง ตัวตรวจจะบอกว่า
+> “เป็นตัวอย่างจากวิธีใช้งาน ต้องใส่ ID จริง” และแนะนำให้รัน `--list` เพื่อดู ID ที่มีอยู่
 
 ด่านที่ตรวจ: ไฟล์สถานะ/ลูกค้า · token + dry-run · **Linkedin-Version ไม่หมดอายุ** ·
 **Author URN เป็น `urn:li:person:`** (URN ของเพจบริษัทจะไม่ผ่าน พร้อมบอกเหตุผล) ·
@@ -112,6 +116,9 @@ node scripts/verify-linkedin-post-readiness.cjs --sku WLB-006 --online
 - `POST /rest/images?action=initializeUpload` → ยืนยันว่ามีสิทธิ์อัปโหลดรูปจริง
   (จองสิทธิ์เท่านั้น **ไม่อัปโหลดไบต์และไม่สร้างโพสต์**)
 - token ถูกปิดบังเสมอ (`li-m…567890`) และถ้า LinkedIn ส่ง token กลับมาในข้อความ error จะถูกแทนด้วย `‹redacted›`
+
+สัญลักษณ์ในผลตรวจ: `✓` ผ่าน · `!` คำเตือน (ไม่บล็อก) · `–` **ข้าม** (ยังไม่ได้รัน เช่น ขอ `--online`
+แต่ยังไม่มี token — ระบบบอกตรง ๆ ไม่ปล่อยเงียบ) · `✗` ไม่ผ่าน
 
 `--strict` ทำให้คำเตือนใด ๆ นับเป็น “ไม่พร้อม” (exit 1) เหมาะกับใช้ก่อนปล่อยโพสต์สำคัญ
 ผลรวม exit code: **0 = พร้อม**, **1 = ยังไม่พร้อม** (ใช้ใน CI หรือก่อนกดส่งได้)
