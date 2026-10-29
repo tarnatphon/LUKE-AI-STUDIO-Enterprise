@@ -171,6 +171,20 @@ async function main() {
     assert.strictEqual(readState(), before, "listing must not write state");
   });
 
+  test("--open ENTRY_ID ถูกอ่านเป็นค่า ไม่ใช่ boolean (เคสจริง: 'ไม่พบรายการ true')", async () => {
+    // BOOLEAN_FLAGS once contained "open", so `--open cal-…` set open=true and
+    // the id fell through to "true" — the tool answered "ไม่พบรายการ true".
+    const args = parseArgs(["--open", "cal-47339935-ce39"]);
+    assert.strictEqual(args.open, "cal-47339935-ce39");
+    assert.deepStrictEqual(args._, [], "the id is the value of the flag, not a stray argument");
+    assert.strictEqual(parseArgs(["--list"]).list, true, "--list is still a stand-alone flag");
+    // And the id really resolves through the CLI path.
+    const entry = buildReviewPlan(root, { clientId }).clients[0].pending[0];
+    const opened = [];
+    await runOpen(root, entry.id, { clientId, say: () => {}, openFile: (file) => { opened.push(file); return true; } });
+    assert.strictEqual(opened.length, 1);
+  });
+
   test("--open เปิดไฟล์จริงให้ (ไม่เรียกโปรแกรมภายนอกเมื่อฉีดตัวเปิด)", async () => {
     const id = addEntry({ withImage: true });
     const opened = [];

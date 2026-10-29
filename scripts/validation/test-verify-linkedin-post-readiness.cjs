@@ -208,6 +208,48 @@ async function main() {
     assert.match(c.fix, /อนุมัติและเผยแพร่/);
   });
 
+  test("รายการที่เผยแพร่แล้ว → บอกว่าเสร็จแล้ว ไม่ใช่ ❌ ไม่พร้อม (exit 0 แม้ --strict)", async () => {
+    ready();
+    const id = makeEntry();
+    rt.reviewEntryImage(clientId, id, { confirmed: true });
+    const st = rt._read();
+    const e = st.clients.find((c) => c.id === clientId).calendar.find((x) => x.id === id);
+    e.status = "published";
+    e.postId = "urn:li:ugcPost:7521421999051751424";
+    e.publishedAt = "2026-10-29T04:00:29.204Z";
+    rt._write(st);
+
+    const report = await run({ entryId: id });
+    assert.strictEqual(report.published, true);
+    assert.strictEqual(report.publishedPostId, "urn:li:ugcPost:7521421999051751424");
+    assert.strictEqual(checkOf(report, "entry_media").status, "pass", "a live post is not a blocker");
+    assert.match(checkOf(report, "entry_media").detail, /เผยแพร่แล้ว.*7521421999051751424/);
+    assert.strictEqual(checkOf(report, "trigger").status, "skip", "there is nothing left to press");
+    assert.strictEqual(checkOf(report, "product_photo").status, "skip", "the second picture cannot block a sent post");
+    assert.strictEqual(report.blockers.length, 0);
+
+    const text = formatHumanReport(report);
+    assert.match(text, /✅ โพสต์นี้เผยแพร่บน LinkedIn แล้ว \(postId: urn:li:ugcPost:7521421999051751424\)/);
+    assert.doesNotMatch(text, /❌/);
+  });
+
+  test("โพสต์ที่เผยแพร่แล้ว + --strict: คำเตือนแคปชันไม่กลายเป็น exit 1", async () => {
+    const { execFile } = require("node:child_process");
+    const id = rt._read().clients.find((c) => c.id === clientId).calendar.find((e) => e.status === "published").id;
+    // Eight hashtags is the case the operator actually hit: a warning that used
+    // to make --strict exit 1 even though the post had already gone live.
+    rt.updateCalendarEntry(clientId, id, { caption: "กระเป๋าผ้าใบใหญ่ #a #b #c #d #e #f #g #h" });
+    const res = await new Promise((resolve) => {
+      execFile(process.execPath, [path.join(__dirname, "..", "verify-linkedin-post-readiness.cjs"), "--root", root, "--client", clientId, "--entry", id, "--strict"], (err, stdout) => {
+        resolve({ code: err ? err.code : 0, stdout });
+      });
+    });
+    assert.strictEqual(res.code, 0, res.stdout);
+    assert.match(res.stdout, /โพสต์นี้เผยแพร่บน LinkedIn แล้ว/);
+    assert.match(res.stdout, /คำเตือนนี้ใช้กับการโพสต์ครั้งถัดไป/);
+    assert.doesNotMatch(res.stdout, /❌/);
+  });
+
   test("รายการวิดีโอ / ที่โพสต์ไปแล้ว ถูกจับก่อนถึงเวลาส่ง", async () => {
     ready();
     const id = makeEntry();
@@ -230,8 +272,11 @@ async function main() {
     e2.postId = "urn:li:share:1";
     rt._write(st2);
     const published = await run({ entryId: id });
-    assert.strictEqual(checkOf(published, "entry_media").status, "fail");
-    assert.match(checkOf(published, "entry_media").detail, /published/);
+    // A post that already went out is finished, not broken: the checker says so
+    // instead of asking for another send.
+    assert.strictEqual(checkOf(published, "entry_media").status, "pass");
+    assert.match(checkOf(published, "entry_media").detail, /เผยแพร่แล้ว.*urn:li:share:1/);
+    assert.strictEqual(published.published, true);
   });
 
   test("token ที่เพิ่งวาง → เตือนเรื่องอายุ 60 วันเฉพาะเมื่อใกล้ครบ", async () => {

@@ -36,7 +36,10 @@ const SCRIPT = "node scripts/social-agency-review-images.cjs";
 // whose posts need a human look at the picture before they can go live.
 const REVIEW_PLATFORMS = ["facebook", "instagram", "line", "linkedin"];
 const LIST_LIMIT = 30;
-const BOOLEAN_FLAGS = new Set(["help", "json", "list", "open"]);
+// Only flags that stand alone. `--open ENTRY_ID` and `--confirm ENTRY_ID` take a
+// value: listing them here made "open" consume the flag and turn the id into the
+// string "true", so the tool answered "ไม่พบรายการ true".
+const BOOLEAN_FLAGS = new Set(["help", "json", "list"]);
 
 const HELP = `
 Social Agency — ลิสต์โพสต์ที่ยังไม่ยืนยันภาพ และยืนยันทีละรายการ
