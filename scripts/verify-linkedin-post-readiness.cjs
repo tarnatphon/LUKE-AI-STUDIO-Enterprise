@@ -633,16 +633,28 @@ async function inspectLinkedInPostReadiness(options = {}) {
     }
   }
 
-  // ── 8b. does the saved image prompt name the product? ───────────────────
-  // A prompt built before the Thai dictionary existed reads "of product (SSB-013)".
-  // The image model obeys it literally — a styled wooden table with no bag in it.
-  // Nothing said so: the gate passed (a person did look at the picture and said
-  // "ok"), the post went out, and the mistake only showed up on the timeline.
-  // Say it here, before the next image is generated from the same prompt.
+  // ── 8b. does the image prompt name THIS client's product? ───────────────
+  // The subject of an image prompt is the client's own `product.imageSubject`.
+  // When a product has none, the prompt cannot be built (the generator stops and
+  // says so) and an old prompt may still read "of product (SKU)", which the image
+  // model paints literally — a styled table with nothing on it. Either way the
+  // operator is told here, with the product's name and where to type the English
+  // one, instead of finding out from the timeline.
   if (entry && entry.platform === "linkedin") {
     const savedPrompt = String(entry.imagePrompt || "").trim();
     const clipText = (text, n) => (text.length > n ? `${text.slice(0, n)}…` : text);
-    if (!savedPrompt) {
+    const productLabel = product ? `${product.name} · ${product.sku}` : sku || "(ไม่ระบุสินค้า)";
+    const hasSubject = SocialAgencyRuntime._isValidImageSubject(product?.imageSubject);
+    const fixWhere = `เปิดแท็บ สินค้า → ${sku || "(สินค้านี้)"} → ช่อง “ชื่อสินค้าภาษาอังกฤษ (ใช้ในพรอมป์ภาพ)” แล้วกรอกชื่อจริง (เช่น stir-fried basil pork / butter croissant) หรือกด “เติมชื่ออังกฤษให้ทุกรายการ”`;
+    if (!savedPrompt && !hasSubject) {
+      addCheck(
+        "image_prompt",
+        "พรอมป์ภาพ (image prompt)",
+        "warn",
+        `สินค้า ${productLabel} ยังไม่มีชื่ออังกฤษสำหรับพรอมป์ภาพ — ระบบจะไม่สร้างภาพให้สินค้านี้จนกว่าจะมีชื่ออังกฤษ`,
+        fixWhere,
+      );
+    } else if (!savedPrompt) {
       addCheck(
         "image_prompt",
         "พรอมป์ภาพ (image prompt)",
@@ -654,11 +666,11 @@ async function inspectLinkedInPostReadiness(options = {}) {
         "image_prompt",
         "พรอมป์ภาพ (image prompt)",
         "warn",
-        `prompt ไม่มีชื่อสินค้า (ได้แค่ "product") — รูปที่ได้จะไม่มีกระเป๋าหรือตัวสินค้าอยู่ในภาพ · prompt: ${clipText(savedPrompt, 120)}`,
-        "กด “สร้างภาพ” อีกครั้งในหน้ารายการ ระบบจะสร้างพรอมป์ใหม่จากชื่อสินค้าให้เอง (หรือแก้พรอมป์ให้มีคำระบุสินค้า เช่น shoe bag) แล้วตรวจภาพใหม่",
+        `prompt ไม่ได้ระบุชื่อสินค้า — รูปที่ได้จะไม่มีตัวสินค้าอยู่ในภาพ · prompt: ${clipText(savedPrompt, 120)}`,
+        `${fixWhere} แล้วกด “สร้างภาพ” อีกครั้งเพื่อสร้างพรอมป์ใหม่`,
       );
     } else {
-      addCheck("image_prompt", "พรอมป์ภาพ (image prompt)", "pass", `prompt ระบุสินค้าแล้ว: ${clipText(savedPrompt, 90)}`);
+      addCheck("image_prompt", "พรอมป์ภาพ (image prompt)", "pass", `prompt ระบุสินค้าของลูกค้ารายนี้แล้ว: ${clipText(savedPrompt, 90)}`);
     }
   }
 

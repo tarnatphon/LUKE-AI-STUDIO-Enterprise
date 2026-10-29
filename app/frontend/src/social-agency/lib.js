@@ -291,3 +291,79 @@ export async function ensureProductRef500(clientId, product) {
     return null; // the publish path falls back to the original photo + a note
   }
 }
+
+/* ── client intake ────────────────────────────────────────────────────────────
+ * A new client is planned entirely from its own product: the product name goes
+ * into captions, and its English name goes into every image prompt. So intake is
+ * the one place where a vague answer costs the whole month ("สินค้า" produces 30
+ * posts about nothing). The rules live here, once, so the form, the error text
+ * under it and the tests all read from the same list.
+ */
+
+// Whole-word only: a real name such as "สินค้าทดสอบ A-001" is fine, the bare
+// category word is not.
+const VAGUE_PRODUCT_NAME = /^(?:สินค้า|ของ|ของใช้|ของฝาก|ของขวัญ|ของที่ระลึก|อื่นๆ|อื่น ๆ|ไม่มี|ไม่ระบุ|ทดสอบ|sample|product|item|n\/a)$/i;
+const EMPTY_SUBJECT_WORDS = /^(?:product|products|item|items|thing|things|stuff|object|objects|sample|test|unknown|none|na|n\/a)$/i;
+
+// The image model cannot read Thai, so the subject is ASCII only.
+export function cleanEnglishSubject(text) {
+  return String(text || "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+export function isValidEnglishSubject(text) {
+  const clean = cleanEnglishSubject(text);
+  return /[A-Za-z]{2}/.test(clean) && !EMPTY_SUBJECT_WORDS.test(clean);
+}
+
+export const INDUSTRY_SUGGESTIONS = [
+  "โรงงานรับผลิตกระเป๋า",
+  "ร้านอาหารตามสั่ง",
+  "ร้านเบเกอรี่",
+  "ร้านกาแฟคั่วเอง",
+  "สตูดิโอโยคะ",
+  "ร้านขายต้นไม้",
+  "ร้านเสริมสวย",
+  "ผู้ผลิตเฟอร์นิเจอร์",
+];
+
+// A SKU an operator can keep or overwrite, derived from the Thai name (never the
+// whole name): "ผัดกะเพราหมูสับ" → "PROD-4821".
+export function suggestSku(name, taken = []) {
+  const words = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const ascii = words.find((w) => /^[A-Za-z][A-Za-z0-9-_]{1,}$/.test(w));
+  for (let i = 0; i < 20; i += 1) {
+    const suffix = String(Math.floor(1000 + Math.random() * 9000));
+    const sku = ascii ? `${ascii.toUpperCase().slice(0, 8)}-${suffix}` : `PROD-${suffix}`;
+    if (!taken.includes(sku)) return sku;
+  }
+  return `PROD-${Date.now().toString(36).toUpperCase()}`;
+}
+
+/**
+ * Everything wrong with the add-client form, in the operator's words.
+ * `blockers` stop the create button; `hints` are guidance, not errors.
+ */
+export function clientIntakeIssues(form = {}) {
+  const issues = [];
+  const name = String(form.name || "").trim();
+  const industry = String(form.industry || "").trim();
+  const product = String(form.firstProduct || "").trim();
+  const subject = cleanEnglishSubject(form.imageSubject);
+  const sku = String(form.sku || "").trim();
+  if (name.length < 2) issues.push({ field: "name", message: "กรอกชื่อลูกค้าอย่างน้อย 2 ตัวอักษร" });
+  if (!industry) issues.push({ field: "industry", message: "ระบุประเภทธุรกิจ — ใช้ตัดสินมุมคอนเทนต์ คำในแคปชัน และแฮชแท็ก" });
+  if (product.length < 3) issues.push({ field: "firstProduct", message: "ระบุชื่อสินค้าชิ้นแรก (อย่างน้อย 3 ตัวอักษร) — ปฏิทินทั้งเดือนสร้างจากสินค้านี้" });
+  else if (VAGUE_PRODUCT_NAME.test(product)) issues.push({ field: "firstProduct", message: `“${product}” เป็นคำกว้าง — ใส่ชื่อสินค้าจริง เช่น “ผัดกะเพราหมูสับ”` });
+  if (!subject) issues.push({ field: "imageSubject", message: "กรอกชื่อสินค้าภาษาอังกฤษ — ช่องนี้คือสิ่งที่โมเดลภาพจะวาด" });
+  else if (!isValidEnglishSubject(subject)) issues.push({ field: "imageSubject", message: "ชื่ออังกฤษต้องเป็นชื่อจริง (ห้ามใช้คำอย่าง product / item / stuff)" });
+  if (!sku) issues.push({ field: "sku", message: "ระบุรหัสสินค้า (SKU)" });
+  else if (!/^[A-Za-z0-9][A-Za-z0-9-_]{0,31}$/.test(sku)) issues.push({ field: "sku", message: "SKU ใช้ได้แค่ตัวอักษร ตัวเลข - _ (ไม่เกิน 32 ตัว)" });
+  return issues;
+}
+
+// What the create button is waiting for, for the line under it.
+export function clientIntakeSummary(form = {}) {
+  const issues = clientIntakeIssues(form);
+  if (!issues.length) return "";
+  return `ยังสร้างไม่ได้: ${issues.map((i) => i.message).join(" · ")}`;
+}

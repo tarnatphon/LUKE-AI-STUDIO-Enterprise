@@ -456,7 +456,7 @@ async function main2() {
   });
 
   test("--check ตอนยังไม่มี token → exit 1 และบอกคำสั่งที่ต้องรัน", async () => {
-    const freshId = rt.createClient({ name: "ลูกค้าใหม่", industry: "ของใช้", tone: "เจ้าของแบรนด์", firstProduct: "ของใช้" }).id;
+    const freshId = rt.createClient({ name: "ลูกค้าใหม่", industry: "ของใช้ในบ้าน", tone: "เจ้าของแบรนด์", firstProduct: "ถุงผ้ารุ่น A" }).id;
     const { code, out } = await capture(() => main({ check: true, client: freshId, root, _: [] }));
     assert.strictEqual(code, 1);
     assert.match(out, /ยังไม่มี token/);

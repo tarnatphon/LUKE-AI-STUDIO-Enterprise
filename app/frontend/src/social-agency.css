@@ -922,6 +922,9 @@
 .sa-field { display: flex; flex-direction: column; gap: 4px; }
 .sa-field > span { font-size: 0.72rem; font-weight: 600; color: var(--sa-muted); }
 .sa-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* an input with a small action beside it (e.g. "แปลให้" next to the English name) */
+.sa-inline-field { display: flex; align-items: center; gap: 6px; }
+.sa-inline-field > input { flex: 1; min-width: 0; }
 .sa-form-error { margin: 0; color: var(--sa-error); font-size: 0.74rem; }
 .sa-form-hint { margin: 0; color: var(--sa-muted); font-size: 0.7rem; line-height: 1.5; }
 .sa-form-hint code { font-size: 0.66rem; background: var(--sa-card); border: 1px solid var(--sa-outline); border-radius: 5px; padding: 1px 4px; }

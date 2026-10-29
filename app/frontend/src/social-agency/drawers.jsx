@@ -10,7 +10,7 @@ import {
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
   formatDateTimeTh, formatDuration, scoreClass, weekdayTh, bangkokToday,
-  PRODUCT_REF_MODE_LABEL, productRefNotice, ensureProductRef500,
+  PRODUCT_REF_MODE_LABEL, productRefNotice, ensureProductRef500, isValidEnglishSubject,
 } from "./lib.js";
 
 function Drawer({ title, onClose, children, footer }) {
@@ -225,6 +225,14 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
   const [abSecond, setAbSecond] = useState(() => String((entry.hookVariants || []).findIndex((_, i) => i !== Math.max(0, (entry.hookVariants || []).findIndex((h) => h.used)))));
   const [abBusy, setAbBusy] = useState(false);
   const [abError, setAbError] = useState("");
+
+  // The image prompt is built from THIS product's English name (see runtime
+  // imageItemForProduct); showing the same product here keeps the warning and the
+  // prompt in agreement.
+  const entryProduct = useMemo(
+    () => (client?.products || []).find((p) => p.sku === entry.sku) || (client?.products || [])[0] || null,
+    [client, entry.sku],
+  );
 
   const [metricsForm, setMetricsForm] = useState({
     likes: entry.metrics?.likes ?? "",
@@ -611,6 +619,13 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
           )}
           {imageGenError && (
             <p className="sa-error-banner" role="alert">{imageGenError}</p>
+          )}
+          {entryProduct && !isValidEnglishSubject(entryProduct.imageSubject) && (
+            <p className="sa-error-banner" role="alert">
+              ⛔ สินค้า {entryProduct.name} · {entryProduct.sku} ยังไม่มีชื่ออังกฤษสำหรับพรอมป์ภาพ —
+              ระบบจะไม่สร้างภาพให้สินค้านี้ ไปที่แท็บ สินค้า → ช่อง “ชื่อสินค้าภาษาอังกฤษ” (หรือกด “เติมชื่ออังกฤษให้ทุกรายการ”)
+              แล้วกลับมากด “สร้างภาพ” อีกครั้ง
+            </p>
           )}
           <div className="sa-handoff">
             {entry.imagePrompt && (

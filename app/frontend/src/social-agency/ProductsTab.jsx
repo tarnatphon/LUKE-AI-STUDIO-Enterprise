@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload } from "lucide-react";
-import { api, postJson, ensureProductRef500 } from "./lib.js";
+import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload, Sparkles, Pencil } from "lucide-react";
+import { api, postJson, ensureProductRef500, cleanEnglishSubject, isValidEnglishSubject } from "./lib.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 
 /**
@@ -172,7 +172,7 @@ const linkIsProductPage = (u) => {
 export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const clientId = activeClient?.id;
   const products = activeClient?.products || [];
-  const [form, setForm] = useState({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "" });
+  const [form, setForm] = useState({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "", imageSubject: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -190,6 +190,12 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [enrichBusy, setEnrichBusy] = useState(false);
   const [fixBusy, setFixBusy] = useState(false);
   const [imgEditSku, setImgEditSku] = useState(null);
+  // The English name of a product is what every image prompt is built from, so
+  // it is edited here, next to the product, and a product without one is marked.
+  const [subjectEditSku, setSubjectEditSku] = useState(null);
+  const [subjectDraft, setSubjectDraft] = useState("");
+  const [subjectBusy, setSubjectBusy] = useState(false);
+  const missingSubjectCount = products.filter((p) => !isValidEnglishSubject(p.imageSubject)).length;
   const [imgFetchBusy, setImgFetchBusy] = useState(false);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
   const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
@@ -236,6 +242,56 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const toggleSel = (setter) => (i) => () =>
     setter((s) => (s.includes(i) ? s.filter((x) => x !== i) : [...s, i]));
 
+  const saveSubject = async (product) => {
+    if (!clientId || subjectBusy) return;
+    const subject = cleanEnglishSubject(subjectDraft);
+    if (subject && !isValidEnglishSubject(subject)) {
+      setError("ชื่ออังกฤษต้องเป็นชื่อจริง (ห้ามใช้คำอย่าง product / item / stuff)");
+      return;
+    }
+    setSubjectBusy(true);
+    setError("");
+    try {
+      await postJson(
+        `/api/social-agency/products/${encodeURIComponent(product.sku)}?clientId=${encodeURIComponent(clientId)}`,
+        { imageSubject: subject },
+        "PATCH",
+      );
+      setSubjectEditSku(null);
+      setNote(subject ? `บันทึกชื่ออังกฤษของ ${product.sku} แล้ว ✓ พรอมป์ภาพจะใช้ค่านี้` : `ลบชื่ออังกฤษของ ${product.sku} แล้ว`);
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubjectBusy(false);
+    }
+  };
+
+  const fillSubjects = async () => {
+    if (!clientId || subjectBusy) return;
+    setSubjectBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const res = await postJson(
+        `/api/social-agency/products/fill-image-subjects?clientId=${encodeURIComponent(clientId)}`,
+        {},
+      );
+      if (res?.reason) setError(res.reason);
+      else {
+        setNote(
+          `เติมชื่ออังกฤษแล้ว ${res.filled}/${res.total} รายการ ✓` +
+          (res.failed ? ` · แปลไม่ได้ ${res.failed} รายการ (${(res.failedSkus || []).join(", ")}) — กรอกเองในรายการนั้น` : ""),
+        );
+      }
+      onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubjectBusy(false);
+    }
+  };
+
   const addManual = async () => {
     if (!clientId || saving) return;
     setSaving(true);
@@ -249,8 +305,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         price: form.price.trim() || undefined,
         sourceUrl: form.sourceUrl.trim() || undefined,
         image: /^https?:\/\//i.test(form.image.trim()) ? form.image.trim() : undefined,
+        imageSubject: cleanEnglishSubject(form.imageSubject) || undefined,
       });
-      setForm({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "" });
+      setForm({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "", imageSubject: "" });
       setNote("เพิ่มสินค้าแล้ว ✓");
       onChanged?.();
     } catch (err) {
@@ -557,6 +614,16 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
               <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
             </button>
           )}
+          {missingSubjectCount > 0 && (
+            <button
+              className="sa-btn ghost sm"
+              disabled={subjectBusy}
+              onClick={fillSubjects}
+              title="แปลชื่อสินค้าที่ยังไม่มีชื่ออังกฤษให้ทีละรายการ แล้วบันทึกไว้กับสินค้า — พรอมป์ภาพและพรอมป์วิดีโอจะใช้ค่านี้"
+            >
+              {subjectBusy ? "กำลังเติม…" : <><Sparkles size={13} /> เติมชื่ออังกฤษให้ทุกรายการ ({missingSubjectCount})</>}
+            </button>
+          )}
           {urlCount > 0 && (
             <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวดหรือหน้าดาวน์โหลดไฟล์ จะหาลิงก์ใบสินค้าที่ถูกต้องให้เองจากโค้ดสินค้า (ครั้งละ 10 หน้า + คลานหน้าหมวดไม่เกิน 4 หน้า)">
               {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
@@ -573,10 +640,34 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                 <span className="sa-muted">{p.sku} · {p.category}{p.price ? ` · ${p.price}` : ""}</span>
                 <ProductSourceLink url={p.sourceUrl} />
                 <span style={{ flex: 1 }} />
+                <button
+                  className="sa-btn ghost sm"
+                  title="ชื่อสินค้าภาษาอังกฤษ — ใช้สร้างพรอมป์ภาพและพรอมป์วิดีโอ"
+                  onClick={() => {
+                    setSubjectEditSku(subjectEditSku === p.sku ? null : p.sku);
+                    setSubjectDraft(p.imageSubject || "");
+                  }}
+                >
+                  {isValidEnglishSubject(p.imageSubject) ? <><Pencil size={12} /> {p.imageSubject}</> : <>⚠ ยังไม่มีชื่ออังกฤษ</>}
+                </button>
                 <button className="sa-icon-btn sm danger" title="ลบสินค้า" onClick={() => removeProduct(p.sku)}>
                   <Trash2 size={13} />
                 </button>
               </div>
+              {subjectEditSku === p.sku && (
+                <div className="sa-inline-field" style={{ marginTop: 6 }}>
+                  <input
+                    value={subjectDraft}
+                    onChange={(e) => setSubjectDraft(e.target.value)}
+                    placeholder="เช่น stir-fried basil pork"
+                    aria-label={`ชื่อสินค้าภาษาอังกฤษของ ${p.name}`}
+                  />
+                  <button className="sa-btn sm" disabled={subjectBusy} onClick={() => saveSubject(p)}>
+                    {subjectBusy ? "กำลังบันทึก…" : "บันทึก"}
+                  </button>
+                  <button className="sa-btn ghost sm" onClick={() => setSubjectEditSku(null)}>ยกเลิก</button>
+                </div>
+              )}
               {imgEditSku === p.sku && (
                 <ProductImageEditor
                   product={p}
@@ -657,6 +748,15 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
             />
             <label className="sa-check" title="ตามลิงก์ลงไปอีก 1 ชั้น เหมาะกับหน้าหลัก/หน้าหมวดหมู่">
               <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} disabled={urlBusy} /> เจาะลึก 2 ชั้น
+            </label>
+            <label className="sa-field">
+              <span>ชื่อสินค้าภาษาอังกฤษ (ใช้ในพรอมป์ภาพ)</span>
+              <input
+                value={form.imageSubject}
+                onChange={(e) => setForm({ ...form, imageSubject: e.target.value })}
+                placeholder="เช่น stir-fried basil pork"
+              />
+              <span className="sa-form-hint">เว้นว่างได้ แต่ภาพของสินค้านี้จะยังสร้างไม่ได้จนกว่าจะมีชื่ออังกฤษ</span>
             </label>
             <button className="sa-btn primary sm" disabled={urlBusy || !url.trim()} onClick={fetchUrl}>
               {urlBusy ? "กำลังดึง…" : "ดึงข้อมูล"}
