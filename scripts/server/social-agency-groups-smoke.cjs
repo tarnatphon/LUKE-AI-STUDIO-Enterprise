@@ -359,22 +359,23 @@ async function main() {
         { angle }
       );
       assert.ok(/^[\x00-\x7F]*$/.test(out), `ASCII-only prompt for angle "${angle}": ${out}`);
-      // The Thai dictionary names the product itself ("camera bag"), which is
-      // more specific than the broad English category it used to fall back to.
-      assert.ok(out.includes("Camera bag (CAM-009)"), `dictionary names the product: ${out}`);
+      // With no stored English name for the product, the operator's English
+      // category is the documented fallback — never the word "product".
+      assert.ok(out.includes("Camera bags (CAM-009)"), `uses the English category: ${out}`);
       assert.ok(out.includes("CAM-009"), `keeps SKU reference: ${out}`);
     }
-    const fallback = SocialAgencyRuntime._templateImagePrompt(
+    // A product with its own English name uses it, not the category.
+    const named = SocialAgencyRuntime._templateImagePrompt(
+      { sku: "CAM-009", name: "กระเป๋ากล้อง CAM-009", category: "Camera bags", imageSubject: "camera bag" },
+      { angle: "เปิดตัวสินค้า" }
+    );
+    assert.ok(named.includes("camera bag (CAM-009)"), `stored subject wins: ${named}`);
+    // Thai-only name and Thai-only category: no prompt at all (nothing to name).
+    const missing = SocialAgencyRuntime._templateImagePrompt(
       { sku: "สยาม-01", name: "กระเป๋าผ้า", category: "กระเป๋าผ้า" },
       { angle: "มุมประหลาด" }
     );
-    assert.ok(/^[\x00-\x7F]*$/.test(fallback), `Thai-only input still yields ASCII: ${fallback}`);
-    // A word the dictionary does not know still falls back to the English category.
-    const categoryFallback = SocialAgencyRuntime._templateImagePrompt(
-      { sku: "GFT-01", name: "ของที่ระลึก", category: "Souvenir bags" },
-      { angle: "มุมประหลาด" }
-    );
-    assert.ok(categoryFallback.includes("Souvenir bags"), `English category fallback: ${categoryFallback}`);
+    assert.strictEqual(missing, "", "no subject = no prompt (never the word \"product\")");
   });
 
   check("template imagePrompts vary per entry (no repeats)", () => {

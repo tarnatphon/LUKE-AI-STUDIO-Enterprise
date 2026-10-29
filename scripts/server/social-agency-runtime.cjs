@@ -1175,122 +1175,95 @@ const IMAGE_CAMERA = [
   "minimal centered composition with copy space",
 ];
 
-// ── Thai product words → English, for image prompts ────────────────────────
-// A stable table of the words this business actually sells. It is consulted
-// BEFORE the local LLM: the LLM may be off or unreachable, and that is exactly
-// when the old code fell through to the literal word "product" — the image model
-// then drew a beautiful wooden table with no bag on it anywhere.
-const THAI_PRODUCT_GLOSSARY = [
-  ["กระเป๋าใส่รองเท้า", "shoe bag"],
-  ["ถุงใส่รองเท้า", "shoe bag"],
-  ["กระเป๋าใส่แก้ว", "cup carrier bag"],
-  ["ถุงใส่แก้ว", "cup carrier bag"],
-  ["กระเป๋าโน๊ตบุ๊ค", "laptop bag"],
-  ["กระเป๋าโน้ตบุ๊ก", "laptop bag"],
-  ["กระเป๋าโน้ตบุ๊ค", "laptop bag"],
-  ["กระเป๋าแล็ปท็อป", "laptop bag"],
-  ["กระเป๋าเครื่องสำอาง", "cosmetic pouch"],
-  ["กระเป๋าเครื่องเขียน", "pencil case"],
-  ["กระเป๋าดินสอ", "pencil case"],
-  ["กระเป๋าเชือกรูด", "drawstring bag"],
-  ["กระเป๋าสะพายข้าง", "shoulder bag"],
-  ["กระเป๋าสะพายไหล่", "shoulder bag"],
-  ["กระเป๋าสะพาย", "shoulder bag"],
-  ["กระเป๋าสตางค์", "wallet"],
-  ["กระเป๋าใส่เหรียญ", "coin purse"],
-  ["กระเป๋าเดินทาง", "travel bag"],
-  ["กระเป๋าเอกสาร", "document bag"],
-  ["กระเป๋าคลัตช์", "clutch bag"],
-  ["กระเป๋าเป้", "backpack"],
-  ["กระเป๋าถือ", "handbag"],
-  ["กระเป๋ากล้อง", "camera bag"],
-  ["กระเป๋าใส่ของ", "tote bag"],
-  ["กระเป๋าผ้า", "fabric bag"],
-  ["กระเป๋าหนัง", "leather bag"],
-  ["ถุงหูรูด", "drawstring pouch"],
-  ["ถุงผ้า", "cloth bag"],
-  ["กระเป๋า", "bag"],
-  ["ถุง", "bag"],
-  ["ซอง", "pouch"],
-  ["กล่อง", "box"],
-];
+// ── what the image model is asked to photograph ────────────────────────────
+// The subject is the CLIENT's own data: `product.imageSubject`, filled in once at
+// intake (translated from the Thai name, and saved) and editable in the Products
+// tab. Nothing about a particular business is hard-coded here — a bakery gets
+// "butter croissant", a yoga studio gets "yoga mat", a bag factory gets
+// "shoe bag", each from its own product record.
+//
+// The old behaviour fell through to the literal word "product", which the image
+// model painted as a styled empty table. There is no such fallback any more: when
+// no subject can be found the prompt is empty and the caller stops with a message
+// that names the product and says where to type the English name.
+const IMAGE_SUBJECT_MAX = 80;
+const IMAGE_SUBJECT_WORDS_ONLY = /^(?:product|products|item|items|thing|things|stuff|object|objects|sample|test|unknown|none|na|n\/a)$/i;
 
+// A product name that is only a category ("สินค้า", "ของฝาก") cannot be
+// photographed and cannot make a caption specific. Whole-word only: a real name
+// such as "สินค้าทดสอบ A-001" passes.
+const VAGUE_PRODUCT_NAMES = /^(?:สินค้า|ของ|ของใช้|ของฝาก|ของขวัญ|ของที่ระลึก|อื่นๆ|อื่น ๆ|ไม่มี|ไม่ระบุ|ทดสอบ|sample|product|item|n\/a)$/i;
+
+// ASCII only (the image model cannot read Thai), single line, trimmed, and
+// stripped of the words that let a prompt look filled in while saying nothing.
+function cleanImageSubject(text) {
+  return String(text || "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, IMAGE_SUBJECT_MAX);
+}
+
+function isValidImageSubject(text) {
+  const clean = cleanImageSubject(text);
+  if (!/[A-Za-z]{2}/.test(clean)) return false;
+  if (IMAGE_SUBJECT_WORDS_ONLY.test(clean)) return false;
+  return true;
+}
+
+// English words that carry no product meaning (bare SKUs, stopwords, 1 letter).
 const IMAGE_ITEM_STOPWORDS = /^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i;
 const IMAGE_ITEM_SKU = /^[A-Z]{2,5}-\d{2,5}$/i;
 
-// English words that carry no product meaning (bare SKUs, stopwords, 1 letter).
 function englishProductWords(text) {
   const words = String(text || "").match(/[A-Za-z][A-Za-z0-9&+'/_-]*/g) || [];
   return words.filter((w) => w.length >= 2 && !IMAGE_ITEM_SKU.test(w) && !IMAGE_ITEM_STOPWORDS.test(w));
 }
 
-// Thai words from the table, in the order they appear in the text. At the same
-// position the longest phrase wins ("กระเป๋าใส่รองเท้า" before "กระเป๋า"), and a
-// later match that starts inside an accepted one is dropped — so
-// "กระเป๋าผ้าใบใหญ่" is a fabric bag, not a fabric bag plus a canvas.
-function thaiProductWords(text) {
-  const source = String(text || "");
-  if (!/[\u0E00-\u0E7F]/.test(source)) return [];
-  const hits = [];
-  for (const [thai, en] of THAI_PRODUCT_GLOSSARY) {
-    let at = source.indexOf(thai);
-    while (at !== -1) {
-      hits.push({ at, len: thai.length, en });
-      at = source.indexOf(thai, at + thai.length);
-    }
-  }
-  if (!hits.length) return [];
-  hits.sort((a, b) => a.at - b.at || b.len - a.len);
-  const picked = [];
-  let end = -1;
-  for (const hit of hits) {
-    if (hit.at < end) continue;
-    picked.push(hit);
-    end = hit.at + hit.len;
-  }
-  return [...new Set(picked.map((hit) => hit.en))];
-}
-
-// What the image model is asked to photograph. Priority:
-//   1. the Thai dictionary  (deterministic — works with the LLM off)
-//   2. the LLM's translation (only reached when the dictionary has no match)
+// What the image model is asked to photograph, in this order:
+//   1. `product.imageSubject` — the client's own English name for this product
+//   2. English words inside the product name      (e.g. "Canvas Tote Bag")
 //   3. an English category written by the operator
-//   4. English words inside the product name
-//   5. English words inside the product detail
-//   6. the literal word "product"  ← a bug, not a fallback: the review gate
-//      reports it (imagePromptMissesProductName) instead of staying silent.
-function imageItemForProduct(product, { translatedName = "" } = {}) {
-  const rawName = product?.name ? String(product.name).trim() : "";
-  const rawCat = product?.category ? String(product.category).trim() : "";
-  const glossaryWords = thaiProductWords(rawName).length ? thaiProductWords(rawName) : thaiProductWords(rawCat);
-  if (glossaryWords.length) {
-    // Any English words the name carries (a model name, "Tote", "Deluxe") are
-    // kept, but not repeated when the dictionary already covered them.
-    const covered = new Set(glossaryWords.join(" ").toLowerCase().split(/\s+/));
-    const extras = englishProductWords(rawName).filter((w) => !covered.has(w.toLowerCase()));
-    const item = [...glossaryWords, ...extras].join(" ");
-    return { item: item.charAt(0).toUpperCase() + item.slice(1), source: "glossary" };
-  }
-  const translatedWords = englishProductWords(String(translatedName || "").replace(/[^\x20-\x7E]/g, " "));
-  if (translatedWords.length) return { item: translatedWords.join(" "), source: "llm" };
-  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) return { item: rawCat, source: "category" };
-  const nameWords = englishProductWords(rawName);
+//   4. English words inside the product detail (scraped from its own page)
+//   5. nothing → { item: "", source: "missing" }: the caller stops and tells the
+//      operator which product needs a name, instead of inventing one.
+function imageItemForProduct(product) {
+  const typed = cleanImageSubject(product?.imageSubject);
+  if (isValidImageSubject(typed)) return { item: typed, source: "subject" };
+  const nameWords = englishProductWords(product?.name);
   if (nameWords.length) return { item: nameWords.join(" "), source: "name" };
+  const rawCat = product?.category ? String(product.category).trim() : "";
+  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat) && isValidImageSubject(rawCat)) {
+    return { item: rawCat, source: "category" };
+  }
   const detailWords = englishProductWords(product?.detail).slice(0, 5);
   if (detailWords.length) return { item: detailWords.join(" "), source: "detail" };
-  return { item: "product", source: "generic" };
+  return { item: "", source: "missing" };
 }
 
-// The template reads "Professional product photography of <item> (SKU)" (and
-// "… featuring <item> (SKU)" for video). So the literal string "of product"
-// followed by nothing name-like means the builder had no product name at all.
+// The prompt for a product that has no English name yet. One sentence, the
+// product's own name and SKU, and where to fix it — no generic word written in
+// the operator's place.
+function imageSubjectError(product, kindLabel = "พรอมป์ภาพ") {
+  const name = String(product?.name || "").trim() || "(ไม่มีชื่อสินค้า)";
+  const sku = String(product?.sku || "").trim();
+  const who = sku ? `${name} · ${sku}` : name;
+  return `สินค้า ${who} ยังไม่มีชื่ออังกฤษสำหรับ${kindLabel} — เปิดแท็บ สินค้า กรอกช่อง “ชื่อสินค้าภาษาอังกฤษ (ใช้ในพรอมป์ภาพ)” เช่น stir-fried basil pork หรือ butter croissant แล้วกด “สร้างภาพ” อีกครั้ง (หรือกด “เติมชื่ออังกฤษให้ทุกรายการ” ให้ระบบแปลจากชื่อไทยให้)`;
+}
+
+// Prompts saved before the subject existed read "of product (SKU)".
 const IMAGE_PROMPT_GENERIC_SUBJECT = /\b(?:of|featuring)\s+product\b(?!\s+[A-Z0-9])/i;
 function imagePromptMissesProductName(prompt) {
-  return IMAGE_PROMPT_GENERIC_SUBJECT.test(String(prompt || ""));
+  const text = String(prompt || "").trim();
+  if (!text) return true;
+  return IMAGE_PROMPT_GENERIC_SUBJECT.test(text);
 }
 
-function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], translatedName = "", kind } = {}) {
-  const { item } = imageItemForProduct(product, { translatedName });
+function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], kind } = {}) {
+  const { item } = imageItemForProduct(product);
+  // No English name for this product = no prompt. Returning a prompt built on a
+  // placeholder is what produced "a warm wooden table" with nothing on it.
+  if (!item) return "";
   const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
@@ -1363,15 +1336,15 @@ function pickAnimateCamera(seed, avoidIds) {
 }
 
 function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [], kind } = {}) {
-  // Same subject rules as the still image: one product, one name, and the Thai
-  // dictionary before anything that needs the LLM.
-  const { item } = imageItemForProduct(product);
+  // Same subject rules as the still image, from the client's own product record.
+  const { item, source: subjectSource } = imageItemForProduct(product);
   const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
   const denied = new Set((avoid || []).filter(Boolean));
   let last = "";
   let lastCamera = ANIMATE_CAMERA_MOVES[0];
+  if (subjectSource === "missing") return { prompt: "", cameraId: lastCamera.id, cameraLabel: lastCamera.label };
   for (let attempt = 0; attempt < 10; attempt++) {
     const s = seed + "#" + attempt;
     const cam = pickAnimateCamera(s, avoidCameras);
@@ -1980,24 +1953,37 @@ class SocialAgencyRuntime {
     }));
   }
 
-  createClient({ name, industry, tone, firstProduct }) {
-    const cleanName = String(name || "").trim();
-    if (!cleanName) throw new Error("กรุณากรอกชื่อลูกค้า");
+  createClient({ name, industry, tone, firstProduct, imageSubject, sku, category, requireSubject = false, requireIndustry = false } = {}) {
+    // Validation lives here as well as in the form: a script or a direct API call
+    // must not be able to create a client whose product cannot be described.
+    const intake = this._validateClientIntake({ name, industry, firstProduct, imageSubject, requireSubject, requireIndustry });
+    const cleanName = intake.name;
     const state = this._read();
     const now = new Date().toISOString();
     const id = `client-${crypto.randomUUID().slice(0, 8)}`;
     const products = [];
-    const productName = String(firstProduct || "").trim();
+    const productName = intake.firstProduct;
     if (productName) {
-      products.push({
-        sku: `SKU-${String(state.clients.length + 1).padStart(2, "0")}-01`,
+      let firstSku = String(sku || "").trim().slice(0, 32);
+      if (firstSku && !/^[A-Za-z0-9][A-Za-z0-9-_]{0,31}$/.test(firstSku)) throw new Error("SKU ใช้ได้แค่ตัวอักษร ตัวเลข - _");
+      if (!firstSku) firstSku = `SKU-${String(state.clients.length + 1).padStart(2, "0")}-01`;
+      const product = {
+        sku: firstSku,
         name: productName,
-        category: String(industry || "").trim() || "สินค้า",
+        category: String(category || industry || "").trim() || "สินค้า",
         minimumOrder: "1 ชิ้น",
         productionTime: "สอบถามรายละเอียดก่อนสั่ง",
         status: "verified-source",
         sourceUrl: "",
-      });
+      };
+      // The client's own English name for its product — what the image prompt,
+      // the animate prompt and the caption prompts are built from.
+      if (intake.imageSubject) {
+        product.imageSubject = intake.imageSubject;
+        product.imageSubjectSource = "intake";
+        product.imageSubjectAt = now;
+      }
+      products.push(product);
     }
     const client = {
       id,
@@ -3329,6 +3315,84 @@ class SocialAgencyRuntime {
     return [...(client.products || [])];
   }
 
+  // ── intake: what a new client must bring with it ──────────────────────────
+  // A new client is planned with its OWN products, so the product has to be a
+  // real product name, not a category word ("สินค้า", "ของฝาก"): those produce a
+  // calendar whose image prompts describe nothing and whose captions could be
+  // about any business at all.
+  _validateClientIntake({ name, industry, firstProduct, imageSubject, requireSubject = false, requireIndustry = false }) {
+    const cleanName = String(name || "").trim();
+    if (cleanName.length < 2) throw new Error("กรอกชื่อลูกค้าอย่างน้อย 2 ตัวอักษร");
+    const cleanIndustry = String(industry || "").trim();
+    if (requireIndustry && !cleanIndustry) {
+      throw new Error("ระบุประเภทธุรกิจ — ใช้ตัดสินมุมคอนเทนต์ คำในแคปชัน และแฮชแท็กของลูกค้ารายนี้");
+    }
+    // Every client is planned from its own first product, so the product is not
+    // optional: a client without one produces a calendar that describes nothing.
+    const product = this._validateProductName(String(firstProduct || "").trim());
+    const subject = cleanImageSubject(imageSubject);
+    // An invalid name is refused even when the subject itself is optional: storing
+    // "product" on a product would put us back where we started.
+    if (subject && !isValidImageSubject(subject)) {
+      throw new Error("ชื่อสินค้าภาษาอังกฤษต้องเป็นชื่อจริง (อักษรอังกฤษ) — ห้ามใช้คำอย่าง product / item / stuff");
+    }
+    if (requireSubject && !subject) {
+      throw new Error("กรอกชื่อสินค้าภาษาอังกฤษ (ใช้ในพรอมป์ภาพ) — ช่องนี้คือสิ่งที่โมเดลภาพจะวาด เช่น stir-fried basil pork หรือ butter croissant");
+    }
+    return { name: cleanName, industry: cleanIndustry, firstProduct: product, imageSubject: subject };
+  }
+
+  // Whole-word only: "สินค้า" is a category, "สินค้าทดสอบ A-001" is a name.
+  _validateProductName(raw) {
+    const name = String(raw || "").trim();
+    if (name.length < 3) throw new Error("ชื่อสินค้าต้องมีอย่างน้อย 3 ตัวอักษร");
+    if (VAGUE_PRODUCT_NAMES.test(name)) {
+      throw new Error(`ชื่อสินค้าต้องชัดเจน เช่น “ผัดกะเพราหมูสับ” หรือ “กระเป๋าใส่รองเท้า” — “${name}” เป็นคำกว้าง ใช้ทำพรอมป์ภาพและแคปชันไม่ได้`);
+    }
+    return name;
+  }
+
+  // Translate the products that have no English name yet and SAVE the result on
+  // each product. Operators get one button instead of 40 fields, and the stored
+  // subject is still editable per product.
+  async fillImageSubjects(clientId, body = {}) {
+    const { state, client } = this._resolveClient(clientId || body.clientId);
+    if (!this._llmReady()) {
+      return { ok: false, filled: 0, failed: 0, reason: "LLM ยังไม่พร้อม — เปิดโมเดลก่อน หรือกรอกชื่อสินค้าภาษาอังกฤษเองทีละรายการ" };
+    }
+    const force = Boolean(body.force);
+    const targets = (client.products || []).filter((p) => force || !isValidImageSubject(p.imageSubject));
+    let filled = 0;
+    const failed = [];
+    for (const product of targets) {
+      const translated = await this._llmTranslateForPrompt(product.name);
+      if (!isValidImageSubject(translated)) {
+        failed.push(product.sku);
+        continue;
+      }
+      product.imageSubject = cleanImageSubject(translated);
+      product.imageSubjectSource = "llm";
+      product.imageSubjectAt = new Date().toISOString();
+      filled += 1;
+    }
+    if (filled) this._write(state);
+    return { ok: true, filled, failed: failed.length, failedSkus: failed.slice(0, 20), total: targets.length };
+  }
+
+  // The form's "auto-fill" button: translate one name for preview, nothing saved.
+  async proposeImageSubject(body = {}) {
+    const name = String(body.name || body.productName || "").trim();
+    if (name.length < 3) throw new Error("พิมพ์ชื่อสินค้าก่อน แล้วค่อยกดแปล");
+    if (!this._llmReady()) {
+      return { ok: false, subject: "", reason: "LLM ยังไม่พร้อม — พิมพ์ชื่ออังกฤษเองได้เลย" };
+    }
+    const subject = await this._llmTranslateForPrompt(name);
+    if (!isValidImageSubject(subject)) {
+      return { ok: false, subject: "", reason: "แปลอัตโนมัติไม่ได้ — พิมพ์ชื่อสินค้าภาษาอังกฤษเอง" };
+    }
+    return { ok: true, subject: cleanImageSubject(subject) };
+  }
+
   _newSku(client) {
     for (let i = 0; i < 20; i++) {
       const sku = `P-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
@@ -3339,8 +3403,10 @@ class SocialAgencyRuntime {
 
   addProduct(clientId, body = {}) {
     const { state, client } = this._resolveClient(clientId || body.clientId);
-    const name = String(body.name || "").trim().slice(0, 120);
-    if (!name) throw new Error("ต้องกรอกชื่อสินค้า");
+    const name = this._validateProductName(String(body.name || "").trim().slice(0, 120));
+    if (body.imageSubject !== undefined && String(body.imageSubject || "").trim() && !isValidImageSubject(body.imageSubject)) {
+      throw new Error("ชื่อสินค้าภาษาอังกฤษต้องเป็นชื่อจริง (อักษรอังกฤษ) — ห้ามใช้คำอย่าง product / item / stuff");
+    }
     if ((client.products || []).length >= MAX_PRODUCTS_PER_CLIENT) throw new Error(`มีสินค้าได้สูงสุด ${MAX_PRODUCTS_PER_CLIENT} รายการต่อลูกค้า`);
     let sku = String(body.sku || "").trim().slice(0, 32);
     if (sku && !/^[A-Za-z0-9][A-Za-z0-9-_]{0,31}$/.test(sku)) throw new Error("SKU ใช้ได้แค่ตัวอักษร ตัวเลข - _");
@@ -3360,6 +3426,11 @@ class SocialAgencyRuntime {
       image: String(body.image || "").trim().slice(0, 500),
       createdAt: new Date().toISOString(),
     };
+    if (String(body.imageSubject || "").trim()) {
+      product.imageSubject = cleanImageSubject(body.imageSubject);
+      product.imageSubjectSource = "manual";
+      product.imageSubjectAt = product.createdAt;
+    }
     client.products = [...(client.products || []), product];
     this._write(state);
     return product;
@@ -3374,6 +3445,22 @@ class SocialAgencyRuntime {
       if (body.sourceUrl !== undefined) product.sourceUrl = cleanProductPageUrl(product.sourceUrl);
     }
     if (body.image !== undefined) product.image = this._applyProductImage(client, product, body.image);
+    if (body.imageSubject !== undefined) {
+      const subject = cleanImageSubject(body.imageSubject);
+      if (subject && !isValidImageSubject(subject)) {
+        throw new Error("ชื่อสินค้าภาษาอังกฤษต้องเป็นชื่อจริง (อักษรอังกฤษ) — ห้ามใช้คำอย่าง product / item / stuff");
+      }
+      if (subject) {
+        product.imageSubject = subject;
+        product.imageSubjectSource = "manual";
+        product.imageSubjectAt = new Date().toISOString();
+      } else {
+        delete product.imageSubject;
+        delete product.imageSubjectSource;
+        delete product.imageSubjectAt;
+      }
+    }
+    if (body.name !== undefined) this._validateProductName(product.name);
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
     this._write(state);
     return product;
@@ -4421,15 +4508,13 @@ class SocialAgencyRuntime {
     }
   }
 
+  // No LLM at prompt time: the English name of a product is decided once, at
+  // intake, and stored on the product (`imageSubject`). Building a prompt must be
+  // deterministic and must never invent a subject, so it is a pure function of
+  // the client's own record.
   async _buildTemplateImagePrompt(product, options = {}, client = null) {
-    // The Thai dictionary answers first. Only when it has no word for this
-    // product is the local LLM asked — one less round-trip per post, and the
-    // prompt stays identical on machines where the LLM is off.
-    const knownByName = thaiProductWords(product?.name).length || thaiProductWords(product?.category).length;
-    const translatedName = knownByName ? "" : await this._llmTranslateForPrompt(product?.name);
     return buildTemplateImagePrompt(product, {
       ...options,
-      translatedName,
       kind: options.kind || (client ? detectContentKind(client) : undefined),
     });
   }
@@ -5080,6 +5165,10 @@ class SocialAgencyRuntime {
       }
       const hookVariants = scored.map((s) => ({ text: s.text, score: s.score, used: s === best }));
       const templatePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
+      // A post that is meant to carry a picture cannot proceed without a subject:
+      // fail this step with the product's own name so the run detail says which
+      // product needs an English name. Caption-only runs are unaffected.
+      if (!templatePrompt && ctx.withImage) throw new Error(imageSubjectError(product));
       // รันเลย: ไอเดียภาพมาจากข้อความที่เพิ่งเขียน (ไม่ใช่ template ทั่วไป); ไม่ได้ผลก็ใช้ template เดิม
       const imagePrompt = ctx.withImage
         ? (await this._llmImagePromptFromCaption({ product, caption, hook: best ? best.text : "", angle: entry.angle })) || templatePrompt
@@ -5378,11 +5467,11 @@ class SocialAgencyRuntime {
   // picture shows the same idea as the caption. Returns "" to let the caller fall back.
   async _llmImagePromptFromCaption({ product, caption, hook, angle }) {
     if (!this._llmReady()) return "";
-    const translated = await this._llmTranslateForPrompt(product?.name);
-    const subject = imageItemForProduct(product, { translatedName: translated });
-    // When even the dictionary cannot name it, let the model read the Thai name
-    // instead of photographing the word "product".
-    const productName = subject.source === "generic" && product?.name ? String(product.name) : subject.item;
+    const subject = imageItemForProduct(product);
+    // The model reads the product's own name (Thai is fine here: the LOCAL LLM is
+    // writing an English prompt, not the image model reading it).
+    const productName = subject.item || String(product?.name || "").trim();
+    if (!productName) throw new Error(imageSubjectError(product));
     const postText = String(caption || "").replace(/\s+/g, " ").trim().slice(0, 700);
     const system = [
       "You write ONE image-generation prompt in English for a social-media product photo.",
@@ -6309,13 +6398,13 @@ class SocialAgencyRuntime {
     const rebuild = () => this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
     const existing = entry.imagePrompt && String(entry.imagePrompt).trim();
     if (existing && !imagePromptMissesProductName(existing)) return entry.imagePrompt;
-    // A prompt saved before the Thai dictionary existed says "of product (SKU)":
-    // it names nothing, so the model paints an empty scene. Rebuild it from the
-    // product now — only when the new prompt actually names the product, so a
-    // prompt that is generic for a real reason is never silently replaced.
+    // A prompt that names nothing (or an old "of product (SKU)" one) is rebuilt
+    // from the product's own English name. When that name does not exist yet the
+    // generation stops here, naming the product and where to type it — an image
+    // of an empty table is worse than no image.
     const fresh = await rebuild();
-    if (!existing) entry.imagePrompt = fresh;
-    else if (!imagePromptMissesProductName(fresh)) entry.imagePrompt = fresh;
+    if (!fresh) throw new Error(imageSubjectError(product));
+    entry.imagePrompt = fresh;
     return entry.imagePrompt;
   }
 
@@ -6325,9 +6414,9 @@ class SocialAgencyRuntime {
     const existing = entry.animatePrompt && String(entry.animatePrompt).trim();
     if (existing && !imagePromptMissesProductName(existing)) return entry.animatePrompt;
     const built = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: siblings.map((e) => e.animatePrompt), avoidCameras: siblings.map((e) => e.animateCamera) });
-    // Same repair rule as the still image: an old "featuring product (SKU)" prompt
-    // is replaced only by one that names the product.
-    if (!existing || !imagePromptMissesProductName(built.prompt)) {
+    // Same contract as the still image: the video prompt is rebuilt from the
+    // product's own English name, and stays empty when there is none.
+    if (built.prompt) {
       entry.animatePrompt = built.prompt;
       entry.animateCamera = built.cameraId;
       entry.animateCameraLabel = built.cameraLabel;
@@ -8240,8 +8329,15 @@ class SocialAgencyRuntime {
       }
       if (pathname === "/api/social-agency/clients" && method === "POST") {
         const body = await readBody();
-        const client = this.createClient(body);
-        return json(res, 201, { ok: true, client, state: this.getState() });
+        try {
+          // The public route is the strict one: name, industry, a real product
+          // name and its English name. Internal callers (tests, migrations) go
+          // through createClient directly and stay lenient.
+          const client = this.createClient({ ...body, requireSubject: true, requireIndustry: true });
+          return json(res, 201, { ok: true, client, state: this.getState() });
+        } catch (error) {
+          return fail(error, 400);
+        }
       }
       let match = pathname.match(/^\/api\/social-agency\/clients\/([^/]+)$/);
       if (match) {
@@ -8347,6 +8443,22 @@ class SocialAgencyRuntime {
           return json(res, 200, { ok: true, ...(await this.importUrl(clientId || body.clientId, body)) });
         } catch (error) {
           return fail(error, 502);
+        }
+      }
+      if (pathname === "/api/social-agency/products/propose-image-subject" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...(await this.proposeImageSubject(body)) });
+        } catch (error) {
+          return fail(error, 400);
+        }
+      }
+      if (pathname === "/api/social-agency/products/fill-image-subjects" && method === "POST") {
+        const body = await readBody();
+        try {
+          return json(res, 200, { ok: true, ...(await this.fillImageSubjects(clientId || body.clientId, body)) });
+        } catch (error) {
+          return fail(error, 400);
         }
       }
       if (pathname === "/api/social-agency/products/scan-folder" && method === "POST") {
@@ -8646,6 +8758,9 @@ class SocialAgencyRuntime {
 SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
 SocialAgencyRuntime._imageItemForProduct = imageItemForProduct;
 SocialAgencyRuntime._imagePromptMissesProductName = imagePromptMissesProductName;
+SocialAgencyRuntime._imageSubjectError = imageSubjectError;
+SocialAgencyRuntime._cleanImageSubject = cleanImageSubject;
+SocialAgencyRuntime._isValidImageSubject = isValidImageSubject;
 SocialAgencyRuntime._scoreViral = scoreViralCaption;
 SocialAgencyRuntime._templateHooks = buildTemplateHooks;
 SocialAgencyRuntime._pickPillar = pickPillar;

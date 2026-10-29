@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Sparkles, Plus, CalendarPlus, AlertTriangle, Dices } from "lucide-react";
-import { PLATFORM_META, TONES, ANGLES, thaiMonthLabel, dayNumber, weekdayTh } from "./lib.js";
+import {
+  PLATFORM_META,
+  TONES,
+  ANGLES,
+  thaiMonthLabel,
+  dayNumber,
+  weekdayTh,
+  postJson,
+  clientIntakeIssues,
+  clientIntakeSummary,
+  INDUSTRY_SUGGESTIONS,
+  cleanEnglishSubject,
+  isValidEnglishSubject,
+  suggestSku,
+} from "./lib.js";
 
 export function Modal({ title, icon, onClose, children, footer, wide }) {
   useEffect(() => {
@@ -49,11 +63,73 @@ export function ConfirmModal({ message, detail, confirmLabel = "ยืนยั�
   );
 }
 
+/**
+ * Add a client — the one form where a vague answer costs the whole month.
+ *
+ * Everything a client is later planned with comes from this dialog: the product
+ * name goes into every caption, and its English name goes into every image
+ * prompt. "สินค้า" as a product, or a missing English name, used to be accepted
+ * silently and then produced a month of posts about nothing (and prompts the
+ * image model painted as an empty table). So the create button stays disabled
+ * until the product is real and named in English, and the line under the button
+ * says exactly which field is still missing.
+ */
 export function AddClientModal({ onClose, onCreate }) {
-  const [form, setForm] = useState({ name: "", industry: "", tone: TONES[0], firstProduct: "" });
+  const [form, setForm] = useState({
+    name: "",
+    industry: "",
+    tone: TONES[0],
+    firstProduct: "",
+    imageSubject: "",
+    sku: "",
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const [translating, setTranslating] = useState(false);
+  const [translateNote, setTranslateNote] = useState("");
+  // Which fields the operator has touched: the auto-fill never overwrites a
+  // value someone typed themselves.
+  const [touched, setTouched] = useState({});
+  const issues = clientIntakeIssues(form);
+  const issueFor = (field) => issues.find((i) => i.field === field)?.message || "";
+  const set = (key) => (e) => {
+    const value = e.target.value;
+    setForm((f) => ({ ...f, [key]: value }));
+    setTouched((t) => ({ ...t, [key]: true }));
+  };
+
+  const proposeSubject = async () => {
+    const product = form.firstProduct.trim();
+    if (product.length < 3) {
+      setTranslateNote("พิมพ์ชื่อสินค้าก่อน แล้วค่อยกดแปล");
+      return;
+    }
+    setTranslating(true);
+    setTranslateNote("");
+    try {
+      const res = await postJson("/api/social-agency/products/propose-image-subject", { name: product });
+      if (res?.subject) {
+        setForm((f) => ({ ...f, imageSubject: res.subject }));
+        setTranslateNote(`แปลให้แล้ว: ${res.subject} — แก้ได้ถ้าไม่ตรง`);
+      } else {
+        setTranslateNote(res?.reason || "แปลอัตโนมัติไม่ได้ — พิมพ์ชื่อสินค้าภาษาอังกฤษเอง");
+      }
+    } catch (err) {
+      setTranslateNote(err.message || "แปลอัตโนมัติไม่ได้ — พิมพ์ชื่อสินค้าภาษาอังกฤษเอง");
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  // Leaving the product field fills the two fields that can be derived from it:
+  // the English name (once, saved on the product) and a SKU to keep or replace.
+  const onProductBlur = () => {
+    const product = form.firstProduct.trim();
+    if (product.length < 3) return;
+    if (!form.sku.trim()) setForm((f) => ({ ...f, sku: suggestSku(product) }));
+    if (!touched.imageSubject && !form.imageSubject.trim()) proposeSubject();
+  };
+
   return (
     <Modal
       title="เพิ่มลูกค้าใหม่"
@@ -64,12 +140,21 @@ export function AddClientModal({ onClose, onCreate }) {
           <button className="sa-btn ghost" onClick={onClose}>ยกเลิก</button>
           <button
             className="sa-btn primary"
-            disabled={busy || !form.name.trim()}
+            disabled={busy || issues.length > 0}
+            title={issues.length ? clientIntakeSummary(form) : ""}
             onClick={async () => {
               setBusy(true);
               setError("");
               try {
-                await onCreate(form);
+                await onCreate({
+                  name: form.name.trim(),
+                  industry: form.industry.trim(),
+                  tone: form.tone,
+                  firstProduct: form.firstProduct.trim(),
+                  imageSubject: cleanEnglishSubject(form.imageSubject),
+                  sku: form.sku.trim() || undefined,
+                  category: form.industry.trim(),
+                });
                 onClose();
               } catch (err) {
                 setError(err.message);
@@ -86,10 +171,20 @@ export function AddClientModal({ onClose, onCreate }) {
       <label className="sa-field">
         <span>ชื่อลูกค้า *</span>
         <input value={form.name} onChange={set("name")} placeholder="เช่น ครัวคุณหมูแม่บ้าน" autoFocus />
+        {issueFor("name") && touched.name && <span className="sa-form-hint">{issueFor("name")}</span>}
       </label>
       <label className="sa-field">
-        <span>ประเภทธุรกิจ</span>
-        <input value={form.industry} onChange={set("industry")} placeholder="เช่น ร้านอาหารตามสั่ง" />
+        <span>ประเภทธุรกิจ *</span>
+        <input
+          value={form.industry}
+          onChange={set("industry")}
+          placeholder="เช่น ร้านอาหารตามสั่ง"
+          list="sa-industry-suggestions"
+        />
+        <datalist id="sa-industry-suggestions">
+          {INDUSTRY_SUGGESTIONS.map((s) => <option key={s} value={s} />)}
+        </datalist>
+        {issueFor("industry") && touched.industry && <span className="sa-form-hint">{issueFor("industry")}</span>}
       </label>
       <label className="sa-field">
         <span>โทนเริ่มต้น</span>
@@ -97,12 +192,52 @@ export function AddClientModal({ onClose, onCreate }) {
           {TONES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </label>
+
+      <p className="sa-form-hint">
+        สินค้าชิ้นแรกคือสิ่งที่ปฏิทินทั้งเดือน แคปชัน และพรอมป์ภาพจะอ้างถึง — ต้องเป็นชื่อสินค้าจริง ไม่ใช่คำกว้างอย่าง “สินค้า”
+      </p>
       <label className="sa-field">
-        <span>สินค้าชิ้นแรก (ไม่บังคับ)</span>
-        <input value={form.firstProduct} onChange={set("firstProduct")} placeholder="เช่น ผัดกะเพราหมูสับ" />
+        <span>ชื่อสินค้าชิ้นแรก (ไทย) *</span>
+        <input
+          value={form.firstProduct}
+          onChange={set("firstProduct")}
+          onBlur={onProductBlur}
+          placeholder="เช่น ผัดกะเพราหมูสับ"
+        />
+        {issueFor("firstProduct") && touched.firstProduct && <span className="sa-form-hint">{issueFor("firstProduct")}</span>}
       </label>
+      <label className="sa-field">
+        <span>ชื่อสินค้าภาษาอังกฤษ (ใช้ในพรอมป์ภาพ) *</span>
+        <span className="sa-inline-field">
+          <input
+            value={form.imageSubject}
+            onChange={set("imageSubject")}
+            placeholder="เช่น stir-fried basil pork"
+            aria-describedby="sa-subject-hint"
+          />
+          <button type="button" className="sa-btn ghost sm" disabled={translating} onClick={proposeSubject}>
+            <Sparkles size={13} /> {translating ? "กำลังแปล…" : "แปลให้"}
+          </button>
+        </span>
+        <span className="sa-form-hint" id="sa-subject-hint">
+          {translateNote || "ช่องนี้คือสิ่งที่โมเดลภาพจะวาดจริง ๆ — ถ้าเว้นว่าง ระบบจะไม่ยอมสร้างภาพ"}
+        </span>
+        {issueFor("imageSubject") && (touched.imageSubject || touched.firstProduct) && (
+          <span className="sa-form-hint">{issueFor("imageSubject")}</span>
+        )}
+      </label>
+      <label className="sa-field">
+        <span>รหัสสินค้า (SKU) *</span>
+        <input value={form.sku} onChange={set("sku")} placeholder="เช่น KHM-001" />
+        {issueFor("sku") && touched.sku && <span className="sa-form-hint">{issueFor("sku")}</span>}
+      </label>
+
       {error && <p className="sa-form-error">{error}</p>}
-      <p className="sa-form-hint">ลูกค้าใหม่จะเริ่มด้วยปฏิทินว่างเปล่า แล้วกด "วางแผนอัตโนมัติ" เพื่อวางแผนทั้งเดือนได้เลย</p>
+      <p className="sa-form-hint">
+        {issues.length
+          ? clientIntakeSummary(form)
+          : "ครบแล้ว — ลูกค้าใหม่จะเริ่มด้วยปฏิทินว่างเปล่า แล้วกด “วางแผนอัตโนมัติ” เพื่อวางแผนทั้งเดือนได้เลย"}
+      </p>
     </Modal>
   );
 }

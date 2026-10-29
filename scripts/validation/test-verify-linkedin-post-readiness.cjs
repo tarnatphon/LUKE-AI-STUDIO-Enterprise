@@ -575,7 +575,7 @@ async function main() {
     assert.match(text, /คัดลอกบรรทัด/, "tells the operator the line is copy-pasteable");
     // a client that is not the active one gets --client, otherwise the checker
     // would silently inspect the wrong client
-    const otherId = rt.createClient({ name: "ลูกค้าอื่น", industry: "ของใช้", tone: "เจ้าของแบรนด์", firstProduct: "ของใช้" }).id;
+    const otherId = rt.createClient({ name: "ลูกค้าอื่น", industry: "ของใช้ในบ้าน", tone: "เจ้าของแบรนด์", firstProduct: "ถุงผ้ารุ่น A" }).id;
     const st = rt._read();
     st.activeClientId = otherId;
     rt._write(st);
