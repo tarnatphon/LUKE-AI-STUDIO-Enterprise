@@ -208,6 +208,31 @@ export function productRefNotice(entry) {
   }
 }
 
+// What still stands between this approval card and a real send.
+//
+// The approval queue used to offer "อนุมัติและเผยแพร่" on a post whose image had
+// never been reviewed. The workflow parks such a post (correctly — the gate is
+// the point), but the card looks exactly the same afterwards, so pressing the
+// button again looks like nothing happened. The queue needs to know, before the
+// click, that the image review is the missing step, and that the post's own time
+// has already passed (with dry-run off, approving then sends immediately).
+export function approvalBlock(entry, client, nowMs = Date.now()) {
+  const gate = entry?.imageGate || null;
+  const platform = entry?.platform || "";
+  const meta = client?.connectors?.[platform] || null;
+  const dueMs = Date.parse(`${entry?.date || ""}T${String(entry?.time || "00:00").slice(0, 5)}:00+07:00`);
+  return {
+    blocked: Boolean(gate?.required && !gate?.ok),
+    status: gate?.status || "",
+    reason: gate?.reason || "",
+    // Only "dryRun === false" is a live connector: a missing flag is the default
+    // (dry-run on), and claiming otherwise would panic people unnecessarily.
+    live: meta ? meta.dryRun === false : false,
+    overdue: Number.isFinite(dueMs) && dueMs <= nowMs,
+    dueMs: Number.isFinite(dueMs) ? dueMs : null,
+  };
+}
+
 export function clientMonthlyCounts(client, monthStr) {
   const entries = entriesOfMonth(client?.calendar || [], monthStr || currentMonth());
   return {

@@ -53,10 +53,10 @@ async function main() {
   fs.writeFileSync(imageFile, PNG);
 
   let slot = 0;
-  const addEntry = ({ platform = "linkedin", withImage = true, file = imageFile, status = "planned" } = {}) => {
+  const addEntry = ({ platform = "linkedin", withImage = true, file = imageFile, status = "planned", date = "2027-05-10", time } = {}) => {
     slot += 1;
     const entry = rt.createCalendarEntry(clientId, {
-      entry: { date: "2027-05-10", time: `${String(7 + slot).padStart(2, "0")}:00`, platform, sku, angle: "เปิดตัวสินค้า" },
+      entry: { date, time: time || `${String(7 + slot).padStart(2, "0")}:00`, platform, sku, angle: "เปิดตัวสินค้า" },
     });
     rt.updateCalendarEntry(clientId, entry.id, { caption: "กระเป๋าผ้าใบใหญ่ งานมือคุณภาพ", status });
     if (withImage) {
@@ -145,6 +145,14 @@ async function main() {
     const pending = buildReviewPlan(root, { clientId }).clients[0].pending.find((x) => x.id === id);
     assert.ok(pending, "a changed image needs a new review");
     assert.strictEqual(statusLabel(pending), "ภาพเปลี่ยนหลังตรวจ — ต้องตรวจใหม่");
+  });
+
+  test("รายการที่เลยกำหนดแล้วถูกทำเครื่องหมายไว้ (อนุมัติช้าจะส่งทันที)", () => {
+    addEntry({ date: "2026-10-20", time: "10:00" });
+    const plan = buildReviewPlan(root, { clientId });
+    const text = formatPlan(plan);
+    assert.match(text, /เลยกำหนดแล้ว/, "a past entry is flagged in the queue");
+    assert.match(text, /ยังยืนยันได้ แต่ถ้าอนุมัติภายหลังระบบจะส่งทันที/);
   });
 
   test("--platform กรองได้ และแพลตฟอร์มที่ไม่รู้จักถูกปฏิเสธ", () => {

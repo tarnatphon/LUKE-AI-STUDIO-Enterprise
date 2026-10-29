@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Check, Ban, Inbox, Activity, ChevronRight } from "lucide-react";
 import {
   PLATFORM_META, STATUS_META, formatDateTimeTh, formatDuration, scoreClass, currentMonth,
-  productRefNotice,
+  productRefNotice, approvalBlock,
 } from "./lib.js";
 import PostPreview from "./PostPreview.jsx";
 
@@ -13,8 +13,12 @@ const RUN_STATUS_TH = {
   failed: { label: "ล้มเหลว", cls: "failed" },
 };
 
-export default function RunsTab({ state, activeClient, busy, onApprove, onReject, onOpenEntry, onOpenInWorkflow }) {
+export default function RunsTab({ state, activeClient, busy, onApprove, onReject, onOpenEntry, onOpenInWorkflow, onReviewImage }) {
   const [showAllClients, setShowAllClients] = useState(true);
+  // Per-card "I compared the picture with the real product" tick. The gate is a
+  // human decision, so it has to be made here explicitly — the button must not
+  // do it silently just because someone pressed approve.
+  const [imageChecked, setImageChecked] = useState({});
   const month = currentMonth();
 
   const queue = useMemo(
@@ -47,6 +51,8 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
           const check = run?.check;
           const refNotice = productRefNotice(entry);
           const product = (activeClient?.products || []).find((item) => item.sku === entry.sku);
+          const block = approvalBlock(entry, activeClient);
+          const checked = Boolean(imageChecked[entry.id]);
           return (
             <article key={entry.id} className="sa-approval-card">
               <header>
@@ -76,14 +82,52 @@ export default function RunsTab({ state, activeClient, busy, onApprove, onReject
                   {refNotice.level === "warn" ? "⚠️ รูปสินค้าอ้างอิง: " : "ℹ️ "}{refNotice.text}
                 </p>
               )}
-              {entry.imageGate?.required && !entry.imageGate.ok && (
-                <p className="sa-error-banner" role="status">⛔ ด่านตรวจภาพ: {entry.imageGate.reason} — เปิดรายการเพื่อตรวจภาพก่อนส่งจริง</p>
+              {block.blocked && (
+                <div className="sa-error-banner" role="status">
+                  <p>⛔ ด่านตรวจภาพ: {block.reason || "ยังไม่ได้ตรวจภาพ"} — อนุมัติตอนนี้ระบบจะยังไม่ส่งจริง</p>
+                  <label className="sa-check">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setImageChecked((prev) => ({ ...prev, [entry.id]: e.target.checked }))}
+                    />
+                    <span>ตรวจภาพเทียบรูปสินค้าจริงแล้ว (เปิดรูปจาก “ดูรูป / ตรวจภาพ” ก่อน)</span>
+                  </label>
+                  <p className="sa-form-hint">
+                    {checked
+                      ? "กดปุ่มด้านล่างเพื่อยืนยันภาพและอนุมัติในครั้งเดียว"
+                      : "ยังไม่ได้ยืนยันภาพ — ปุ่มอนุมัติจะยังกดไม่ได้จนกว่าจะติ๊ก"}
+                  </p>
+                </div>
+              )}
+              {block.live && block.overdue && (
+                <p className="sa-warn-banner" role="status">
+                  ⏰ เวลาของโพสต์นี้ผ่านไปแล้ว และปิด dry-run ไว้ — อนุมัติแล้วระบบจะส่งขึ้น {PLATFORM_META[entry.platform]?.label || entry.platform} ทันที
+                </p>
               )}
               <footer>
-                <button className="sa-btn ghost sm" onClick={() => onOpenEntry(entry.id)}>ดูเวิร์กโฟลว์เต็ม</button>
+                <button className="sa-btn ghost sm" onClick={() => onOpenEntry(entry.id)}>{block.blocked ? "ดูรูป / ตรวจภาพ" : "ดูเวิร์กโฟลว์เต็ม"}</button>
                 <div style={{ flex: 1 }} />
                 <button className="sa-btn danger ghost sm" disabled={busy} onClick={() => onReject(entry.id)}><Ban size={13} /> ปฏิเสธ</button>
-                <button className="sa-btn success sm" disabled={busy} onClick={() => onApprove(entry.id)}><Check size={13} /> อนุมัติและเผยแพร่</button>
+                {block.blocked ? (
+                  <button
+                    className="sa-btn success sm"
+                    disabled={busy || !checked || !onReviewImage}
+                    title={checked ? "" : "ติ๊กยืนยันว่าตรวจภาพแล้วก่อน"}
+                    onClick={async () => {
+                      // Same order the gate expects: record the review, then let
+                      // the workflow publish. Both go through the server's own
+                      // check, so a stale/rejected image still refuses.
+                      await onReviewImage(entry.id);
+                      await onApprove(entry.id);
+                      setImageChecked((prev) => ({ ...prev, [entry.id]: false }));
+                    }}
+                  >
+                    <Check size={13} /> ยืนยันภาพแล้ว + อนุมัติ
+                  </button>
+                ) : (
+                  <button className="sa-btn success sm" disabled={busy} onClick={() => onApprove(entry.id)}><Check size={13} /> อนุมัติและเผยแพร่</button>
+                )}
               </footer>
             </article>
           );

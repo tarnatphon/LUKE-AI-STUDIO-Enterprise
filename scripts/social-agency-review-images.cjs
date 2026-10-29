@@ -131,6 +131,7 @@ function describeEntry(rt, root, entry) {
   const image = entry.image || {};
   const filePath = image.path && fs.existsSync(image.path) ? image.path : "";
   const publicUrl = String(image.publicUrl || image.url || "");
+  const dueMs = Date.parse(`${entry.date || ""}T${String(entry.time || "00:00").slice(0, 5)}:00+07:00`);
   return {
     id: entry.id,
     date: entry.date,
@@ -138,6 +139,9 @@ function describeEntry(rt, root, entry) {
     platform: entry.platform,
     sku: entry.sku || "",
     status: entry.status,
+    // A past-due post is still worth confirming — but the operator should know
+    // that approving it sends it now, not at the scheduled time.
+    overdue: Number.isFinite(dueMs) && dueMs <= Date.now(),
     hasImage: Boolean(filePath || publicUrl || (image.buffer && image.buffer.length)),
     imagePath: filePath ? relativeTo(root, filePath) : "",
     imageAbsolutePath: filePath,
@@ -242,7 +246,7 @@ function formatPlan(plan) {
     } else {
       const shown = client.pending.slice(0, LIST_LIMIT);
       for (const entry of shown) {
-        lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"} · ${statusLabel(entry)}`);
+        lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"} · ${statusLabel(entry)}${entry.overdue ? " · เลยกำหนดแล้ว" : ""}`);
         if (entry.imagePath) lines.push(`      รูป: ${entry.imagePath}`);
         else if (entry.publicUrl) lines.push(`      รูป: ${entry.publicUrl}`);
         lines.push(`      → ${confirmCommand(plan, client, entry)}`);
@@ -260,6 +264,9 @@ function formatPlan(plan) {
       if (client.withoutImage.length > 10) lines.push(`    … อีก ${client.withoutImage.length - 10} รายการ`);
     }
     lines.push("");
+  }
+  if (plan.clients.some((c) => c.pending.some((e) => e.overdue))) {
+    lines.push("รายการที่ “เลยกำหนดแล้ว” ยังยืนยันได้ แต่ถ้าอนุมัติภายหลังระบบจะส่งทันที ไม่ใช่ตามเวลาเดิม");
   }
   if (plan.pending) {
     lines.push("ทุกบรรทัด “→” รันได้เลย — ยืนยันแล้วระบบจะบอกคำสั่งของรายการถัดไปให้");

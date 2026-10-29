@@ -30,6 +30,7 @@ const {
   formatHumanReport,
   buildInventory,
   formatInventory,
+  looksLikePlaceholder,
   parseArgs,
 } = require("../verify-linkedin-post-readiness.cjs");
 
@@ -443,6 +444,33 @@ async function main() {
     ready();
     const report = await run({ entryId: "cal-xxxx" });
     assert.match(checkOf(report, "entry_media").detail, /ตัวอย่างจากวิธีใช้งาน/);
+  });
+
+  test("--entry ที่เป็นข้อความตัวอย่าง (cal-… / cal-xxxx / ENTRY_ID) → บอกว่าไม่ใช่ ID จริง", async () => {
+    ready();
+    makeEntry();
+    for (const value of ["cal-…", "cal-...", "cal-xxxx", "ENTRY_ID", "<cal-1234>"]) {
+      assert.strictEqual(looksLikePlaceholder(value), true, `${value} must be recognized`);
+      const report = await run({ entryId: value });
+      const check = checkOf(report, "entry_media");
+      assert.strictEqual(check.status, "fail");
+      assert.match(check.detail, /ตัวอย่างจากวิธีใช้งาน ไม่ใช่ ID จริง/, `missing placeholder hint for ${value}`);
+      assert.ok(!check.detail.includes(`"${value}" คือ`), "the raw value is quoted once, not argued with");
+    }
+    // A real id is not a placeholder.
+    assert.strictEqual(looksLikePlaceholder("cal-1abc6b9e-8cd1"), false);
+    assert.strictEqual(looksLikePlaceholder(""), false);
+  });
+
+  test("ไม่พบรายการ → ให้คำสั่งที่รันได้จริงด้วย id ที่มีอยู่ (ไม่ต้องก๊อปเอง)", async () => {
+    ready();
+    const id = makeEntry();
+    const report = await run({ entryId: "cal-…" });
+    const fix = checkOf(report, "entry_media").fix;
+    assert.ok(fix.includes(id) || /--entry cal-[0-9a-f]{8}-[0-9a-f]{4}/.test(fix), "the suggested command uses a real id");
+    assert.match(fix, /--entry cal-[0-9a-f]{8}-[0-9a-f]{4} --online/);
+    assert.doesNotMatch(fix, /[<>]|…/, "no placeholder in a copy-paste command");
+    assert.match(formatHumanReport(report), /--entry cal-[0-9a-f]{8}-[0-9a-f]{4} --online/);
   });
 
   test("--list แสดงสินค้า + รายการ LinkedIn + สถานะ connector โดยไม่ตัดสิน", async () => {
