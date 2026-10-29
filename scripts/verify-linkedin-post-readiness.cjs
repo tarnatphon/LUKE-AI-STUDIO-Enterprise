@@ -15,6 +15,7 @@
  *   6. product_photo   the real product photo (picture 2 of the pair) is on disk
  *   7. entry_media     LinkedIn entry, readable AI image, not published / in flight / video
  *   8. image_gate      human image review matches the current file
+ *   8b. image_prompt   the saved image prompt actually names the product (not "product")
  *   9. caption         escaped length ≤ 3000, hashtag cap, little-text trap preview
  *  10. trigger         "รันเลยตอนนี้" on a future entry silently runs as dry-run
  *  11. online_graph    (opt-in --online) /v2/userinfo + image initializeUpload probe
@@ -632,6 +633,35 @@ async function inspectLinkedInPostReadiness(options = {}) {
     }
   }
 
+  // ── 8b. does the saved image prompt name the product? ───────────────────
+  // A prompt built before the Thai dictionary existed reads "of product (SSB-013)".
+  // The image model obeys it literally — a styled wooden table with no bag in it.
+  // Nothing said so: the gate passed (a person did look at the picture and said
+  // "ok"), the post went out, and the mistake only showed up on the timeline.
+  // Say it here, before the next image is generated from the same prompt.
+  if (entry && entry.platform === "linkedin") {
+    const savedPrompt = String(entry.imagePrompt || "").trim();
+    const clipText = (text, n) => (text.length > n ? `${text.slice(0, n)}…` : text);
+    if (!savedPrompt) {
+      addCheck(
+        "image_prompt",
+        "พรอมป์ภาพ (image prompt)",
+        "skip",
+        "รายการนี้ยังไม่มีพรอมป์ภาพที่บันทึกไว้ — ตรวจได้เฉพาะรายการที่สร้างภาพจากพรอมป์ของระบบ",
+      );
+    } else if (SocialAgencyRuntime._imagePromptMissesProductName(savedPrompt)) {
+      addCheck(
+        "image_prompt",
+        "พรอมป์ภาพ (image prompt)",
+        "warn",
+        `prompt ไม่มีชื่อสินค้า (ได้แค่ "product") — รูปที่ได้จะไม่มีกระเป๋าหรือตัวสินค้าอยู่ในภาพ · prompt: ${clipText(savedPrompt, 120)}`,
+        "กด “สร้างภาพ” อีกครั้งในหน้ารายการ ระบบจะสร้างพรอมป์ใหม่จากชื่อสินค้าให้เอง (หรือแก้พรอมป์ให้มีคำระบุสินค้า เช่น shoe bag) แล้วตรวจภาพใหม่",
+      );
+    } else {
+      addCheck("image_prompt", "พรอมป์ภาพ (image prompt)", "pass", `prompt ระบุสินค้าแล้ว: ${clipText(savedPrompt, 90)}`);
+    }
+  }
+
   // ── 9. caption ──────────────────────────────────────────────────────────
   if (entry && entry.platform === "linkedin") {
     const rawCaption = String(entry.caption || "").trim();
@@ -825,7 +855,12 @@ function formatHumanReport(report, opts = {}) {
   lines.push("");
   if (report.published) {
     lines.push(`✅ โพสต์นี้เผยแพร่บน LinkedIn แล้ว${report.publishedPostId ? ` (postId: ${report.publishedPostId})` : ""} — ไม่มีอะไรต้องทำต่อ`);
-    if (report.warnings.length) lines.push("   (คำเตือนด้านบนใช้กับการโพสต์ครั้งถัดไป เช่นจำนวนแฮชแท็ก)");
+    if (report.warnings.length) {
+      const promptWarned = report.checks.some((c) => c.key === "image_prompt" && c.status === "warn");
+      lines.push(promptWarned
+        ? "   (พรอมป์ภาพด้านบนอธิบายรูปที่ใช้อยู่ในโพสต์นี้ — คำเตือนอื่นใช้กับการโพสต์ครั้งถัดไป)"
+        : "   (คำเตือนด้านบนใช้กับการโพสต์ครั้งถัดไป เช่นจำนวนแฮชแท็ก)");
+    }
   } else if (report.readyForLiveLinkedIn) {
     lines.push("✅ พร้อมโพสต์ LinkedIn จริง" + (report.warnings.length ? ` (มี ${report.warnings.length} คำเตือนที่ไม่บล็อก)` : ""));
   } else {
