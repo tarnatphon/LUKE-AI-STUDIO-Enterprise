@@ -32,6 +32,8 @@ const {
   saveToApp,
   readStoredToken,
   curlSnippet,
+  summarizePlan,
+  formatPlanSummary,
   main,
 } = require("../social-agency-linkedin-token.cjs");
 
@@ -398,9 +400,45 @@ async function main2() {
       assert.match(out, /token ใช้ได้/);
       assert.match(out, /Author URN ในแอปตรงกับ token/);
       assert.match(out, /dry-run ของ LinkedIn ยังเปิดอยู่/, "warns that a live send still needs dry-run off");
-      assert.match(out, /อายุราว 60 วัน/);
+      assert.match(out, /เหลืออีกประมาณ 60 วัน \(หมดอายุประมาณ \d{4}-\d{2}-\d{2}\)/);
       assert.ok(!out.includes(ACCESS_TOKEN), "even --check never prints the token");
+      // A valid token is only the first question. --check also has to say what
+      // is stopping the posts that are already in the calendar.
+      assert.match(out, /ภาพรวมก่อนโพสต์จริง/);
+      assert.match(out, /รายการ LinkedIn ในปฏิทิน: 0/);
+      assert.match(out, /วางแผนอัตโนมัติทั้งเดือน/);
     });
+  });
+
+  test("--check ภาพรวม: ปฏิทินว่าง / ยังไม่ยืนยันภาพ / รายการแรกที่ติดด่าน", () => {
+    const ready = formatPlanSummary({ ok: true, entries: 12, published: 0, open: 12, needsReview: 3, globalBlockers: [], firstBlocked: null, firstReady: { entryId: "cal-1", date: "2027-04-20", time: "08:00" } });
+    assert.match(ready, /รายการ LinkedIn ในปฏิทิน: 12/);
+    assert.match(ready, /ยังไม่ยืนยันภาพ: 3 → node scripts\/social-agency-review-images\.cjs --list/);
+    assert.match(ready, /ผ่านด่านของตัวเองแล้ว: cal-1/);
+
+    const blocked = formatPlanSummary({
+      ok: true, entries: 2, published: 0, open: 2, needsReview: 0, globalBlockers: [],
+      firstBlocked: { entryId: "cal-9", date: "2027-04-21", time: "08:00", sku: "SSB-013", check: { label: "ด่านตรวจภาพ", detail: "ยังไม่ได้ตรวจภาพในหน้าโพสต์", fix: "เปิดหน้ารายการแล้วกด ตรวจภาพแล้ว" } },
+    });
+    assert.match(blocked, /รายการแรกที่ยังไม่พร้อม: cal-9 · 2027-04-21 08:00 · SSB-013/);
+    assert.match(blocked, /✗ ด่านตรวจภาพ: ยังไม่ได้ตรวจภาพในหน้าโพสต์/);
+    assert.match(blocked, /→ เปิดหน้ารายการแล้วกด ตรวจภาพแล้ว/);
+    assert.match(blocked, /node scripts\/verify-linkedin-post-readiness\.cjs --entry cal-9/);
+
+    const readyOnly = formatPlanSummary({ ok: true, entries: 1, published: 0, open: 1, needsReview: 0, globalBlockers: [], firstBlocked: null, firstReady: { entryId: "cal-1", date: "2027-04-20", time: "08:00" } });
+    assert.match(readyOnly, /ทุกรายการที่ตรวจผ่านทุกด่าน/);
+
+    const broken = formatPlanSummary({ ok: false, error: "ยังไม่มีไฟล์สถานะ" });
+    assert.match(broken, /อ่านปฏิทินไม่ได้: ยังไม่มีไฟล์สถานะ/);
+    assert.match(formatPlanSummary(null), /ข้ามภาพรวมนี้/);
+  });
+
+  test("--check ภาพรวม: นับจากปฏิทินจริง และชี้ด่านแรกที่ติดของรายการแรก", async () => {
+    const otherClient = rt.createClient({ name: "ร้านภาพรวม", firstProduct: "กระเป๋าทดสอบ" }).id;
+    const summary = await summarizePlan({ root, clientId: otherClient });
+    assert.strictEqual(summary.ok, true);
+    assert.strictEqual(summary.entries, 0, "a fresh client has nothing planned");
+    assert.match(formatPlanSummary(summary), /ยังไม่มีอะไรให้โพสต์/);
   });
 
   test("--check: URN ไม่ตรงกับ token → exit 1 พร้อมวิธีแก้", async () => {
