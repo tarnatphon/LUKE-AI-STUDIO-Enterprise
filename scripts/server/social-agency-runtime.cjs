@@ -160,6 +160,10 @@ const LINKEDIN_HOST = "api.linkedin.com";
 // bump is a one-line change; `versionExpiresAt` is shown in the connector card.
 const LINKEDIN_API_VERSION = "202601";
 const LINKEDIN_VERSION_EXPIRY = Object.freeze({ "202601": "2027-01-31", "202604": "2027-04-30", "202609": "2027-09-30" });
+// A LinkedIn member token is issued for 60 days and the API never says when it
+// expires. tokenSavedAt (written whenever a token is pasted in) is the only clock
+// we have, so the UI can warn before a scheduled post dies on a 401.
+const LINKEDIN_TOKEN_LIFETIME_DAYS = 60;
 // LinkedIn's "Little Text" reserves these characters: sent raw, the post is
 // silently truncated at the first one (a price in brackets is enough) and the
 // API still answers 201. #word hashtags are special-cased so they stay links.
@@ -5767,6 +5771,11 @@ class SocialAgencyRuntime {
         ...meta.linkedin,
         apiVersion: meta.linkedin?.apiVersion || LINKEDIN_API_VERSION,
         versionExpiresAt: LINKEDIN_VERSION_EXPIRY[meta.linkedin?.apiVersion || LINKEDIN_API_VERSION],
+        // Derived, read-only: the Connectors card warns when a token is about to
+        // expire, and a script can do the same without re-deriving 60 days.
+        tokenSavedAt: meta.linkedin?.tokenSavedAt || null,
+        tokenExpiresAt: SocialAgencyRuntime._linkedinTokenExpiry(meta.linkedin?.tokenSavedAt),
+        tokenDaysLeft: SocialAgencyRuntime._linkedinTokenDaysLeft(meta.linkedin?.tokenSavedAt),
       },
     };
   }
@@ -6000,6 +6009,23 @@ class SocialAgencyRuntime {
   }
 
   // Calendar image edge must be a sane multiple of 8 (backend requirement).
+  // Approximate expiry of a LinkedIn member token from the day it was stored.
+  // Returns null when we never recorded that day (tokens pasted before the field
+  // existed) — better silence than a made-up date.
+  static _linkedinTokenExpiry(savedAt) {
+    const ms = Date.parse(String(savedAt || ""));
+    if (!Number.isFinite(ms)) return null;
+    return new Date(ms + LINKEDIN_TOKEN_LIFETIME_DAYS * 86400000).toISOString().slice(0, 10);
+  }
+
+  static _linkedinTokenDaysLeft(savedAt, now = Date.now()) {
+    const expires = SocialAgencyRuntime._linkedinTokenExpiry(savedAt);
+    if (!expires) return null;
+    // Ceiling, not floor: when the expiry date is 5 days away the honest answer
+    // is "5 days left", and on the expiry date itself it becomes 0 (expired).
+    return Math.ceil((Date.parse(`${expires}T00:00:00Z`) - now) / 86400000);
+  }
+
   static _normImageEdge(value, fallback) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return fallback;

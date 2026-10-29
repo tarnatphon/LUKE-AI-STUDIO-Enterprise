@@ -52,6 +52,13 @@ const {
   sanitizeHiddenLine,
   describeValue,
 } = require("./social-agency-fb-token.cjs");
+// Lazy on purpose: the runtime pulls in the whole Social Agency server module,
+// and the OAuth half of this helper never needs it.
+let runtimeClass = null;
+const runtime = () => {
+  if (!runtimeClass) runtimeClass = require("./server/social-agency-runtime.cjs").SocialAgencyRuntime;
+  return runtimeClass;
+};
 
 const DEFAULT_OAUTH_HOST = "www.linkedin.com";
 const DEFAULT_API_HOST = "api.linkedin.com";
@@ -383,8 +390,7 @@ function expiryDate(expiresIn, now = Date.now()) {
 
 // ── the app side ─────────────────────────────────────────────────────────────
 function saveToApp({ root, clientId, accessToken, authorUrn, dryRun }) {
-  const { SocialAgencyRuntime } = require("./server/social-agency-runtime.cjs");
-  const rt = new SocialAgencyRuntime({ root });
+  const rt = new (runtime())({ root });
   const state = rt._read();
   const id = clientId || state.activeClientId || state.clients?.[0]?.id;
   if (!id) throw new Error("ยังไม่มีลูกค้าในแอป — สร้างลูกค้าในแท็บ Social Agency ก่อน");
@@ -397,8 +403,7 @@ function saveToApp({ root, clientId, accessToken, authorUrn, dryRun }) {
 }
 
 function readStoredToken({ root, clientId }) {
-  const { SocialAgencyRuntime } = require("./server/social-agency-runtime.cjs");
-  const rt = new SocialAgencyRuntime({ root });
+  const rt = new (runtime())({ root });
   const state = rt._read();
   const id = clientId || state.activeClientId || state.clients?.[0]?.id;
   if (!id) throw new Error("ยังไม่มีลูกค้าในแอป");
@@ -442,6 +447,107 @@ function curlSnippet({ clientId, clientSecret, redirect, code, token }) {
   return lines.join("\n");
 }
 
+// ── "แล้วต้องทำอะไรต่อ" ─────────────────────────────────────────────────────
+// A fresh token is only step one: the operator still has to plan the month,
+// clear the image gate on every post, and turn dry-run off. --check used to stop
+// at "token ใช้ได้", which sent people back to the app to rediscover the rest.
+// This folds the calendar into the same answer and names the first thing that is
+// actually blocking a post.
+const ENTRY_LEVEL_CHECKS = new Set(["entry_media", "image_gate", "caption", "trigger", "product_photo"]);
+const PLAN_SCAN_LIMIT = 8;
+
+async function summarizePlan({ root, clientId, dryRunNoted = false } = {}) {
+  const verifier = require("./verify-linkedin-post-readiness.cjs");
+  const inventory = verifier.buildInventory(root, { clientId });
+  if (!inventory.ok) return { ok: false, error: inventory.error };
+  const target = clientId
+    ? inventory.clients[0]
+    : inventory.clients.find((c) => c.id === inventory.activeClientId) || inventory.clients[0];
+  if (!target) return { ok: false, error: "ไม่พบลูกค้าในไฟล์สถานะ" };
+  const entries = target.entries || [];
+  const published = entries.filter((e) => e.status === "published").length;
+  const summary = {
+    ok: true,
+    clientId: target.id,
+    clientName: target.name,
+    entries: entries.length,
+    published,
+    open: entries.length - published,
+    needsReview: entries.filter((e) => e.hasImage && !e.reviewed).length,
+    withoutImage: entries.filter((e) => !e.hasImage && e.status !== "published").length,
+    firstBlocked: null,
+    firstReady: null,
+    globalBlockers: [],
+  };
+  const candidates = entries.filter((e) => e.status !== "published").slice(0, PLAN_SCAN_LIMIT);
+  for (const entry of candidates) {
+    const report = await verifier.inspectLinkedInPostReadiness({ root, clientId: target.id, entryId: entry.id });
+    const failing = report.checks.filter((c) => c.status === "fail");
+    const entryFailures = failing.filter((c) => ENTRY_LEVEL_CHECKS.has(c.key));
+    if (!summary.globalBlockers.length) {
+      summary.globalBlockers = failing
+        .filter((c) => !ENTRY_LEVEL_CHECKS.has(c.key))
+        // The dry-run line is already printed above --check's overview; repeating
+        // it as a "blocker" makes the list look longer than the work really is.
+        .filter((c) => !(dryRunNoted && c.key === "connector" && /dry-run/i.test(c.detail)))
+        .map((c) => ({ key: c.key, label: c.label, detail: c.detail, fix: c.fix || "" }));
+    }
+    if (entryFailures.length) {
+      summary.firstBlocked = {
+        entryId: entry.id,
+        date: entry.date,
+        time: entry.time,
+        sku: entry.sku,
+        check: entryFailures[0],
+      };
+      break;
+    }
+    if (!summary.firstReady) {
+      summary.firstReady = { entryId: entry.id, date: entry.date, time: entry.time, sku: entry.sku };
+    }
+  }
+  return summary;
+}
+
+function formatPlanSummary(plan) {
+  const lines = [];
+  const SCRIPT = "node scripts/social-agency-linkedin-token.cjs";
+  lines.push("── ภาพรวมก่อนโพสต์จริง ─────────────────────────────────────────");
+  if (!plan || !plan.ok) {
+    lines.push(`  ! อ่านปฏิทินไม่ได้: ${plan ? plan.error : "ไม่ทราบสาเหตุ"} — ข้ามภาพรวมนี้`);
+    lines.push("───────────────────────────────────────────────────────────────");
+    return lines.join("\n");
+  }
+  if (!plan.entries) {
+    lines.push("  รายการ LinkedIn ในปฏิทิน: 0");
+    lines.push("  ยังไม่มีอะไรให้โพสต์ — เปิดแอป → ปฏิทิน → “วางแผนอัตโนมัติทั้งเดือน” แล้วรัน --check อีกครั้ง");
+    lines.push("───────────────────────────────────────────────────────────────");
+    return lines.join("\n");
+  }
+  lines.push(`  รายการ LinkedIn ในปฏิทิน: ${plan.entries} (ยังไม่โพสต์ ${plan.open} · โพสต์แล้ว ${plan.published})`);
+  if (plan.needsReview) {
+    lines.push(`  ยังไม่ยืนยันภาพ: ${plan.needsReview} → node scripts/social-agency-review-images.cjs --list`);
+  }
+  if (plan.firstBlocked) {
+    const b = plan.firstBlocked;
+    lines.push(`  รายการแรกที่ยังไม่พร้อม: ${b.entryId} · ${b.date} ${b.time} · ${b.sku}`);
+    lines.push(`    ✗ ${b.check.label}: ${b.check.detail}`);
+    if (b.check.fix) lines.push(`    → ${b.check.fix}`);
+    lines.push(`    ตรวจละเอียด: node scripts/verify-linkedin-post-readiness.cjs --entry ${b.entryId}`);
+  } else if (plan.firstReady) {
+    lines.push(`  ✓ รายการถัดไปผ่านด่านของตัวเองแล้ว: ${plan.firstReady.entryId} · ${plan.firstReady.date} ${plan.firstReady.time}`);
+  }
+  for (const global of plan.globalBlockers) {
+    lines.push(`  อีกเรื่องที่ยังไม่พร้อม: ${global.label} — ${global.detail}`);
+    if (global.fix) lines.push(`    → ${global.fix}`);
+  }
+  if (!plan.firstBlocked && !plan.globalBlockers.length) {
+    lines.push(`  ✓ ทุกรายการที่ตรวจผ่านทุกด่าน — พร้อมส่งจริง (ตรวจซ้ำได้ด้วย ${SCRIPT} --check)`);
+  }
+  lines.push("───────────────────────────────────────────────────────────────");
+  return lines.join("\n");
+}
+
 async function main(args = parseArgs(process.argv.slice(2))) {
   const say = (line = "") => process.stdout.write(`${line}\n`);
   const root = path.resolve(args.root || process.env.LUKE_SA_ROOT || DEFAULT_ROOT);
@@ -477,12 +583,24 @@ async function main(args = parseArgs(process.argv.slice(2))) {
       ? `✓ Author URN ในแอปตรงกับ token (${stored.authorUrn})`
       : `✗ Author URN ในแอปคือ ${stored.authorUrn || "(ว่าง)"} ไม่ตรงกับ token — กด "ทดสอบและดึง URN" หรือใช้ --save เพื่อแก้`);
     if (stored.dryRun) say("! dry-run ของ LinkedIn ยังเปิดอยู่ — โพสต์จริงจะไม่ถูกส่งจนกว่าจะปิดใน Connectors");
+    let daysLeft = null;
+    let expiresAt = null;
     if (stored.tokenSavedAt) {
       const age = Math.floor((Date.now() - Date.parse(stored.tokenSavedAt)) / 86400000);
-      say(`  บันทึก token ไว้เมื่อ ${stored.tokenSavedAt.slice(0, 10)} (${age} วันก่อน) — อายุราว ${TOKEN_LIFETIME_DAYS} วัน`);
+      // Same arithmetic as the app view, so --check and the Connectors card
+      // never disagree about how long is left.
+      daysLeft = runtime()._linkedinTokenDaysLeft(stored.tokenSavedAt);
+      expiresAt = runtime()._linkedinTokenExpiry(stored.tokenSavedAt);
+      say(`  บันทึก token ไว้เมื่อ ${stored.tokenSavedAt.slice(0, 10)} (${age} วันก่อน) — เหลืออีกประมาณ ${daysLeft} วัน (หมดอายุประมาณ ${expiresAt})`);
+      if (daysLeft <= 7) {
+        say(`! token ใกล้หมดอายุ — ขอใหม่ก่อนโพสต์ถัดไป: node scripts/social-agency-linkedin-token.cjs --prompt --save --client ${stored.clientId}`);
+      }
     } else {
       say("  ไม่รู้ว่า token นี้วางเมื่อไร — ใช้ --save อีกครั้งเพื่อเริ่มนับอายุให้ตัวตรวจความพร้อม");
     }
+    say("");
+    const plan = await summarizePlan({ root, clientId: stored.clientId, dryRunNoted: stored.dryRun });
+    say(formatPlanSummary(plan));
     if (args.json) {
       process.stdout.write(`${JSON.stringify({
         ok: match,
@@ -491,6 +609,9 @@ async function main(args = parseArgs(process.argv.slice(2))) {
         authorUrn: stored.authorUrn,
         dryRun: stored.dryRun,
         tokenSavedAt: stored.tokenSavedAt,
+        tokenExpiresAt: expiresAt,
+        tokenDaysLeft: daysLeft,
+        plan,
       }, null, 2)}\n`);
     }
     return match ? 0 : 1;
@@ -613,6 +734,8 @@ module.exports = {
   salvageCode,
   describeReceived,
   readCallback,
+  summarizePlan,
+  formatPlanSummary,
   exchangeCode,
   fetchMember,
   expiryDate,

@@ -797,6 +797,30 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
       </p>}
     </>;
   };
+  // A LinkedIn member token lives 60 days, cannot be refreshed, and the API never
+  // says when it was issued — the backend derives the expiry from the day the
+  // token was stored. Say it here, where the token is pasted, while there is
+  // still time to re-run the helper; a post that dies at 08:00 on a 401 is the
+  // expensive way to find out.
+  const linkedinTokenNotice = () => {
+    const li = connectors?.linkedin || {};
+    if (!li.hasToken) return null;
+    // A newly typed token has not been saved yet, so the old countdown is noise.
+    if (form.linkedin.accessToken && !/^••••/.test(form.linkedin.accessToken)) return null;
+    const daysLeft = li.tokenDaysLeft;
+    if (!Number.isFinite(daysLeft)) return null;
+    if (daysLeft > 7) {
+      return daysLeft <= 21
+        ? <p className="sa-form-hint">token เหลืออายุอีก {daysLeft} วัน (หมดอายุประมาณ {li.tokenExpiresAt}) — LinkedIn ไม่มี refresh token ต้องขอใหม่เอง</p>
+        : null;
+    }
+    return <p className="sa-form-error" role="alert">
+      {daysLeft <= 0
+        ? `token หมดอายุแล้ว (ประมาณ ${li.tokenExpiresAt}) — โพสต์ LinkedIn จะถูกปฏิเสธ`
+        : `token เหลืออายุอีก ${daysLeft} วัน (หมดอายุประมาณ ${li.tokenExpiresAt})`}
+      {" "}— ขอใหม่แล้วบันทึกทับด้วย: <code>node scripts/social-agency-linkedin-token.cjs --prompt --save</code>
+    </p>;
+  };
   const testBadge = (platform) => {
     const t = tests[platform];
     if (!t) return null;
@@ -919,6 +943,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
         <label className="sa-field"><span>Member Access Token (สิทธิ์ w_member_social + openid profile)</span><input value={form.linkedin.accessToken} onChange={setField("linkedin", "accessToken")} placeholder="••••xxxx" autoComplete="off" /></label>
         <label className="sa-field"><span>Author URN (เว้นว่างแล้วกดทดสอบ ระบบจะเติมให้)</span><input value={form.linkedin.authorUrn} onChange={setField("linkedin", "authorUrn")} placeholder="urn:li:person:xxxxxxx" /></label>
         {versionField("linkedin")}
+        {linkedinTokenNotice()}
         <div className="sa-connector-row">
           <ConnectorToggle checked={form.linkedin.dryRun} onChange={setFlag("linkedin", "dryRun")} label="โหมดทดลอง (dry-run)" />
           <button className="sa-btn ghost sm" disabled={busy || tests.linkedin?.loading} onClick={() => runTest("linkedin")}>
