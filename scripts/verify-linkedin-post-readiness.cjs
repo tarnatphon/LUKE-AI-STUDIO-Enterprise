@@ -204,6 +204,8 @@ function emptyReport(extra = {}) {
   return {
     ok: false,
     readyForLiveLinkedIn: false,
+    published: false,
+    publishedPostId: null,
     root: null,
     clientId: null,
     entryId: null,
@@ -479,8 +481,19 @@ async function inspectLinkedInPostReadiness(options = {}) {
   const sku = options.sku || entry?.sku || client.products?.[0]?.sku || "";
   const product = (client.products || []).find((p) => p.sku === sku) || null;
   const pairOn = client.settings?.productRefInPost !== false;
+  const entryAlreadyPublished = Boolean(entry && entry.status === "published");
   let willAttachSecondPhoto = false;
-  if (!pairOn) {
+  if (entryAlreadyPublished) {
+    // Nothing left to send, so the second picture cannot block anything. Still
+    // reported (as a skip) so the list of checks stays predictable.
+    addCheck(
+      "product_photo",
+      "รูปสินค้าจริง (รูปที่ 2)",
+      "skip",
+      "โพสต์นี้เผยแพร่แล้ว — ด่านรูปสินค้ามีผลกับโพสต์ที่ยังไม่ส่งเท่านั้น",
+      "ถ้าจะโพสต์สินค้านี้ซ้ำ ตรวจรูปคู่ก่อนส่งรายการถัดไป",
+    );
+  } else if (!pairOn) {
     addCheck(
       "product_photo",
       "รูปสินค้าจริง (รูปที่ 2)",
@@ -546,13 +559,22 @@ async function inspectLinkedInPostReadiness(options = {}) {
     addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry ENTRY_ID ของ ${options.sku} (ดูได้จาก --list)`);
   } else if (entry.platform !== "linkedin") {
     addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} ตั้งแพลตฟอร์มเป็น "${entry.platform}" ไม่ใช่ "linkedin"`, "เลือกรายการที่เป็น LinkedIn ด้วย --entry ENTRY_ID (ดูได้จาก --list)");
-  } else if (entry.inFlight || entry.status === "publishing" || entry.status === "published") {
+  } else if (entry.status === "published") {
+    // Nothing left to send. Reporting this as a blocker made a successful post
+    // look broken: "❌ ยังไม่พร้อมโพสต์ LinkedIn จริง" right after it went live.
     addCheck(
       "entry_media",
       "รายการโพสต์และภาพ AI (รูปที่ 1)",
-      "fail",
-      `รายการ ${entry.id} สถานะ "${entry.status}"${entry.postId ? ` (postId: ${entry.postId})` : ""} — ส่งไปแล้วหรือกำลังส่ง`,
-      "เลือกรายการที่ยังไม่เผยแพร่ หรือสร้างรายการใหม่",
+      "pass",
+      `โพสต์นี้เผยแพร่แล้ว${entry.postId ? ` (postId: ${entry.postId})` : ""}${entry.publishedAt ? ` เมื่อ ${entry.publishedAt}` : ""} — ไม่มีอะไรต้องส่งอีก`,
+    );
+  } else if (entry.inFlight || entry.status === "publishing") {
+    addCheck(
+      "entry_media",
+      "รายการโพสต์และภาพ AI (รูปที่ 1)",
+      "skip",
+      `รายการ ${entry.id} สถานะ "${entry.status}"${entry.postId ? ` (postId: ${entry.postId})` : ""} — กำลังส่งอยู่ รอให้จบก่อนแล้วค่อยตรวจซ้ำ`,
+      "รอสักครู่แล้วรันตัวตรวจอีกครั้ง",
     );
   } else if (entry.video && (entry.video.path || entry.video.publicUrl)) {
     addCheck(
@@ -630,7 +652,15 @@ async function inspectLinkedInPostReadiness(options = {}) {
     } else if (published.length > LINKEDIN_MAX_CHARS) {
       addCheck("caption", "แคปชัน LinkedIn", "fail", `ยาว ${published.length} ตัวอักษร เกินเพดาน ${LINKEDIN_MAX_CHARS}`, "ย่อแคปชันในหน้ารายการ");
     } else if (hashtags > LINKEDIN_MAX_HASHTAGS) {
-      addCheck("caption", "แคปชัน LinkedIn", "warn", `มี ${hashtags} แฮชแท็ก (แนะนำ ≤ ${LINKEDIN_MAX_HASHTAGS})`, "ลดแฮชแท็กในแคปชัน");
+      addCheck(
+        "caption",
+        "แคปชัน LinkedIn",
+        "warn",
+        `มี ${hashtags} แฮชแท็ก (แนะนำ ≤ ${LINKEDIN_MAX_HASHTAGS})`,
+        entryAlreadyPublished
+          ? "โพสต์นี้ส่งไปแล้ว — คำเตือนนี้ใช้กับการโพสต์ครั้งถัดไป (ตัดเหลือ ≤5 ก่อนอนุมัติ)"
+          : "ลดแฮชแท็กในแคปชัน",
+      );
     } else {
       addCheck(
         "caption",
@@ -645,7 +675,11 @@ async function inspectLinkedInPostReadiness(options = {}) {
   if (entry && entry.platform === "linkedin") {
     const dueMs = bangkokToUtcMs(entry.date, entry.time);
     const isFuture = Number.isFinite(dueMs) && dueMs > Date.now();
-    if (isFuture && options.trigger === "manual") {
+    if (entry.status === "published") {
+      // Checked first: a post that already went out has nothing to press, no
+      // matter what its scheduled time says.
+      addCheck("trigger", "จังหวะการกดส่ง", "skip", "โพสต์นี้ส่งไปแล้ว — ไม่มีอะไรต้องกดอีก (ใช้ --list เพื่อดูรายการที่ยังรอ)");
+    } else if (isFuture && options.trigger === "manual") {
       addCheck(
         "trigger",
         "จังหวะการกดส่ง",
@@ -750,10 +784,13 @@ async function inspectLinkedInPostReadiness(options = {}) {
     }
   }
 
+  const published = Boolean(entry && entry.status === "published");
   const readyForLiveLinkedIn = blockers.length === 0 && (!options.strict || warnings.length === 0);
   return {
     ok: readyForLiveLinkedIn,
     readyForLiveLinkedIn,
+    published,
+    publishedPostId: published ? entry.postId || null : null,
     root,
     clientId: client.id,
     clientName: client.name,
@@ -786,7 +823,10 @@ function formatHumanReport(report, opts = {}) {
     if (c.fix && c.status !== "pass") lines.push(`      → วิธีแก้: ${c.fix}`);
   }
   lines.push("");
-  if (report.readyForLiveLinkedIn) {
+  if (report.published) {
+    lines.push(`✅ โพสต์นี้เผยแพร่บน LinkedIn แล้ว${report.publishedPostId ? ` (postId: ${report.publishedPostId})` : ""} — ไม่มีอะไรต้องทำต่อ`);
+    if (report.warnings.length) lines.push("   (คำเตือนด้านบนใช้กับการโพสต์ครั้งถัดไป เช่นจำนวนแฮชแท็ก)");
+  } else if (report.readyForLiveLinkedIn) {
     lines.push("✅ พร้อมโพสต์ LinkedIn จริง" + (report.warnings.length ? ` (มี ${report.warnings.length} คำเตือนที่ไม่บล็อก)` : ""));
   } else {
     lines.push(`❌ ยังไม่พร้อมโพสต์ LinkedIn จริง (${report.blockers.length} ข้อติดขัด${opts.strict && report.warnings.length ? ` · ${report.warnings.length} คำเตือนในโหมด --strict` : ""})`);
@@ -820,6 +860,9 @@ async function main() {
   });
   if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else process.stdout.write(`${formatHumanReport(report, { strict: Boolean(args.strict) })}\n`);
+  // A post that is already live has nothing left to fail: --strict should not
+  // turn "the caption has 8 hashtags" into a red exit for a published entry.
+  if (report.published) return 0;
   return report.readyForLiveLinkedIn ? 0 : 1;
 }
 
