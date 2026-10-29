@@ -359,7 +359,9 @@ async function main() {
         { angle }
       );
       assert.ok(/^[\x00-\x7F]*$/.test(out), `ASCII-only prompt for angle "${angle}": ${out}`);
-      assert.ok(out.includes("Camera bags"), `uses English category: ${out}`);
+      // The Thai dictionary names the product itself ("camera bag"), which is
+      // more specific than the broad English category it used to fall back to.
+      assert.ok(out.includes("Camera bag (CAM-009)"), `dictionary names the product: ${out}`);
       assert.ok(out.includes("CAM-009"), `keeps SKU reference: ${out}`);
     }
     const fallback = SocialAgencyRuntime._templateImagePrompt(
@@ -367,6 +369,12 @@ async function main() {
       { angle: "มุมประหลาด" }
     );
     assert.ok(/^[\x00-\x7F]*$/.test(fallback), `Thai-only input still yields ASCII: ${fallback}`);
+    // A word the dictionary does not know still falls back to the English category.
+    const categoryFallback = SocialAgencyRuntime._templateImagePrompt(
+      { sku: "GFT-01", name: "ของที่ระลึก", category: "Souvenir bags" },
+      { angle: "มุมประหลาด" }
+    );
+    assert.ok(categoryFallback.includes("Souvenir bags"), `English category fallback: ${categoryFallback}`);
   });
 
   check("template imagePrompts vary per entry (no repeats)", () => {

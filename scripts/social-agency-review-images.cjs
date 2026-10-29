@@ -154,6 +154,11 @@ function describeEntry(rt, root, entry) {
     gateStatus: gate.status,
     reason: gate.reason || "",
     reviewedAt: entry.imageReview?.reviewedAt || "",
+    // A prompt that says "product" instead of the product's name produces a
+    // styled empty table — worth saying next to the picture, not after the post
+    // is already live.
+    imagePrompt: String(entry.imagePrompt || ""),
+    promptMissesProduct: SocialAgencyRuntime._imagePromptMissesProductName(entry.imagePrompt),
   };
 }
 
@@ -167,6 +172,9 @@ function buildReviewPlan(root, { clientId, platform } = {}) {
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.time).localeCompare(String(b.time)))
       .map((e) => describeEntry(loaded.rt, root, e));
     const pending = entries.filter((e) => e.required && !e.ok);
+    // Not only pending posts: a reviewed post whose image came from a nameless
+    // prompt is exactly the case that looks finished and is not.
+    const promptIssues = entries.filter((e) => e.promptMissesProduct);
     // No image at all: nothing to review yet, so it is not "pending" — the next
     // action is generating one, which lives in the app. Listed separately so a
     // post that was meant to carry a picture does not look finished.
@@ -176,6 +184,7 @@ function buildReviewPlan(root, { clientId, platform } = {}) {
       name: c.name,
       entries,
       pending,
+      promptIssues,
       withoutImage,
       reviewed: entries.filter((e) => e.required && e.ok).length,
       active: loaded.activeClientId === c.id,
@@ -188,6 +197,7 @@ function buildReviewPlan(root, { clientId, platform } = {}) {
     platforms,
     clients,
     pending: clients.reduce((n, c) => n + c.pending.length, 0),
+    promptIssues: clients.reduce((n, c) => n + c.promptIssues.length, 0),
     withoutImage: clients.reduce((n, c) => n + c.withoutImage.length, 0),
     reviewed: clients.reduce((n, c) => n + c.reviewed, 0),
   };
@@ -249,7 +259,7 @@ function formatPlan(plan) {
     } else {
       const shown = client.pending.slice(0, LIST_LIMIT);
       for (const entry of shown) {
-        lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"} · ${statusLabel(entry)}${entry.overdue ? " · เลยกำหนดแล้ว" : ""}`);
+        lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"} · ${statusLabel(entry)}${entry.overdue ? " · เลยกำหนดแล้ว" : ""}${entry.promptMissesProduct ? " · ⚠ พรอมป์ภาพไม่มีชื่อสินค้า" : ""}`);
         if (entry.imagePath) lines.push(`      รูป: ${entry.imagePath}`);
         else if (entry.publicUrl) lines.push(`      รูป: ${entry.publicUrl}`);
         lines.push(`      → ${confirmCommand(plan, client, entry)}`);
@@ -265,6 +275,14 @@ function formatPlan(plan) {
         lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"}`);
       }
       if (client.withoutImage.length > 10) lines.push(`    … อีก ${client.withoutImage.length - 10} รายการ`);
+    }
+    if (client.promptIssues.length) {
+      lines.push(`  พรอมป์ภาพที่ไม่มีชื่อสินค้า (${client.promptIssues.length}) — รูปที่สร้างจากพรอมป์นี้จะไม่มีตัวสินค้าในภาพ:`);
+      for (const entry of client.promptIssues.slice(0, 10)) {
+        lines.push(`    - ${entry.id} · ${entry.date} ${entry.time} · ${entry.platform} · ${entry.sku || "(ไม่มี SKU)"} · prompt: ${entry.imagePrompt.replace(/\s+/g, " ").slice(0, 90)}…`);
+      }
+      if (client.promptIssues.length > 10) lines.push(`    … อีก ${client.promptIssues.length - 10} รายการ (ใช้ --json เพื่อดูทั้งหมด)`);
+      lines.push("      → เปิดหน้ารายการแล้วกด “สร้างภาพ” — ระบบจะสร้างพรอมป์ใหม่ที่มีชื่อสินค้าให้เอง");
     }
     lines.push("");
   }

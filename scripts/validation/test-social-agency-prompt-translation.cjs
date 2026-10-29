@@ -2,9 +2,12 @@
 "use strict";
 
 /**
- * Social Agency image prompts should translate Thai product names through the
- * injected local LLM, while remaining ASCII-only and preserving the existing
- * deterministic prompt fallback when no translation is available.
+ * Social Agency image prompts should name the product in English, ASCII-only.
+ *
+ * Two sources, in this order: the fixed Thai dictionary (deterministic, works
+ * with the local LLM off) and, only for words the dictionary does not know, the
+ * injected local LLM. Whatever happens the prompt must stay ASCII and must keep
+ * a usable subject.
  */
 
 const assert = require("node:assert/strict");
@@ -48,31 +51,38 @@ async function main() {
     const prompt = await rt._ensureEntryImagePrompt(client, entry);
     assert.equal(entry.imagePrompt, prompt);
     assert.match(prompt, /Professional product photography of Camera bag \(CAM-009\)/);
-    assert.doesNotMatch(prompt, /Camera bags/, "a translated product name takes precedence over the broad category");
+    assert.doesNotMatch(prompt, /Camera bags/, "the specific name takes precedence over the broad category");
     assert.match(prompt, /^[\x00-\x7F]*$/, "the image prompt remains ASCII-only");
-    assert.equal(calls, 1, "the successful translation is reused from cache");
+    assert.equal(calls, 1, "the dictionary answered for กระเป๋ากล้อง — no extra LLM round-trip");
 
     assert.equal(await rt._llmTranslateForPrompt("Canvas Tote Bag"), "", "English product names do not need translation");
     assert.equal(calls, 1, "English names skip the LLM call");
 
     rt.setLlmClient({ isReady: () => false, chat: async () => { throw new Error("must not be called"); } });
-    const fallback = await rt._buildTemplateImagePrompt(
+    const dictionary = await rt._buildTemplateImagePrompt(
       { sku: "BAG-004", name: "กระเป๋าผ้า", category: "Canvas bags" },
       { angle: "เปิดตัวสินค้า", seed: "fallback" }
     );
-    assert.match(fallback, /Canvas bags \(BAG-004\)/, "the deterministic English-category fallback still works without an LLM");
-    assert.match(fallback, /^[\x00-\x7F]*$/);
+    assert.match(dictionary, /Fabric bag \(BAG-004\)/, "no LLM, no category guess: the Thai dictionary names the product");
+    assert.match(dictionary, /^[\x00-\x7F]*$/);
+
+    const categoryFallback = await rt._buildTemplateImagePrompt(
+      { sku: "GFT-001", name: "ของที่ระลึก", category: "Canvas bags" },
+      { angle: "เปิดตัวสินค้า", seed: "category-fallback" }
+    );
+    assert.match(categoryFallback, /Canvas bags \(GFT-001\)/, "a word the dictionary does not know still falls back to the English category");
+    assert.match(categoryFallback, /^[\x00-\x7F]*$/);
 
     response = "คำอธิบายภาษาไทยเท่านั้น";
     rt.setLlmClient({ isReady: () => true, chat: async () => response });
     const invalidFallback = await rt._buildTemplateImagePrompt(
-      { sku: "BAG-005", name: "ถุงผ้า", category: "Cotton bags" },
+      { sku: "GFT-002", name: "ของขวัญ", category: "Cotton bags" },
       { angle: "เปิดตัวสินค้า", seed: "invalid-translation" }
     );
-    assert.match(invalidFallback, /Cotton bags \(BAG-005\)/, "an unusable response falls back to the English category");
+    assert.match(invalidFallback, /Cotton bags \(GFT-002\)/, "an unusable response falls back to the English category");
     assert.match(invalidFallback, /^[\x00-\x7F]*$/);
 
-    console.log("PASS social-agency prompt translation (5 checks)");
+    console.log("PASS social-agency prompt translation (6 checks)");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

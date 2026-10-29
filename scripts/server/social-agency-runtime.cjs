@@ -1175,55 +1175,122 @@ const IMAGE_CAMERA = [
   "minimal centered composition with copy space",
 ];
 
-function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], translatedName = "", kind } = {}) {
+// ── Thai product words → English, for image prompts ────────────────────────
+// A stable table of the words this business actually sells. It is consulted
+// BEFORE the local LLM: the LLM may be off or unreachable, and that is exactly
+// when the old code fell through to the literal word "product" — the image model
+// then drew a beautiful wooden table with no bag on it anywhere.
+const THAI_PRODUCT_GLOSSARY = [
+  ["กระเป๋าใส่รองเท้า", "shoe bag"],
+  ["ถุงใส่รองเท้า", "shoe bag"],
+  ["กระเป๋าใส่แก้ว", "cup carrier bag"],
+  ["ถุงใส่แก้ว", "cup carrier bag"],
+  ["กระเป๋าโน๊ตบุ๊ค", "laptop bag"],
+  ["กระเป๋าโน้ตบุ๊ก", "laptop bag"],
+  ["กระเป๋าโน้ตบุ๊ค", "laptop bag"],
+  ["กระเป๋าแล็ปท็อป", "laptop bag"],
+  ["กระเป๋าเครื่องสำอาง", "cosmetic pouch"],
+  ["กระเป๋าเครื่องเขียน", "pencil case"],
+  ["กระเป๋าดินสอ", "pencil case"],
+  ["กระเป๋าเชือกรูด", "drawstring bag"],
+  ["กระเป๋าสะพายข้าง", "shoulder bag"],
+  ["กระเป๋าสะพายไหล่", "shoulder bag"],
+  ["กระเป๋าสะพาย", "shoulder bag"],
+  ["กระเป๋าสตางค์", "wallet"],
+  ["กระเป๋าใส่เหรียญ", "coin purse"],
+  ["กระเป๋าเดินทาง", "travel bag"],
+  ["กระเป๋าเอกสาร", "document bag"],
+  ["กระเป๋าคลัตช์", "clutch bag"],
+  ["กระเป๋าเป้", "backpack"],
+  ["กระเป๋าถือ", "handbag"],
+  ["กระเป๋ากล้อง", "camera bag"],
+  ["กระเป๋าใส่ของ", "tote bag"],
+  ["กระเป๋าผ้า", "fabric bag"],
+  ["กระเป๋าหนัง", "leather bag"],
+  ["ถุงหูรูด", "drawstring pouch"],
+  ["ถุงผ้า", "cloth bag"],
+  ["กระเป๋า", "bag"],
+  ["ถุง", "bag"],
+  ["ซอง", "pouch"],
+  ["กล่อง", "box"],
+];
+
+const IMAGE_ITEM_STOPWORDS = /^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i;
+const IMAGE_ITEM_SKU = /^[A-Z]{2,5}-\d{2,5}$/i;
+
+// English words that carry no product meaning (bare SKUs, stopwords, 1 letter).
+function englishProductWords(text) {
+  const words = String(text || "").match(/[A-Za-z][A-Za-z0-9&+'/_-]*/g) || [];
+  return words.filter((w) => w.length >= 2 && !IMAGE_ITEM_SKU.test(w) && !IMAGE_ITEM_STOPWORDS.test(w));
+}
+
+// Thai words from the table, in the order they appear in the text. At the same
+// position the longest phrase wins ("กระเป๋าใส่รองเท้า" before "กระเป๋า"), and a
+// later match that starts inside an accepted one is dropped — so
+// "กระเป๋าผ้าใบใหญ่" is a fabric bag, not a fabric bag plus a canvas.
+function thaiProductWords(text) {
+  const source = String(text || "");
+  if (!/[\u0E00-\u0E7F]/.test(source)) return [];
+  const hits = [];
+  for (const [thai, en] of THAI_PRODUCT_GLOSSARY) {
+    let at = source.indexOf(thai);
+    while (at !== -1) {
+      hits.push({ at, len: thai.length, en });
+      at = source.indexOf(thai, at + thai.length);
+    }
+  }
+  if (!hits.length) return [];
+  hits.sort((a, b) => a.at - b.at || b.len - a.len);
+  const picked = [];
+  let end = -1;
+  for (const hit of hits) {
+    if (hit.at < end) continue;
+    picked.push(hit);
+    end = hit.at + hit.len;
+  }
+  return [...new Set(picked.map((hit) => hit.en))];
+}
+
+// What the image model is asked to photograph. Priority:
+//   1. the Thai dictionary  (deterministic — works with the LLM off)
+//   2. the LLM's translation (only reached when the dictionary has no match)
+//   3. an English category written by the operator
+//   4. English words inside the product name
+//   5. English words inside the product detail
+//   6. the literal word "product"  ← a bug, not a fallback: the review gate
+//      reports it (imagePromptMissesProductName) instead of staying silent.
+function imageItemForProduct(product, { translatedName = "" } = {}) {
   const rawName = product?.name ? String(product.name).trim() : "";
   const rawCat = product?.category ? String(product.category).trim() : "";
-  // Build the best ASCII-only item description from available product fields.
-  // Priority: LLM-translated Thai name > English category > English words from
-  // product name > English words from product detail > generic "product".
-  // SD backends cannot read Thai, so prompt must stay ASCII.
-  let item = "";
-  // A translated Thai product name is more specific than its broad category,
-  // and is preferred when the local LLM could translate it. Keep this pure
-  // builder deterministic: the async runtime obtains `translatedName` first.
-  const safeTranslatedName = String(translatedName || "")
-    .replace(/[^\x20-\x7E]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (safeTranslatedName) {
-    const translatedWords = safeTranslatedName.match(/[A-Za-z][A-Za-z0-9&+'/_-]*/g) || [];
-    const descriptive = translatedWords.filter((w) => !/^[A-Z]{2,5}-\d{2,5}$/i.test(w));
-    item = descriptive.join(" ");
+  const glossaryWords = thaiProductWords(rawName).length ? thaiProductWords(rawName) : thaiProductWords(rawCat);
+  if (glossaryWords.length) {
+    // Any English words the name carries (a model name, "Tote", "Deluxe") are
+    // kept, but not repeated when the dictionary already covered them.
+    const covered = new Set(glossaryWords.join(" ").toLowerCase().split(/\s+/));
+    const extras = englishProductWords(rawName).filter((w) => !covered.has(w.toLowerCase()));
+    const item = [...glossaryWords, ...extras].join(" ");
+    return { item: item.charAt(0).toUpperCase() + item.slice(1), source: "glossary" };
   }
-  if (!item && rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) {
-    item = rawCat;                        // English category is ideal
-  } else if (!item) {
-    // Extract English/ASCII words from product name (e.g. "กระเป๋าผ้า Tote Bag" → "Tote Bag")
-    const asciiWords = rawName.match(/[A-Za-z][A-Za-z0-9_-]{1,}/g);
-    if (asciiWords && asciiWords.length) {
-      // Skip bare SKUs (single token that looks like "WLB-006", "CAM-009") unless
-      // there are other descriptive words alongside.
-      const descriptive = asciiWords.filter((w) => !/^[A-Z]{2,5}-\d{2,5}$/.test(w));
-      item = descriptive.length ? descriptive.join(" ") : "";
-    }
-    // If still empty, try product detail (scraped from the product page — may contain
-    // English product descriptions, material names, etc.)
-    if (!item) {
-      const rawDetail = product?.detail ? String(product.detail).trim() : "";
-      if (rawDetail) {
-        const detailWords = rawDetail.match(/[A-Za-z][A-Za-z0-9_-]{2,}/g);
-        if (detailWords && detailWords.length) {
-          // Take first few meaningful English words (avoid overly long prompts)
-          const meaningful = detailWords.filter((w) =>
-            !/^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i.test(w)
-          );
-          item = meaningful.slice(0, 5).join(" ");
-        }
-      }
-    }
-    // Do NOT use a Thai-only category — it would break ASCII-only requirement
-  }
-  if (!item) item = "product";
+  const translatedWords = englishProductWords(String(translatedName || "").replace(/[^\x20-\x7E]/g, " "));
+  if (translatedWords.length) return { item: translatedWords.join(" "), source: "llm" };
+  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) return { item: rawCat, source: "category" };
+  const nameWords = englishProductWords(rawName);
+  if (nameWords.length) return { item: nameWords.join(" "), source: "name" };
+  const detailWords = englishProductWords(product?.detail).slice(0, 5);
+  if (detailWords.length) return { item: detailWords.join(" "), source: "detail" };
+  return { item: "product", source: "generic" };
+}
+
+// The template reads "Professional product photography of <item> (SKU)" (and
+// "… featuring <item> (SKU)" for video). So the literal string "of product"
+// followed by nothing name-like means the builder had no product name at all.
+const IMAGE_PROMPT_GENERIC_SUBJECT = /\b(?:of|featuring)\s+product\b(?!\s+[A-Z0-9])/i;
+function imagePromptMissesProductName(prompt) {
+  return IMAGE_PROMPT_GENERIC_SUBJECT.test(String(prompt || ""));
+}
+
+function buildTemplateImagePrompt(product, { angle, seed = "", avoid = [], translatedName = "", kind } = {}) {
+  const { item } = imageItemForProduct(product, { translatedName });
   const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
@@ -1296,33 +1363,9 @@ function pickAnimateCamera(seed, avoidIds) {
 }
 
 function buildTemplateAnimatePrompt(product, { angle, seed = "", avoid = [], avoidCameras = [], kind } = {}) {
-  const rawName = product?.name ? String(product.name).trim() : "";
-  const rawCat = product?.category ? String(product.category).trim() : "";
-  // Same ASCII-only item logic as buildTemplateImagePrompt
-  let item = "";
-  if (rawCat && !/[\u0E00-\u0E7F]/.test(rawCat)) {
-    item = rawCat;
-  } else {
-    const asciiWords = rawName.match(/[A-Za-z][A-Za-z0-9_-]{1,}/g);
-    if (asciiWords && asciiWords.length) {
-      const descriptive = asciiWords.filter((w) => !/^[A-Z]{2,5}-\d{2,5}$/.test(w));
-      item = descriptive.length ? descriptive.join(" ") : "";
-    }
-    if (!item) {
-      const rawDetail = product?.detail ? String(product.detail).trim() : "";
-      if (rawDetail) {
-        const detailWords = rawDetail.match(/[A-Za-z][A-Za-z0-9_-]{2,}/g);
-        if (detailWords && detailWords.length) {
-          const meaningful = detailWords.filter((w) =>
-            !/^(the|and|for|with|from|this|that|has|have|are|was|were|been|will|can|not|but|its|our|your|their|than|then|just|also|more|some|very|much|such|each|both|into|over|after|about)$/i.test(w)
-          );
-          item = meaningful.slice(0, 5).join(" ");
-        }
-      }
-    }
-    // Do NOT use a Thai-only category — it would break ASCII-only requirement
-  }
-  if (!item) item = "product";
+  // Same subject rules as the still image: one product, one name, and the Thai
+  // dictionary before anything that needs the LLM.
+  const { item } = imageItemForProduct(product);
   const style = imageAngleStyle(angle, kind);
   const skuRaw = product?.sku ? String(product.sku).replace(/[^\x20-\x7E]/g, "") : "";
   const sku = skuRaw ? ` (${skuRaw})` : "";
@@ -4379,7 +4422,11 @@ class SocialAgencyRuntime {
   }
 
   async _buildTemplateImagePrompt(product, options = {}, client = null) {
-    const translatedName = await this._llmTranslateForPrompt(product?.name);
+    // The Thai dictionary answers first. Only when it has no word for this
+    // product is the local LLM asked — one less round-trip per post, and the
+    // prompt stays identical on machines where the LLM is off.
+    const knownByName = thaiProductWords(product?.name).length || thaiProductWords(product?.category).length;
+    const translatedName = knownByName ? "" : await this._llmTranslateForPrompt(product?.name);
     return buildTemplateImagePrompt(product, {
       ...options,
       translatedName,
@@ -5332,7 +5379,10 @@ class SocialAgencyRuntime {
   async _llmImagePromptFromCaption({ product, caption, hook, angle }) {
     if (!this._llmReady()) return "";
     const translated = await this._llmTranslateForPrompt(product?.name);
-    const productName = translated || String(product?.name || "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
+    const subject = imageItemForProduct(product, { translatedName: translated });
+    // When even the dictionary cannot name it, let the model read the Thai name
+    // instead of photographing the word "product".
+    const productName = subject.source === "generic" && product?.name ? String(product.name) : subject.item;
     const postText = String(caption || "").replace(/\s+/g, " ").trim().slice(0, 700);
     const system = [
       "You write ONE image-generation prompt in English for a social-media product photo.",
@@ -6255,20 +6305,33 @@ class SocialAgencyRuntime {
   // _imageGenBody lives in the inline-video block above (model-aware).
 
   async _ensureEntryImagePrompt(client, entry) {
-    if (entry.imagePrompt && String(entry.imagePrompt).trim()) return entry.imagePrompt;
     const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
-    entry.imagePrompt = await this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
+    const rebuild = () => this._buildTemplateImagePrompt(product, { angle: entry.angle, seed: entry.id, avoid: (client.calendar || []).filter((e) => e.id !== entry.id).map((e) => e.imagePrompt) }, client);
+    const existing = entry.imagePrompt && String(entry.imagePrompt).trim();
+    if (existing && !imagePromptMissesProductName(existing)) return entry.imagePrompt;
+    // A prompt saved before the Thai dictionary existed says "of product (SKU)":
+    // it names nothing, so the model paints an empty scene. Rebuild it from the
+    // product now — only when the new prompt actually names the product, so a
+    // prompt that is generic for a real reason is never silently replaced.
+    const fresh = await rebuild();
+    if (!existing) entry.imagePrompt = fresh;
+    else if (!imagePromptMissesProductName(fresh)) entry.imagePrompt = fresh;
     return entry.imagePrompt;
   }
 
   _ensureEntryAnimatePrompt(client, entry) {
-    if (entry.animatePrompt && String(entry.animatePrompt).trim()) return entry.animatePrompt;
     const product = (client.products || []).find((p) => p.sku === entry.sku) || client.products[0] || {};
     const siblings = (client.calendar || []).filter((e) => e.id !== entry.id);
+    const existing = entry.animatePrompt && String(entry.animatePrompt).trim();
+    if (existing && !imagePromptMissesProductName(existing)) return entry.animatePrompt;
     const built = buildTemplateAnimatePrompt(product, { angle: entry.angle, seed: entry.id, avoid: siblings.map((e) => e.animatePrompt), avoidCameras: siblings.map((e) => e.animateCamera) });
-    entry.animatePrompt = built.prompt;
-    entry.animateCamera = built.cameraId;
-    entry.animateCameraLabel = built.cameraLabel;
+    // Same repair rule as the still image: an old "featuring product (SKU)" prompt
+    // is replaced only by one that names the product.
+    if (!existing || !imagePromptMissesProductName(built.prompt)) {
+      entry.animatePrompt = built.prompt;
+      entry.animateCamera = built.cameraId;
+      entry.animateCameraLabel = built.cameraLabel;
+    }
     return entry.animatePrompt;
   }
 
@@ -8581,6 +8644,8 @@ class SocialAgencyRuntime {
 
 // Test seam: lets the smoke suite assert the template output directly.
 SocialAgencyRuntime._templateImagePrompt = buildTemplateImagePrompt;
+SocialAgencyRuntime._imageItemForProduct = imageItemForProduct;
+SocialAgencyRuntime._imagePromptMissesProductName = imagePromptMissesProductName;
 SocialAgencyRuntime._scoreViral = scoreViralCaption;
 SocialAgencyRuntime._templateHooks = buildTemplateHooks;
 SocialAgencyRuntime._pickPillar = pickPillar;
