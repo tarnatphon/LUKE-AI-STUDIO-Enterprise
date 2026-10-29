@@ -128,6 +128,27 @@ function stateFileFor(root) {
   return path.join(root, "app", "runtime-state", "social-agency", "thai-modern-bags.json");
 }
 
+// Text that was copied out of an example rather than out of --list. The ellipsis
+// matters: "cal-…" is what a person retypes from a chat message, and before this
+// it produced "ไม่พบรายการปฏิทิน ID cal-…" — true, but it does not tell them the
+// value was never a real id in the first place.
+const PLACEHOLDER_PATTERNS = [
+  /^cal-?x+$/i, // cal-xxxx
+  /^cal-?…$/, // cal-… (U+2026)
+  /^cal-\.{3}$/, // cal-...
+  /^cal-?\*+$/,
+  /^cal-?\$?\{?entry_?id\}?$/i, // cal-ENTRY_ID / cal-${ENTRY_ID}
+  /^entry_?id$/i,
+  /^<\(cal\).*>$|^<.*>$/, // <cal-1234> from an older help text
+  /…|\.\.\./, // any remaining ellipsis
+];
+
+function looksLikePlaceholder(value) {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  return PLACEHOLDER_PATTERNS.some((re) => re.test(v));
+}
+
 function pickCandidateEntry(client, { entryId, sku }) {
   const calendar = Array.isArray(client?.calendar) ? client.calendar : [];
   if (entryId) return calendar.find((e) => e.id === entryId) || null;
@@ -504,15 +525,22 @@ async function inspectLinkedInPostReadiness(options = {}) {
     const inventory = linkedinEntries
       .map((e) => `${e.id} (${e.date} ${e.time} · ${e.sku} · ${e.status})`)
       .join(" · ");
-    const placeholder = options.entryId && /^cal-?x+$/i.test(String(options.entryId).trim());
+    const placeholder = options.entryId && looksLikePlaceholder(options.entryId);
+    // A runnable next step beats a list to copy from by hand: the id comes from
+    // the state, so it can never be another placeholder.
+    const suggested = linkedinEntries.slice(0, 3)
+      .map((e) => `${e.id} (${e.date} ${e.time} · ${e.sku} · ${e.status})`)
+      .join("\n   ");
     addCheck(
       "entry_media",
       "รายการโพสต์และภาพ AI (รูปที่ 1)",
       "fail",
       options.entryId
-        ? `ไม่พบรายการปฏิทิน ID "${options.entryId}"${placeholder ? " — cal-xxxx คือตัวอย่างจากวิธีใช้งาน ต้องแทนด้วย ID จริง" : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`
+        ? `ไม่พบรายการปฏิทิน ID "${options.entryId}"${placeholder ? " — ค่านี้เป็นตัวอย่างจากวิธีใช้งาน ไม่ใช่ ID จริง (ตัวจริงดูได้จาก --list)" : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`
         : `ไม่พบรายการโพสต์ LinkedIn ในปฏิทิน${sku ? ` ของ SKU ${sku}` : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`,
-      "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
+      linkedinEntries.length
+        ? `คัดลอก ID จริงจากรายการนี้:\n   ${suggested}\n   แล้วรัน: node scripts/verify-linkedin-post-readiness.cjs --entry ${linkedinEntries[0].id} --online`
+        : "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
     );
   } else if (options.sku && entry.sku !== options.sku) {
     addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry ENTRY_ID ของ ${options.sku} (ดูได้จาก --list)`);
@@ -804,6 +832,7 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  looksLikePlaceholder,
   buildInventory,
   formatInventory,
   inspectLinkedInPostReadiness,

@@ -505,6 +505,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               onReject={reject}
               onOpenEntry={(id) => setDrawerEntryId(id)}
               onOpenInWorkflow={openInWorkflow}
+              onReviewImage={reviewImage}
             />
           )}
           {tab === "style" && (
