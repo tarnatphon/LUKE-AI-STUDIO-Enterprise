@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Gauge, HardDriveDownload, Trash2, Zap } from "lucide-react";
+import GovernorSettingsCard from "./GovernorSettingsCard.jsx";
 
 /**
  * Speed lives in three places: how the runtime is tuned, whether a draft model
@@ -44,6 +45,10 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const [busy, setBusy] = useState("");
   const [measured, setMeasured] = useState(null);
   const [copying, setCopying] = useState(null);
+  // The governor releases models when the machine is short; until this card
+  // existed, that only ever appeared as a line in the terminal.
+  const [governor, setGovernor] = useState(null);
+  const [governorNote, setGovernorNote] = useState("");
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
@@ -67,7 +72,63 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const planData = await planResponse.json();
       if (planResponse.ok) setPlan(planData);
     } catch {}
+    try {
+      const governorResponse = await fetch("/api/resource-governor");
+      const governorData = await governorResponse.json();
+      if (governorResponse.ok) setGovernor(governorData.result || null);
+    } catch {}
   }, []);
+
+  const saveGovernor = async (overrides) => {
+    setBusy("governor-save");
+    setGovernorNote("");
+    try {
+      const response = await fetch("/api/resource-governor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides: overrides || {} }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setGovernor(data.result || null);
+        const rejected = Array.isArray(data.rejected) ? data.rejected : [];
+        setGovernorNote(
+          rejected.length
+            ? `Saved, but not everything was accepted — ${rejected.map((entry) => `${entry.key}: ${entry.reason}`).join(" · ")}`
+            : "Saved — the next sweep uses these numbers."
+        );
+      } else {
+        setGovernorNote(data.error || "The governor settings could not be saved.");
+      }
+    } catch (error) {
+      setGovernorNote(error?.message || "The governor settings could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const resetGovernor = async () => {
+    setBusy("governor-reset");
+    setGovernorNote("");
+    try {
+      const response = await fetch("/api/resource-governor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setGovernor(data.result || null);
+        setGovernorNote("Back to the values shipped for this machine.");
+      } else {
+        setGovernorNote(data.error || "Could not reset the governor settings.");
+      }
+    } catch (error) {
+      setGovernorNote(error?.message || "Could not reset the governor settings.");
+    } finally {
+      setBusy("");
+    }
+  };
 
   useEffect(() => {
     void refresh(useInternalDisk);
@@ -253,6 +314,14 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
           {busy === "clear" ? "Clearing…" : `Clear the ${cache.cachedGb} GB cache`}
         </button>
       )}
+
+      <GovernorSettingsCard
+        data={governor}
+        busy={busy}
+        note={governorNote}
+        onSave={saveGovernor}
+        onReset={resetGovernor}
+      />
     </div>
   );
 }

@@ -457,8 +457,17 @@ per-month box records how many photos were fetched.
 
 English product names (what every image prompt is built from) are now filled in the
 background as soon as a product arrives without one; a name you typed, or a name you
-deliberately cleared, is never overwritten. Details:
+deliberately cleared, is never overwritten. That translation runs on the smallest local
+model you have downloaded, not on the chat model, so a 9B never has to be loaded — or
+evicted — just to translate product names. Details:
 [`docs/beta7/product-rotation-and-names.md`](docs/beta7/product-rotation-and-names.md).
+
+Two models are never loaded at the same time any more: a load that is still running counts
+as memory it already holds, and the second start waits for it (five minutes, then it says
+so and starts anyway). And the memory governor — the thing that hands a model back when
+the machine runs short — is now visible and adjustable in Settings → Performance, with the
+reason it last acted and the thresholds it uses. Details:
+[`docs/beta7/model-loading-and-governor.md`](docs/beta7/model-loading-and-governor.md).
 
 ### Will this post go out by itself?
 

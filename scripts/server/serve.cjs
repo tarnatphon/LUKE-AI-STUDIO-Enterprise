@@ -1045,6 +1045,11 @@ const chatHistory = require("./chat-history-archive.cjs");
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
 const modelCache = require("./model-cache.cjs");
+// Two heavy loads at once is what makes a small machine swap, and a model that is
+// still loading is not "resident" yet — so it is counted, and the second load waits.
+const modelLoadGuard = require("./model-load-guard.cjs");
+const { readOverrides: readGovernorOverrides, describeGovernorSettings, saveOverrides: saveGovernorOverrides } = require("./resource-governor-settings.cjs");
+const backgroundLlm = require("./background-llm.cjs");
 
 // LUKE_AI_STORAGE_DESTINATION_MANAGER_IMPORT_V2
 const {
@@ -1184,10 +1189,34 @@ function getAiWorkflowRuntime() {
   return aiWorkflowRuntime;
 }
 
-// Bridge between the Social Agency workflow engine and the SAME local llama-server
-// instance used by Chat/generator features. No new LLM client is invented here.
+// Bridge between the Social Agency workflow engine and the same local llama-server
+// used by Chat/generator features. The chat model still answers conversations; a
+// request that says `purpose: "translate"` is handed to the smallest downloaded
+// model instead, so a 9B never has to be loaded — let alone evicted by the
+// governor — just to turn forty Thai product names into English labels.
+let socialAgencyLlmClient = null;
+let backgroundModelPolicyCache = { at: 0, value: null };
+
+function readBackgroundModelPolicy() {
+  const now = Date.now();
+  if (backgroundModelPolicyCache.value && now - backgroundModelPolicyCache.at < 5000) {
+    return backgroundModelPolicyCache.value;
+  }
+  let stored = {};
+  try {
+    stored = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "app", "config", "social-agency", "background-model.json"), "utf8")
+    ) || {};
+  } catch {
+    stored = {};
+  }
+  backgroundModelPolicyCache = { at: now, value: stored };
+  return stored;
+}
+
 function makeSocialAgencyLlmClient() {
-  return {
+  if (socialAgencyLlmClient) return socialAgencyLlmClient;
+  const chatModel = {
     isReady: () => llmReady && Boolean(llmProc),
     chat: async (messages, options = {}) => {
       const body = {
@@ -1216,6 +1245,18 @@ function makeSocialAgencyLlmClient() {
       }
     },
   };
+
+  socialAgencyLlmClient = backgroundLlm.createBackgroundLlmClient({
+    policy: () => readBackgroundModelPolicy(),
+    listModels: () =>
+      getLlmModels()
+        .filter((model) => !model.isProjector)
+        .map((model) => ({ filename: model.filename, sizeBytes: model.sizeBytes })),
+    getPool: () => getTextModelPool(),
+    mainClient: chatModel,
+    logger: console,
+  });
+  return socialAgencyLlmClient;
 }
 const DIST    = path.join(ROOT, "app", "dist");
 
@@ -1470,6 +1511,11 @@ let backendReady = false;
 // text context to 8192 even though nothing else was loaded, so the resident
 // size is tracked from the backend's own load messages instead.
 let imageModelResidentBytes = 0;
+// A model that is still being read, converted and copied to the GPU is already
+// holding the memory it will need. Counting it only once it answers is how SDXL
+// spent 825 s loading while a 9B model was started on top of it.
+let imageModelLoadingBytes = 0;
+let llmModelLoadingBytes = 0;
 let backendError = null;
 let openvinoProc = null;
 let openvinoReady = false;
@@ -1743,6 +1789,9 @@ function estimateModelBytes(modelPath) {
 function residentHeavyModelBytes() {
   let bytes = 0;
   bytes += Number(imageModelResidentBytes) || 0;
+  // In-flight loads: not answering yet, but the bytes are already spoken for.
+  bytes += Number(imageModelLoadingBytes) || 0;
+  bytes += Number(llmModelLoadingBytes) || 0;
   if ((llmReady || llmProc) && llmSettings.model) {
     bytes += estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model))));
   }
@@ -3117,12 +3166,9 @@ function machineTier() {
 function readResourceGovernorOverrides() {
   // Machine-local on purpose: the tracked config folder is a seed the app must
   // not write, and a file git tracks is a file that can block a pull.
-  try {
-    const parsed = JSON.parse(fs.readFileSync(RESOURCE_GOVERNOR_STATE_PATH, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch (_) {
-    return {};
-  }
+  // The read is shared with the API route, so a key the governor does not
+  // understand can never reach it from a hand-edited file either.
+  return readGovernorOverrides(RESOURCE_GOVERNOR_STATE_PATH);
 }
 
 function resourceGovernorPolicy() {
@@ -5001,6 +5047,7 @@ async function waitForLlmReady(maxAttempts = 240, expectedProc = llmProc, expect
     if (!expectedProc || llmProc !== expectedProc) throw new Error(llmError || "llama.cpp exited during startup.");
     if (await pingLlmReady(expectedModel)) {
       llmReady = true;
+      llmModelLoadingBytes = 0;
       noteEngineUsed("text");
       return;
     }
@@ -5031,6 +5078,7 @@ function waitForChildExit(proc, timeoutMs) {
 
 async function killLlm() {
   llmReady = false;
+  llmModelLoadingBytes = 0;
   llmSettings.supportsVision = false;
   llmSettings.visionMode = "none";
   llmSettings.visionStatus = "Projector not loaded";
@@ -5666,6 +5714,16 @@ function markBackendReady() {
   backendReady = true;
   // A model that just became ready is not "idle since never".
   noteEngineUsed("image");
+  // Ready means resident: the in-flight mark becomes a real one, so a later
+  // text load is refused on the truth rather than on a guess.
+  if (!(Number(imageModelResidentBytes) > 0)) {
+    imageModelResidentBytes = estimateModelBytes(
+      path.isAbsolute(String(currentSettings.model || ""))
+        ? String(currentSettings.model)
+        : path.join(MODELS, String(currentSettings.model || ""))
+    );
+  }
+  imageModelLoadingBytes = 0;
   backendLoadState = {
     ...backendLoadState,
     active: false,
@@ -6279,6 +6337,7 @@ function killBackend() {
     backendUnloadState = { active: true, phase: "Stopping backend process...", progress: 10 };
     backendReady = false;
     imageModelResidentBytes = 0;
+    imageModelLoadingBytes = 0;
     try { proc.kill("SIGTERM"); } catch (_) {}
     backendUnloadState = { active: true, phase: "Waiting for process exit...", progress: 50 };
     setTimeout(() => {
@@ -6303,6 +6362,36 @@ function residentBreakdown() {
     parts.push(`${textModelPoolInstance.instances.size} arena model(s)`);
   }
   return parts.length ? parts.join(" + ") : "another runtime";
+}
+
+/**
+ * Wait for the other heavy model to finish loading before starting this one.
+ *
+ * The budget refuses a load that cannot fit; it cannot see a load that is still
+ * running, because a model that has not answered yet has no size anyone can
+ * read. So on an 18 GB Mac SDXL was 14 minutes into its 6.6 GB load and a 9B
+ * chat model was started on top of it — 5 GB of swap, and llama.cpp never
+ * answered. Two loads at once is the peak; one after the other is normal use.
+ *
+ * It waits, it does not refuse: `LUKE_MODEL_LOAD_WAIT_MS` (default five
+ * minutes) bounds it, and when the budget runs out the load starts anyway with
+ * one line saying why. A stuck backend must never wedge the app.
+ */
+async function waitForOtherModelLoad({ target = "text", waitMs = null } = {}) {
+  const envWait = Number.parseInt(process.env.LUKE_MODEL_LOAD_WAIT_MS || "", 10);
+  const budget = Number.isFinite(waitMs) ? waitMs : (Number.isFinite(envWait) && envWait >= 0 ? envWait : modelLoadGuard.DEFAULT_WAIT_MS);
+  const tag = target === "text" ? "llm" : "backend";
+  return modelLoadGuard.waitForOtherLoad({
+    target,
+    otherLabel: target === "text" ? "the image model" : "the text model",
+    waitMs: budget,
+    isOtherLoading: () => (target === "text" ? backendLoadState.active === true : Boolean(llmLoadProgress)),
+    otherBytes: () => (target === "text" ? Number(imageModelLoadingBytes) : Number(llmModelLoadingBytes)),
+    onWait: (plan) => console.log(`  [${tag}] ${plan.reason}`),
+    onDone: (plan) => {
+      if (plan.timedOut) console.warn(`  [${tag}] ${plan.reason}`);
+    },
+  });
 }
 
 function evaluateContextPlan(modelFilename, isGpu) {
@@ -6443,6 +6532,10 @@ async function startLlm(settings = {}) {
   if (!filename.toLowerCase().endsWith(".gguf")) {
     throw clientError("Text generation requires a .gguf model.");
   }
+
+  // One load at a time: the image model is the slow one, and starting this on
+  // top of it is what turns a slow load into a swap storm.
+  await waitForOtherModelLoad({ target: "text" });
 
   const candidates = getLlmBackendCandidates();
   if (candidates.length === 0) {
@@ -6791,6 +6884,9 @@ async function startLlmWithBackend(settings = {}, backend) {
   }
 
   console.log("  [llm] Starting:", backend.path, args.join(" "));
+  // Budgeted as if resident from this moment: a concurrent image load must see
+  // these weights instead of pretending the machine is still empty.
+  llmModelLoadingBytes = estimateModelBytes(loadPath);
   const proc = spawn(backend.path, args, { stdio: "pipe", env: spawnEnv });
   const procSeq = ++llmProcSeq;
   llmProc = proc;
@@ -6835,6 +6931,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     }
     llmReady = false;
     llmProc = null;
+    llmModelLoadingBytes = 0;
     if (code !== 0 && code !== null && !llmError) llmError = `llama.cpp exited with code ${code}`;
     console.log("  [llm] exited with code", code, `(process ${procSeq})`);
   });
@@ -6880,6 +6977,9 @@ async function startBackend(settings = {}) {
     };
     throw new Error(modelLoadIssue);
   }
+
+  // The same guard in the other direction.
+  await waitForOtherModelLoad({ target: "image" });
 
   PORT_BACKEND = Number(settings.backendPort) > 0 ? Number(settings.backendPort) : await findAvailableBackendPort();
 
@@ -6949,6 +7049,8 @@ async function startBackend(settings = {}) {
   currentSettings.backendMode = backendMode;
   currentSettings.backendBinary = path.basename(backendPath);
 
+  // From here until the backend answers, these bytes are already spoken for.
+  imageModelLoadingBytes = estimateModelBytes(imageLoadPath);
   backendLoadState = {
     active: true,
     phase: "Starting backend...",
@@ -7108,6 +7210,7 @@ async function startBackend(settings = {}) {
             ? String(currentSettings.model)
             : path.join(MODELS, String(currentSettings.model || ""))
         );
+        imageModelLoadingBytes = 0;
       }
 
       const loadMatch = cleanLine.match(/\|\s*(\d+)\/(\d+)\s*-\s*([^|]+)$/);
@@ -7222,6 +7325,8 @@ async function startBackend(settings = {}) {
       }
     }
     backendLoadState.active = false;
+    // It never became resident, so nothing is holding these bytes either.
+    imageModelLoadingBytes = 0;
     generationState.active = false;
     generationState.step = 0;
     generationState.steps = 0;
@@ -29584,6 +29689,52 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 200, { ok: true, result });
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // GET|POST /api/resource-governor — what the governor is doing, and the
+  // thresholds it does it with.
+  //
+  // Until now a model could be released with the reason buried in the terminal
+  // log and nothing in the app to explain it or tune it. The Performance panel
+  // reads this route; POST keeps only the keys the governor understands, and
+  // reports a value that cannot be true instead of saving it.
+  if (req.url === "/api/resource-governor" && (req.method === "GET" || req.method === "POST")) {
+    try {
+      let saved = null;
+      if (req.method === "POST") {
+        const body = await readJsonRequestBody(req);
+        saved = saveGovernorOverrides({ file: RESOURCE_GOVERNOR_STATE_PATH, input: body });
+        if (saved.rejected?.length) {
+          console.warn(
+            `  [governor] ignored ${saved.rejected.map((entry) => `${entry.key}: ${entry.reason}`).join(" · ")}`
+          );
+        }
+        const changed = Object.keys(saved.overrides || {});
+        console.log(
+          `  [governor] settings ${changed.length ? `updated: ${changed.join(", ")}` : "reset to the machine defaults"}`
+        );
+      }
+      const result = describeGovernorSettings({
+        tier: machineTier(),
+        overrides: readGovernorOverrides(RESOURCE_GOVERNOR_STATE_PATH),
+        status: resourceGovernorStatus,
+        file: path.relative(ROOT, RESOURCE_GOVERNOR_STATE_PATH) || RESOURCE_GOVERNOR_STATE_PATH,
+      });
+      return json(res, 200, { ok: true, result, rejected: saved?.rejected || [] });
+    } catch (error) {
+      return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
+    }
+  }
+
+  // GET /api/background-model — which model answers background chores, and why
+  // that one. The answer is the smallest downloaded model under the cap, so a
+  // product-name translation never needs the chat model to be loaded.
+  if (req.url === "/api/background-model" && req.method === "GET") {
+    try {
+      return json(res, 200, { ok: true, result: makeSocialAgencyLlmClient().status() });
+    } catch (error) {
+      return json(res, 500, { ok: false, error: error.message || String(error) });
     }
   }
 
