@@ -450,6 +450,11 @@ second cycle only starts once the whole catalogue has run (never the same produc
 running). The Products tab keeps the per-month record — which products ran, which are still
 untouched — computed from the calendar itself.
 
+Product photos are fetched from each product's own page by the scheduler — once when a new
+month starts, then daily while anything is still missing (10 pages per client per pass, a
+page that failed waits a week). A photo you picked or uploaded is never replaced, and the
+per-month box records how many photos were fetched.
+
 English product names (what every image prompt is built from) are now filled in the
 background as soon as a product arrives without one; a name you typed, or a name you
 deliberately cleared, is never overwritten. Details:

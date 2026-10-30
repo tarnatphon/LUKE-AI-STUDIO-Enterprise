@@ -205,6 +205,11 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
   const missingSubjectCount = products.filter((p) => !isValidEnglishSubject(p.imageSubject)).length;
   const pendingSubjectCount = products.filter((p) => p.imageSubjectPending).length;
   const failedSubjectCount = products.filter((p) => p.imageSubjectError).length;
+  // Photos are fetched from the shop's pages without being asked (once a month,
+  // then daily for whatever is missing), so the tab reports that instead of
+  // implying the button is the only way.
+  const imgAutofetch = activeClient?.imageAutofetch || {};
+  const imgFetchedThisMonth = Number(imgAutofetch.months?.[currentMonth()]?.fetched || 0);
   const usedThisMonth = new Set(
     (activeClient?.calendar || []).filter((e) => String(e.date || "").startsWith(currentMonth())).map((e) => e.sku).filter(Boolean),
   ).size;
@@ -212,7 +217,10 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
   // truth): which products ran in each month and which are still untouched.
   const monthUsage = (() => {
     const calendar = activeClient?.calendar || [];
-    const months = [...new Set(calendar.map((e) => String(e.date || "").slice(0, 7)).filter((m) => /^\d{4}-\d{2}$/.test(m)))]
+    const months = [...new Set([
+      ...calendar.map((e) => String(e.date || "").slice(0, 7)),
+      ...Object.keys(activeClient?.imageAutofetch?.months || {}),
+    ].filter((m) => /^\d{4}-\d{2}$/.test(m)))]
       .sort()
       .reverse()
       .slice(0, 6);
@@ -220,7 +228,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
       const entries = calendar.filter((e) => String(e.date || "").startsWith(m));
       const skus = [...new Set(entries.map((e) => e.sku).filter(Boolean))];
       const known = new Set(skus);
-      return { month: m, posts: entries.length, skus, unused: products.filter((p) => !known.has(p.sku)) };
+      const photos = Number(imgAutofetch.months?.[m]?.fetched || 0);
+      return { month: m, posts: entries.length, skus, photos, unused: products.filter((p) => !known.has(p.sku)) };
     });
   })();
   const [imgFetchBusy, setImgFetchBusy] = useState(false);
@@ -643,6 +652,9 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
           <span className={`sa-prod-stat${missingSubjectCount ? " warn" : " ok"}`}><b>{products.length - missingSubjectCount}/{products.length}</b> มีชื่ออังกฤษ</span>
           <span className={`sa-prod-stat${noImgCount ? " warn" : " ok"}`}><b>{products.length - noImgCount}/{products.length}</b> มีรูป</span>
           <span className="sa-prod-stat"><b>{usedThisMonth}</b> ใช้ในปฏิทินเดือนนี้</span>
+          <span className={`sa-prod-stat${fetchableImgCount ? " warn" : " ok"}`} title="ดึงจากหน้าสินค้าของเว็บเอง — เดือนละครั้ง แล้วเติมส่วนที่ขาดทุกวัน">
+            <b>{imgFetchedThisMonth}</b> รูปใหม่เดือนนี้{fetchableImgCount ? ` · ขาดอีก ${fetchableImgCount}` : ""}
+          </span>
           {missingCount > 0 && <span className="sa-prod-stat warn"><b>{missingCount}</b> ยังไม่มีคำอธิบาย</span>}
         </div>
         <p className="sa-form-hint sa-prod-hint">
@@ -654,7 +666,8 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
                 : <>⚠ {missingSubjectCount} รายการยังไม่มีชื่ออังกฤษ — เปิดโมเดลภาษาแล้วระบบจะแปลให้เอง หรือกดที่ชื่อเพื่อพิมพ์เอง</>)
               : <>✓ ทุกสินค้ามีชื่ออังกฤษครบ — พรอมป์ภาพ/วิดีโอใช้ชื่อเหล่านี้</>}
           {failedSubjectCount > 0 && <> · แปลอัตโนมัติไม่ได้ {failedSubjectCount} รายการ (พิมพ์เองในรายการนั้น)</>}
-          {noImgCount > 0 && <> · <b>{noImgCount} รายการยังไม่มีรูป</b> — คลิกกรอบรูปเพื่ออัปโหลด หรือวางลิงก์รูป</>}
+          {noImgCount > 0 && <> · <b>{noImgCount} รายการยังไม่มีรูป</b> — ระบบดึงจากเว็บให้เอง (เดือนละครั้ง + เติมที่ขาดทุกวัน) หรือคลิกกรอบรูปเพื่ออัปโหลดเอง</>}
+          {imgAutofetch.lastRunAt && <> · ดึงรูปอัตโนมัติรอบล่าสุด {new Date(imgAutofetch.lastRunAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })} (ได้ {imgAutofetch.lastSaved || 0} รูป)</>}
           {missingSubjectCount > 0 && autofill.running ? <> · กำลังทำงานเบื้องหลัง</> : null}
         </p>
         <div className="sa-prod-toolbar">
@@ -687,7 +700,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
                 )}
                 {fetchableImgCount > 0 && (
                   <button className="sa-btn ghost sm" disabled={imgFetchBusy || saving} onClick={fetchMissingImages} title="เปิดหน้าเว็บของสินค้าแต่ละรายการ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง — รูปจะถูกใช้เป็น Reference ตอนสร้างภาพปฏิทิน">
-                    <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
+                    <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปเดี๋ยวนี้ (${fetchableImgCount})`}
                   </button>
                 )}
                 {missingSubjectCount > 0 && (
@@ -785,7 +798,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
               <div className="sa-prod-month" key={row.month}>
                 <div className="sa-prod-month-head">
                   <b>{thaiMonthLabel(row.month)}</b>
-                  <span className="sa-muted">{row.posts} โพสต์ · ใช้ {row.skus.length}/{products.length} สินค้า</span>
+                  <span className="sa-muted">{row.posts} โพสต์ · ใช้ {row.skus.length}/{products.length} สินค้า{row.photos ? ` · รูปใหม่ ${row.photos}` : ""}</span>
                 </div>
                 <div className="sa-prod-month-chips">
                   {row.skus.slice(0, 10).map((sku) => (
