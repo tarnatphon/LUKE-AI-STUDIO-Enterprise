@@ -134,6 +134,13 @@ const MAX_PRODUCTS_PER_CLIENT = 200;
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
+// Product photos are topped up from the shop's own pages without being asked:
+// a full pass when a new month starts, then a daily top-up for whatever is still
+// missing. A page that failed waits a week so the shop's server is not hammered.
+const IMAGE_FETCH_SWEEP_MS = 20 * 60 * 1000;
+const IMAGE_FETCH_DAILY_MS = 20 * 60 * 60 * 1000;
+const IMAGE_FETCH_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+const IMAGE_FETCH_PER_RUN = 10;
 // A post whose time passed this long ago and still waits for a human gets one
 // reminder (log line + optional macOS notification + a card in the app). One,
 // not one per tick: `entry.approvalReminderAt` remembers it was said.
@@ -1610,6 +1617,8 @@ class SocialAgencyRuntime {
     this._slotByRunId = new Map();
     this._metricsInFlight = new Set();
     this._metricsSweepRunning = false;
+    this._imageFetchSweepAt = 0;
+    this._imageFetchRunning = false;
     this.knownVersion = null;
     this._recovered = false;
     this._read(); // load / migrate eagerly
@@ -3724,6 +3733,7 @@ class SocialAgencyRuntime {
       image: String(body.image || "").trim().slice(0, 500),
       createdAt: new Date().toISOString(),
     };
+    if (product.image) product.imageSource = "manual";
     if (String(body.imageSubject || "").trim()) {
       product.imageSubject = cleanImageSubject(body.imageSubject);
       product.imageSubjectSource = "manual";
@@ -3745,7 +3755,13 @@ class SocialAgencyRuntime {
       if (body[k] !== undefined) product[k] = String(body[k] ?? "").trim().slice(0, max) || (k === "category" ? "สินค้า" : "");
       if (body.sourceUrl !== undefined) product.sourceUrl = cleanProductPageUrl(product.sourceUrl);
     }
-    if (body.image !== undefined) product.image = this._applyProductImage(client, product, body.image);
+    if (body.image !== undefined) {
+      product.image = this._applyProductImage(client, product, body.image);
+      if (product.image) product.imageSource = "manual";
+      else delete product.imageSource;
+      delete product.imageFetchError;
+      delete product.imageFetchTriedAt;
+    }
     if (body.imageSubject !== undefined) {
       const subject = cleanImageSubject(body.imageSubject);
       if (subject && !isValidImageSubject(subject)) {
@@ -3839,6 +3855,105 @@ class SocialAgencyRuntime {
   // Downloads the best image on the source page (og:image / JSON-LD / content
   // <img>, relative URLs resolved) into app/outputs/sa-products/<clientId>/ so
   // it can be used offline as the generation reference for calendar images.
+  // ── product photos fetched on their own ──────────────────────────────────
+  // "ดึงรูปสินค้าจากเว็บ" used to be a button pressed once per month. The rows
+  // that can be filled are the ones with a usable product-page link and no photo
+  // at all; a photo the user chose is never replaced, and a page that failed is
+  // retried only after a week.
+  static _imageFetchPending(client, now = Date.now()) {
+    return (client.products || []).filter((p) => {
+      if (String(p.image || "").trim()) return false;
+      if (p.imageSource === "manual") return false;
+      if (junkLinkReason(p.sourceUrl)) return false;
+      const tried = Date.parse(p.imageFetchTriedAt || "");
+      if (Number.isFinite(tried) && now - tried < IMAGE_FETCH_RETRY_MS) return false;
+      return true;
+    });
+  }
+
+  /**
+   * One bounded pass over the clients that still have products without a photo.
+   * `perRun` is the number of pages opened per client per pass (the shop's server
+   * sees a handful of requests, not the whole catalogue), and at most
+   * `maxClients` clients are served per pass.
+   */
+  async _maybeAutoFetchImages({ now = Date.now(), perRun = IMAGE_FETCH_PER_RUN, maxClients = 2, force = false, clientIds = null } = {}) {
+    if (this._imageFetchRunning) return { skipped: "already-running" };
+    if (!force && now - (this._imageFetchSweepAt || 0) < IMAGE_FETCH_SWEEP_MS) return { skipped: "recently-checked" };
+    this._imageFetchSweepAt = now;
+    const month = bangkokMonthStr();
+    const only = Array.isArray(clientIds) && clientIds.length ? new Set(clientIds.map(String)) : null;
+    const due = [];
+    for (const client of this._read().clients || []) {
+      if (only && !only.has(client.id)) continue;
+      const pending = SocialAgencyRuntime._imageFetchPending(client, now);
+      if (!pending.length) continue;
+      const record = client.imageAutofetch || {};
+      const newMonth = record.lastMonth !== month;
+      const lastRun = Date.parse(record.lastRunAt || "");
+      const dailyTopUp = !Number.isFinite(lastRun) || now - lastRun >= IMAGE_FETCH_DAILY_MS;
+      if (!force && !newMonth && !dailyTopUp) continue;
+      due.push({ clientId: client.id, skus: pending.slice(0, perRun).map((p) => p.sku), pending: pending.length });
+    }
+    if (!due.length) return { checked: 0, fetched: 0, clients: [] };
+    // The client with the most missing photos goes first: a sweep that spends
+    // its whole budget on a catalogue with two dead links helps nobody.
+    due.sort((a, b) => b.pending - a.pending);
+    this._imageFetchRunning = true;
+    const report = [];
+    try {
+      for (const job of due.slice(0, maxClients)) {
+        let result = { checked: 0, saved: 0, results: [] };
+        try {
+          result = await this.fetchProductImages(job.clientId, { skus: job.skus, limit: job.skus.length, missingOnly: true });
+        } catch (err) {
+          result = { checked: 0, saved: 0, results: [], error: String(err.message || err) };
+        }
+        const at = new Date(now).toISOString();
+        // Record it on a fresh read: fetching touches the same state file.
+        const state = this._read();
+        const client = (state.clients || []).find((c) => c.id === job.clientId);
+        if (client) {
+          const record = client.imageAutofetch || {};
+          const months = { ...(record.months || {}) };
+          const bucket = { fetched: 0, failed: 0, runs: 0, ...(months[month] || {}) };
+          const failed = (result.results || []).filter((r) => r && r.status !== "saved");
+          bucket.fetched += result.saved || 0;
+          bucket.failed += failed.length;
+          bucket.runs += 1;
+          bucket.at = at;
+          months[month] = bucket;
+          // twelve months is the "per-month box": enough to see what was fetched
+          // when, without keeping a second, growing copy of the catalogue.
+          const trimmed = Object.fromEntries(Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).slice(-12));
+          client.imageAutofetch = {
+            lastMonth: month,
+            lastRunAt: at,
+            lastChecked: result.checked || 0,
+            lastSaved: result.saved || 0,
+            pendingAfter: Math.max(0, job.pending - (result.saved || 0)),
+            months: trimmed,
+          };
+          for (const row of result.results || []) {
+            const product = (client.products || []).find((p) => p.sku === row.sku);
+            if (!product) continue;
+            product.imageFetchTriedAt = at;
+            if (row.status === "saved") delete product.imageFetchError;
+            else product.imageFetchError = String(row.reason || "").slice(0, 200);
+          }
+          this._write(state);
+          // A product that only now got its photo can also get its English name.
+          this._queueSubjectBackfill(client.id);
+        }
+        report.push({ clientId: job.clientId, checked: result.checked || 0, fetched: result.saved || 0, error: result.error || "" });
+        if (result.saved) console.log(`  [social-agency] ดึงรูปสินค้าอัตโนมัติ ${job.clientId}: ${result.saved}/${job.skus.length} รูป (${month})`);
+      }
+    } finally {
+      this._imageFetchRunning = false;
+    }
+    return { checked: report.reduce((n, r) => n + r.checked, 0), fetched: report.reduce((n, r) => n + r.fetched, 0), clients: report };
+  }
+
   async fetchProductImages(clientId, body = {}) {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     const onlySkus = Array.isArray(body.skus) ? new Set(body.skus.map(String)) : null;
@@ -8578,6 +8693,11 @@ class SocialAgencyRuntime {
       await this._maybeWeeklySummary();
     } catch (err) {
       console.warn("[social-agency] weekly summary skipped:", err.message);
+    }
+    try {
+      await this._maybeAutoFetchImages();
+    } catch (err) {
+      console.warn("[social-agency] product photo sweep skipped:", err.message);
     }
   }
 
