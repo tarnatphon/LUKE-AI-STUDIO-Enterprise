@@ -65,6 +65,9 @@ async function bootServer(port) {
   let log = "";
   child.stdout.on("data", (chunk) => { log += chunk.toString(); });
   child.stderr.on("data", (chunk) => { log += chunk.toString(); });
+  // The console is where a user looks when a saved folder silently loses
+  // access, so tests read it too — not just the JSON reply.
+  child.appLog = () => log;
   let ready = false;
   for (let attempt = 0; attempt < 200 && !ready; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`Server exited with code ${child.exitCode}.\n${log}`);
@@ -157,6 +160,24 @@ async function main() {
   section("4. Restoring grants nothing new");
   const missingFolder = await call("/api/work/folder/restore", { projectId: project, roots: [gone] });
   check("a folder that no longer exists is refused", missingFolder.data?.failed?.length === 1 && !missingFolder.data?.grants?.[gone], JSON.stringify(missingFolder.data?.failed || []));
+  // A count alone ("1 saved folder(s) could not be granted") leaves the user
+  // guessing which folder and why; the log has to name both.
+  const restoreLog = String(child.appLog ? child.appLog() : "");
+  check(
+    "the console names the folder that could not be restored",
+    restoreLog.includes(gone),
+    restoreLog.split("\n").filter((line) => line.includes("[work]")).join(" | ")
+  );
+  check(
+    "the console says why that folder was refused",
+    /could not be granted — open Edit project/.test(restoreLog) && /no longer available/i.test(restoreLog),
+    restoreLog.split("\n").filter((line) => line.includes("[work]")).join(" | ")
+  );
+  check(
+    "the console does not leak the refused folder's contents",
+    !restoreLog.includes("top secret")
+  );
+
   const noProject = await call("/api/work/folder/restore", { roots: [approved] });
   check("restore without a project is refused", noProject.status === 400, `status ${noProject.status}`);
   const otherUse = await call("/api/work/directory", { projectId: otherProject, root: approved, grantId: restoredGrantId, path: "" });

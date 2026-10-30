@@ -457,7 +457,9 @@ node scripts/social-agency-why-not-posted.cjs --list          # every post that 
 node scripts/social-agency-why-not-posted.cjs --entry ENTRY_ID
 ```
 
-It reports the status, the due time, **whether the app was running then** (from
+`--list` rows read `time · platform · client · status` (sorted by due time), so a row can be
+matched to a calendar cell without decoding ids. It reports the status, the due time,
+**whether the app was running then** (from
 `app/runtime-state/social-agency/scheduler-heartbeat.json`), every blocking gate, the scores,
 the dry-run flag and the next command. Details: [`docs/beta7/scheduler-and-why-not-posted.md`](docs/beta7/scheduler-and-why-not-posted.md).
 

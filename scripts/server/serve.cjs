@@ -23449,6 +23449,11 @@ const handleRequest = async (req, res) => {
       }
       if (failed.length > 0) {
         console.warn(`  [work] ${failed.length} saved folder(s) could not be granted — open Edit project to pick them again.`);
+        // Name each root and its reason: with only a count the user cannot tell
+        // which project folder lost access (and why) from the console.
+        for (const item of failed) {
+          console.warn(`  [work]   · ${item.root} — ${item.error}`);
+        }
       }
       return json(res, 200, { ok: true, grants, failed });
     } catch (error) {

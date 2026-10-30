@@ -326,8 +326,12 @@ async function explainEntry({ entry, client, scheduler, heartbeat, rt, activeCli
   return {
     entryId: entry.id,
     clientId: client.id,
+    clientName: client.name || client.id,
     status: entry.status,
     platform: entry.platform,
+    date: entry.date || "",
+    time: entry.time || "",
+    dueLabel: hasDue ? thaiDateTime(dueMs) : `${entry.date || ""} ${entry.time || ""}`.trim(),
     sku: entry.sku || "",
     dueAt: hasDue ? new Date(dueMs).toISOString() : null,
     lateMs: hasDue ? lateMs : null,
@@ -480,7 +484,11 @@ function formatReport(report) {
   if (report.heartbeatError) lines.push(`  (บันทึกตัวตั้งเวลา: ${report.heartbeatError})`);
   lines.push("");
   for (const item of report.entries.slice(0, LIST_LIMIT)) {
-    lines.push(`  ✗ ${item.entryId} · ${item.clientId} · ${item.status} · ${item.platform}`);
+    // Time + full platform name + client name first: with several rows the id
+    // and the raw platform key do not tell the user which post is which.
+    const when = item.dueLabel || `${item.date || ""} ${item.time || ""}`.trim() || "ไม่มีวัน/เวลา";
+    const platform = PLATFORM_TH[item.platform] || item.platform;
+    lines.push(`  ✗ ${when} · ${platform} · ${item.clientName || item.clientId} · ${item.status}`);
     lines.push(`    ${item.verdict.summary}`);
     lines.push(`    → ${SCRIPT} --entry ${item.entryId}${item.clientId === report.activeClientId ? "" : ` --client ${item.clientId}`}`);
   }

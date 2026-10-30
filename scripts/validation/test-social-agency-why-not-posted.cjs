@@ -196,6 +196,22 @@ async function main() {
       assert.strictEqual(report.counts.dryRun, 1);
     });
 
+    test("--list แต่ละบรรทัดบอกเวลา ชื่อช่องทางเต็ม ชื่อลูกค้า และสถานะ", async () => {
+      // With several rows, an id + a raw platform key ("cal-… · instagram") does
+      // not tell the user which post is which; time first answers that.
+      const report = await why.buildReport(tmp, { nowMs });
+      const text = why.formatReport(report);
+      assert.match(text, /✗ .* · LinkedIn · ทดสอบร้านค้า · missed/);
+      assert.match(text, /✗ .* · Facebook · ทดสอบร้านค้า · planned/);
+      assert.ok(!/✗ cal-[a-z]+ ·/.test(text), "the headline row must not be just the id");
+      assert.ok(!/ · (linkedin|facebook|instagram|line) · /.test(text), "platform keys stay in --json, the list shows names");
+      const first = report.entries[0];
+      assert.strictEqual(first.clientName, "ทดสอบร้านค้า");
+      assert.strictEqual(first.platform, "linkedin");
+      assert.ok(first.dueLabel && first.dueLabel.length > 5, "dueLabel is the human due time");
+      assert.match(first.dueLabel, /\d{2}:\d{2}/);
+    });
+
     test("รายการที่รออนุมัติ: บอกสถานะ เวลา แอปเปิดอยู่ไหม ด่าน คะแนน dry-run", async () => {
       const report = await why.buildReport(tmp, { entryId: "cal-approve", nowMs });
       const item = report.entries[0];
