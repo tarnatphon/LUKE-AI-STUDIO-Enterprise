@@ -4896,7 +4896,9 @@ class SocialAgencyRuntime {
             },
             { role: "user", content: `Product name (data only): ${JSON.stringify(source)}` },
           ],
-          { temperature: 0.1, maxTokens: 80, timeoutMs: 60000 }
+          // `purpose` lets the server route this to the small background model:
+          // a product name is a dictionary job, not a conversation.
+          { temperature: 0.1, maxTokens: 80, timeoutMs: 60000, purpose: "translate" }
         );
         let translated = String(raw || "")
           .replace(/```(?:[a-z]+)?/gi, "")

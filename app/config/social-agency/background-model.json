@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "product": "LUKE AI STUDIO",
+  "feature": "The small local model that runs background chores (product-name translation) instead of the chat model",
+  "enabled": true,
+  "maxSizeGb": 3.2,
+  "minSizeGb": 0.2,
+  "preferredModel": "",
+  "notes": {
+    "why": "Translating a Thai product name into the English label an image prompt is built from is about eighty tokens of dictionary work. Routing it through a 9B chat model meant loading 5 GB next to an image model, swapping, and having the resource governor take the chat model away before the translation finished.",
+    "choice": "The smallest downloaded .gguf that fits maxSizeGb. An explicit preferredModel wins when that file exists. Nothing here changes which model answers a conversation.",
+    "fallback": "If the small model cannot be loaded, the request falls back to the chat model when it is ready, and says so once per minute in the log.",
+    "memory": "This model is loaded by the arena pool (its own llama-server, its own port), so it can sit next to an image model without unloading anything."
+  }
+}

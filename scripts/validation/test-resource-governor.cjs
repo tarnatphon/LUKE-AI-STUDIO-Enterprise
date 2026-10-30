@@ -285,7 +285,11 @@ check(
     /busy: llmRequestsInFlight > 0 \|\| activeArenaRuns\.size > 0/.test(serveSource)
 );
 check("the counter is released even when the chat throws", /finally \{[\s\S]{0,200}llmRequestsInFlight -= 1;\s*\n\s*noteEngineUsed\("text"\);/.test(serveSource));
-check("a model that just became ready is not 'idle since never'", /llmReady = true;\s*\n\s*noteEngineUsed\("text"\);/.test(serveSource));
+check(
+  "a model that just became ready is not 'idle since never'",
+  // The in-flight byte mark is cleared on the same line pair, so it may sit between.
+  /llmReady = true;\s*\n\s*(?:llmModelLoadingBytes = 0;\s*\n\s*)?noteEngineUsed\("text"\);/.test(serveSource)
+);
 check("arena rounds count as use of the pool", /noteEngineUsed\("arena"\);\s*\n\s*await streamArenaGeneration/.test(serveSource));
 check(
   "the release snapshots the model before killing it, which is what makes it reversible",
