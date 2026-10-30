@@ -41,6 +41,17 @@ const {
   presetClosers,
 } = require("./social-agency-content-kinds.cjs");
 
+// When was the publishing loop actually alive? The app writes a tiny heartbeat
+// on start / every tick / stop so a CLI (social-agency-why-not-posted.cjs) can
+// answer "แอปเปิดอยู่ตอนนั้นไหม" without the app running.
+const {
+  recordStart: heartbeatStart,
+  recordTick: heartbeatTick,
+  recordStop: heartbeatStop,
+  readHeartbeat,
+  writeHeartbeat,
+} = require("./scheduler-heartbeat.cjs");
+
 const {
   PLATFORM_RULES: PLATFORM_VERSION_RULES,
   captionFootersFor,
@@ -123,6 +134,13 @@ const MAX_PRODUCTS_PER_CLIENT = 200;
 const RUN_LOG_LIMIT = 200;
 const SCHEDULER_TICK_MS = 60 * 1000;
 const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
+// A post whose time passed this long ago and still waits for a human gets one
+// reminder (log line + optional macOS notification + a card in the app). One,
+// not one per tick: `entry.approvalReminderAt` remembers it was said.
+const APPROVAL_REMINDER_MS = 5 * 60 * 1000;
+// The loop is 60s. Three missed ticks means it is not healthy — the app shows
+// that instead of continuing to look "on".
+const SCHEDULER_STALE_MS = 3 * 60 * 1000;
 const MAX_GLOBAL_CONCURRENCY = 2;
 const FB_GRAPH_HOST = "graph.facebook.com";
 const FB_API_VERSION = "v25.0";
@@ -1580,6 +1598,9 @@ class SocialAgencyRuntime {
     this.imageBackend = process.env.SD_BACKEND_URL || "http://127.0.0.1:8080";
     this.schedulerTimer = null;
     this.schedulerLastTickAt = null;
+    this.schedulerStartedAt = null;
+    this.heartbeatFile = path.join(this.stateDir, "scheduler-heartbeat.json");
+    this._heartbeat = null; // in-memory copy; disk write is best-effort
     this.activeRunCount = 0;
     this.activeByClientPlatform = new Set();
     this._slotByRunId = new Map();
@@ -8096,6 +8117,10 @@ class SocialAgencyRuntime {
   startScheduler() {
     if (this.schedulerTimer) return this.getSchedulerStatus();
     this._recoverInFlightOnce();
+    this.schedulerStartedAt = new Date().toISOString();
+    // Records the window since the previous run's last tick as a gap, so the
+    // CLI can later say "แอปไม่ได้เปิดตอนนั้น" instead of guessing.
+    this._writeHeartbeat((prev) => heartbeatStart(prev, this.schedulerStartedAt, { tickMs: SCHEDULER_TICK_MS, timezone: TZ_LABEL }));
     const tick = async () => {
       try {
         await this._tick();
@@ -8114,7 +8139,28 @@ class SocialAgencyRuntime {
       clearInterval(this.schedulerTimer);
       this.schedulerTimer = null;
     }
+    this._writeHeartbeat((prev) => heartbeatStop(prev, new Date().toISOString()));
     return this.getSchedulerStatus();
+  }
+
+  // ── heartbeat (diagnostics only; never blocks publishing) ──────────────────
+  _writeHeartbeat(next) {
+    try {
+      const prev = this._heartbeat || readHeartbeat(this.heartbeatFile).heartbeat;
+      const hb = typeof next === "function" ? next(prev) : next;
+      if (!hb) return null;
+      this._heartbeat = hb;
+      writeHeartbeat(this.heartbeatFile, hb);
+      return hb;
+    } catch (err) {
+      console.warn("[social-agency] scheduler heartbeat unavailable:", err.message);
+      return null;
+    }
+  }
+
+  getSchedulerHeartbeat() {
+    const { ok, heartbeat, error } = readHeartbeat(this.heartbeatFile);
+    return { ok, error: error || "", heartbeat: heartbeat || this._heartbeat || null };
   }
 
   _recoverInFlightOnce() {
@@ -8170,6 +8216,7 @@ class SocialAgencyRuntime {
 
   async _tick() {
     this.schedulerLastTickAt = new Date().toISOString();
+    this._writeHeartbeat((prev) => heartbeatTick(prev, this.schedulerLastTickAt, { tickMs: SCHEDULER_TICK_MS }));
     this._sweepSlots();
     const state = this._read();
     const now = Date.now();
@@ -8190,6 +8237,19 @@ class SocialAgencyRuntime {
           continue;
         }
         due.push({ client, entry, late: ageMs > 5 * 60 * 1000 });
+      }
+    }
+    // ถึงเวลาแล้วแต่ยังไม่มีคนอนุมัติ — บอกครั้งเดียวต่อรายการ ไม่ใช่ทุกนาที
+    for (const client of state.clients) {
+      for (const entry of client.calendar || []) {
+        if (entry.inFlight || entry.status !== "needs_review" || entry.approvalReminderAt || entry.abTestSource) continue;
+        const dueMs = bangkokToUtcMs(entry.date, entry.time);
+        if (!Number.isFinite(dueMs) || now - dueMs < APPROVAL_REMINDER_MS) continue;
+        entry.approvalReminderAt = new Date().toISOString();
+        stateChanged = true;
+        const lateMin = Math.round((now - dueMs) / 60000);
+        console.warn(`[social-agency] ถึงเวลาแล้วยังไม่อนุมัติ: ${client.name} · ${entry.productName} · ${entry.date} ${entry.time} (เลยมา ${lateMin} นาที) · ${entry.id}`);
+        this._maybeNotify(client.id, "เลยเวลายังไม่อนุมัติ", `${entry.productName} · ${entry.time} — อนุมัติเพื่อให้โพสต์ขึ้น`);
       }
     }
     if (stateChanged) this._write(state);
@@ -8254,16 +8314,41 @@ class SocialAgencyRuntime {
 
   getSchedulerStatus() {
     const state = this._read();
+    const now = Date.now();
     let next = null;
+    // Posts that already passed their time and still wait for a human. The app
+    // shows these as cards (with an approve button) and the CLI reports them, so
+    // a late post is visible without opening every calendar cell.
+    const overdueApprovals = [];
     for (const client of state.clients) {
       for (const entry of client.calendar || []) {
+        const dueMs = bangkokToUtcMs(entry.date, entry.time);
+        if (!Number.isFinite(dueMs)) continue;
+        if (entry.status === "needs_review" && !entry.inFlight && !entry.abTestSource) {
+          const lateMs = now - dueMs;
+          if (lateMs >= APPROVAL_REMINDER_MS && lateMs <= 7 * 24 * 60 * 60 * 1000) {
+            let gate = { required: false, ok: true, status: "not_required", reason: "" };
+            try { gate = this._imageGateInfo(entry); } catch { /* badge only */ }
+            overdueApprovals.push({
+              clientId: client.id,
+              clientName: client.name,
+              entryId: entry.id,
+              label: `${entry.productName || entry.sku || "โพสต์"} · ${entry.platform} · ${entry.date} ${entry.time}`,
+              dueAt: new Date(dueMs).toISOString(),
+              minutesLate: Math.round(lateMs / 60000),
+              gateStatus: gate.status,
+              gateBlocked: Boolean(gate.required && !gate.ok),
+              gateReason: gate.reason || "",
+              remindedAt: entry.approvalReminderAt || null,
+            });
+          }
+        }
         if (entry.inFlight || !["planned", "ready"].includes(entry.status)) continue;
         if (entry.platform === "tiktok" && !entry.tiktokPost) continue;
-        const ms = bangkokToUtcMs(entry.date, entry.time);
-        if (!Number.isFinite(ms) || ms <= Date.now()) continue;
-        if (!next || ms < next.at) {
+        if (dueMs <= now) continue;
+        if (!next || dueMs < next.at) {
           next = {
-            at: ms,
+            at: dueMs,
             label: `${client.name} · ${entry.productName} · ${entry.date} ${entry.time}`,
             clientId: client.id,
             entryId: entry.id,
@@ -8271,15 +8356,73 @@ class SocialAgencyRuntime {
         }
       }
     }
+    overdueApprovals.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt));
+    const running = Boolean(this.schedulerTimer);
+    const lastTickAt = this.schedulerLastTickAt;
+    const lastTickMs = lastTickAt ? Date.parse(lastTickAt) : NaN;
+    const stale = running && (!Number.isFinite(lastTickMs) || now - lastTickMs > SCHEDULER_STALE_MS);
     return {
-      running: Boolean(this.schedulerTimer),
-      lastTickAt: this.schedulerLastTickAt,
+      running,
+      // `stale` is the difference between "the loop is on" and "the loop is
+      // alive": a frozen process still has a timer object.
+      stale,
+      lastTickAt,
+      startedAt: this.schedulerStartedAt || (this._heartbeat && this._heartbeat.startedAt) || null,
+      tickMs: SCHEDULER_TICK_MS,
+      staleAfterMs: SCHEDULER_STALE_MS,
       activeCount: this.activeRunCount,
       nextPostAt: next ? new Date(next.at).toISOString() : null,
       nextPostLabel: next ? next.label : null,
+      overdueApprovals,
       timezone: TZ_LABEL,
       serverNow: new Date().toISOString(),
     };
+  }
+
+  // "ส่งเลยตอนนี้" for a post the scheduler already gave up on.
+  //
+  // A `missed` entry can still be sent, but sending it at its old (past) time is
+  // a lie in the calendar and re-arms the same confusion. This moves the entry
+  // to the current Bangkok minute — keeping the original date/time as history —
+  // and starts the normal workflow, so the run log, the image gate and the
+  // approval queue all behave exactly as they do for any manual run.
+  sendMissedNow(clientId, entryId) {
+    const { state, client, entry } = this._findEntry(clientId, entryId);
+    if (entry.inFlight) throw new Error("รายการนี้กำลังรันอยู่ — รอให้จบก่อน");
+    if (!["missed", "failed"].includes(entry.status)) {
+      throw new Error("รายการนี้ไม่ได้พลาดหรือล้มเหลว — ใช้ \"รันเลยตอนนี้\" แทน (ไม่ต้องเลื่อนเวลา)");
+    }
+    if (entry.abTestSource) throw new Error("ต้นฉบับ A/B ถูกเก็บไว้แล้ว — ส่งโพสต์ A/B ในปฏิทินแทน");
+    if (entry.tiktokInitAttemptedAt) throw new Error("รายการนี้เริ่มส่งไป TikTok แล้ว — ส่งซ้ำไม่ได้");
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const date = bangkokDateStr(now);
+    let time = bangkokTimeStr(now);
+    // The same client must not end up with two entries in one minute slot; step
+    // forward a minute at a time until the slot is free.
+    const taken = (d, t) => (client.calendar || []).some((e) => e.id !== entry.id && e.date === d && e.time === t);
+    for (let i = 0; i < 10 && taken(date, time); i += 1) {
+      const bumped = new Date(now.getTime() + (i + 1) * 60 * 1000);
+      time = bangkokTimeStr(bumped);
+      if (bangkokDateStr(bumped) !== date) break;
+    }
+    entry.rescheduledFrom = [...(Array.isArray(entry.rescheduledFrom) ? entry.rescheduledFrom : []), {
+      date: entry.date,
+      time: entry.time,
+      status: entry.status,
+      missedAt: entry.missedAt || null,
+      failedAt: entry.failedAt || null,
+      resentAt: nowIso,
+    }].slice(-5);
+    entry.date = date;
+    entry.time = time;
+    entry.status = "planned";
+    entry.updatedAt = nowIso;
+    entry.resentAt = nowIso;
+    delete entry.approvalReminderAt; // it is being handled now
+    this._write(state);
+    const run = this.runWorkflow(client.id, entry.id, { trigger: "send-now", late: true });
+    return { entry: this._findEntry(client.id, entry.id).entry, ...run, movedFrom: entry.rescheduledFrom.slice(-1)[0] || null };
   }
 
   _maybeNotify(clientId, title, message) {
@@ -8572,6 +8715,12 @@ class SocialAgencyRuntime {
       }
       if (pathname === "/api/social-agency/run-log" && method === "GET") {
         return json(res, 200, { ok: true, runs: this.listRunLog() });
+      }
+      // "ส่งเลยตอนนี้" for a missed/failed post: move it to now, then run it.
+      if (pathname === "/api/social-agency/send-now" && method === "POST") {
+        const body = await readBody();
+        if (!body.entryId) return fail(new Error("ต้องระบุ entryId"), 400);
+        return json(res, 202, { ok: true, ...this.sendMissedNow(clientId || body.clientId, body.entryId) });
       }
       if (pathname === "/api/social-agency/approve" && method === "POST") {
         const body = await readBody();

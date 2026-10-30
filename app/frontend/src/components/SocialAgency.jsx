@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Megaphone, Settings, MoreVertical, Trash2, Clock, RefreshCw, Play, Pause } from "lucide-react";
+import { Plus, Megaphone, Settings, MoreVertical, Trash2, RefreshCw, Play, Pause } from "lucide-react";
 import "../social-agency.css";
 import { api, postJson, clientMonthlyCounts, hasActiveWork, timeUntil, currentMonth } from "../social-agency/lib.js";
 import CalendarTab from "../social-agency/CalendarTab.jsx";
@@ -10,6 +10,8 @@ import StyleTab from "../social-agency/StyleTab.jsx";
 import InsightsTab from "../social-agency/InsightsTab.jsx";
 import ProductsTab from "../social-agency/ProductsTab.jsx";
 import { EntryDrawer, ConnectorsDrawer } from "../social-agency/drawers.jsx";
+import SchedulerAlerts from "../social-agency/SchedulerAlerts.jsx";
+import SchedulerStatusCard, { SchedulerPill } from "../social-agency/SchedulerStatus.jsx";
 import { AddClientModal, ConfirmModal } from "../social-agency/modals.jsx";
 
 const TABS = [
@@ -227,6 +229,12 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
     await postJson("/api/social-agency/run", { clientId: activeClient.id, entryId });
   });
 
+  // "ส่งเลยตอนนี้" for a missed post: the server moves the entry to the current
+  // minute (keeping the old slot as history) and then runs it.
+  const sendNow = withBusy(async (entryId) => {
+    await postJson("/api/social-agency/send-now", { clientId: activeClient.id, entryId });
+  });
+
   const approve = withBusy(async (entryId) => {
     await postJson("/api/social-agency/approve", { clientId: activeClient.id, entryId });
   });
@@ -411,14 +419,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
             <span className="sa-chip-stat err"><b>{counts.failed}</b> ล้มเหลว/พลาด</span>
           </div>
           <div className="sa-header-right">
-            <span className={`sa-scheduler ${state.scheduler?.running ? "on" : ""}`}>
-              <Clock size={13} />
-              {state.scheduler?.running
-                ? nextPostIn
-                  ? `Scheduler ทำงานอยู่ · โพสต์ถัดไปใน ${nextPostIn}`
-                  : "Scheduler ทำงานอยู่ · รอคิวถัดไป"
-                : "Scheduler หยุดอยู่"}
-            </span>
+            <SchedulerPill scheduler={state.scheduler} nextPostIn={nextPostIn} />
             <button
               className="sa-icon-btn"
               title={state.scheduler?.running ? "หยุด Scheduler ชั่วคราว" : "เริ่ม Scheduler"}
@@ -435,6 +436,15 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
 
         {error && <p className="sa-error-banner" role="alert">{error} <button className="sa-btn ghost sm" onClick={() => setError("")}>ปิด</button></p>}
 
+        <SchedulerAlerts
+          client={activeClient}
+          scheduler={state.scheduler}
+          busy={busy}
+          onOpenEntry={(id) => setDrawerEntryId(id)}
+          onApprove={approve}
+          onSendNow={sendNow}
+        />
+
         <nav className="sa-tabs">
           {TABS.map((t) => (
             <button key={t.id} className={tab === t.id ? "active" : ""} onClick={() => setTab(t.id)}>
@@ -448,6 +458,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           {tab === "overview" && (
             <OverviewTab
               activeClient={activeClient}
+              scheduler={state.scheduler}
               refreshKey={refreshSeq}
               onOpenEntry={(id) => setDrawerEntryId(id)}
             />
@@ -535,6 +546,8 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
           busy={busy}
           onClose={() => setDrawerEntryId(null)}
           onRunNow={runNow}
+          onSendNow={sendNow}
+          scheduler={state.scheduler}
           onApprove={approve}
           onReject={reject}
           onReschedule={(entryId, date, time) => reschedule(entryId, date, time)}

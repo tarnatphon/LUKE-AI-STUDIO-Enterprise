@@ -1156,3 +1156,84 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
 /* Per-client contact copy is edited independently of account credentials. */
 .sa-caption-footer-settings textarea { resize: vertical; line-height: 1.55; }
 .sa-footer-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* ── “จะขึ้นเองไหม” — scheduler truth in the UI ──────────────────────────────
+   The calendar cell, the post page, the alerts and the CLI all read the same
+   rules (postOutlook in lib.js), so the wording here is only presentation. */
+
+.sa-scheduler b { font-weight: 700; }
+.sa-scheduler-meta { color: var(--sa-muted); font-weight: 400; }
+.sa-scheduler.stale { color: var(--sa-warn); border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); border-style: solid; }
+
+.sa-chip-outlook {
+  display: inline-flex; align-items: center; gap: 3px;
+  align-self: flex-start;
+  font-size: 0.58rem; font-weight: 700; line-height: 1.35;
+  padding: 0 5px; border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.sa-chip-outlook.ok { color: var(--sa-success); background: color-mix(in srgb, var(--sa-success) 12%, transparent); border-color: color-mix(in srgb, var(--sa-success) 35%, transparent); }
+.sa-chip-outlook.warn { color: var(--sa-warn); background: color-mix(in srgb, var(--sa-warn) 14%, transparent); border-color: color-mix(in srgb, var(--sa-warn) 40%, transparent); }
+.sa-chip-outlook.bad { color: var(--sa-error); background: color-mix(in srgb, var(--sa-error) 12%, transparent); border-color: color-mix(in srgb, var(--sa-error) 38%, transparent); }
+.sa-chip-outlook.info { color: var(--sa-muted); background: var(--sa-card-1); border-color: var(--sa-outline); }
+
+/* the same answer, in full, at the top of the post page */
+.sa-outlook {
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid var(--sa-outline);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--sa-card-1);
+  padding: 9px 11px;
+  margin: 0 0 12px;
+}
+.sa-outlook header { display: flex; align-items: center; gap: 7px; }
+.sa-outlook header b { font-size: 0.78rem; }
+.sa-outlook p { margin: 0; font-size: 0.72rem; line-height: 1.5; color: var(--sa-muted); }
+.sa-outlook.ok { border-left-color: var(--sa-success); }
+.sa-outlook.ok header { color: var(--sa-success); }
+.sa-outlook.warn { border-left-color: var(--sa-warn); background: color-mix(in srgb, var(--sa-warn) 7%, transparent); }
+.sa-outlook.warn header { color: var(--sa-warn); }
+.sa-outlook.bad { border-left-color: var(--sa-error); background: color-mix(in srgb, var(--sa-error) 6%, transparent); }
+.sa-outlook.bad header { color: var(--sa-error); }
+.sa-outlook.info { border-left-color: var(--sa-primary); }
+.sa-outlook button { align-self: flex-start; }
+
+/* in-app alerts for posts whose time came and went */
+.sa-alerts { display: flex; flex-direction: column; gap: 8px; margin: 10px 18px 0; }
+.sa-alert-card {
+  border: 1px solid color-mix(in srgb, var(--sa-warn) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sa-warn) 7%, var(--sa-card));
+  padding: 9px 11px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sa-alert-card.missed { border-color: color-mix(in srgb, var(--sa-error) 40%, transparent); background: color-mix(in srgb, var(--sa-error) 6%, var(--sa-card)); }
+.sa-alert-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sa-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 700; }
+.sa-alert-card.overdue .sa-alert-title { color: var(--sa-warn); }
+.sa-alert-card.missed .sa-alert-title { color: var(--sa-error); }
+.sa-alert-body { margin: 0; font-size: 0.73rem; line-height: 1.5; color: var(--sa-text); }
+.sa-alert-card footer { display: flex; align-items: center; gap: 7px; }
+
+/* scheduler card on the overview tab */
+.sa-sched-card {
+  border: 1px dashed var(--sa-outline-strong);
+  border-radius: var(--sa-radius);
+  background: var(--sa-card);
+  padding: 11px 13px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.sa-sched-card.on { border-style: solid; border-color: color-mix(in srgb, var(--sa-success) 45%, transparent); }
+.sa-sched-card.stale { border-style: solid; border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); }
+.sa-sched-card header { display: flex; align-items: center; gap: 7px; }
+.sa-sched-card header b { font-size: 0.8rem; }
+.sa-sched-card.on header { color: var(--sa-success); }
+.sa-sched-card.stale header { color: var(--sa-warn); }
+.sa-sched-card-state { margin-left: auto; font-size: 0.68rem; color: var(--sa-muted); }
+.sa-sched-card-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 14px; }
+.sa-sched-card-rows > div { display: flex; flex-direction: column; gap: 1px; font-size: 0.7rem; }
+.sa-sched-card-rows > div > span { color: var(--sa-muted); font-size: 0.66rem; }
+.sa-sched-card-next { grid-column: 1 / -1; }
+.sa-sched-card .sa-warn-banner, .sa-sched-card .sa-error-banner { margin: 0; font-size: 0.72rem; line-height: 1.5; }
