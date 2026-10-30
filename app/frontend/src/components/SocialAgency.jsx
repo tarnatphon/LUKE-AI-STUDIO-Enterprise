@@ -468,6 +468,7 @@ export default function SocialAgency({ onCreateImage, onCreateVideo, onOpenChat 
               activeClient={activeClient}
               refreshKey={refreshSeq}
               onChanged={refresh}
+              subjectAutofill={state?.subjectAutofill}
             />
           )}
           {tab === "calendar" && (

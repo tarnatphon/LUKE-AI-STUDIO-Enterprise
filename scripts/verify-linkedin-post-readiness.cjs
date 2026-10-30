@@ -308,7 +308,7 @@ function formatInventory(inv) {
         explainedEmpty = true;
         lines.push("    ยังไม่มีรายการ — สร้างก่อนแล้วค่อยกลับมาตรวจ:");
         lines.push("    1) เปิดแอป → แท็บ ปฏิทิน → เลือกเดือน");
-        lines.push("    2) กด “วางแผนอัตโนมัติทั้งเดือน” (LinkedIn ติ๊กไว้แล้ว) หรือกด “เพิ่มโพสต์” แล้วเลือกแพลตฟอร์ม LinkedIn");
+        lines.push("    2) กด “วางแผน 30 วันข้างหน้า” (เดิม “วางแผนอัตโนมัติทั้งเดือน” · LinkedIn ติ๊กไว้แล้ว) หรือกด “เพิ่มโพสต์” แล้วเลือกแพลตฟอร์ม LinkedIn");
         lines.push("    3) สร้างภาพ AI แล้วกด “ตรวจภาพแล้ว” ในหน้ารายการ");
         lines.push(`    4) กลับมารัน: ${SCRIPT} --list`);
       } else {
@@ -554,7 +554,7 @@ async function inspectLinkedInPostReadiness(options = {}) {
         : `ไม่พบรายการโพสต์ LinkedIn ในปฏิทิน${sku ? ` ของ SKU ${sku}` : ""}${inventory ? ` · รายการ LinkedIn ที่มี: ${inventory}` : " · ยังไม่มีรายการ LinkedIn ในปฏิทินเลย"}`,
       linkedinEntries.length
         ? `คัดลอก ID จริงจากรายการนี้:\n   ${suggested}\n   แล้วรัน: node scripts/verify-linkedin-post-readiness.cjs --entry ${linkedinEntries[0].id} --online`
-        : "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
+        : "สร้างรายการโพสต์ LinkedIn ในแท็บ ปฏิทิน (หรือกด “วางแผน 30 วันข้างหน้า” / “วางแผนอัตโนมัติทั้งเดือน” ที่มี LinkedIn อยู่แล้ว) แล้วสร้างภาพ AI · รัน --list เพื่อดู ID/รายการที่มี",
     );
   } else if (options.sku && entry.sku !== options.sku) {
     addCheck("entry_media", "รายการโพสต์และภาพ AI (รูปที่ 1)", "fail", `รายการ ${entry.id} เป็นของสินค้า ${entry.sku} ไม่ตรงกับ --sku ${options.sku}`, `ระบุ --entry ENTRY_ID ของ ${options.sku} (ดูได้จาก --list)`);

@@ -15,6 +15,9 @@ const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 // is the off switch, so a post can still be planned as a draft and copied over
 // by hand when the client has no LinkedIn token yet.
 const PLAN_PLATFORMS = ["facebook", "instagram", "line", "linkedin", "demo"];
+// A rolling window, not "whatever is left of this month": on the 30th the month
+// view has two days, which used to produce a two-day calendar.
+const PLAN_HORIZON_DAYS = 30;
 // The statuses an operator actually scans for, in the order they matter: what
 // needs a decision first, then what is live, then what is only planned.
 const SUMMARY_STATUSES = ["needs_review", "failed", "publishing", "in_workflow", "published", "planned", "missed"];
@@ -202,13 +205,20 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
     replacePlanned ? "แทนที่แผนเดิม" : "",
   ].filter(Boolean).join(" · ");
 
+  // On the current month the calendar only has the days that are left (on the
+  // 30th: two), which is why a client with 20 products got a two-day plan. The
+  // button now plans a rolling 30-day window from today, crossing into the next
+  // month when it has to; a month you navigated to is planned in full.
+  const plannedDays = month === currentMonth() ? PLAN_HORIZON_DAYS : undefined;
   const noProducts = !(activeClient?.products || []).length;
   const planBlocked = planBusy || busy || noProducts || !planPlatforms.size;
   const planBlockedReason = noProducts
     ? "เพิ่มสินค้าอย่างน้อย 1 ชิ้นในแท็บ “สินค้า” ก่อนวางแผน"
     : !planPlatforms.size
       ? "เลือกอย่างน้อย 1 แพลตฟอร์มในตัวเลือกการวางแผน"
-      : "วางแผนอัตโนมัติทั้งเดือน — กดซ้ำได้เพื่อเติมช่องที่ยังว่าง";
+      : plannedDays
+        ? `วางแผน ${plannedDays} วันข้างหน้า (วันนี้เป็นต้นไป) — สินค้าถูกเลือกแบบสุ่มและไม่ซ้ำจนครบทุกชิ้น · กดซ้ำได้เพื่อเติมช่องที่ยังว่าง`
+        : "วางแผนทั้งเดือนที่เปิดอยู่ — กดซ้ำได้เพื่อเติมช่องที่ยังว่าง";
 
   const deleteVisible = () => {
     const ids = filteredEntries.map((e) => e.id);
@@ -247,6 +257,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
         platforms: PLAN_PLATFORMS.filter((p) => planPlatforms.has(p)),
         angles: [...planAngles],
         replacePlanned,
+        ...(plannedDays ? { days: plannedDays } : {}),
       });
       setPlanPreview(preview);
     } catch (err) {
@@ -313,7 +324,7 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
               onClick={startAutoPlan}
               title={planBlockedReason}
             >
-              <Sparkles size={14} /> {planBusy ? "กำลังวางแผน…" : "วางแผนอัตโนมัติทั้งเดือน"}
+              <Sparkles size={14} /> {planBusy ? "กำลังวางแผน…" : plannedDays ? `วางแผน ${plannedDays} วันข้างหน้า` : "วางแผนทั้งเดือนนี้"}
             </button>
           </div>
         </div>
@@ -572,7 +583,9 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
           preview={planPreview}
           onClose={() => setPlanPreview(null)}
           onApply={(m, slots) => onApplyPlan(activeClient.id, m, slots, {
-            ...(planPreview?.mode === "one-per-day" ? { enforceUniqueProducts: true } : {}),
+            // One product per month only makes sense when the plan does not have
+            // to cycle: 20 products over 30 days deliberately repeats brands.
+            ...(planPreview?.mode === "one-per-day" && !planPreview?.allowProductRepeats ? { enforceUniqueProducts: true } : {}),
             ...(planPreview?.replacePlanned ? { replacePlanned: true } : {}),
           })}
         />

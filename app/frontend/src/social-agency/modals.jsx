@@ -405,6 +405,15 @@ export function AutoPlanModal({ preview, onClose, onApply }) {
           {" — มาจากธุรกิจของลูกค้ารายนี้และเสาหลักที่ตั้งไว้ เปลี่ยนมุมที่เลือกได้ที่แถบเครื่องมือ ปฏิทินก่อนกดวางแผน"}
         </p>
       ) : null}
+      {onePerDay && preview?.horizon?.days ? (
+        <p className="sa-form-hint">
+          <b>ช่วงที่วางแผน:</b> {preview.horizon.days} วัน ({preview.horizon.from} → {preview.horizon.to})
+          {preview.productPool ? ` · สินค้าในคลัง ${preview.productPool} ชิ้น` : ""}
+          {preview.cycles > 1
+            ? ` · ใช้ครบทุกชิ้นแล้ววนรอบที่ ${preview.cycles} (สินค้าเดิมจะกลับมาหลังจากครบรอบ และไม่ซ้ำวันติดกัน)`
+            : " · ยังไม่ต้องใช้สินค้าซ้ำ"}
+        </p>
+      ) : null}
       {preview?.replacePlanned ? (
         <p className="sa-form-hint">
           โหมดแทนที่แผนเดิม: รายการที่ยังไม่เริ่มรัน (สถานะ วางแผนไว้) ในช่องเดียวกันจะถูกแทนที่ด้วยแผนใหม่

@@ -440,6 +440,21 @@ style phrase.
 - Pillars start as the client's kind and an untouched legacy default set is swapped once
   for the right business — a pillar you edited yourself is never overwritten.
 
+### How products are picked, and where their English names come from
+
+The planner button (**วางแผน 30 วันข้างหน้า**) fills a rolling 30-day window from today, so
+the end of a month is no longer the end of the plan — on the 30th you still get 30 days,
+crossing into the next month. One product per day is drawn at random: every product gets a
+turn before any repeats, products used in the previous six weeks are drained last, and a
+second cycle only starts once the whole catalogue has run (never the same product two days
+running). The Products tab keeps the per-month record — which products ran, which are still
+untouched — computed from the calendar itself.
+
+English product names (what every image prompt is built from) are now filled in the
+background as soon as a product arrives without one; a name you typed, or a name you
+deliberately cleared, is never overwritten. Details:
+[`docs/beta7/product-rotation-and-names.md`](docs/beta7/product-rotation-and-names.md).
+
 ### Will this post go out by itself?
 
 A planned post is not a promise. The scheduler lives inside the app, it only picks up

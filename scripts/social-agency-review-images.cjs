@@ -243,7 +243,7 @@ function formatPlan(plan) {
       if (!explainedEmpty) {
         explainedEmpty = true;
         lines.push(head);
-        lines.push("    ยังไม่มีรายการในปฏิทิน — เปิดแอป → ปฏิทิน → “วางแผนอัตโนมัติทั้งเดือน” แล้วกลับมารัน --list");
+        lines.push("    ยังไม่มีรายการในปฏิทิน — เปิดแอป → ปฏิทิน → “วางแผน 30 วันข้างหน้า” (เดิม “วางแผนอัตโนมัติทั้งเดือน”) แล้วกลับมารัน --list");
       } else {
         lines.push(`${head} · ยังไม่มีรายการ`);
       }

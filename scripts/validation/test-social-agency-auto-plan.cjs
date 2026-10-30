@@ -92,11 +92,15 @@ async function main() {
     assert.deepStrictEqual(plan.platforms, ["facebook", "line"], "tiktok must be dropped");
     assert.ok(plan.slots.every((s) => ["facebook", "line"].includes(s.platform)));
     const byDate = new Map(plan.slots.map((s) => [s.date, s]));
-    assert.strictEqual(plan.slots.length, Math.min(12, days) * 2);
-    for (const date of new Set(plan.slots.map((s) => s.date))) {
+    // 12 products, 28–31 days: every day still gets a post, so the rotation runs
+    // a second cycle instead of leaving the end of the month empty.
+    assert.strictEqual(plan.slots.length, days * 2);
+    assert.strictEqual(byDate.size, days, "every day of the month is planned");
+    for (const date of byDate.keys()) {
       assert.strictEqual(plan.slots.filter((s) => s.date === date).length, 2);
     }
-    assert.ok([...byDate.keys()].length > 0);
+    assert.strictEqual(new Set(plan.slots.map((s) => s.sku)).size, 12, "all 12 products take a turn");
+    assert.strictEqual(plan.allowProductRepeats, true, "the UI must not demand one-product-per-month here");
   });
 
   test("an existing post on a day blocks only its own platform, not the whole day", async () => {
@@ -175,11 +179,13 @@ async function main() {
   test("without replacePlanned the same preview leaves planned entries where they are", async () => {
     const id = makeClient("ไม่แตะของเดิม", 8);
     const first = await rt.autoPlanPreview(id, { month, onePerDay: true, platforms: ["facebook"] });
-    rt.applyAutoPlan(id, { month, slots: first.slots, enforceUniqueProducts: true });
+    // 8 products for a whole month: the plan cycles, so the UI must not also ask
+    // for one-product-per-month (it would drop every repeated day).
+    rt.applyAutoPlan(id, { month, slots: first.slots, enforceUniqueProducts: !first.allowProductRepeats });
     const before = clientOf(id).calendar.map((e) => e.id).sort();
     const again = await rt.autoPlanPreview(id, { month, onePerDay: true, platforms: ["facebook"] });
     assert.strictEqual(again.slots.length, 0, "the combo is taken");
-    const applied = rt.applyAutoPlan(id, { month, slots: again.slots.length ? again.slots : first.slots, enforceUniqueProducts: true });
+    const applied = rt.applyAutoPlan(id, { month, slots: again.slots.length ? again.slots : first.slots, enforceUniqueProducts: !first.allowProductRepeats });
     assert.strictEqual(applied.count, 0, "nothing new is written over the existing plan");
     assert.deepStrictEqual(clientOf(id).calendar.map((e) => e.id).sort(), before);
   });
@@ -243,6 +249,45 @@ async function main() {
     rt.deleteCalendarEntriesBatch(id, { ids: clientOf(id).calendar.map((e) => e.id) });
     const refreed = await rt.autoPlanPreview(id, { month, onePerDay: true });
     assert.strictEqual(refreed.slots.length, 5, "deleting the entries frees the product for planning again");
+  });
+
+  // ── rolling window: the end of a month is not the end of the plan ────────
+
+  test("a 30-day rolling window crosses the month boundary and fills every day", async () => {
+    // The bug: on the 30th, "วางแผนทั้งเดือน" planned the two days left in the
+    // month — a client with 22 products ended up with a two-day calendar.
+    const id = makeClient("ยี่สิบกว่าชิ้น", 22);
+    const plan = await rt.autoPlanPreview(id, { onePerDay: true, days: 30, platforms: ["facebook"] });
+    assert.strictEqual(plan.horizon.days, 30);
+    assert.strictEqual(plan.slots.length, 30, "every day of the window gets a post");
+    const dates = plan.slots.map((s) => s.date);
+    assert.strictEqual(new Set(dates).size, 30);
+    assert.ok(dates[29] > dates[0], "the window moves forward day by day");
+    assert.notStrictEqual(dates[0].slice(0, 7), dates[29].slice(0, 7), "…and is allowed to cross into the next month");
+    assert.strictEqual(new Set(plan.slots.map((s) => s.sku)).size, 22, "all 22 products take a turn");
+    assert.strictEqual(plan.allowProductRepeats, true);
+    assert.strictEqual(plan.shortBy, 0);
+    // a product comes back only after the others, never on two days in a row
+    for (let i = 1; i < plan.slots.length; i += 1) {
+      assert.notStrictEqual(plan.slots[i].sku, plan.slots[i - 1].sku, `${plan.slots[i].date}: same product two days running`);
+    }
+    const applied = rt.applyAutoPlan(id, { month: plan.month, slots: plan.slots, enforceUniqueProducts: !plan.allowProductRepeats });
+    assert.strictEqual(applied.count, 30);
+    assert.strictEqual(clientOf(id).calendar.length, 30);
+  });
+
+  test("products used in the previous weeks are drained last", async () => {
+    // A new month must not open with the tail of the old one.
+    const id = makeClient("หมุนเวียน", 4);
+    const products = clientOf(id).products;
+    const past = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+    rt.createCalendarEntry(id, { entry: { date: past(6), time: "09:00", platform: "facebook", sku: products[0].sku, angle: "เปิดตัวสินค้า" } });
+    rt.createCalendarEntry(id, { entry: { date: past(3), time: "09:00", platform: "facebook", sku: products[1].sku, angle: "เปิดตัวสินค้า" } });
+    const plan = await rt.autoPlanPreview(id, { onePerDay: true, days: 4, platforms: ["facebook"] });
+    const firstTwo = new Set(plan.slots.slice(0, 2).map((s) => s.sku));
+    assert.ok(!firstTwo.has(products[0].sku) && !firstTwo.has(products[1].sku), "the two used products wait their turn");
+    assert.deepStrictEqual([...firstTwo].sort(), [products[2].sku, products[3].sku].sort());
+    assert.deepStrictEqual(new Set(plan.slots.map((s) => s.sku)).size, 4);
   });
 
   // ── weekly cadence mode ─────────────────────────────────────────────────
