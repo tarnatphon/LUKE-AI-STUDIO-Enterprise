@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, AlertTriangle, History, LayoutGrid, RefreshCw } from "lucide-react";
 import { api, STATUS_META, PLATFORM_META, weekdayTh, formatDateTimeTh } from "./lib.js";
+import SchedulerStatusCard from "./SchedulerStatus.jsx";
 
 function StatCard({ label, value, cls }) {
   return (
@@ -11,7 +12,7 @@ function StatCard({ label, value, cls }) {
   );
 }
 
-export default function OverviewTab({ activeClient, refreshKey, onOpenEntry }) {
+export default function OverviewTab({ activeClient, scheduler, refreshKey, onOpenEntry }) {
   const clientId = activeClient?.id;
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState("");
@@ -56,6 +57,7 @@ export default function OverviewTab({ activeClient, refreshKey, onOpenEntry }) {
 
   return (
     <div className="sa-ov">
+      <SchedulerStatusCard scheduler={scheduler} />
       <div className="sa-ov-stats">
         <StatCard label="คิวไว้แล้ว (เดือนนี้)" value={counts.scheduled} />
         <StatCard label="รออนุมัติ" value={counts.awaiting} cls="warn" />

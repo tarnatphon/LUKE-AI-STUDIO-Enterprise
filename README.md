@@ -440,6 +440,27 @@ style phrase.
 - Pillars start as the client's kind and an untouched legacy default set is swapped once
   for the right business — a pillar you edited yourself is never overwritten.
 
+### Will this post go out by itself?
+
+A planned post is not a promise. The scheduler lives inside the app, it only picks up
+`planned`/`ready` entries, and the workflow parks anything whose AI score or image review
+is not satisfied. Every calendar cell and post page now says which of those applies
+(`จะขึ้นเอง` / `ไม่ขึ้นจริง — dry-run` / `ไม่ขึ้นเอง — ตัวตั้งเวลาหยุดอยู่` / `รออนุมัติ` /
+`พลาดโพสต์`), the app raises a card when a post is 5+ minutes past due and still unapproved
+(approve from the card), a `missed` post has **ส่งเลยตอนนี้** (move to now, then run), and
+the scheduler shows whether its loop is alive, not just whether a timer exists.
+
+From a terminal, read-only:
+
+```bash
+node scripts/social-agency-why-not-posted.cjs --list          # every post that is not going out by itself
+node scripts/social-agency-why-not-posted.cjs --entry ENTRY_ID
+```
+
+It reports the status, the due time, **whether the app was running then** (from
+`app/runtime-state/social-agency/scheduler-heartbeat.json`), every blocking gate, the scores,
+the dry-run flag and the next command. Details: [`docs/beta7/scheduler-and-why-not-posted.md`](docs/beta7/scheduler-and-why-not-posted.md).
+
 ---
 
 ## <a id="licensing"></a>📝 License

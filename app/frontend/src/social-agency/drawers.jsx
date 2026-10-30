@@ -5,12 +5,13 @@ import { captionForPost } from "./post-copy.js";
 import CaptionPresets from "./CaptionPresets.jsx";
 import {
   X, Play, Check, Ban, Trash2, CalendarClock, ExternalLink, Image as ImageIcon, Film,
-  MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock, Share2,
+  MessageSquare, Copy, ShieldCheck, Settings, RefreshCw, Clock, Share2, Send, AlarmClock,
 } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, NODE_LABELS, NODE_STATUS_TH, TONES,
   formatDateTimeTh, formatDuration, scoreClass, weekdayTh, bangkokToday,
   PRODUCT_REF_MODE_LABEL, productRefNotice, ensureProductRef500, isValidEnglishSubject,
+  postOutlook,
 } from "./lib.js";
 
 function Drawer({ title, onClose, children, footer }) {
@@ -36,6 +37,27 @@ function Drawer({ title, onClose, children, footer }) {
 function StatusPill({ status }) {
   const meta = STATUS_META[status] || { label: status, cls: "" };
   return <span className={`sa-pill ${meta.cls}`}>{meta.label}</span>;
+}
+
+// The one sentence the post page owed the operator: will this still go out by
+// itself, and if not, what is standing in the way? Same helper as the calendar
+// chip and the alerts, so the two can never disagree.
+function OutlookCallout({ outlook, entry, busy, onSendNow }) {
+  if (!outlook) return null;
+  return (
+    <section className={`sa-outlook ${outlook.tone}`} data-outlook={outlook.key} role="status">
+      <header>
+        {outlook.tone === "ok" ? <Check size={14} /> : <AlarmClock size={14} />}
+        <b>{outlook.title}</b>
+      </header>
+      <p>{outlook.detail}</p>
+      {outlook.key === "missed" && onSendNow && (
+        <button className="sa-btn primary sm" disabled={busy} onClick={() => onSendNow(entry.id)}>
+          <Send size={13} /> ส่งเลยตอนนี้
+        </button>
+      )}
+    </section>
+  );
 }
 
 function NodeTimeline({ run }) {
@@ -215,7 +237,7 @@ function ImageRefLine({ entry }) {
   return <p className="sa-form-hint">โหมดรูปอ้างอิงของภาพล่าสุด: {label}{denoise}{steps}</p>;
 }
 
-export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, onRejectImage, onSaveTags, onCaptionApplied, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
+export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onReject, onReschedule, onDelete, onSendNow, scheduler, onOpenInWorkflow, onOpenStyle, onCreateImage, onCreateVideo, onOpenChat, onGenerateImage, onReviewImage, onRejectImage, onSaveTags, onCaptionApplied, generatingImage, imageGenError, onGenerateVideo, generatingVideo, videoGenError, onUseHook, onCreateExperiment, onCancelExperiment, onRepurpose, onSaveMetrics, onRefreshMetrics, onSaveMediaUrls, onTikTokCreatorInfo, onTikTokSaveCaption, onTikTokConsent, onTikTokStatus, busy }) {
   const [date, setDate] = useState(entry.date);
   const [repurposing, setRepurposing] = useState(false);
   const [abDate, setAbDate] = useState(() => new Date(Date.parse(`${bangkokToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10));
@@ -332,6 +354,19 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
               <Play size={14} /> รันเลยตอนนี้
             </button>
           )}
+          {/* A missed post is not "run it at the time it missed" — that keeps a
+              past timestamp on screen and re-arms the same confusion. This moves
+              it to now first, then runs, and keeps the old slot as history. */}
+          {!entry.abTestSource && entry.status === "missed" && onSendNow && (
+            <button
+              className="sa-btn primary"
+              disabled={busy || (entry.platform === "tiktok" && !entry.tiktokPost)}
+              title="เลื่อนรายการนี้มาตอนนี้แล้วรันทันที (เก็บวัน/เวลาเดิมไว้เป็นประวัติ)"
+              onClick={() => onSendNow(entry.id)}
+            >
+              <Send size={14} /> ส่งเลยตอนนี้
+            </button>
+          )}
           {!entry.abTestSource && entry.status === "needs_review" && (
             <>
               <button className="sa-btn success" disabled={busy || (entry.platform === "tiktok" && !entry.tiktokPost)} onClick={() => onApprove(entry.id)}><Check size={14} /> อนุมัติและเผยแพร่</button>
@@ -386,6 +421,10 @@ export function EntryDrawer({ entry, client, onClose, onRunNow, onApprove, onRej
         {entry.late && <span className="sa-pill late">รันช้า</span>}
         {entry.publishMode && entry.publishMode !== "live" && <span className="sa-pill dry">{entry.publishMode === "pending" ? "รอ TikTok ประมวลผล" : entry.publishMode === "failed" ? "TikTok ล้มเหลว" : entry.publishMode === "demo" ? "Demo" : "Dry-run"}</span>}
       </div>
+
+      {/* “จะขึ้นเองไหม” answered before the operator waits for something that
+          was never going to happen. */}
+      <OutlookCallout outlook={postOutlook(entry, client, scheduler)} entry={entry} busy={busy} onSendNow={onSendNow} />
 
       {/* The real post comes first: image and full caption are what has to be
           checked before approving, so they sit at the top of the details

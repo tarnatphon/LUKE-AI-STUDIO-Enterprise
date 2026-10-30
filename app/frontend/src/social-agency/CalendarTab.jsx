@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   STATUS_META, PLATFORM_META, monthMatrix, thaiMonthLabel, shiftMonth, dayNumber,
-  bangkokToday, currentMonth, entriesOfMonth,
+  bangkokToday, currentMonth, entriesOfMonth, postOutlook,
 } from "./lib.js";
 import { NewEntryModal, AutoPlanModal } from "./modals.jsx";
 
@@ -19,7 +19,10 @@ const PLAN_PLATFORMS = ["facebook", "instagram", "line", "linkedin", "demo"];
 // needs a decision first, then what is live, then what is only planned.
 const SUMMARY_STATUSES = ["needs_review", "failed", "publishing", "in_workflow", "published", "planned", "missed"];
 
-function Chip({ entry, onOpen, onDelete, onToggle, selectMode, selected }) {
+// `outlook` answers “จะขึ้นเองไหม” for this cell. It is deliberately not a
+// decoration: a planned cell looked identical whether the scheduler would send
+// it or whether it was parked behind a gate, dry-run or a stopped scheduler.
+function Chip({ entry, outlook, onOpen, onDelete, onToggle, selectMode, selected }) {
   const meta = STATUS_META[entry.status] || { label: entry.status, cls: "" };
   const platform = PLATFORM_META[entry.platform] || PLATFORM_META.demo;
   const productTitle = entry.productName || entry.angle || entry.sku || "โพสต์";
@@ -65,6 +68,16 @@ function Chip({ entry, onOpen, onDelete, onToggle, selectMode, selected }) {
           )}
         </span>
         <span className="sa-chip-title">{productTitle}</span>
+        {outlook && (
+          <span
+            className={`sa-chip-outlook ${outlook.tone}`}
+            title={`${outlook.title} — ${outlook.detail}`}
+            aria-label={outlook.title}
+            data-outlook={outlook.key}
+          >
+            {outlook.tone === "ok" ? "●" : outlook.tone === "info" ? "…" : "⚠"} {outlook.short}
+          </span>
+        )}
         {context && <span className="sa-chip-context">{context}</span>}
         {(entry.tags?.length || 0) > 0 && (
           <span className="sa-chip-tags">
@@ -523,7 +536,16 @@ export default function CalendarTab({ state, activeClient, busy, onOpenEntry, on
                       tabIndex={entries.length > 4 ? 0 : undefined}
                     >
                       {entries.map((entry) => (
-                        <Chip key={entry.id} entry={entry} onOpen={onOpenEntry} onDelete={onDeleteEntry} onToggle={toggleChipSel} selectMode={selectMode} selected={sel.has(entry.id)} />
+                        <Chip
+                          key={entry.id}
+                          entry={entry}
+                          outlook={entry.status === "published" ? null : postOutlook(entry, activeClient, state?.scheduler)}
+                          onOpen={onOpenEntry}
+                          onDelete={onDeleteEntry}
+                          onToggle={toggleChipSel}
+                          selectMode={selectMode}
+                          selected={sel.has(entry.id)}
+                        />
                       ))}
                     </div>
                   </>

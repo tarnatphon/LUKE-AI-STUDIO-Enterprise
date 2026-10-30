@@ -367,3 +367,327 @@ export function clientIntakeSummary(form = {}) {
   if (!issues.length) return "";
   return `ยังสร้างไม่ได้: ${issues.map((i) => i.message).join(" · ")}`;
 }
+
+/* ── “โพสต์นี้จะขึ้นเองไหม” ───────────────────────────────────────────────────
+ * A planned post is not a promise. The scheduler only picks up `planned`/`ready`
+ * entries while the app is open, the workflow parks anything whose AI score or
+ * image gate is not satisfied, and a connector left on dry-run never sends.
+ * Every one of those is invisible in a calendar cell, so the same rules live
+ * here once and are used by the calendar chip, the post drawer, the app's
+ * alerts and `scripts/social-agency-why-not-posted.cjs`.
+ *
+ * Keep in step with social-agency-runtime.cjs:
+ *   SCHEDULER_TICK_MS = 60s       (setInterval)
+ *   MISSED_AFTER_MS   = 2 hours   (older than this → status "missed")
+ *   _tick() only considers statuses ["planned", "ready"], skips inFlight and
+ *   TikTok entries without an explicit per-entry consent.
+ */
+export const SCHEDULER_TICK_MS = 60 * 1000;
+export const MISSED_AFTER_MS = 2 * 60 * 60 * 1000;
+// The app raises an alert when a post is this late and still needs a human.
+export const APPROVAL_ALERT_AFTER_MS = 5 * 60 * 1000;
+// A tick runs every minute; three missed ticks means the loop is not healthy.
+export const SCHEDULER_STALE_MS = 3 * 60 * 1000;
+
+/** When the post's Bangkok wall-clock time happens, in ms (NaN if unusable). */
+export function bangkokDueMs(entry) {
+  const date = String(entry?.date || "");
+  const time = String(entry?.time || "").slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return NaN;
+  const ms = Date.parse(`${date}T${time}:00+07:00`);
+  return Number.isFinite(ms) ? ms : NaN;
+}
+
+/** "12 วินาทีที่แล้ว" / "3 นาทีที่แล้ว" / "2 ชั่วโมงที่แล้ว" — for tick ages. */
+export function relativeAgeTh(ms, nowMs = Date.now()) {
+  if (!Number.isFinite(ms)) return "";
+  const diff = Math.max(0, nowMs - ms);
+  const sec = Math.round(diff / 1000);
+  if (sec < 90) return `${sec} วินาทีที่แล้ว`;
+  const mins = Math.round(sec / 60);
+  if (mins < 90) return `${mins} นาทีที่แล้ว`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} ชั่วโมงที่แล้ว`;
+  return `${Math.round(hours / 24)} วันที่แล้ว`;
+}
+
+/** "12 นาที" / "1 ชม. 5 นาที" — for how late a post is. */
+export function lateForTh(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return "ไม่ถึง 1 นาที";
+  if (mins < 60) return `${mins} นาที`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h} ชม. ${m} นาที` : `${h} ชม.`;
+}
+
+/**
+ * The scheduler as the operator needs to see it: running or stopped, when it
+ * last ticked, whether that tick is recent enough to trust, what is next.
+ */
+export function schedulerHealth(scheduler, nowMs = Date.now()) {
+  if (!scheduler) {
+    return {
+      known: false,
+      tone: "unknown",
+      running: false,
+      stale: false,
+      label: "ไม่ทราบสถานะตัวตั้งเวลา",
+      detail: "หน้านี้ยังไม่ได้รับสถานะจากเซิร์ฟเวอร์ — โหลดใหม่อีกครั้ง",
+      lastTickAt: null,
+      lastTickAgeMs: null,
+      lastTickText: "ยังไม่มีบันทึก",
+      nextPostAt: null,
+      nextPostLabel: null,
+      activeCount: 0,
+      timezone: "Asia/Bangkok",
+    };
+  }
+  const running = Boolean(scheduler.running);
+  const lastTickMs = scheduler.lastTickAt ? Date.parse(scheduler.lastTickAt) : NaN;
+  const hasTick = Number.isFinite(lastTickMs);
+  const lastTickAgeMs = hasTick ? Math.max(0, nowMs - lastTickMs) : null;
+  const stale = running && (!hasTick || lastTickAgeMs > SCHEDULER_STALE_MS);
+  const lastTickText = hasTick ? relativeAgeTh(lastTickMs, nowMs) : "ยังไม่มีบันทึก";
+  const label = !running
+    ? "ตัวตั้งเวลาหยุดอยู่"
+    : stale
+      ? "ตัวตั้งเวลาทำงานอยู่ แต่ tick ล่าสุดนานเกิน 3 นาที"
+      : "ตัวตั้งเวลาทำงานอยู่";
+  const detail = !running
+    ? "โพสต์ที่ตั้งเวลาไว้จะไม่ขึ้นเองเลยจนกว่าจะเริ่มตัวตั้งเวลา (ปุ่ม ▶ ข้าง ๆ) และเปิดแอปค้างไว้"
+    : stale
+      ? `tick ล่าสุด ${lastTickText} — ปกติ tick ทุก 1 นาที ถ้านานกว่านี้แปลว่าเซิร์ฟเวอร์หรือแท็บแอปอาจค้าง ตรวจก่อนรอโพสต์`
+      : `tick ล่าสุด ${lastTickText} · ทำงานทุก 1 นาที (${scheduler.timezone || "Asia/Bangkok"})`;
+  return {
+    known: true,
+    tone: !running ? "off" : stale ? "stale" : "on",
+    running,
+    stale,
+    label,
+    detail,
+    lastTickAt: hasTick ? new Date(lastTickMs).toISOString() : null,
+    lastTickAgeMs,
+    lastTickText,
+    nextPostAt: scheduler.nextPostAt || null,
+    nextPostLabel: scheduler.nextPostLabel || null,
+    activeCount: Number(scheduler.activeCount) || 0,
+    timezone: scheduler.timezone || "Asia/Bangkok",
+  };
+}
+
+/**
+ * One honest answer to “จะขึ้นเองไหม” for a single post.
+ *
+ * `key` is stable (tests and the CLI switch on it), `short` is what fits in a
+ * calendar cell, `title`/`detail` are the full sentence and the reason.
+ */
+export function postOutlook(entry, client, scheduler, nowMs = Date.now()) {
+  const status = String(entry?.status || "planned");
+  const platform = String(entry?.platform || "demo");
+  const platformLabel = PLATFORM_META[platform]?.label || platform;
+  const dueMs = bangkokDueMs(entry);
+  const hasDue = Number.isFinite(dueMs);
+  const health = schedulerHealth(scheduler, nowMs);
+  const gate = entry?.imageGate || null;
+  const gateBlocked = Boolean(gate?.required && gate?.ok === false);
+  const block = approvalBlock(entry, client, nowMs);
+  const threshold = client?.settings?.threshold ?? 80;
+  const when = hasDue ? `${entry.date} ${entry.time}` : "ยังไม่มีวัน/เวลาที่ใช้ได้";
+  const build = (key, tone, short, title, detail, actions = []) => ({
+    key,
+    tone,
+    short,
+    title,
+    detail,
+    actions,
+    dueMs: hasDue ? dueMs : null,
+    overdue: hasDue && dueMs <= nowMs,
+    gateBlocked,
+    live: block.live,
+    platform,
+    platformLabel,
+  });
+  // “ปิด dry-run แล้ว” still is not proof a send can happen: the connector has
+  // never been tested, so the token may be missing. Say so instead of promising.
+  const untested = Boolean(
+    block.live && client?.connectors?.[platform] && !client.connectors[platform].testedAt
+  );
+
+  if (status === "published") {
+    return build(
+      "published",
+      "ok",
+      "ขึ้นแล้ว",
+      `โพสต์นี้ออกแล้ว${entry.publishMode === "live" ? "" : ` (${entry.publishMode === "demo" ? "เว็บตัวอย่าง" : "dry-run"})`}`,
+      entry.publishedAt ? `เผยแพร่เมื่อ ${formatDateTimeTh(entry.publishedAt)}${entry.postId ? ` · post ID ${entry.postId}` : ""}` : "ไม่มีบันทึกเวลาเผยแพร่",
+    );
+  }
+
+  if (entry?.inFlight || status === "publishing" || status === "in_workflow") {
+    return build(
+      "running",
+      "info",
+      "กำลังขึ้น",
+      "กำลังทำงานอยู่ — ไม่ต้องกดซ้ำ",
+      "ระบบกำลังเขียน/เผยแพร่โพสต์นี้ รอให้จบก่อน แล้วสถานะจะเปลี่ยนเอง",
+    );
+  }
+
+  if (status === "rejected") {
+    return build("rejected", "info", "ยกเลิก", "รายการนี้ถูกยกเลิก — จะไม่ขึ้น", "ถ้ายังต้องการโพสต์ ให้สร้างรายการใหม่หรือเลื่อนเวลาแล้วรันใหม่");
+  }
+
+  if (status === "failed") {
+    return build(
+      "failed",
+      "bad",
+      "ไม่ขึ้น",
+      "ล้มเหลว — จะไม่ขึ้นเอง",
+      "รอบที่แล้วล้มเหลว ระบบจะไม่ลองใหม่เอง · กด “รันเลยตอนนี้” ที่หน้ารายการเพื่อลองอีกครั้ง",
+      ["run-now"],
+    );
+  }
+
+  if (status === "missed") {
+    return build(
+      "missed",
+      "bad",
+      "ไม่ขึ้น",
+      "พลาดโพสต์ — ระบบไม่ส่งแล้ว",
+      `เลยกำหนดเกิน 2 ชั่วโมง ระบบจึงตีเป็น “พลาดโพสต์” · กด “ส่งเลยตอนนี้” เพื่อลงทันที หรือเลื่อนวัน/เวลาใหม่`,
+      ["send-now", "run-now"],
+    );
+  }
+
+  if (status === "needs_review") {
+    const lateMs = hasDue && dueMs <= nowMs ? nowMs - dueMs : 0;
+    const lateText = hasDue && dueMs <= nowMs ? `เวลาของโพสต์นี้ผ่านมา ${lateForTh(lateMs)}แล้ว` : `ตั้งเวลาไว้ ${when}`;
+    const gateText = gateBlocked ? ` · ติดด่านตรวจภาพ: ${gate.reason || "ยังไม่ได้ตรวจภาพ"}` : "";
+    return build(
+      "needs_approval",
+      "warn",
+      "ไม่อัตโนมัติ",
+      "รออนุมัติ — จะไม่ขึ้นเองจนกว่าจะอนุมัติ",
+      `${lateText}${gateText} · ${block.live ? "อนุมัติแล้วระบบจะส่งจริงทันที" : "ตอนนี้เป็น dry-run อนุมัติแล้วจะยังไม่ส่งขึ้นจริง"}`,
+      gateBlocked ? ["review-image", "approve"] : ["approve"],
+    );
+  }
+
+  // planned / ready — the statuses the scheduler actually considers.
+  if (platform === "tiktok" && !entry?.tiktokPost) {
+    return build(
+      "tiktok_consent",
+      "warn",
+      "ไม่ขึ้น",
+      "จะไม่ขึ้นเอง — ยังไม่ได้ให้ความยินยอม TikTok",
+      "TikTok ต้องยินยอมเป็นรายโพสต์ก่อน ระบบตั้งใจไม่รันเองเพื่อไม่ให้ส่งโดยไม่มีสิทธิ์ · เปิดรายการแล้วทำขั้นยินยอมก่อน",
+    );
+  }
+
+  if (gateBlocked) {
+    return build(
+      "gated",
+      "warn",
+      "ไม่ขึ้น",
+      "จะไม่ขึ้นเอง — ด่านตรวจภาพยังไม่ผ่าน",
+      `ถึงเวลาแล้วระบบจะรัน แต่จะหยุดรอคนตรวจภาพ: ${gate.reason || "ยังไม่ได้ตรวจภาพ"} · ตรวจภาพแล้วกด “ยืนยันภาพแล้ว + อนุมัติ”`,
+      ["review-image", "approve"],
+    );
+  }
+
+  if (!health.running) {
+    return build(
+      "scheduler_off",
+      "warn",
+      "ไม่ขึ้น",
+      "จะไม่ขึ้นเอง — ตัวตั้งเวลาหยุดอยู่",
+      `โพสต์นี้ตั้งเวลาไว้ ${when} แต่ตัวตั้งเวลาหยุดอยู่ (หรือแอปปิด) · เปิดแอปค้างไว้แล้วกด ▶ ที่มุมขวาบน`,
+      ["start-scheduler"],
+    );
+  }
+
+  if (health.stale) {
+    return build(
+      "scheduler_stale",
+      "warn",
+      "ไม่ขึ้น",
+      "จะไม่ขึ้นเอง — ตัวตั้งเวลาอาจค้าง",
+      `tick ล่าสุด ${health.lastTickText} นานเกิน 3 นาที · ตรวจว่าเซิร์ฟเวอร์ยังทำงานอยู่ แล้วเริ่มตัวตั้งเวลาใหม่`,
+      ["start-scheduler"],
+    );
+  }
+
+  if (!block.live) {
+    return build(
+      "dry_run",
+      "warn",
+      "ไม่ขึ้นจริง",
+      "จะไม่ขึ้นบนเครือข่ายจริง — dry-run",
+      `ระบบจะรันตามเวลา แต่ ${platformLabel} ยังเปิด dry-run อยู่ จึงไม่ส่งอะไรออกไป · ปิด dry-run ที่ Connectors เมื่อพร้อม${untested ? " (การเชื่อมต่อนี้ยังไม่เคยกดทดสอบ)" : ""}`,
+    );
+  }
+
+  if (!hasDue) {
+    return build("unknown_time", "warn", "ไม่ขึ้น", "จะไม่ขึ้นเอง — วัน/เวลาไม่ถูกต้อง", `อ่านวันเวลาไม่ได้ (${when}) · แก้ที่ช่อง “เลื่อนเวลา” ก่อน`);
+  }
+
+  if (dueMs <= nowMs) {
+    const lateMs = nowMs - dueMs;
+    if (lateMs > MISSED_AFTER_MS) {
+      return build(
+        "missed_soon",
+        "bad",
+        "เลยกำหนด",
+        "เลยกำหนดเกิน 2 ชั่วโมง — tick ถัดไปจะตีเป็น “พลาดโพสต์”",
+        `ตั้งเวลาไว้ ${when} (เลยมา ${lateForTh(lateMs)}) · กด “รันเลยตอนนี้” ถ้ายังต้องการให้ลง`,
+        ["run-now"],
+      );
+    }
+    return build(
+      "late",
+      "warn",
+      "เลยเวลา",
+      "เลยเวลาแล้ว — tick ถัดไปจะรันให้ (ช้ากว่ากำหนด)",
+      `ตั้งเวลาไว้ ${when} (เลยมา ${lateForTh(lateMs)}) · ระบบยังรันให้ภายใน 2 ชั่วโมง${untested ? " · การเชื่อมต่อนี้ยังไม่เคยกดทดสอบ" : ""}`,
+      ["run-now"],
+    );
+  }
+
+  return build(
+    "auto",
+    "ok",
+    "จะขึ้นเอง",
+    `จะขึ้นเองตามเวลา ${entry.time} (${lateForTh(dueMs - nowMs)}ข้างหน้า)`,
+    `ตัวตั้งเวลาทำงานอยู่และ ${platformLabel} ปิด dry-run ไว้ · ยังต้องผ่านด่านตอนรัน: คะแนน AI Check ≥ ${threshold} และด่านตรวจภาพ (ถ้าโพสต์มีรูป) ไม่อย่างนั้นจะหยุดรออนุมัติ${untested ? " · การเชื่อมต่อนี้ยังไม่เคยกดทดสอบ" : ""}`,
+  );
+}
+
+/** Posts that already passed their time and still wait for a human (5+ min). */
+export function pendingApprovals(client, scheduler, nowMs = Date.now()) {
+  const withinMs = 7 * 24 * 60 * 60 * 1000; // a week-old queue is archaeology
+  return (client?.calendar || [])
+    .filter((entry) => entry && entry.status === "needs_review")
+    .map((entry) => {
+      const dueMs = bangkokDueMs(entry);
+      return {
+        entry,
+        dueMs,
+        minutesLate: Number.isFinite(dueMs) ? Math.max(0, Math.round((nowMs - dueMs) / 60000)) : 0,
+        lateMs: Number.isFinite(dueMs) ? nowMs - dueMs : 0,
+        outlook: postOutlook(entry, client, scheduler, nowMs),
+        block: approvalBlock(entry, client, nowMs),
+      };
+    })
+    .filter((item) => Number.isFinite(item.dueMs) && item.lateMs >= APPROVAL_ALERT_AFTER_MS && item.lateMs <= withinMs)
+    .filter((item) => !item.entry.abTestSource)
+    .sort((a, b) => a.dueMs - b.dueMs);
+}
+
+/** Posts the runtime already gave up on — still sendable, on purpose. */
+export function missedPosts(client) {
+  return (client?.calendar || [])
+    .filter((entry) => entry && entry.status === "missed" && !entry.abTestSource)
+    .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
+}
