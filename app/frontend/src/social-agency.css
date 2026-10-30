@@ -1237,3 +1237,52 @@ button.sa-ov-row:hover { background: var(--sa-card-1); border-color: var(--sa-ou
 .sa-sched-card-rows > div > span { color: var(--sa-muted); font-size: 0.66rem; }
 .sa-sched-card-next { grid-column: 1 / -1; }
 .sa-sched-card .sa-warn-banner, .sa-sched-card .sa-error-banner { margin: 0; font-size: 0.72rem; line-height: 1.5; }
+
+/* ── products tab: a shelf, not a wall of rows ──────────────────────────── */
+/* 20+ products need scannable cards and a way to find one; the repair tools
+   are folded away because they are maintenance, not daily work. */
+.sa-prod-stats { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.sa-prod-stat {
+  border: 1px solid var(--sa-outline); border-radius: 999px; padding: 3px 10px;
+  font-size: 0.72rem; background: var(--sa-card-1); color: var(--sa-muted);
+}
+.sa-prod-stat b { color: var(--sa-text); font-size: 0.78rem; }
+.sa-prod-stat.warn { border-color: color-mix(in srgb, var(--sa-warn) 55%, transparent); color: var(--sa-warn); }
+.sa-prod-stat.warn b { color: var(--sa-warn); }
+.sa-prod-stat.ok { border-color: color-mix(in srgb, var(--sa-success) 45%, transparent); }
+.sa-prod-hint { margin: 4px 0 8px; line-height: 1.55; }
+.sa-prod-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.sa-prod-search {
+  flex: 1 1 240px; min-width: 180px;
+  background: var(--sa-card-1); border: 1px solid var(--sa-outline);
+  border-radius: 8px; padding: 6px 10px; font-size: 0.78rem; color: var(--sa-text);
+}
+.sa-prod-search:focus-visible { outline: 2px solid var(--sa-primary); outline-offset: 1px; }
+.sa-repair-tools {
+  flex: 0 1 auto; border: 1px dashed var(--sa-outline); border-radius: 8px;
+  padding: 5px 10px; background: var(--sa-card-1);
+}
+.sa-repair-tools > summary { cursor: pointer; font-size: 0.75rem; color: var(--sa-muted); }
+.sa-repair-tools[open] > summary { margin-bottom: 4px; }
+.sa-repair-tools-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 2px; }
+.sa-subject-pending { opacity: 0.85; }
+.sa-prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.sa-prod-grid .sa-style-shot {
+  padding: 10px 12px; border-radius: 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sa-prod-grid .sa-style-shot-head { flex-wrap: wrap; gap: 6px 8px; }
+.sa-prod-grid .sa-style-shot-head b { font-size: 0.82rem; line-height: 1.35; }
+.sa-prod-grid .sa-style-shot p { margin: 0; color: var(--sa-muted); font-size: 0.74rem; line-height: 1.5; }
+.sa-prod-sku {
+  border: 1px solid var(--sa-outline); border-radius: 999px; padding: 1px 8px;
+  font-size: 0.68rem; color: var(--sa-muted); background: var(--sa-card);
+}
+.sa-prod-months { display: flex; flex-direction: column; gap: 8px; }
+.sa-prod-month {
+  border: 1px solid var(--sa-outline); border-radius: 9px; padding: 9px 11px;
+  background: var(--sa-card-1); display: flex; flex-direction: column; gap: 5px;
+}
+.sa-prod-month-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.sa-prod-month-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.sa-prod-month-ok { color: var(--sa-success); font-size: 0.72rem; }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload, Sparkles, Pencil } from "lucide-react";
-import { api, postJson, ensureProductRef500, cleanEnglishSubject, isValidEnglishSubject } from "./lib.js";
+import { Package, Plus, Trash2, Globe, FolderOpen, Link2, Wand2, ImagePlus, ImageOff, Upload, Sparkles, Pencil, CalendarDays } from "lucide-react";
+import { api, postJson, ensureProductRef500, cleanEnglishSubject, isValidEnglishSubject, thaiMonthLabel, currentMonth } from "./lib.js";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 
 /**
@@ -169,9 +169,16 @@ const linkIsProductPage = (u) => {
   return !JUNK_LINK_RE.test(d);
 };
 
-export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
+export default function ProductsTab({ activeClient, refreshKey, onChanged, subjectAutofill }) {
   const clientId = activeClient?.id;
   const products = activeClient?.products || [];
+  const autofill = subjectAutofill || {};
+  // 20+ products on one page needs a way to find one; empty query = everything.
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const visibleProducts = needle
+    ? products.filter((p) => [p.name, p.sku, p.imageSubject, p.category].some((v) => String(v || "").toLowerCase().includes(needle)))
+    : products;
   const [form, setForm] = useState({ name: "", sku: "", category: "", price: "", sourceUrl: "", image: "", imageSubject: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -196,6 +203,26 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
   const [subjectDraft, setSubjectDraft] = useState("");
   const [subjectBusy, setSubjectBusy] = useState(false);
   const missingSubjectCount = products.filter((p) => !isValidEnglishSubject(p.imageSubject)).length;
+  const pendingSubjectCount = products.filter((p) => p.imageSubjectPending).length;
+  const failedSubjectCount = products.filter((p) => p.imageSubjectError).length;
+  const usedThisMonth = new Set(
+    (activeClient?.calendar || []).filter((e) => String(e.date || "").startsWith(currentMonth())).map((e) => e.sku).filter(Boolean),
+  ).size;
+  // Per-month record, derived from the calendar itself (the entries are the
+  // truth): which products ran in each month and which are still untouched.
+  const monthUsage = (() => {
+    const calendar = activeClient?.calendar || [];
+    const months = [...new Set(calendar.map((e) => String(e.date || "").slice(0, 7)).filter((m) => /^\d{4}-\d{2}$/.test(m)))]
+      .sort()
+      .reverse()
+      .slice(0, 6);
+    return months.map((m) => {
+      const entries = calendar.filter((e) => String(e.date || "").startsWith(m));
+      const skus = [...new Set(entries.map((e) => e.sku).filter(Boolean))];
+      const known = new Set(skus);
+      return { month: m, posts: entries.length, skus, unused: products.filter((p) => !known.has(p.sku)) };
+    });
+  })();
   const [imgFetchBusy, setImgFetchBusy] = useState(false);
   const urlCount = products.filter((p) => /^https?:\/\//i.test(String(p.sourceUrl || ""))).length;
   const badLinkCount = products.filter((p) => !String(p.detail || "").trim() && !linkIsProductPage(p.sourceUrl)).length;
@@ -227,6 +254,26 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       setImgFetchBusy(false);
     }
   };
+
+  // While the local model is translating names in the background, re-read the
+  // state every couple of seconds so the rows turn into real names by themselves.
+  useEffect(() => {
+    if (!pendingSubjectCount && !autofill.running) return undefined;
+    let cancelled = false;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (cancelled || tries > 60) {
+        clearInterval(timer);
+        return;
+      }
+      onChanged?.();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pendingSubjectCount, autofill.running, onChanged]);
 
   useEffect(() => {
     setUrl(activeClient?.website || "");
@@ -379,7 +426,7 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
       bits.push(data.shortBy
         ? `คลังมี ${data.productPool} สินค้า — ยังขาดอีก ${data.shortBy} ตัวถึงจะครบวันละ 1 ชิ้นทั้งเดือน`
         : `คลังมี ${data.productPool} สินค้า เพียงพอสำหรับวันละ 1 ชิ้น ✓`);
-      setNote(`${bits.join(" · ")} — กด “วางแผนอัตโนมัติทั้งเดือน” ที่แท็บ ปฏิทิน ต่อได้เลย`);
+      setNote(`${bits.join(" · ")} — กด “วางแผน 30 วันข้างหน้า” ที่แท็บ ปฏิทิน ต่อได้เลย`);
       onChanged?.();
     } catch (err) {
       setError(err.message);
@@ -582,15 +629,6 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
         <header>
           <Package size={15} />
           <b>สินค้าของ {activeClient.name}</b>
-          <span className="sa-muted">
-            {products.length} รายการ · วางแผนอัตโนมัติจะวนใช้ทุกตัว
-            {noImgCount > 0 && (
-              <> · <b style={{ color: "var(--sa-primary, #4f46e5)" }}>{noImgCount} รายการยังไม่มีรูป</b> — คลิกกรอบรูปเพื่ออัปโหลด หรือวางลิงก์รูปได้เลย</>
-            )}
-            {badLinkCount > 0 && (
-              <> · <b style={{ color: "#c2410c" }}>{badLinkCount} แถวลิงก์ไม่ใช่หน้าสินค้า</b> (ต้องกด "แก้ลิงก์สินค้า" ก่อนถึงเติมคำอธิบายได้)</>
-            )}
-          </span>
           <label className="sa-check" title="เลือกทั้งหมด / ไม่เลือกเลย">
             <input type="checkbox" checked={products.length > 0 && delSel.length === products.length} onChange={(e) => setDelSel(e.target.checked ? products.map((p) => p.sku) : [])} /> เลือกทั้งหมด
           </label>
@@ -599,39 +637,80 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
               <Trash2 size={13} /> ลบที่เลือก ({delSel.length})
             </button>
           )}
-          {missingCount > 0 && (
-            <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้าใบสินค้าทีละ 10 แถว แล้วดึงคำอธิบายมาเติม — กดครั้งเดียวระบบทำต่อเองจนครบ (แถวที่ลิงก์เป็นหน้าไฟล์/หน้าหมวดจะถูกข้ามพร้อมเหตุผล)">
-              {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
-            </button>
-          )}
-          {urlCount > 0 && missingCount < urlCount && (
-            <button className="sa-btn ghost sm" disabled={enrichBusy || saving} onClick={enrichAllOverwrite} title="ดึงใหม่ทุกแถวแล้วเขียนทับคำอธิบายเดิม (ใช้ตอนลิงก์เพิ่งถูกแก้ / คำอธิบายเดิมเป็นของคนละสินค้า)">
-              {enrichBusy ? "กำลังเติม…" : "เติมทับทุกแถว"}
-            </button>
-          )}
-          {fetchableImgCount > 0 && (
-            <button className="sa-btn ghost sm" disabled={imgFetchBusy || saving} onClick={fetchMissingImages} title="เปิดหน้าเว็บของสินค้าแต่ละรายการ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง — รูปจะถูกใช้เป็น Reference ตอนสร้างภาพปฏิทิน">
-              <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
-            </button>
-          )}
-          {missingSubjectCount > 0 && (
-            <button
-              className="sa-btn ghost sm"
-              disabled={subjectBusy}
-              onClick={fillSubjects}
-              title="แปลชื่อสินค้าที่ยังไม่มีชื่ออังกฤษให้ทีละรายการ แล้วบันทึกไว้กับสินค้า — พรอมป์ภาพและพรอมป์วิดีโอจะใช้ค่านี้"
-            >
-              {subjectBusy ? "กำลังเติม…" : <><Sparkles size={13} /> เติมชื่ออังกฤษให้ทุกรายการ ({missingSubjectCount})</>}
-            </button>
-          )}
-          {urlCount > 0 && (
-            <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวดหรือหน้าดาวน์โหลดไฟล์ จะหาลิงก์ใบสินค้าที่ถูกต้องให้เองจากโค้ดสินค้า (ครั้งละ 10 หน้า + คลานหน้าหมวดไม่เกิน 4 หน้า)">
-              {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
-            </button>
-          )}
         </header>
-        <ul className="sa-style-shots">
-          {products.map((p) => (
+        <div className="sa-prod-stats">
+          <span className="sa-prod-stat"><b>{products.length}</b> สินค้า</span>
+          <span className={`sa-prod-stat${missingSubjectCount ? " warn" : " ok"}`}><b>{products.length - missingSubjectCount}/{products.length}</b> มีชื่ออังกฤษ</span>
+          <span className={`sa-prod-stat${noImgCount ? " warn" : " ok"}`}><b>{products.length - noImgCount}/{products.length}</b> มีรูป</span>
+          <span className="sa-prod-stat"><b>{usedThisMonth}</b> ใช้ในปฏิทินเดือนนี้</span>
+          {missingCount > 0 && <span className="sa-prod-stat warn"><b>{missingCount}</b> ยังไม่มีคำอธิบาย</span>}
+        </div>
+        <p className="sa-form-hint sa-prod-hint">
+          {pendingSubjectCount > 0
+            ? <><Sparkles size={12} /> กำลังแปลชื่ออังกฤษให้ {pendingSubjectCount} รายการ… ไม่ต้องกดอะไร (กดที่ชื่อเพื่อพิมพ์เองแทนได้)</>
+            : missingSubjectCount > 0
+              ? (autofill.llmReady
+                ? <>ชื่ออังกฤษที่ขาดจะถูกแปลให้เองเมื่อโมเดลพร้อม (เหลือ {missingSubjectCount} รายการ) — แก้เองได้ทุกแถว</>
+                : <>⚠ {missingSubjectCount} รายการยังไม่มีชื่ออังกฤษ — เปิดโมเดลภาษาแล้วระบบจะแปลให้เอง หรือกดที่ชื่อเพื่อพิมพ์เอง</>)
+              : <>✓ ทุกสินค้ามีชื่ออังกฤษครบ — พรอมป์ภาพ/วิดีโอใช้ชื่อเหล่านี้</>}
+          {failedSubjectCount > 0 && <> · แปลอัตโนมัติไม่ได้ {failedSubjectCount} รายการ (พิมพ์เองในรายการนั้น)</>}
+          {noImgCount > 0 && <> · <b>{noImgCount} รายการยังไม่มีรูป</b> — คลิกกรอบรูปเพื่ออัปโหลด หรือวางลิงก์รูป</>}
+          {missingSubjectCount > 0 && autofill.running ? <> · กำลังทำงานเบื้องหลัง</> : null}
+        </p>
+        <div className="sa-prod-toolbar">
+          <input
+            className="sa-prod-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ค้นหาชื่อสินค้า / SKU / ชื่ออังกฤษ"
+            aria-label="ค้นหาสินค้า"
+          />
+          {(missingCount > 0 || urlCount > 0 || missingSubjectCount > 0 || fetchableImgCount > 0) && (
+            <details className="sa-repair-tools">
+              <summary title="งานซ่อมข้อมูลที่ยังค้างอยู่ — ไม่ต้องใช้ทุกวัน">
+                เครื่องมือซ่อมข้อมูล
+                <span className="sa-muted">
+                  {" "}· คำอธิบาย {missingCount} · ชื่ออังกฤษ {missingSubjectCount} · รูป {noImgCount}
+                  {badLinkCount > 0 ? ` · ลิงก์ผิด ${badLinkCount}` : ""}
+                </span>
+              </summary>
+              <div className="sa-repair-tools-row">
+                {missingCount > 0 && (
+                  <button className="sa-btn sm" disabled={enrichBusy || saving} onClick={enrichMissing} title="เปิดหน้าใบสินค้าทีละ 10 แถว แล้วดึงคำอธิบายมาเติม — กดครั้งเดียวระบบทำต่อเองจนครบ (แถวที่ลิงก์เป็นหน้าไฟล์/หน้าหมวดจะถูกข้ามพร้อมเหตุผล)">
+                    {enrichBusy ? "กำลังเติม…" : `เติมคำอธิบายที่ขาด (${missingCount})`}
+                  </button>
+                )}
+                {urlCount > 0 && missingCount < urlCount && (
+                  <button className="sa-btn ghost sm" disabled={enrichBusy || saving} onClick={enrichAllOverwrite} title="ดึงใหม่ทุกแถวแล้วเขียนทับคำอธิบายเดิม (ใช้ตอนลิงก์เพิ่งถูกแก้ / คำอธิบายเดิมเป็นของคนละสินค้า)">
+                    {enrichBusy ? "กำลังเติม…" : "เติมทับทุกแถว"}
+                  </button>
+                )}
+                {fetchableImgCount > 0 && (
+                  <button className="sa-btn ghost sm" disabled={imgFetchBusy || saving} onClick={fetchMissingImages} title="เปิดหน้าเว็บของสินค้าแต่ละรายการ (ตามลิงก์ SKU) แล้วดึงรูปสินค้าจริงมาเก็บในเครื่อง — รูปจะถูกใช้เป็น Reference ตอนสร้างภาพปฏิทิน">
+                    <Globe size={13} /> {imgFetchBusy ? "กำลังดึงรูปจากเว็บ…" : `ดึงรูปสินค้าจากเว็บ (${fetchableImgCount})`}
+                  </button>
+                )}
+                {missingSubjectCount > 0 && (
+                  <button
+                    className="sa-btn ghost sm"
+                    disabled={subjectBusy || pendingSubjectCount > 0}
+                    onClick={fillSubjects}
+                    title="ลองแปลชื่ออังกฤษอีกครั้งทันที — ปกติระบบแปลให้เองอยู่แล้ว ปุ่มนี้ไว้ใช้ตอนแปลไม่สำเร็จ"
+                  >
+                    {subjectBusy ? "กำลังเติม…" : <><Sparkles size={13} /> แปลชื่ออังกฤษอีกครั้ง ({missingSubjectCount})</>}
+                  </button>
+                )}
+                {urlCount > 0 && (
+                  <button className="sa-btn ghost sm" disabled={fixBusy || saving} onClick={fixLinks} title="ถ้าลิงก์แหล่งที่มาชี้ไปหน้าหมวดหรือหน้าดาวน์โหลดไฟล์ จะหาลิงก์ใบสินค้าที่ถูกต้องให้เองจากโค้ดสินค้า (ครั้งละ 10 หน้า + คลานหน้าหมวดไม่เกิน 4 หน้า)">
+                    {fixBusy ? "กำลังแก้ลิงก์…" : <><Link2 size={13} /> แก้ลิงก์สินค้า ({urlCount})</>}
+                  </button>
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+        <ul className="sa-style-shots sa-prod-grid">
+          {visibleProducts.map((p) => (
             <li key={p.sku} className="sa-style-shot">
               <div className="sa-style-shot-head">
                 <input type="checkbox" checked={delSel.includes(p.sku)} onChange={(e) => setDelSel(e.target.checked ? [...delSel.filter((s) => s !== p.sku), p.sku] : delSel.filter((s) => s !== p.sku))} aria-label={`เลือก ${p.name}`} />
@@ -641,14 +720,22 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
                 <ProductSourceLink url={p.sourceUrl} />
                 <span style={{ flex: 1 }} />
                 <button
-                  className="sa-btn ghost sm"
-                  title="ชื่อสินค้าภาษาอังกฤษ — ใช้สร้างพรอมป์ภาพและพรอมป์วิดีโอ"
+                  className={`sa-btn ghost sm${p.imageSubjectPending ? " sa-subject-pending" : ""}`}
+                  title={p.imageSubjectPending
+                    ? "ระบบกำลังแปลชื่ออังกฤษให้เอง — กดเพื่อพิมพ์เองแทนได้"
+                    : p.imageSubjectError
+                      ? `${p.imageSubjectError} — กดเพื่อพิมพ์เอง`
+                      : "ชื่อสินค้าภาษาอังกฤษ — ใช้สร้างพรอมป์ภาพและพรอมป์วิดีโอ (แก้ได้ทุกเมื่อ)"}
                   onClick={() => {
                     setSubjectEditSku(subjectEditSku === p.sku ? null : p.sku);
                     setSubjectDraft(p.imageSubject || "");
                   }}
                 >
-                  {isValidEnglishSubject(p.imageSubject) ? <><Pencil size={12} /> {p.imageSubject}</> : <>⚠ ยังไม่มีชื่ออังกฤษ</>}
+                  {isValidEnglishSubject(p.imageSubject)
+                    ? <><Pencil size={12} /> {p.imageSubject}</>
+                    : p.imageSubjectPending
+                      ? <><Sparkles size={12} /> กำลังแปล…</>
+                      : <>⚠ ยังไม่มีชื่ออังกฤษ</>}
                 </button>
                 <button className="sa-icon-btn sm danger" title="ลบสินค้า" onClick={() => removeProduct(p.sku)}>
                   <Trash2 size={13} />
@@ -681,7 +768,39 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged }) {
           ))}
         </ul>
         {products.length === 0 && <p className="sa-muted">ยังไม่มีสินค้า — เพิ่มเองหรือนำเข้าจากเว็บ/โฟลเดอร์ด้านล่าง</p>}
+        {products.length > 0 && visibleProducts.length === 0 && (
+          <p className="sa-muted">ไม่พบสินค้าที่ตรงกับ “{query}” — ล้างช่องค้นหาเพื่อดูทั้งหมด</p>
+        )}
       </section>
+
+      {monthUsage.length > 0 && (
+        <section className="sa-style-card">
+          <header>
+            <CalendarDays size={15} />
+            <b>สินค้าที่ใช้ในแต่ละเดือน</b>
+            <span className="sa-muted">คำนวณจากปฏิทินจริง · วางแผนอัตโนมัติจะเลี่ยงสินค้าที่เพิ่งใช้ในเดือนก่อน</span>
+          </header>
+          <div className="sa-prod-months">
+            {monthUsage.map((row) => (
+              <div className="sa-prod-month" key={row.month}>
+                <div className="sa-prod-month-head">
+                  <b>{thaiMonthLabel(row.month)}</b>
+                  <span className="sa-muted">{row.posts} โพสต์ · ใช้ {row.skus.length}/{products.length} สินค้า</span>
+                </div>
+                <div className="sa-prod-month-chips">
+                  {row.skus.slice(0, 10).map((sku) => (
+                    <span className="sa-prod-sku" key={sku}>{sku}</span>
+                  ))}
+                  {row.skus.length > 10 && <span className="sa-muted">+{row.skus.length - 10}</span>}
+                </div>
+                {row.unused.length === 0
+                  ? <span className="sa-prod-month-ok">ใช้ครบทุกชิ้นแล้ว ✓</span>
+                  : <span className="sa-muted">ยังไม่ใช้: {row.unused.slice(0, 8).map((p) => p.sku).join(", ")}{row.unused.length > 8 ? ` +${row.unused.length - 8}` : ""}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="sa-style-card">
         <header>

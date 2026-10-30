@@ -1591,6 +1591,10 @@ class SocialAgencyRuntime {
     this.llm = null; // injected by serve.cjs: { isReady(), chat(messages, opts) }
     this._promptTranslationCache = new Map();
     this._promptTranslationInFlight = new Map();
+    // English product names are filled in the background (one job per client);
+    // the Products tab shows "กำลังแปล…" while a job is queued or running.
+    this._subjectJobs = new Map();
+    this._subjectSweepAt = 0;
     this.imageSaver = null; // injected by serve.cjs: async (dataUrl, metadata) => saved { image, url, absPath }
     this.imageDefaultsProvider = null; // injected by serve.cjs: () => { model, steps, cfgScale, sampler, width, height }
     this.imageBackendProvider = null; // injected by serve.cjs: () => base URL of the live Image API (port can move)
@@ -1750,6 +1754,7 @@ class SocialAgencyRuntime {
     delete clean.selectionHistory;
     delete clean.scheduler;
     delete clean.serverNow;
+    delete clean.subjectAutofill;
     // response-only badge (derived from the image + review record) — never persisted
     for (const c of clean.clients || []) for (const e of c.calendar || []) if (e && e.imageGate !== undefined) delete e.imageGate;
     const tmp = `${this.filePath}.tmp-${process.pid}`;
@@ -1942,7 +1947,12 @@ class SocialAgencyRuntime {
   }
 
   getState() {
+    // A product that arrived without an English name is translated in the
+    // background; this is also the second chance for products added while the
+    // local model was still loading (the sweep is throttled to once a minute).
+    this._maybeBackfillSubjects();
     const state = this._read();
+    state.subjectAutofill = this.subjectAutofillStatus(state);
     this._mirrorLegacy(state);
     // ข้อมูลที่ UI ใช้ตัดสินใจ (ไม่ถูกเขียนกลับลงไฟล์): ลูกค้ารายนี้ทำธุรกิจอะไร
     // และเดือนนี้จะวางแผนด้วยมุมคอนเทนต์อะไร
@@ -2756,59 +2766,137 @@ class SocialAgencyRuntime {
     return SocialAgencyRuntime._minToHhmm(Math.max(8 * 60, Math.min(21 * 60 + 30, base)));
   }
 
-  // P5w: "one product a day, no repeats inside the month" — now fanned out to
-  // one slot PER SELECTED PLATFORM per day (Facebook + Instagram + LINE + web
-  // can all run on the same day). A day keeps a single product across its
-  // platform slots (cross-posting); different days never share a product while
-  // unused products remain. Planning is repeatable: the occupancy unit is the
-  // (date, platform) pair, so a later run fills the platform slots a previous
-  // run left out — and `replacePlanned` re-plans over unstarted entries.
-  _buildDailySlots(client, monthStr, opts = {}) {
-    const { year, month, daysInMonth } = currentMonthWeeks(monthStr);
+  // A window of dates to plan, in two shapes:
+  //   - `days` given → a rolling window from today (or `fromDate`) that may cross
+  //     a month boundary. This is why a client with 20 products ended up with a
+  //     two-day calendar on the 30th: the month view had exactly two days left.
+  //   - otherwise → the requested month, starting today when it is this month.
+  static _planDates(monthStr, opts = {}) {
     const pad = (n) => String(n).padStart(2, "0");
-    const todayStr = bangkokDateStr();
-    const isCurrentMonth = todayStr.startsWith(`${year}-${pad(month)}`);
-    const fromDay = isCurrentMonth ? Number(todayStr.slice(8, 10)) : 1;
-    const monthEntries = (client.calendar || []).filter((e) => e.date && e.date.startsWith(monthStr));
+    const today = bangkokDateStr();
+    const days = clampNumber(opts.days, 1, 120, 0);
+    const dates = [];
+    if (days > 0) {
+      const start = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.fromDate || "")) ? String(opts.fromDate) : today;
+      const startMs = Date.parse(`${start}T00:00:00Z`);
+      for (let i = 0; i < days; i += 1) dates.push(new Date(startMs + i * 86400000).toISOString().slice(0, 10));
+      return dates;
+    }
+    const { year, month, daysInMonth } = currentMonthWeeks(monthStr);
+    const isCurrentMonth = today.startsWith(`${year}-${pad(month)}`);
+    const fromDay = isCurrentMonth ? Number(today.slice(8, 10)) : 1;
+    for (let day = fromDay; day <= daysInMonth; day += 1) dates.push(`${year}-${pad(month)}-${pad(day)}`);
+    return dates;
+  }
+
+  /**
+   * One product per day, drawn at random. Every product gets a turn before any
+   * product repeats ("cycle 1"); after that the queue is reshuffled with a new
+   * seed ("cycle 2"), so a 30-day month filled from 20 products uses all 20 and
+   * never puts the same product on two days in a row. Products already planned
+   * in the window are left out of cycle 1, and products used in the previous
+   * weeks are drained last: a new month must not open with the tail of the old.
+   */
+  _productRotation(client, { seed = "", usedNow = [], recent = [] } = {}) {
+    const products = (client.products || []).filter((p) => p && p.sku);
+    const usedNowSet = new Set(usedNow);
+    const recentSet = new Set(recent);
+    const unused = products.filter((p) => !usedNowSet.has(p.sku));
+    const fresh = unused.filter((p) => !recentSet.has(p.sku));
+    const stale = unused.filter((p) => recentSet.has(p.sku));
+    let queue = [...seededShuffle(fresh, `${seed}:fresh`), ...seededShuffle(stale, `${seed}:stale`)];
+    let cycle = products.length ? 1 : 0;
+    let lastSku = "";
+    return {
+      size: products.length,
+      get cycle() { return cycle; },
+      get left() { return queue.length; },
+      next() {
+        if (!products.length) return null;
+        if (!queue.length) {
+          cycle += 1;
+          queue = seededShuffle(products, `${seed}:cycle${cycle}`);
+        }
+        // never the same product on two days in a row, when there is a choice
+        let index = queue.findIndex((p) => p.sku !== lastSku);
+        if (index < 0) index = 0;
+        const [product] = queue.splice(index, 1);
+        if (!product) return null;
+        lastSku = product.sku;
+        return product;
+      },
+    };
+  }
+
+  // Products used in the `days` before this window: the planner drains them
+  // last, which is what keeps a new month from repeating the last one.
+  _recentProductSkus(client, beforeDate, days = 45) {
+    const cutoff = new Date(Date.parse(`${beforeDate}T00:00:00Z`) - days * 86400000).toISOString().slice(0, 10);
+    const skus = new Set();
+    for (const entry of client.calendar || []) {
+      if (!entry.date || !entry.sku) continue;
+      if (entry.date >= cutoff && entry.date < beforeDate) skus.add(entry.sku);
+    }
+    return [...skus];
+  }
+
+  // P5w: "one product a day, no repeats inside the month" — fanned out to one
+  // slot PER SELECTED PLATFORM per day (Facebook + Instagram + LINE + LinkedIn +
+  // web can all run on the same day). A day keeps a single product across its
+  // platform slots (cross-posting); every day of the window gets a product, and
+  // a product only comes back after all the others have had a turn. Planning is
+  // repeatable: the occupancy unit is the (date, platform) pair, so a later run
+  // fills the platform slots a previous run left out — and `replacePlanned`
+  // re-plans over unstarted entries.
+  _buildDailySlots(client, monthStr, opts = {}) {
+    const dates = SocialAgencyRuntime._planDates(monthStr, opts);
+    const plannedSet = new Set(dates);
+    const firstDate = dates[0] || "";
+    const lastDate = dates[dates.length - 1] || "";
+    const monthEntries = (client.calendar || []).filter((e) => e.date);
     const replacePlanned = opts.replacePlanned === true;
-    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight;
+    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight && plannedSet.has(e.date);
     const keptEntries = monthEntries.filter((e) => !replannable(e));
     const platforms = this._autoPlanPlatforms(opts.platforms);
     // (date, platform) combos already carrying content — auto-plan never stacks
     // a second post on the same platform on the same day.
-    const occupied = new Set(keptEntries.map((e) => `${e.date}|${e.platform}`));
+    const occupied = new Set(keptEntries.filter((e) => plannedSet.has(e.date)).map((e) => `${e.date}|${e.platform}`));
     const takenTimes = new Map(); // date -> Set of "HH:mm"
     const replannableTimes = new Map(); // date|platform -> "HH:mm" the new slot may reclaim
     const daySku = new Map(); // date -> product already chosen for that day
     const usedSku = new Set();
-    for (const e of monthEntries) {
+    for (const e of keptEntries) {
       const times = takenTimes.get(e.date) || new Set();
       times.add(e.time);
       takenTimes.set(e.date, times);
     }
     for (const e of keptEntries) {
-      if (e.sku) {
-        usedSku.add(e.sku);
-        if (!daySku.has(e.date)) daySku.set(e.date, e.sku);
-      }
+      if (!e.sku || !plannedSet.has(e.date)) continue;
+      usedSku.add(e.sku);
+      if (!daySku.has(e.date)) daySku.set(e.date, e.sku);
     }
     for (const e of monthEntries) {
       if (replannable(e)) replannableTimes.set(`${e.date}|${e.platform}`, e.time);
     }
     const seed = String(opts.seed || `${monthStr}:${client.id}`);
-    const pool = seededShuffle((client.products || []).filter((p) => !usedSku.has(p.sku)), seed);
     const signals = this._planningSignals(client);
     // มุมคอนเทนต์ของเดือนนี้มาจากเสาหลักของลูกค้ารายนี้ (ถ่วงตามน้ำหนัก) และ
     // กรองได้ด้วยมุมที่เลือกในหน้าวางแผน — ไม่ใช่ชุดของโรงงานกระเป๋าโดยปริยาย
     const angles = this._planAngleRotation(client, opts.angles);
     const customTime = /^\d{2}:\d{2}$/.test(String(opts.time || "")) ? String(opts.time) : null;
-    const dayKey = (day) => `${year}-${pad(month)}-${pad(day)}`;
+    const products = (client.products || []).filter((p) => p && p.sku);
+    // One product cannot rotate: with a single product the plan still covers only
+    // the days it can, instead of posting the same product every day.
+    const canCycle = products.length >= 2;
+    const rotation = this._productRotation(client, {
+      seed: `${seed}:${firstDate}`,
+      usedNow: [...usedSku],
+      recent: firstDate ? this._recentProductSkus(client, firstDate) : [],
+    });
     const slots = [];
     let openDays = 0;
-    let daysNeedingProduct = 0;
-    let poolIdx = 0;
-    for (let day = fromDay; day <= daysInMonth; day += 1) {
-      const date = dayKey(day);
+    let daysWithoutProduct = 0;
+    for (const date of dates) {
       const freePlatforms = platforms.filter((p) => !occupied.has(`${date}|${p}`));
       if (!freePlatforms.length) continue;
       openDays += 1;
@@ -2816,18 +2904,20 @@ class SocialAgencyRuntime {
       // day (cross-posting), otherwise draw an unused product (no repeats)
       let product = null;
       const existingSku = daySku.get(date);
-      if (existingSku) product = (client.products || []).find((p) => p.sku === existingSku) || null;
+      if (existingSku) product = products.find((p) => p.sku === existingSku) || null;
       if (!product) {
-        daysNeedingProduct += 1;
-        if (poolIdx < pool.length) {
-          product = pool[poolIdx];
-          poolIdx += 1;
+        product = rotation.next();
+        if (product && !canCycle && rotation.cycle > 1) product = null;
+        if (product) {
           daySku.set(date, product.sku);
           usedSku.add(product.sku);
         }
       }
-      if (!product) continue; // product pool exhausted — shortBy reports it
-      const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+      if (!product) {
+        daysWithoutProduct += 1;
+        continue;
+      }
+      const weekend = [0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay());
       const anchorTime = weekend ? signals.weekendTime : signals.weekdayTime;
       const times = takenTimes.get(date) || new Set();
       takenTimes.set(date, times);
@@ -2846,21 +2936,34 @@ class SocialAgencyRuntime {
           time,
           sku: product.sku,
           productName: product.name,
-          angle: angles[(day - 1) % angles.length],
+          angle: angles[(dates.indexOf(date)) % angles.length],
           platform,
         });
       }
     }
+    // Days of this plan that share a product: the UI must not ask applyAutoPlan
+    // to enforce one-product-per-month when the pool is smaller than the window.
+    const skuDates = new Map();
+    for (const slot of slots) {
+      const set = skuDates.get(slot.sku) || new Set();
+      set.add(slot.date);
+      skuDates.set(slot.sku, set);
+    }
     return {
       slots,
-      daysInMonth,
-      fromDay,
+      daysInMonth: currentMonthWeeks(monthStr).daysInMonth,
+      fromDay: Number((dates[0] || "").slice(8, 10)) || 1,
+      fromDate: firstDate,
+      toDate: lastDate,
+      dates: dates.length,
       openDays,
       platforms,
       angles: [...new Set(angles)],
       replacePlanned,
-      poolSize: pool.length,
-      shortBy: Math.max(0, daysNeedingProduct - pool.length),
+      poolSize: products.length,
+      cycles: rotation.cycle,
+      allowProductRepeats: [...skuDates.values()].some((set) => set.size > 1),
+      shortBy: canCycle ? 0 : daysWithoutProduct,
       seed,
       strategy: signals,
     };
@@ -2970,7 +3073,17 @@ class SocialAgencyRuntime {
       angleMix: summarizeAngles(slots),
     });
     if (body?.onePerDay === true) {
-      const daily = this._buildDailySlots(client, month, { time: body?.time, seed: body?.seed, platforms, replacePlanned, angles });
+      const daily = this._buildDailySlots(client, month, {
+        time: body?.time,
+        seed: body?.seed,
+        platforms,
+        replacePlanned,
+        angles,
+        // A rolling window (crossing the month boundary) instead of whatever is
+        // left of one month — the fix for "only two days got planned".
+        days: body?.days,
+        fromDate: body?.fromDate,
+      });
       return withContent({
         clientId: client.id,
         clientName: client.name,
@@ -2980,10 +3093,13 @@ class SocialAgencyRuntime {
         source: "template",
         daysInMonth: daily.daysInMonth,
         fromDay: daily.fromDay,
+        horizon: { days: daily.dates, from: daily.fromDate, to: daily.toDate },
         openDays: daily.openDays,
         platforms: daily.platforms,
         replacePlanned: daily.replacePlanned,
         productPool: daily.poolSize,
+        cycles: daily.cycles,
+        allowProductRepeats: daily.allowProductRepeats,
         shortBy: daily.shortBy,
         seed: daily.seed,
         strategy: daily.strategy,
@@ -3041,10 +3157,14 @@ class SocialAgencyRuntime {
     const month = /^\d{4}-\d{2}$/.test(String(body?.month || "")) ? String(body.month) : bangkokMonthStr();
     const incoming = Array.isArray(body?.slots) ? body.slots : [];
     if (!incoming.length) throw new Error("ยังไม่ได้เลือกช่วงเวลาใด");
+    // A plan may cover a rolling window that crosses into the next month (plan
+    // from the 20th for 30 days), so the batch defines which dates it touches
+    // instead of assuming every slot belongs to one month.
+    const batchDates = new Set(incoming.map((slot) => String(slot?.date || "")).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)));
     // replace mode frees the same (date, platform) / (date, time) combos held by
     // unstarted plans only — anything that already ran or is running survives
     const replacePlanned = body?.replacePlanned === true;
-    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight && e.date.startsWith(month);
+    const replannable = (e) => replacePlanned && e.status === "planned" && !e.inFlight && batchDates.has(e.date);
     const now = new Date().toISOString();
     const created = [];
     let skippedConflict = 0;
@@ -3055,7 +3175,10 @@ class SocialAgencyRuntime {
     for (const slot of incoming.slice(0, 200)) {
       const date = String(slot?.date || "");
       const time = String(slot?.time || "18:30");
-      if (!date.startsWith(month) || !/^\d{2}:\d{2}$/.test(time)) continue;
+      if (!batchDates.has(date) || !/^\d{2}:\d{2}$/.test(time)) continue;
+      // sanity bound: a plan may reach a year ahead, never into the distant past
+      const age = Date.parse(`${date}T00:00:00Z`) - Date.now();
+      if (!Number.isFinite(age) || age < -45 * 86400000 || age > 400 * 86400000) continue;
       const platform = PLATFORMS.includes(slot.platform) ? slot.platform : "demo";
       if (replacePlanned) {
         const before = client.calendar.length;
@@ -3376,13 +3499,163 @@ class SocialAgencyRuntime {
   // Translate the products that have no English name yet and SAVE the result on
   // each product. Operators get one button instead of 40 fields, and the stored
   // subject is still editable per product.
+  // ── English product names, filled without being asked ────────────────────
+  // Every image prompt is built from `product.imageSubject`, so a product with
+  // no English name cannot be illustrated — and pressing "แปลให้" row by row was
+  // the most tiring chore on the Products tab. The translation now runs by
+  // itself whenever a product arrives without one. A name the user typed
+  // (imageSubjectSource === "manual") or deliberately cleared
+  // (imageSubjectAutofillSkipped) is never touched automatically.
+  _subjectNeedsFill(product) {
+    if (!product || isValidImageSubject(product.imageSubject)) return false;
+    if (product.imageSubjectSource === "manual" || product.imageSubjectAutofillSkipped === true) return false;
+    return true;
+  }
+
+  _markSubjectsPending(client) {
+    let marked = 0;
+    for (const product of client.products || []) {
+      if (!this._subjectNeedsFill(product) || product.imageSubjectPending) continue;
+      product.imageSubjectPending = true;
+      product.imageSubjectPendingAt = new Date().toISOString();
+      delete product.imageSubjectError;
+      marked += 1;
+    }
+    return marked;
+  }
+
+  // Translate one product, remembering why it failed so the row can say that
+  // instead of spinning "กำลังแปล…" forever.
+  async _fillOneSubject(product) {
+    const translated = await this._llmTranslateForPrompt(product.name);
+    delete product.imageSubjectPending;
+    delete product.imageSubjectPendingAt;
+    if (!isValidImageSubject(translated)) {
+      product.imageSubjectError = "แปลอัตโนมัติไม่ได้ — พิมพ์ชื่ออังกฤษเอง";
+      return false;
+    }
+    product.imageSubject = cleanImageSubject(translated);
+    product.imageSubjectSource = "llm";
+    product.imageSubjectAt = new Date().toISOString();
+    delete product.imageSubjectAutofillSkipped;
+    delete product.imageSubjectError;
+    return true;
+  }
+
+  /**
+   * Translate every product of this client that has no English name yet.
+   * `limit` bounds one round so a big import cannot hold the local model for
+   * minutes; whatever is left keeps its pending flag for the next round.
+   */
+  async fillMissingSubjects(clientId, { limit = 40 } = {}) {
+    const { state, client } = this._resolveClient(clientId);
+    const products = client.products || [];
+    const targets = products.filter((p) => this._subjectNeedsFill(p)).slice(0, limit);
+    if (!this._llmReady()) {
+      let changed = false;
+      for (const p of products) {
+        if (!p.imageSubjectPending) continue;
+        delete p.imageSubjectPending;
+        delete p.imageSubjectPendingAt;
+        changed = true;
+      }
+      if (changed) this._write(state);
+      return { ok: false, filled: 0, failed: 0, remaining: targets.length, reason: "LLM ยังไม่พร้อม — เปิดโมเดลก่อน ระบบจะแปลให้เอง" };
+    }
+    let filled = 0;
+    for (const product of targets) {
+      try {
+        if (await this._fillOneSubject(product)) filled += 1;
+      } catch (err) {
+        delete product.imageSubjectPending;
+        delete product.imageSubjectPendingAt;
+        product.imageSubjectError = String(err && err.message ? err.message : err).slice(0, 120);
+      }
+    }
+    this._write(state);
+    return {
+      ok: true,
+      filled,
+      failed: targets.length - filled,
+      remaining: products.filter((p) => this._subjectNeedsFill(p)).length,
+      failedSkus: products.filter((p) => p.imageSubjectError).map((p) => p.sku).slice(0, 20),
+    };
+  }
+
+  /**
+   * Start the background job for one client. Returns null when there is nothing
+   * to do (no local model, already running, or every name is settled) — callers
+   * never wait on it, so adding a product stays instant.
+   */
+  _queueSubjectBackfill(clientId) {
+    const id = String(clientId || "").trim();
+    if (!id || this._subjectJobs.has(id) || !this._llmReady()) return null;
+    const state = this._read();
+    const client = (state.clients || []).find((c) => c.id === id);
+    if (!client) return null;
+    const targets = (client.products || []).filter((p) => this._subjectNeedsFill(p));
+    if (!targets.length) return null;
+    this._markSubjectsPending(client);
+    this._write(state);
+    const job = (async () => {
+      // let the request that added the product answer first
+      await new Promise((resolve) => setImmediate(resolve));
+      try {
+        await this.fillMissingSubjects(id);
+      } catch {
+        /* a translation must never take the server down */
+      } finally {
+        this._subjectJobs.delete(id);
+      }
+    })();
+    this._subjectJobs.set(id, job);
+    return job;
+  }
+
+  // Called from getState(): catches products added before the model was loaded
+  // (and the ones a closed app left pending). Throttled — state is read often.
+  _maybeBackfillSubjects() {
+    if (!this._llmReady()) return 0;
+    const now = Date.now();
+    if (now - (this._subjectSweepAt || 0) < 60000) return 0;
+    this._subjectSweepAt = now;
+    const state = this._read();
+    let marked = 0;
+    for (const client of state.clients || []) {
+      if (!(client.products || []).some((p) => this._subjectNeedsFill(p))) continue;
+      marked += this._markSubjectsPending(client);
+      this._queueSubjectBackfill(client.id);
+    }
+    if (marked) this._write(state);
+    return marked;
+  }
+
+  // What the Products tab needs to say the truth: how many names are missing,
+  // how many are being translated right now, and whether the model is even on.
+  subjectAutofillStatus(state = this._read()) {
+    let missing = 0;
+    let pending = 0;
+    let failed = 0;
+    for (const client of state.clients || []) {
+      for (const product of client.products || []) {
+        if (isValidImageSubject(product.imageSubject)) continue;
+        missing += 1;
+        if (product.imageSubjectPending) pending += 1;
+        if (product.imageSubjectError) failed += 1;
+      }
+    }
+    return { llmReady: this._llmReady(), missing, pending, failed, running: this._subjectJobs.size > 0 };
+  }
+
   async fillImageSubjects(clientId, body = {}) {
     const { state, client } = this._resolveClient(clientId || body.clientId);
     if (!this._llmReady()) {
       return { ok: false, filled: 0, failed: 0, reason: "LLM ยังไม่พร้อม — เปิดโมเดลก่อน หรือกรอกชื่อสินค้าภาษาอังกฤษเองทีละรายการ" };
     }
     const force = Boolean(body.force);
-    const targets = (client.products || []).filter((p) => force || !isValidImageSubject(p.imageSubject));
+    // An explicit request (the button) also retries products the user cleared
+    // earlier and names the automatic pass could not translate.
+    const targets = (client.products || []).filter((p) => force || this._subjectNeedsFill(p) || p.imageSubjectError);
     let filled = 0;
     const failed = [];
     for (const product of targets) {
@@ -3394,9 +3667,13 @@ class SocialAgencyRuntime {
       product.imageSubject = cleanImageSubject(translated);
       product.imageSubjectSource = "llm";
       product.imageSubjectAt = new Date().toISOString();
+      delete product.imageSubjectAutofillSkipped;
+      delete product.imageSubjectError;
+      delete product.imageSubjectPending;
+      delete product.imageSubjectPendingAt;
       filled += 1;
     }
-    if (filled) this._write(state);
+    if (filled || targets.length) this._write(state);
     return { ok: true, filled, failed: failed.length, failedSkus: failed.slice(0, 20), total: targets.length };
   }
 
@@ -3454,6 +3731,9 @@ class SocialAgencyRuntime {
     }
     client.products = [...(client.products || []), product];
     this._write(state);
+    // A product without an English name gets one on its own; the request does
+    // not wait for the local model (see _queueSubjectBackfill).
+    if (this._subjectNeedsFill(product)) this._queueSubjectBackfill(client.id);
     return product;
   }
 
@@ -3471,19 +3751,35 @@ class SocialAgencyRuntime {
       if (subject && !isValidImageSubject(subject)) {
         throw new Error("ชื่อสินค้าภาษาอังกฤษต้องเป็นชื่อจริง (อักษรอังกฤษ) — ห้ามใช้คำอย่าง product / item / stuff");
       }
+      delete product.imageSubjectPending;
+      delete product.imageSubjectPendingAt;
+      delete product.imageSubjectError;
       if (subject) {
         product.imageSubject = subject;
         product.imageSubjectSource = "manual";
         product.imageSubjectAt = new Date().toISOString();
+        delete product.imageSubjectAutofillSkipped;
       } else {
+        delete product.imageSubject;
+        delete product.imageSubjectSource;
+        delete product.imageSubjectAt;
+        // Clearing the name is a decision, not an empty field: the automatic
+        // pass must not put the name it just translated straight back.
+        product.imageSubjectAutofillSkipped = true;
+      }
+    }
+    if (body.name !== undefined) {
+      this._validateProductName(product.name);
+      // A translated name belongs to the old product name — translate again.
+      if (product.imageSubjectSource === "llm") {
         delete product.imageSubject;
         delete product.imageSubjectSource;
         delete product.imageSubjectAt;
       }
     }
-    if (body.name !== undefined) this._validateProductName(product.name);
     if (!product.name) throw new Error("ชื่อสินค้าห้ามว่าง");
     this._write(state);
+    if (this._subjectNeedsFill(product)) this._queueSubjectBackfill(client.id);
     return product;
   }
 
@@ -4439,6 +4735,7 @@ class SocialAgencyRuntime {
       added.push(sku);
     }
     this._write(state);
+    if (added.length) this._queueSubjectBackfill(client.id);
     return { added, count: added.length, skipped };
   }
 
