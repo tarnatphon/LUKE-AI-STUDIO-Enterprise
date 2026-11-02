@@ -1,10 +1,11 @@
-# Online surfaces — why LUKE is not like anything else, and how phases 1–4 work
+# Online surfaces — why LUKE is not like anything else, and the no-pay boundary
 
 อัปเดต: **2026-11-02** · ใช้คู่กับ [fcc-work-chat-bridge.md](fcc-work-chat-bridge.md)
 และ `scripts/config/ai-provider-catalog.json`
 
 เอกสารนี้ตอบสองคำถามจากเจ้าของงาน: *"ถ้าเป็นออนไลน์ ใช้ได้ในไหนบ้าง"* และ
-*"อะไรทำให้ LUKE โดดเด่นไม่เหมือนใคร"* แล้วแปลเป็นของที่รันได้จริง 4 ระยะ
+*"อะไรทำให้ LUKE โดดเด่นไม่เหมือนใคร"* แล้วแปลเป็นของที่รันได้จริง 3 ระยะ
+(ระยะที่ 4 — สื่อภายนอก — ถูกตัดออกทั้งระบบตามคำสั่งห้ามเสียตังค์)
 
 ---
 
@@ -70,7 +71,7 @@
 | Social Agency | วิเคราะห์ reach / แนะนำมุมคอนเทนต์ |
 | Asset Library / Storage | `/api/storage/*` ~50 routes เดิม |
 | Model Manager / llmfit | `verifiedAt` + ปุ่ม Test กันโมเดล `:free` หมุนอายุ |
-| Whisper / Kokoro / SD / I2V | ยัง local เป็นหลัก |
+| Whisper / Kokoro / SD / I2V | **local 100%** (ไม่มี external media generation อีกต่อไป) |
 | Memory / RAG / web search | `augmentMessagesWithWebSearch()` เดิม |
 | TopStatusBar / Settings | badge ที่คำนวณจาก ledger + สวิตช์นโยบาย |
 
@@ -91,7 +92,7 @@
   (export `NO_PAY = true`) และ `transportPolicy()` คืน `paid = !free` เสมอ
   ฉะนั้นการแก้ catalog ด้วยมือให้ `paid=false` ทั้งที่ `free=false` ก็ยังใช้ไม่ได้
   key เก่าที่ค้างในไฟล์ config (รวม legacy `key` ของ Arena router) ถูกปฏิเสธเงียบๆ
-- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored) — **8 สวิตช์**:
+- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored) — **7 สวิตช์**:
 
 | flag | default | ความหมาย |
 | :--- | :--- | :--- |
@@ -99,7 +100,7 @@
 | `uncensoredMode` | `false` | ทุกเทิร์นอยู่ local GGUF |
 | `airGapMode` | `false` | บล็อก cloud ทุกเทิร์น + บันทึกการปฏิเสธ |
 | `gatewayEnabled` / `mcpEnabled` | `true` | ประตูสำหรับแอปอื่น |
-| `channelsEnabled` / `onlineMediaEnabled` | `false` | ต้องเปิดเอง |
+| `channelsEnabled` | `false` | ต้องเปิดเอง |
 | `rateLimitRetry` | `0` | เปิดเองได้ 0–3; retry 429 แบบมีขอบเขตก่อนไป link ถัดไป |
 
 - Egress Ledger: `app/runtime-state/egress/ledger.jsonl` (JSONL, 0600, จำกัด 5,000 แถว)
@@ -161,29 +162,32 @@ route `/v1/chat/completions` ใน `serve.cjs`
 
 ---
 
-## 5. ระยะที่ 4 — สื่อออนไลน์ที่ตัดทางเสียตังค์ออกแล้ว
+## 5. ระยะที่ 4 ถูกตัดออก — สื่อทุกอย่างอยู่บนเครื่อง
 
-**ไฟล์**: `scripts/server/online-media.cjs`
+**สื่อทุกอย่าง (รูป / วิดีโอ / เสียง) อยู่บนเครื่อง (local only)**
+ไม่มีโมดูล `online-media.cjs`, ไม่มี route, ไม่มีสวิตช์, ไม่มีการ์ดใน UI และไม่มี
+paid upgrade ให้กด → เรื่องนี้เป็นข้อเท็จจริงที่เทสต์อ่านจากโค้ดได้ ไม่ใช่คำสัญญา
 
-Frontier video/image generation **ไม่มี free tier แบบ recurring ในปี 2026**
-เดิมมี trial credit แบบต้องผูกบัตร 3 เจ้า (Fal.ai ~$20, Veo via GCP ~$300,
-Stability AI) → **ลบออกจาก `PROVIDERS` ไปเลย** ตามคำสั่ง "ตัวไหนต้องเสียตังค์
-ให้ตัดออก" เหลือเพียง **Kling free daily allowance** (`noCard: true`) ที่ไม่ต้อง
-ผูกบัตร และไม่มี paid upgrade ถูกประกาศไว้ในโค้ด
+เหตุผล: frontier video/image generation **ไม่มี free tier แบบ recurring ในปี 2026**
+รอบก่อนลบ trial credit แบบต้องผูกบัตร 3 เจ้า (Fal.ai ~$20 / Veo via GCP ~$300 /
+Stability AI) แล้วเหลือ Kling free daily allowance ตัวเดียว แต่เจ้าของงานสั่ง
+"ตัวไหนต้องเสียตังค์ให้ตัดออกไปได้เลย" → **allowance ที่เหลืออยู่ก็ยังเป็น
+ปลายทางภายนอกที่ต้องขอ consent ทุก job** จึงลบทั้ง subsystem เสียเลยดีกว่า
+ปล่อยช่องไว้ให้เผลอไปเรียก service ที่วันหนึ่งเริ่มคิดเงิน
 
-ด่านที่เหลือ (กันไม่ให้แม้แต่ free allowance ถูกใช้โดยไม่ตั้งใจ):
+สิ่งที่ยังทำงานเหมือนเดิม (และไม่มี outbound request):
 
-1. ต้องเปิด `onlineMediaEnabled` เอง
-2. provider ต้องเป็น `freeAllowance` + `noCard` ที่ประกาศไว้ (มีอยู่ตัวเดียว)
-3. `quote()` ต้องอยู่ใน allowance ของวัน หัก `spent` แล้ว
-4. ทุก request ต้องมี `explicitConsent: true` **และ** `budgetConfirmed: true`
-5. **default คือ dry run** — `live: true` เป็น flag แยกต่างหาก
-6. ไม่มี `cardConfirmed` อีกต่อไป เพราะไม่มี provider ที่ต้องใช้บัตร
+- `stable-diffusion.cpp` — รูป / img2img
+- `whisper.cpp` — เสียง → ข้อความ (speech-to-text)
+- `kokoro-js` — ข้อความ → เสียง (TTS)
+- `image-to-video` job manager / process runner — วิดีโอจากรูป
+- Luke AI Workflow — เชน engine ข้างบนเป็น pipeline ในเครื่องเดียว
 
-ถ้าขาดข้อใด → `400` พร้อมเหตุผล ไม่มีการเรียก network และไม่มีการตัด allowance
-เมื่อ allowance หมด → ใช้ engine รูป/วิดีโอในเครื่องแทน
-`GET /api/online-media/providers`, `POST /api/online-media/quote`,
-`POST /api/online-media/generate`
+ด่านเดิม (`explicitConsent` / `budgetConfirmed` / dry-run / `cardConfirmed`)
+ถูกลบพร้อมโมดูล ไม่มีอะไรให้ต้องอนุมัติอีกต่อไป
+Egress Ledger ระบุใน attestation ว่า media generation เป็น local only
+ชุดตรวจ `test-no-pay-audit.cjs` สแกน production source ทั้งหมดเพื่อยืนยันว่า
+ไม่มี token ของ subsystem นี้หลุดกลับมา (ดูหัวข้อ 7)
 
 ---
 
@@ -203,13 +207,39 @@ Stability AI) → **ลบออกจาก `PROVIDERS` ไปเลย** ต�
 | POST | `/api/mcp` | JSON-RPC 2.0 |
 | GET | `/api/channels/status` | |
 | POST | `/api/channels/config` / `webhook` / `send` / `test` | |
-| GET | `/api/online-media/providers` | |
-| POST | `/api/online-media/quote` / `generate` | |
 | POST | `/v1/chat/completions` | external gateway |
 
 ---
 
-## 7. ข้อจำกัดที่ต้องพูดตรงๆ
+## 7. ชุดตรวจ no-pay (regression guard)
+
+`node scripts/validation/test-no-pay-audit.cjs` ไม่ได้ทดสอบฟีเจอร์ แต่ตอบคำถามว่า
+*"มีทางเสียตังค์แฝงกลับเข้ามาไหม"* โดยเดิน production source ทุกไฟล์แล้วตรวจ:
+
+1. `NO_PAY` เป็น invariant — config มี **7 สวิตช์** ไม่มี `freeOnly` / `paid` /
+   `billing` และ `setConfig({paidAllowed:true})` ไม่ถูกเขียนลงไฟล์
+2. catalog ทุก entry `free=true` · transport ทุกตัวชี้ host ใน allowlist ฟรี ·
+   provider ที่ไม่รู้จัก fail closed เป็น `paid`
+3. **ไม่มี host ของ API ที่คิดเงิน** (OpenAI / Anthropic / xAI / Groq / Together /
+   Fireworks / Cerebras / SambaNova / Cohere / Replicate / Stability / Fal / Kling /
+   Azure OpenAI …) ปรากฏในโค้ดเลย · web search ใช้ DuckDuckGo เท่านั้น ·
+   S3/R2/B2 ไม่มี endpoint hardcoded (รับจาก config ของเจ้าของเอง)
+4. token ของ external media ทุกตัวหายไปจาก production source · โมดูล  route
+   สวิตช์ และการเรียกจาก UI ไม่มีเหลือ · local engine ยังผูกอยู่ใน `serve.cjs`
+5. หมดฟรียังตกมา local GGUF: `setLocalProvider` + `/api/text-runtime/remote-provider/local`
+   ยังอยู่, air-gap / no-filter / ปิด online-first Chat ปฏิเสธ cloud ได้จริง
+6. README + เอกสารนี้พูดตรงกัน
+
+การเพิ่ม free provider หรือ host ใหม่ต้องแก้ allowlist ในชุดตรวจพร้อมบอกเหตุผล
+→ ปลายทางที่คิดเงินไม่สามารถแอบกลับเข้ามาแบบเงียบๆ ได้
+
+**ขอบเขตที่ต้องพูดตรงๆ**: S3/R2/B2, GitHub, Telegram/Discord/LINE และ 24 ช่องทางโพสต์
+เป็น **บัญชีของเจ้าของเอง** ที่ต้องใส่ credential ก่อน ไม่มีค่าใช้จ่ายฝั่ง LUKE
+และไม่ถูกเรียกอัตโนมัติ ชุดตรวจกันเฉพาะ billable *AI/media API* ที่ LUKE hardcode เอง
+
+---
+
+## 8. ข้อจำกัดที่ต้องพูดตรงๆ
 
 1. **FCC เป็นคนถือราคาฝั่งใน** — LUKE บังคับได้แค่ catalog ของตัวเอง
    ต้องตั้ง FCC Admin ให้ใช้ free provider เท่านั้น / pin free model ref
@@ -231,7 +261,7 @@ Stability AI) → **ลบออกจาก `PROVIDERS` ไปเลย** ต�
 
 ---
 
-## 8. เช็กลิสต์บน Mac (หลัง merge)
+## 9. เช็กลิสต์บน Mac (หลัง merge)
 
 ```bash
 cd /Volumes/AI/LUKE-AI-STUDIO-Enterprise
@@ -245,7 +275,7 @@ cd ../.. && ./mac.sh
 > ⚠️ ต้อง build ใหม่เพราะ `app/dist/` อยู่ใน `.gitignore`
 > ⚠️ zsh บน Mac ไม่เปิด `interactivecomments` — ห้ามวางบรรทัดที่มี `#` ต่อท้ายคำสั่ง
 
-1. เปิด Settings → **Online surfaces** → ดู badge และ 8 สวิตช์
+1. เปิด Settings → **Online surfaces** → ดู badge และ 7 สวิตช์
    (ข้อความ "No paid provider is registered" ต้องปรากฏ และไม่มีสวิตช์ `freeOnly`)
 2. ปิดเน็ต → เปิดแอป → ยังใช้งานได้ (PWA shell) → `GET /api/egress/report?format=text`
    ต้องขึ้น `Allowed outbound requests: 0`
@@ -259,4 +289,5 @@ cd ../.. && ./mac.sh
 6. มือถือใน LAN → กด **Pair a device** → ใส่ `x-luke-pair` → เข้า UI ได้
 7. ตั้ง base URL ของแอปอื่นเป็น `http://127.0.0.1:1420/v1` → `/chat/completions` ตอบ
 8. ตั้ง Telegram webhook + secret → ส่งข้อความ → ได้คำตอบกลับใน response
-9. ลอง `POST /api/online-media/generate` **โดยไม่ใส่ consent** → ต้อง 400 ไม่มี network call
+9. รัน `node scripts/validation/test-no-pay-audit.cjs` → ต้อง `0 failed`
+   (ยืนยันว่าไม่มีสื่อภายนอก / host ที่คิดเงิน / สวิตช์จ่าย กลับเข้ามา)

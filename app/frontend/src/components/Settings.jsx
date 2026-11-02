@@ -2110,7 +2110,7 @@ function Settings({
       <SectionHeader
         icon={Globe2}
         title="Online surfaces"
-        count={8}
+        count={7}
         color="#22d3ee"
         isExpanded={expandedSections.online}
         onToggle={() => toggleSection("online")}
