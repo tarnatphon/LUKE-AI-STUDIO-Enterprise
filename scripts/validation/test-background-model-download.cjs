@@ -144,12 +144,84 @@ async function main() {
     assert.strictEqual(suggestion.filename, "Fine-Q4.gguf");
   });
 
+  // ── following the download it started ───────────────────────────────────
+  const SUGGESTION = { modelId: "dolphin3-llama3.2-3b", variantId: "q4-k-m", filename: "Dolphin3.0-Llama3.2-3B-Q4_K_M.gguf" };
+  const item = (overrides = {}) => ({
+    modelId: SUGGESTION.modelId,
+    variantId: SUGGESTION.variantId,
+    filename: SUGGESTION.filename,
+    state: "queued",
+    sizeBytes: 2.02 * GIB,
+    progress: { percent: 0, downloadedBytes: 0, totalBytes: 2.02 * GIB, speedBytesPerSecond: 0 },
+    queuePosition: 1,
+    updatedAt: "2026-11-02T00:00:00.000Z",
+    ...overrides,
+  });
+
+  test("ติดตามดาวน์โหลด: queued/downloading/completed อ่านได้ครบ", () => {
+    const queued = suggestionModule.describeDownload([item({ queuePosition: 2 })], SUGGESTION);
+    assert.strictEqual(queued.state, "queued");
+    assert.strictEqual(queued.active, true);
+    assert.strictEqual(queued.queuePosition, 2);
+
+    const running = suggestionModule.describeDownload(
+      [item({ state: "downloading", progress: { percent: 42, downloadedBytes: 0.8 * GIB, totalBytes: 2.02 * GIB, speedBytesPerSecond: 12 * 1024 * 1024 } })],
+      SUGGESTION,
+    );
+    assert.strictEqual(running.percent, 42);
+    assert.strictEqual(running.active, true);
+    assert.strictEqual(running.speedBytesPerSecond, 12 * 1024 * 1024);
+
+    const done = suggestionModule.describeDownload([item({ state: "completed", progress: { percent: 100 } })], SUGGESTION);
+    assert.strictEqual(done.active, false, "a finished download is not polled again");
+    assert.strictEqual(done.percent, 100);
+  });
+
+  test("ติดตามดาวน์โหลด: เปอร์เซ็นต์หายก็คำนวณจากไบต์ และไม่เกิน 100", () => {
+    const derived = suggestionModule.describeDownload(
+      [item({ state: "downloading", progress: { downloadedBytes: 1.01 * GIB, totalBytes: 2.02 * GIB } })],
+      SUGGESTION,
+    );
+    assert.strictEqual(derived.percent, 50, "half the bytes, half the bar");
+
+    const over = suggestionModule.describeDownload(
+      [item({ state: "downloading", progress: { percent: 250, totalBytes: 2.02 * GIB } })],
+      SUGGESTION,
+    );
+    assert.strictEqual(over.percent, 100);
+  });
+
+  test("ติดตามดาวน์โหลด: error ถูกพกมา และแถวของโมเดลอื่นไม่ถูกหยิบมาใช้", () => {
+    const failed = suggestionModule.describeDownload([item({ state: "failed", error: "HTTP 404 from the publisher" })], SUGGESTION);
+    assert.strictEqual(failed.state, "failed");
+    assert.match(failed.error, /HTTP 404/);
+
+    const other = suggestionModule.describeDownload(
+      [item({ modelId: "qwen3-4b", state: "downloading" })],
+      SUGGESTION,
+    );
+    assert.strictEqual(other, null, "a different model's download is not ours");
+
+    assert.strictEqual(suggestionModule.describeDownload([], SUGGESTION), null);
+    assert.strictEqual(suggestionModule.describeDownload([item()], null), null);
+  });
+
+  test("ติดตามดาวน์โหลด: แถวใหม่สุดของโมเดลเดียวกันคือแถวที่ใช้", () => {
+    const latest = suggestionModule.describeDownload(
+      [item({ state: "cancelled" }), item({ state: "downloading", progress: { percent: 15 } })],
+      SUGGESTION,
+    );
+    assert.strictEqual(latest.state, "downloading");
+    assert.strictEqual(latest.percent, 15);
+  });
+
   // ── the route ───────────────────────────────────────────────────────────
   test("route /api/background-model แนบข้อเสนอที่เลือกจากแคตตาล็อกจริง", () => {
     assert.match(serveSource, /backgroundModelSuggestion\.chooseSuggestion\(\{/);
     assert.match(serveSource, /catalog: readTextModelCatalog\(\)/);
     assert.match(serveSource, /installed: getLlmModels\(\)\.map\(\(model\) => model\.filename\)/);
-    assert.match(serveSource, /result: \{ \.\.\.status, suggestion, suggestionReason \}/);
+    assert.match(serveSource, /result: \{ \.\.\.status, suggestion, suggestionReason, download \}/);
+    assert.match(serveSource, /backgroundModelSuggestion\.describeDownload\(readTextModelQueue\(\)\.items, suggestion\)/);
   });
 
   test("แคตตาล็อกจริงมีโมเดลที่อยู่ในเพดาน 3.2 GB ให้เสนอได้", () => {
@@ -163,6 +235,12 @@ async function main() {
     assert.ok(suggestion, "the shipped catalog offers a small model");
     assert.ok(suggestion.sizeGb <= 3.2, `${suggestion.sizeGb} GB`);
     assert.match(suggestion.filename, /\.gguf$/i);
+  });
+
+  test("หน้า Performance ตามดูความคืบหน้าด้วยการ poll เฉพาะตอนที่ยังดาวน์โหลดอยู่", () => {
+    assert.match(panelSource, /if \(!backgroundModel\?\.download\?\.active\) return undefined;/);
+    assert.match(panelSource, /setInterval\(\(\) => \{\s*void loadBackgroundModel\(\);\s*\}, 3000\)/);
+    assert.match(panelSource, /return \(\) => clearInterval\(timer\);/);
   });
 
   test("หน้า Performance สั่งดาวน์โหลดผ่านคิวเดิม ไม่ได้ประดิษฐ์ทางใหม่", () => {
@@ -250,6 +328,85 @@ async function main() {
       );
       assert.doesNotMatch(markup, /data-testid="background-model-download"/);
       assert.match(markup, /the catalog has no model between 0\.2 and 3\.2 GB/);
+    });
+
+    test("กำลังดาวน์โหลด: การ์ดบอกเปอร์เซ็นต์และความเร็ว พร้อมแถบความคืบหน้า", () => {
+      const markup = built.renderToStaticMarkup(
+        built.createElement(built.BackgroundModelCard, {
+          data: {
+            enabled: true,
+            maxSizeGb: 3.2,
+            model: null,
+            mainReady: false,
+            reason: "no model between 0.2 and 3.2 GB is downloaded — the chat model is used",
+            suggestion,
+            suggestionReason: "…",
+            download: {
+              state: "downloading",
+              active: true,
+              percent: 42,
+              downloadedBytes: 0.85 * GIB,
+              totalBytes: 2.02 * GIB,
+              speedBytesPerSecond: 12 * 1024 * 1024,
+              queuePosition: 1,
+              filename: suggestion.filename,
+              error: null,
+            },
+          },
+          onDownload: () => {},
+        }),
+      );
+      assert.match(markup, /data-testid="background-model-download-progress"/);
+      assert.match(markup, /Downloading 42%/);
+      assert.match(markup, /870 MB of 2 GB/);
+      assert.match(markup, /12 MB\/s/);
+      assert.match(markup, /role="progressbar"[^>]*aria-valuenow="42"/);
+    });
+
+    test("ดาวน์โหลดเสร็จ/ล้มเหลว: การ์ดบอกผลลัพธ์ตรง ๆ", () => {
+      const done = built.renderToStaticMarkup(
+        built.createElement(built.BackgroundModelCard, {
+          data: {
+            enabled: true,
+            maxSizeGb: 3.2,
+            model: null,
+            mainReady: false,
+            reason: "…",
+            suggestion,
+            download: { state: "completed", active: false, percent: 100, totalBytes: 2.02 * GIB },
+          },
+          onDownload: () => {},
+        }),
+      );
+      assert.match(done, /Downloaded — translations use it from the next product name/);
+      assert.doesNotMatch(done, /role="progressbar"/, "no bar once it is done");
+
+      const failed = built.renderToStaticMarkup(
+        built.createElement(built.BackgroundModelCard, {
+          data: {
+            enabled: true,
+            maxSizeGb: 3.2,
+            model: null,
+            mainReady: false,
+            reason: "…",
+            suggestion,
+            download: { state: "failed", active: false, percent: 12, error: "HTTP 404 from the publisher" },
+          },
+          onDownload: () => {},
+        }),
+      );
+      assert.match(failed, /Failed/);
+      assert.match(failed, /HTTP 404 from the publisher/);
+    });
+
+    test("ไม่มี download = ไม่มีแถบความคืบหน้า", () => {
+      const markup = built.renderToStaticMarkup(
+        built.createElement(built.BackgroundModelCard, {
+          data: { enabled: true, maxSizeGb: 3.2, model: null, mainReady: false, reason: "…", suggestion, download: null },
+          onDownload: () => {},
+        }),
+      );
+      assert.doesNotMatch(markup, /data-testid="background-model-download-progress"/);
     });
 
     test("มีโมเดลอยู่แล้ว = ไม่มีปุ่มดาวน์โหลดรบกวน", () => {

@@ -460,8 +460,9 @@ background as soon as a product arrives without one; a name you typed, or a name
 deliberately cleared, is never overwritten. That translation runs on the smallest local
 model you have downloaded, not on the chat model, so a 9B never has to be loaded — or
 evicted — just to translate product names. When no small model is downloaded yet, the
-Products tab and Settings → Performance both say so — and the panel offers the smallest catalog
-model that fits with one click, on the download queue the app already has. Details:
+Products tab and Settings → Performance both say so — the panel offers the smallest catalog model
+that fits with one click, on the download queue the app already has, and follows its progress on the
+same card. Details:
 [`docs/beta7/product-rotation-and-names.md`](docs/beta7/product-rotation-and-names.md).
 
 Two models are never loaded at the same time any more: a load that is still running counts
