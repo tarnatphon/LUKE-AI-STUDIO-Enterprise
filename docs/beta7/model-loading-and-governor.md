@@ -64,6 +64,18 @@
 
 provider ที่ throw จะได้ `backgroundModel: null` แล้วหน้าจอยังทำงานต่อ (ไม่ล้มทั้งหน้า)
 
+### ทางออกในคลิกเดียว
+
+บอกว่ามีปัญหาแล้วปล่อยให้ไปหา GGUF เองบนอินเทอร์เน็ต คือตอบครึ่งเดียว — แอปมีแคตตาล็อก
+ที่เซ็นแล้วและคิวดาวน์โหลดอยู่แล้ว
+
+- `scripts/server/background-model-suggestion.cjs` เลือก **ตัวเล็กสุดในแคตตาล็อก** ที่ยังไม่โหลด,
+  อยู่ในเพดาน และเครื่องมี RAM พอ (`minimumRamBytes` + reserve) — ฟังก์ชันบริสุทธิ์ ทดสอบได้โดยไม่ต้องมีไฟล์
+- `GET /api/background-model` แนบ `suggestion: { modelId, variantId, filename, label, sizeGb }` (หรือ `null` + `suggestionReason`)
+- การ์ดในหน้า Performance มีปุ่ม `Download <ชื่อ> (<GB>)` → `POST /api/text-models/download-queue`
+  (คิว/เช็กซัม/แถบความคืบหน้าเดิมของ Text Models) **ไม่มีอะไรถูกโหลดเองโดยไม่กด**
+- ไม่มีอะไรให้เสนอ → ไม่มีปุ่ม แต่บอกเหตุผล
+
 ## 3. Governor ที่มองเห็นและปรับได้
 
 | ไฟล์ | อะไร |
@@ -95,6 +107,7 @@ node scripts/validation/test-model-load-guard.cjs             # 12 checks
 node scripts/validation/test-background-llm.cjs               # 17 checks
 node scripts/validation/test-resource-governor-settings.cjs   # 18 checks
 node scripts/validation/test-background-model-ui.cjs          # 7 checks
+node scripts/validation/test-background-model-download.cjs    # 12 checks
 ```
 
 - **model-load-guard**: นับ in-flight · รอแล้วเริ่มต่อ · หมดเวลาแล้วเริ่มพร้อมเตือน · ปิดการรอ ·
@@ -106,3 +119,6 @@ node scripts/validation/test-background-model-ui.cjs          # 7 checks
   describe ตรงกับ policy จริง · route มีจริง · SSR ของการ์ด (level, เหตุผล, ค่าที่แก้, reset, สถานะว่าง)
 - **background-model-ui**: SSR ของแท็บ สินค้า (ยังไม่มีโมเดลเล็ก / มีแล้ว / ไม่มีชื่อขาด) และ
   การ์ดในหน้า Performance ทั้งสามสถานะ
+- **background-model-download**: เลือกตัวเล็กสุด · ข้ามที่โหลดแล้ว (รวม path) · RAM ไม่พอ = ไม่เสนอ ·
+  ไม่มีอะไร fit = ไม่มีปุ่มแต่มีเหตุผล · แคตตาล็อกจริงมีตัวที่ fit · route/ปุ่มผูกกับคิวเดิม ·
+  SSR ของปุ่ม (มี/ไม่มี/มีโมเดลแล้ว)

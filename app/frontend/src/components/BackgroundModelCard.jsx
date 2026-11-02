@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, CheckCircle2, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Sparkles } from "lucide-react";
 
 /**
  * Which model runs the background chores, and what to do when there is none.
@@ -42,6 +42,20 @@ const descStyle = {
   lineHeight: 1.55,
 };
 
+const buttonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  marginTop: 8,
+  padding: "6px 10px",
+  border: "1px solid var(--md-sys-color-outline-variant)",
+  borderRadius: 8,
+  background: "transparent",
+  color: "var(--md-sys-color-on-surface)",
+  cursor: "pointer",
+  fontSize: ".7rem",
+};
+
 const stateStyle = {
   display: "flex",
   alignItems: "flex-start",
@@ -51,11 +65,12 @@ const stateStyle = {
   lineHeight: 1.55,
 };
 
-export default function BackgroundModelCard({ data, note = "" }) {
+export default function BackgroundModelCard({ data, note = "", busy = "", onDownload = null }) {
   const enabled = data ? data.enabled !== false : true;
   const model = data?.model || null;
   const cap = Number(data?.maxSizeGb || 0);
   const mainReady = Boolean(data?.mainReady);
+  const suggestion = data?.suggestion || null;
 
   return (
     <div style={cardStyle} data-testid="background-model-card">
@@ -103,6 +118,32 @@ export default function BackgroundModelCard({ data, note = "" }) {
             Download a 1–3B model (a Q4 at roughly {cap || 3} GB or less) in <strong>Settings → Text
             Models</strong>; it is used for this automatically from the next translation, without
             changing which model answers your chats.
+            {suggestion && (
+              <>
+                <br />
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => onDownload?.(suggestion)}
+                  disabled={!onDownload || busy === "background-download"}
+                  data-testid="background-model-download"
+                >
+                  <Download size={13} />
+                  {busy === "background-download"
+                    ? "Adding to the queue…"
+                    : `Download ${suggestion.label} (${suggestion.sizeGb} GB)`}
+                </button>
+                <span style={{ display: "block", marginTop: 4, color: "var(--md-sys-color-outline)" }}>
+                  {data.suggestionReason}
+                </span>
+              </>
+            )}
+            {!suggestion && data.suggestionReason && (
+              <>
+                <br />
+                <span style={{ color: "var(--md-sys-color-outline)" }}>{data.suggestionReason}</span>
+              </>
+            )}
           </span>
         </div>
       )}
