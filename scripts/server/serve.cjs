@@ -29788,7 +29788,15 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       } catch (error) {
         suggestionReason = `the model catalog could not be read: ${error?.message || error}`;
       }
-      return json(res, 200, { ok: true, result: { ...status, suggestion, suggestionReason } });
+      // If the suggested model is already downloading, say how far it is: the
+      // click happens here, so its progress belongs here too.
+      let download = null;
+      try {
+        download = backgroundModelSuggestion.describeDownload(readTextModelQueue().items, suggestion);
+      } catch {
+        download = null;
+      }
+      return json(res, 200, { ok: true, result: { ...status, suggestion, suggestionReason, download } });
     } catch (error) {
       return json(res, 500, { ok: false, error: error.message || String(error) });
     }

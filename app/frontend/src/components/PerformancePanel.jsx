@@ -58,6 +58,16 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
 
+  // A download started from this panel is followed here, not only in Text
+  // Models: the card that offered the button is the card that reports it.
+  const loadBackgroundModel = useCallback(async () => {
+    try {
+      const response = await fetch("/api/background-model");
+      const data = await response.json();
+      if (response.ok) setBackgroundModel(data.result || null);
+    } catch {}
+  }, []);
+
   const refresh = useCallback(async (internalDisk = useInternalDisk) => {
     try {
       const response = await fetch("/api/model-cache/status", {
@@ -82,12 +92,8 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const governorData = await governorResponse.json();
       if (governorResponse.ok) setGovernor(governorData.result || null);
     } catch {}
-    try {
-      const backgroundResponse = await fetch("/api/background-model");
-      const backgroundData = await backgroundResponse.json();
-      if (backgroundResponse.ok) setBackgroundModel(backgroundData.result || null);
-    } catch {}
-  }, []);
+    await loadBackgroundModel();
+  }, [loadBackgroundModel]);
 
   const saveGovernor = async (overrides) => {
     setBusy("governor-save");
@@ -131,9 +137,8 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       });
       const data = await response.json();
       if (response.ok) {
-        setBackgroundNote(
-          `${suggestion.filename} was added to the download queue — progress is in Text Models. Translations use it automatically once it lands.`
-        );
+        setBackgroundNote(`${suggestion.filename} was added to the download queue.`);
+        await loadBackgroundModel();
       } else {
         setBackgroundNote(data.error || "That model could not be queued.");
       }
@@ -170,6 +175,16 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   useEffect(() => {
     void refresh(useInternalDisk);
   }, [refresh, useInternalDisk]);
+
+  // Only while a download is actually moving: three seconds is enough to watch
+  // a progress bar, and the poll stops the moment the queue says it is done.
+  useEffect(() => {
+    if (!backgroundModel?.download?.active) return undefined;
+    const timer = setInterval(() => {
+      void loadBackgroundModel();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [backgroundModel?.download?.active, loadBackgroundModel]);
 
   const measure = async () => {
     setBusy("measure");

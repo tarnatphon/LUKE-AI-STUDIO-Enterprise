@@ -97,7 +97,50 @@ function chooseSuggestion({
   };
 }
 
+const TERMINAL_STATES = new Set(["completed", "cancelled", "failed", "skipped"]);
+
+/**
+ * The download of the suggested model, if there is one, as the panel needs it.
+ *
+ * The button queues a download in Text Models; without this the user has to go
+ * to another tab to find out whether it is happening, and coming back to a card
+ * that still says "no small model" is exactly the confusion this whole thread
+ * started with. Matching on modelId+variantId (not on the filename) means a
+ * re-download of the same file is still recognised.
+ */
+function describeDownload(items = [], suggestion = null) {
+  if (!suggestion || !suggestion.modelId) return null;
+  const list = (Array.isArray(items) ? items : []).filter(
+    (item) => item && item.modelId === suggestion.modelId && item.variantId === suggestion.variantId,
+  );
+  if (!list.length) return null;
+  // The queue appends, so the last matching entry is the current one.
+  const item = list[list.length - 1];
+  const state = String(item.state || "queued");
+  const totalBytes = Number(item.progress?.totalBytes ?? item.sizeBytes) || 0;
+  const downloadedBytes = Number(item.progress?.downloadedBytes) || 0;
+  const reported = Number(item.progress?.percent);
+  const percent = Number.isFinite(reported) && reported > 0
+    ? Math.max(0, Math.min(100, Math.round(reported)))
+    : totalBytes > 0 && downloadedBytes > 0
+      ? Math.max(0, Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)))
+      : 0;
+  return {
+    state,
+    active: !TERMINAL_STATES.has(state),
+    percent,
+    downloadedBytes,
+    totalBytes,
+    speedBytesPerSecond: Number(item.progress?.speedBytesPerSecond) || 0,
+    queuePosition: Number(item.queuePosition) || 0,
+    filename: String(item.filename || suggestion.filename || ""),
+    error: item.error ? String(item.error).slice(0, 300) : null,
+    updatedAt: item.updatedAt || null,
+  };
+}
+
 module.exports = {
   chooseSuggestion,
+  describeDownload,
   roundGb,
 };

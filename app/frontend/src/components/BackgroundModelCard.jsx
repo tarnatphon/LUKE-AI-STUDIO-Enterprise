@@ -65,12 +65,51 @@ const stateStyle = {
   lineHeight: 1.55,
 };
 
+function formatSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value >= 1024 ** 3) return `${Math.round((value / 1024 ** 3) * 10) / 10} GB`;
+  return `${Math.round(value / 1024 ** 2)} MB`;
+}
+
+/**
+ * One line per queue state, in the words the user needs: queued behind what,
+ * how fast, or what to do about a failure.
+ */
+function downloadLine(download) {
+  if (!download) return "";
+  const size = formatSize(download.totalBytes);
+  switch (download.state) {
+    case "completed":
+      return "Downloaded — translations use it from the next product name, no restart needed.";
+    case "failed":
+      return download.error || "The download failed.";
+    case "cancelled":
+      return "The download was cancelled.";
+    case "skipped":
+      return "The download was skipped.";
+    case "queued":
+      return download.queuePosition > 1
+        ? `Queued (position ${download.queuePosition})${size ? ` · ${size}` : ""}`
+        : `Queued${size ? ` · ${size}` : ""} — starting now`;
+    default: {
+      const speed = Number(download.speedBytesPerSecond) > 0
+        ? ` · ${formatSize(download.speedBytesPerSecond)}/s`
+        : "";
+      const done = formatSize(download.downloadedBytes);
+      return `Downloading ${download.percent}%${done && size ? ` · ${done} of ${size}` : ""}${speed}`;
+    }
+  }
+}
+
 export default function BackgroundModelCard({ data, note = "", busy = "", onDownload = null }) {
   const enabled = data ? data.enabled !== false : true;
   const model = data?.model || null;
   const cap = Number(data?.maxSizeGb || 0);
   const mainReady = Boolean(data?.mainReady);
   const suggestion = data?.suggestion || null;
+  const download = data?.download || null;
+  const downloading = Boolean(download && download.active);
 
   return (
     <div style={cardStyle} data-testid="background-model-card">
@@ -145,6 +184,41 @@ export default function BackgroundModelCard({ data, note = "", busy = "", onDown
               </>
             )}
           </span>
+        </div>
+      )}
+
+      {data && download && (
+        <div style={{ marginTop: 8 }} data-testid="background-model-download-progress">
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: ".7rem" }}>
+            {download.state === "completed" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+            <span>
+              <strong>{download.state.charAt(0).toUpperCase() + download.state.slice(1)}</strong> ·{" "}
+              {downloadLine(download)}
+            </span>
+          </div>
+          {downloading && (
+            <div
+              style={{
+                marginTop: 4,
+                height: 4,
+                borderRadius: 999,
+                background: "var(--md-sys-color-surface-container-highest)",
+                overflow: "hidden",
+              }}
+              role="progressbar"
+              aria-valuenow={download.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                style={{
+                  width: `${Math.max(2, download.percent)}%`,
+                  height: "100%",
+                  background: "var(--md-sys-color-primary)",
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 

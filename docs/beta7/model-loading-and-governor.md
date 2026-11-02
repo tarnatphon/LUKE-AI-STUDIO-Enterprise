@@ -76,6 +76,19 @@ provider ที่ throw จะได้ `backgroundModel: null` แล้วห
   (คิว/เช็กซัม/แถบความคืบหน้าเดิมของ Text Models) **ไม่มีอะไรถูกโหลดเองโดยไม่กด**
 - ไม่มีอะไรให้เสนอ → ไม่มีปุ่ม แต่บอกเหตุผล
 
+### ติดตามดาวน์โหลดจากที่เดียวกับที่กด
+
+กดแล้วต้องไปดูอีกแท็บว่าจะเสร็จเมื่อไร — เป็นความสับสนแบบเดียวกับที่ทำให้ทั้งเรื่องนี้เริ่มต้น
+
+- `describeDownload(items, suggestion)` (ใน `background-model-suggestion.cjs`) จับคู่ด้วย
+  `modelId`+`variantId` แล้วคืน `state / percent / bytes / speed / queuePosition / error`
+  — ถ้า `percent` ไม่มา ก็คำนวณจากไบต์ และไม่เกิน 100
+- `GET /api/background-model` แนบ `download` มาด้วย
+- การ์ดในหน้า Performance แสดงแถบความคืบหน้า + บรรทัดเดียวรู้เรื่อง
+  (`Queued (position 2)` · `Downloading 42% · 870 MB of 2 GB · 12 MB/s` ·
+  `Downloaded — translations use it from the next product name` · error ของจริง)
+- หน้า Performance poll ทุก 3 วินาที **เฉพาะตอนที่ยังดาวน์โหลดอยู่** และหยุดเองเมื่อจบ
+
 ## 3. Governor ที่มองเห็นและปรับได้
 
 | ไฟล์ | อะไร |
@@ -107,7 +120,7 @@ node scripts/validation/test-model-load-guard.cjs             # 12 checks
 node scripts/validation/test-background-llm.cjs               # 17 checks
 node scripts/validation/test-resource-governor-settings.cjs   # 18 checks
 node scripts/validation/test-background-model-ui.cjs          # 7 checks
-node scripts/validation/test-background-model-download.cjs    # 12 checks
+node scripts/validation/test-background-model-download.cjs    # 20 checks
 ```
 
 - **model-load-guard**: นับ in-flight · รอแล้วเริ่มต่อ · หมดเวลาแล้วเริ่มพร้อมเตือน · ปิดการรอ ·
@@ -121,4 +134,5 @@ node scripts/validation/test-background-model-download.cjs    # 12 checks
   การ์ดในหน้า Performance ทั้งสามสถานะ
 - **background-model-download**: เลือกตัวเล็กสุด · ข้ามที่โหลดแล้ว (รวม path) · RAM ไม่พอ = ไม่เสนอ ·
   ไม่มีอะไร fit = ไม่มีปุ่มแต่มีเหตุผล · แคตตาล็อกจริงมีตัวที่ fit · route/ปุ่มผูกกับคิวเดิม ·
-  SSR ของปุ่ม (มี/ไม่มี/มีโมเดลแล้ว)
+  ติดตามดาวน์โหลด (queued/downloading/completed/failed, คำนวณ % จากไบต์, แถวใหม่สุด, โมเดลอื่นไม่ถูกหยิบ) ·
+  poll เฉพาะตอนยังโหลดอยู่ · SSR ของปุ่มและแถบความคืบหน้าในทุกสถานะ
