@@ -63,7 +63,7 @@ function section(title) {
   console.log(`\n${title}`);
 }
 
-const FAKE_KEY = "sk-arena-SECRET-abcdef123456";
+const FAKE_KEY = "sk-TEST-SECRET-abcdef123456";
 
 async function main() {
   section("1. The keys live on this machine and nowhere else");
@@ -110,9 +110,10 @@ async function main() {
     maxTokens: 512,
   });
   check("the model is the one chosen for that provider", payload.model === "some/model", payload.model);
-  check("it falls back to the provider's default", provider.buildRemotePayload({ providerId: "groq" }).model === provider.PROVIDERS.groq.model);
-  check("a router account has its model forced",
-    provider.buildRemotePayload({ providerId: "arena", model: "claude-opus-4-6" }).model === "coding-router-preview");
+  check("it falls back to the provider's default", provider.buildRemotePayload({ providerId: "zai" }).model === provider.PROVIDERS.zai.model);
+  let removedPaidRejected = false;
+  try { provider.buildRemotePayload({ providerId: "groq" }); } catch { removedPaidRejected = true; }
+  check("a paid provider that was deleted cannot even build a request", removedPaidRejected);
   check("it streams", payload.stream === true);
   check("junk messages are dropped, not forwarded", payload.messages.length === 2, String(payload.messages.length));
   check("roles survive as themselves, not flattened",
@@ -149,12 +150,12 @@ async function main() {
   check("the default NVIDIA model is one the provider was seen to serve",
     VERIFIED_NVIDIA.includes(provider.PROVIDERS.nvidia.model), provider.PROVIDERS.nvidia.model);
 
-  // Groq, from console.groq.com/docs/models (2026-09-22), and Z.ai from its own
-  // pricing page — where GLM-4.7-Flash is the row that reads Free across input,
-  // cached input and output.
-  check("the default Groq model is one its catalogue lists",
-    ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"].includes(provider.PROVIDERS.groq.model),
-    provider.PROVIDERS.groq.model);
+  // Every remaining transport is free and needs no card. Groq (disputed free
+  // plan vs per-token billing) and the prepaid Arena router were deleted
+  // outright, not merely left out of DEFAULT_ORDER.
+  check("no registered provider bills per token",
+    Object.values(provider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false),
+    JSON.stringify(Object.values(provider.PROVIDERS).map((entry) => [entry.id, entry.free, entry.paid])));
   check("the default Z.ai model is one of the ones priced at zero",
     ["glm-4.7-flash", "glm-4.5-flash"].includes(provider.PROVIDERS.zai.model),
     provider.PROVIDERS.zai.model);
@@ -182,23 +183,23 @@ async function main() {
     ![provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]
       .some((model) => model.startsWith("nex-agi/")),
     JSON.stringify([provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]));
-  check("and the panel does not call a billed model free",
-    /bills per token/.test(provider.PROVIDERS.groq.note)
-    && !/\bfree\b/i.test(provider.PROVIDERS.groq.note),
-    provider.PROVIDERS.groq.note);
+  check("Groq and the Arena router are gone, not merely hidden",
+    !provider.PROVIDERS.groq && !provider.PROVIDERS.arena
+    && !Object.values(provider.PROVIDERS).some((entry) => entry.forceModel === true));
   check("each provider has its own endpoint",
-    provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("groq")
+    provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("gemini")
     && provider.remoteEndpoint("zai").includes("z.ai"));
 
   section("4. A refusal is reported in the user's words");
   const harness = provider.classifyRemoteError({ status: 403, body: '{"error":"free_router_harness_restricted"}' });
   check("harness restriction is named for what it is", harness.code === "harness_restricted");
   check("and says which apps the free router does accept", /Claude Code.*OpenCode/s.test(harness.message), harness.message);
-  check("and what would lift it", /paid/i.test(harness.message));
+  check("and it moves on instead of offering a paid upgrade",
+    /next free provider|local model/i.test(harness.message), harness.message);
   const paywall = provider.classifyRemoteError({ status: 402, providerId: "cerebras-like" });
   check("a provider that started charging says so", paywall.code === "now_paid" && /charg/i.test(paywall.message));
-  const gone = provider.classifyRemoteError({ status: 404, providerId: "groq" });
-  check("a model that no longer exists says where to get a current name", gone.code === "unknown_model" && /console\.groq\.com/.test(gone.message));
+  const gone = provider.classifyRemoteError({ status: 404, providerId: "gemini" });
+  check("a model that no longer exists says where to get a current name", gone.code === "unknown_model" && /aistudio\.google\.com/.test(gone.message));
   const badKey = provider.classifyRemoteError({ status: 401, providerId: "nvidia" });
   check("a bad key says where to get a new one", badKey.code === "invalid_key" && /build\.nvidia\.com/.test(badKey.message));
   check("a rate limit names the provider", provider.classifyRemoteError({ status: 429, providerId: "zai" }).message.includes("Z.ai"));
@@ -222,16 +223,14 @@ async function main() {
 
   // The user asked for free, and free means nothing is billed per token. A
   // rate limit is a free tier; a price per million tokens is not.
-  const NOT_FREE = ["groq", "arena"];
+  const REMOVED_PAID = ["groq", "arena"];
   check("nothing in the chain bills per token",
-    !provider.DEFAULT_ORDER.some((providerId) => NOT_FREE.includes(providerId)),
+    !provider.DEFAULT_ORDER.some((providerId) => REMOVED_PAID.includes(providerId)),
     provider.DEFAULT_ORDER.join(" -> "));
-  check("a provider that charges is still offered, just not turned on",
-    NOT_FREE.every((providerId) => provider.PROVIDERS[providerId])
-    && NOT_FREE.every((providerId) => !provider.DEFAULT_ORDER.includes(providerId)));
-  check("and its note says so before anyone connects it",
-    /Not in the chain by default/.test(provider.PROVIDERS.groq.note),
-    provider.PROVIDERS.groq.note);
+  check("paid providers are deleted from the registry, not just left off the chain",
+    REMOVED_PAID.every((providerId) => !provider.PROVIDERS[providerId]));
+  check("every remaining provider is free and needs no card",
+    Object.values(provider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false));
   check("OpenRouter's free model carries the suffix that makes it zero",
     provider.PROVIDERS.openrouter.model.endsWith(":free"),
     provider.PROVIDERS.openrouter.model);
@@ -343,10 +342,11 @@ async function main() {
     check("and the chain goes back to what is left",
       !(await provider.providerStatus()).chain.includes("nvidia"));
 
-    // A file written by the version that only knew Arena must still be read.
+    // The old single-key file held an Arena router key. That paid provider was
+    // removed, so the legacy field must NOT revive it.
     await provider.writeConfig({ key: FAKE_KEY, savedAt: new Date().toISOString() });
-    check("a key file from the single-provider version still reads",
-      (await provider.readStoredKey("arena")) === FAKE_KEY);
+    check("a legacy single-key file cannot revive the removed paid router",
+      (await provider.readStoredKey("arena")) === null);
 
     await provider.writeConfig({ keys: {}, order: [...provider.DEFAULT_ORDER], models: {}, useLocalFallback: true });
     check("cleared is cleared", (await provider.providerStatus()).chain.length === 0);
@@ -380,13 +380,13 @@ async function main() {
   }
   check("a key cannot be saved to a provider that does not exist", unknownProvider);
 
-  let lockedModel = false;
+  let removedModel = false;
   try {
-    await provider.setModel("arena", "something-else");
+    await provider.setModel("groq", "something-else");
   } catch {
-    lockedModel = true;
+    removedModel = true;
   }
-  check("a router's model cannot be overridden", lockedModel);
+  check("a removed paid provider cannot be configured at all", removedModel);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

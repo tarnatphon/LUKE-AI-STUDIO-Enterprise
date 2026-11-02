@@ -28,12 +28,13 @@
  *    `app/runtime-state/text-chat/remote-text-provider.json` — inside the app
  *    folder, mode 0600, gitignored — scrubbed out of every error, and never
  *    returned to the browser, not even masked.
- * 2. A router account takes the router's name and no other. Arena rejects a
- *    direct model id with a 403, so for that provider the model is forced.
+ * 2. Only no-card free tiers are registered. Anything that billed, needed a
+ *    card, or was prepaid (Groq, the Arena coding router, the big cloud trials)
+ *    was removed rather than gated, so there is no paid path to fall into.
  * 3. A refusal is reported in the user's words. `403
- *    free_router_harness_restricted` means the free router answers Arena's own
- *    apps and not this one; `402` means a provider that used to be free now
- *    charges. Both are worth saying plainly.
+ *    free_router_harness_restricted` means a free router answers only its own
+ *    harnesses; `402` means a provider that used to be free now charges — and
+ *    LUKE walks to the next free link or the local model, never to a bill.
  * 4. The local path is untouched. With no key saved, nothing here runs.
  */
 
@@ -67,7 +68,7 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 // The researched catalogue is the one place that says which links are free,
 // which bill, and what each one can read. Everything else in this file obeys
-// it; a transport provider missing from the catalogue fails closed (paid).
+// it; a transport provider missing from the catalogue fails closed (not free).
 const aiCatalog = require("./ai-provider-catalog.cjs");
 const { normalizeContentParts, textOf, mergeContent } = require("./content-parts.cjs");
 const onlineSurfaces = require("./online-surfaces.cjs");
@@ -196,31 +197,11 @@ const PROVIDERS = {
     docs: "console.mistral.ai → API keys → Limits",
     note: "Free mode with no card. Exact allowance and vision support are shown in the account's Limits page, so probe before relying on them.",
   },
-  groq: {
-    id: "groq",
-    label: "Groq",
-    baseUrl: "https://api.groq.com/openai/v1",
-    // A real, current production id. 2026 sources disagree: this repo's older
-    // note records per-token billing, while current rate-limit pages describe
-    // a free plan for gpt-oss models. The catalogue therefore marks it paid
-    // until someone checks the live page — a wrong guess here is a bill.
-    model: "openai/gpt-oss-120b",
-    docs: "console.groq.com → API Keys",
-    // The catalogue carries the 2026 disagreement between a free open-model
-    // plan and per-token billing. The panel keeps the conservative wording:
-    // a wrong guess here is a bill, not a wrong label.
-    note: "Not in the chain by default: it bills per token ($0.15 in / $0.60 out per million). Connect it only if you accept paying.",
-  },
-  arena: {
-    id: "arena",
-    label: "Arena",
-    baseUrl: "https://api.preview.arena.ai/v1",
-    model: "coding-router-preview",
-    docs: "portal.api.preview.arena.ai → Keys",
-    note: "A router account may call the router only, so the model name is forced.",
-    // Naming a model directly is refused with a 403 the user cannot act on.
-    forceModel: true,
-  },
+  // Groq (billed per token in this repo's records, disputed in 2026 sources)
+  // and the Arena coding router (prepaid) used to sit here. Both were removed
+  // outright: the owner asked that anything costing money not be registered
+  // at all, rather than merely skipped at runtime. A stale key in an old
+  // runtime-state file therefore cannot reach a paid endpoint.
   // Free Claude Code — a proxy on this machine, not another cloud account.
   // It owns the provider catalogue, the free keys, the retries and the
   // fallback list; this app only speaks one protocol to one local socket.
@@ -252,15 +233,14 @@ const PROVIDERS = {
  * Tried in this order; local is the last link, after all of them.
  *
  * Every provider here is free in the sense that matters — nothing is billed per
- * token. NVIDIA has no daily quota at all, OpenRouter's :free models are priced
- * at zero, Z.ai's Flash models are priced at zero. Groq and Arena are in the
- * catalogue for anyone who wants them, but neither is free, so neither is
- * turned on by default.
+ * token and none needs a card. NVIDIA has no daily quota at all, OpenRouter's
+ * :free models are priced at zero, Z.ai's Flash models are priced at zero.
+ * No paid provider is registered in PROVIDERS at all.
  */
 const DEFAULT_ORDER = ["nvidia", "openrouter", "zai"];
 
-// Attach the researched free/paid/modality facts to every transport provider.
-// `free` and `paid` are data, not comments: the chain filters on them.
+// Attach the researched free/modality facts to every transport provider.
+// `free` is an invariant enforced by the catalogue, not a user setting.
 for (const transportProvider of Object.values(PROVIDERS)) {
   Object.assign(
     transportProvider,
@@ -505,9 +485,9 @@ function remoteEndpoint(providerId) {
  * Turn an upstream failure into something the user can act on.
  *
  * The gateways' own wording is accurate and useless: `403
- * free_router_harness_restricted` means the free router accepts Arena's own
- * apps and not this one; `402` means a model that was free last month is
- * behind a card now. Both are worth saying in plain words.
+ * free_router_harness_restricted` means a free router accepts only its own
+ * apps; `402` means a model that was free last month is behind a card now.
+ * Both are worth saying in plain words, and neither is an invitation to pay.
  */
 function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
   const text = String(body || "");
@@ -542,7 +522,7 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
     return {
       code: "harness_restricted",
       message:
-        "Arena's free router only answers its own apps (Claude Code, Claude Desktop, OpenCode). This app is not one of them. A paid Arena key removes that restriction.",
+        "This free router only answers its own harnesses (Claude Code, Claude Desktop, OpenCode). LUKE is not one of them, so the chain moves to the next free provider or the local model — there is no paid upgrade here.",
     };
   }
 
@@ -550,7 +530,7 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
     return {
       code: "model_not_allowed",
       message:
-        "The provider refused the model. An Arena router account may only call the router itself, never a model by name.",
+        "The provider refused that model. Pick an id from its current model list in Settings — free catalogues rotate, and an old id costs a wasted link.",
     };
   }
 
@@ -741,10 +721,10 @@ async function readConfig() {
 
     const keys = {};
 
-    // The file used to hold a single Arena key. Read that as what it became.
-    if (typeof parsed.key === "string" && parsed.key.trim()) {
-      keys.arena = parsed.key.trim();
-    }
+    // The file used to hold a single Arena router key. That provider was
+    // removed because it was prepaid, so the legacy `key` field is deliberately
+    // NOT loaded: an old config file must never revive a paid link. It stays
+    // untouched on disk; only free providers registered in PROVIDERS are read.
 
     if (parsed.keys && typeof parsed.keys === "object") {
       for (const [providerId, value] of Object.entries(parsed.keys)) {
@@ -815,7 +795,7 @@ async function writeConfig(config) {
   } catch {}
 }
 
-async function readStoredKey(providerId = "arena") {
+async function readStoredKey(providerId = "nvidia") {
   const config = await readConfig();
   return config.keys[providerId] || null;
 }
@@ -951,7 +931,7 @@ async function providerStatus() {
     keyFile: path.relative(ROOT, PROVIDER_FILE),
     // The online-surface policy travels with the same status the Settings
     // panel already fetches, so the UI never has to guess whether Chat is
-    // allowed online or whether a paid link could be tried.
+    // allowed online. No paid link can be tried: none is registered.
     policy: onlineSurfaces.policy(),
     catalogVerifiedAt: aiCatalog.readCatalog().verifiedAt,
   };
@@ -1132,16 +1112,17 @@ async function streamRemoteChain({
   cooldownMs = 1500,
 } = {}) {
   const config = await readConfig();
-  const freeOnly = policy.freeOnly !== false;
   const maxRateRetries = Math.min(3, Math.max(0, Number(policy.rateLimitRetry) || 0));
 
+  // No-pay is an invariant, not a setting. Every registered transport has
+  // free=true from the catalogue; anything else (a stale hand-edited config, an
+  // injected test provider, a future mistake) is refused and recorded. There
+  // is deliberately no `freeOnly: false` path anymore.
   const queue = config.order
     .filter((providerId) => isConnected(config, providerId))
     .filter((providerId) => {
       const provider = PROVIDERS[providerId];
-      if (freeOnly && provider?.paid === true) {
-        // A saved key never overrides the "free only" rule. The refusal is
-        // recorded so the ledger can prove the bill was not even attempted.
+      if (provider?.free !== true) {
         onEgress({
           surface: "cloud-chain",
           provider: providerId,
@@ -1149,7 +1130,7 @@ async function streamRemoteChain({
           method: "POST",
           bytes: 0,
           decision: "blocked",
-          reason: "free-only policy: this provider is marked paid",
+          reason: "no-pay invariant: this provider is not a registered free tier",
           paid: true,
         });
         return false;
