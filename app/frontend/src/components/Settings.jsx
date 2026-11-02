@@ -1,12 +1,13 @@
 import { getSliderStyle } from "../lib/slider-style.mjs";
 import React, { memo, useEffect, useState, useCallback } from "react";
 import PerformancePanel from "./PerformancePanel";
+import OnlineSurfacesPanel from "./OnlineSurfacesPanel";
 import {
   Crop, Sliders, Cpu, Info, MessageSquare, SlidersHorizontal, Zap,
   ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
   Monitor, HardDrive, MemoryStick, Thermometer, Hash, Layers,
   ChevronRight, Box, Wand2, Lightbulb, RotateCcw, Check, Palette, Volume2,
-  DownloadCloud, RefreshCw, Cloud
+  DownloadCloud, RefreshCw, Cloud, Globe2
 } from "lucide-react";
 import {
   stopServer,
@@ -306,6 +307,7 @@ function Settings({
       speech: localStorage.getItem("settings_section_speech") === "true",
       tts: localStorage.getItem("settings_section_tts") === "true",
       cloud: localStorage.getItem("settings_section_cloud") === "true",
+      online: localStorage.getItem("settings_section_online") === "true",
     };
   });
 
@@ -1864,7 +1866,7 @@ function Settings({
       {/* Speech Settings Section */}
       <SectionHeader
         icon={Cloud}
-        title="Cloud brain (Work)"
+        title="Cloud brain (Chat + Work)"
         count={(remoteProvider.chain || []).length}
         color="#38bdf8"
         isExpanded={expandedSections.cloud}
@@ -1881,10 +1883,12 @@ function Settings({
 
             <div className="m3-field-group">
               <span className="settings-option-desc" style={{ display: "block", marginBottom: "12px" }}>
-                Work sends its turns to the first provider below that answers. A rate limit, a paywall or a
-                model that has disappeared moves to the next one. Chat never leaves this machine. A local
-                bridge such as Free Claude Code is tried first when connected — it has its own provider
-                list and fallbacks, and needs no API key unless Proxy Authentication is on.
+                Chat and Work both try the first free provider below that answers. A rate limit, a
+                paywall or a model that has disappeared moves to the next one; when the free links are
+                spent, the local GGUF model takes the turn. Switch online-first Chat off, or turn on the
+                no-filter / air-gap lane in "Online surfaces", to keep a turn entirely on this machine.
+                A local bridge such as Free Claude Code is tried first when connected — it has its own
+                provider list and fallbacks, and needs no API key unless Proxy Authentication is on.
               </span>
 
               {(remoteProvider.providers || []).map((item) => (
@@ -2102,6 +2106,17 @@ function Settings({
           </div>
         </div>
       )}
+
+      <SectionHeader
+        icon={Globe2}
+        title="Online surfaces"
+        count={9}
+        color="#22d3ee"
+        isExpanded={expandedSections.online}
+        onToggle={() => toggleSection("online")}
+      />
+
+      {expandedSections.online && <OnlineSurfacesPanel showAlert={showAlert} />}
 
       {renderSpeechSettings()}
 

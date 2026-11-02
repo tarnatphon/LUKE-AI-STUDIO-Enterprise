@@ -260,9 +260,13 @@ async function main() {
     serveSource.indexOf("  if (req.url === \"/api/llm/chat\""),
   );
   check("there is one cloud path, and it is the one on /api/llm/chat", routeFn.length > 800);
-  check("only a Work turn is offered to the cloud",
-    /body\.assistantMode === "work" &&/.test(serveSource));
-  check("chat is not mentioned in that condition",
+  check("the online-surface policy decides whether a turn may go out",
+    /onlineSurfaces\.cloudDecision\(body\.assistantMode\)/.test(serveSource));
+  check("and the same policy travels into the chain",
+    /routeWorkTurnToCloud\(req, res, body, surfacePolicy\)/.test(serveSource));
+  check("a refused turn is written to the Egress Ledger",
+    /decision: "blocked"/.test(serveSource) && /egressLedger\.record\(/.test(serveSource));
+  check("chat is not hard-coded into the condition",
     !/body\.assistantMode === "chat"/.test(serveSource));
   check("when the chain is spent and nothing was written, the local model takes the turn",
     /if \(!started && config\.useLocalFallback !== false\) return false;/.test(routeFn));
@@ -290,8 +294,8 @@ async function main() {
   check("the mode travels with the chat request",
     /assistantMode: options\.assistantMode === "work" \? "work" : "chat"/.test(apiSource));
   check("and the chat window supplies it", /const streamOptions = \{\s*assistantMode,/.test(chatSource));
-  check("the server routes Work at /api/llm/chat",
-    /body\.assistantMode === "work" &&\s*\(await routeWorkTurnToCloud\(req, res, body\)\)/.test(serveSource));
+  check("the server routes the decided turn at /api/llm/chat",
+    /cloudDecision\.allowed &&\s*\(await routeWorkTurnToCloud\(req, res, body, surfacePolicy\)\)/.test(serveSource));
   check("which is the endpoint the chat window calls",
     /fetchWithTimeoutAndRetry\("\/api\/llm\/chat"/.test(apiSource));
 

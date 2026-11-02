@@ -65,6 +65,13 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
+// The researched catalogue is the one place that says which links are free,
+// which bill, and what each one can read. Everything else in this file obeys
+// it; a transport provider missing from the catalogue fails closed (paid).
+const aiCatalog = require("./ai-provider-catalog.cjs");
+const { normalizeContentParts, textOf, mergeContent } = require("./content-parts.cjs");
+const onlineSurfaces = require("./online-surfaces.cjs");
+
 /**
  * A URL written into Settings must not become a way to make this server call
  * an arbitrary host. A local bridge is only ever allowed to point at this
@@ -169,15 +176,39 @@ const PROVIDERS = {
     docs: "openrouter.ai → Keys",
     note: "Free models cost nothing per token, no card needed. The catch is a request count, not a bill: about 50 a day until you have ever bought $10 of credit, then 1,000.",
   },
+  gemini: {
+    id: "gemini",
+    label: "Google Gemini (free tier)",
+    // The OpenAI-compatible surface Gemini publishes; the native
+    // generateContent endpoint would need its own adapter. This one takes the
+    // same chat-completions body as the other cloud links, including inline
+    // image_url parts, which is why it is the multimodal link of the chain.
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "gemini-2.5-flash",
+    docs: "aistudio.google.com → API keys",
+    note: "Free tier with no card. Reads text, images, audio, video and PDFs in one request. Google may use free-tier prompts to improve its products outside the EEA/UK/CH.",
+  },
+  mistral: {
+    id: "mistral",
+    label: "Mistral AI (Free mode)",
+    baseUrl: "https://api.mistral.ai/v1",
+    model: "mistral-small-latest",
+    docs: "console.mistral.ai → API keys → Limits",
+    note: "Free mode with no card. Exact allowance and vision support are shown in the account's Limits page, so probe before relying on them.",
+  },
   groq: {
     id: "groq",
     label: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    // A real, current production id. Unlike the other two, this one is not
-    // priced at zero — $0.15 in and $0.60 out per million tokens. Calling it
-    // free in the panel would be how the user meets their first bill.
+    // A real, current production id. 2026 sources disagree: this repo's older
+    // note records per-token billing, while current rate-limit pages describe
+    // a free plan for gpt-oss models. The catalogue therefore marks it paid
+    // until someone checks the live page — a wrong guess here is a bill.
     model: "openai/gpt-oss-120b",
     docs: "console.groq.com → API Keys",
+    // The catalogue carries the 2026 disagreement between a free open-model
+    // plan and per-token billing. The panel keeps the conservative wording:
+    // a wrong guess here is a bill, not a wrong label.
     note: "Not in the chain by default: it bills per token ($0.15 in / $0.60 out per million). Connect it only if you accept paying.",
   },
   arena: {
@@ -227,6 +258,20 @@ const PROVIDERS = {
  * turned on by default.
  */
 const DEFAULT_ORDER = ["nvidia", "openrouter", "zai"];
+
+// Attach the researched free/paid/modality facts to every transport provider.
+// `free` and `paid` are data, not comments: the chain filters on them.
+for (const transportProvider of Object.values(PROVIDERS)) {
+  Object.assign(
+    transportProvider,
+    aiCatalog.transportPolicy(transportProvider.id, {
+      free: false,
+      paid: true,
+      modalities: transportProvider.modalities || ["text"],
+      uncensored: false,
+    }),
+  );
+}
 
 // ── small helpers ──────────────────────────────────────────────────────────
 
@@ -300,17 +345,26 @@ function buildRemotePayload({
   stream = true,
 } = {}) {
   const provider = providerOrThrow(providerId);
+  const apiFormat = provider.apiFormat || "openai-chat";
+  const partOptions = { allowedModalities: provider.modalities || ["text"] };
 
   // The three roles that exist in a conversation. `system` is not a detail:
   // the restore prompt carries the contract Work writes its answers under, and
   // demoting it to a user turn is how a model ends up writing tool names out as
   // prose. Anything else is a tool result or a stray, and is dropped.
+  //
+  // `content` may be a string or an array of content parts: TextChat stores
+  // attachments that way. Filtering on `typeof content === "string"` used to
+  // delete an attached image without a word, so the parts are translated for
+  // the wire format instead, with a text placeholder on text-only links.
   const normalizedMessages = (Array.isArray(messages) ? messages : [])
-    .filter((message) => message && typeof message.content === "string")
+    .filter((message) => message && (
+      typeof message.content === "string" || Array.isArray(message.content)
+    ))
     .filter((message) => ["system", "user", "assistant"].includes(message.role))
     .map((message) => ({
       role: message.role,
-      content: message.content,
+      content: normalizeContentParts(message.content, apiFormat, partOptions),
     }));
 
   const chosenModel = provider.forceModel ? provider.model : String(model || "").trim() || provider.model;
@@ -322,10 +376,10 @@ function buildRemotePayload({
   // field, turns must alternate, and max_tokens is required. Sending the
   // OpenAI-shaped body to /v1/messages is the one thing that makes a direct
   // "paste the proxy URL into Settings" integration fail.
-  if (provider.apiFormat === "anthropic-messages") {
+  if (apiFormat === "anthropic-messages") {
     const system = normalizedMessages
       .filter((message) => message.role === "system")
-      .map((message) => message.content)
+      .map((message) => textOf(message.content))
       .join("\n\n")
       .trim();
 
@@ -334,7 +388,7 @@ function buildRemotePayload({
       if (message.role === "system") continue;
       const previous = turns[turns.length - 1];
       if (previous && previous.role === message.role) {
-        previous.content += `\n\n${message.content}`;
+        previous.content = mergeContent(previous.content, message.content, apiFormat, partOptions);
       } else {
         turns.push({ role: message.role, content: message.content });
       }
@@ -503,7 +557,7 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
   if (code === 402) {
     return {
       code: "now_paid",
-      message: `${label} now charges for this model — the free tier is gone. Pick another model, another provider, or let Work fall back to the local model.`,
+      message: `${label} now charges for this model — the free tier is gone. Pick another model, another provider, or let LUKE fall back to the local model.`,
     };
   }
 
@@ -880,6 +934,10 @@ async function providerStatus() {
     keyless: provider.keyless === true,
     local: provider.local === true,
     apiFormat: provider.apiFormat || "openai-chat",
+    free: provider.free === true,
+    paid: provider.paid === true,
+    modalities: Array.isArray(provider.modalities) ? provider.modalities : ["text"],
+    verifiedAt: String(provider.verifiedAt || ""),
     baseUrl: baseUrlFor(provider.id),
     configured: isConnected(config, provider.id),
     keyHint: config.keys[provider.id] ? `…${config.keys[provider.id].slice(-4)}` : "",
@@ -891,6 +949,11 @@ async function providerStatus() {
     localFallback: config.useLocalFallback,
     chain: config.order.filter((providerId) => isConnected(config, providerId)),
     keyFile: path.relative(ROOT, PROVIDER_FILE),
+    // The online-surface policy travels with the same status the Settings
+    // panel already fetches, so the UI never has to guess whether Chat is
+    // allowed online or whether a paid link could be tried.
+    policy: onlineSurfaces.policy(),
+    catalogVerifiedAt: aiCatalog.readCatalog().verifiedAt,
   };
 }
 
@@ -912,6 +975,7 @@ async function streamRemoteChat({
   maxTokens = undefined,
   signal = null,
   onDelta = () => {},
+  onEgress = () => {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   const provider = providerOrThrow(providerId);
@@ -931,15 +995,31 @@ async function streamRemoteChat({
     else signal.addEventListener("abort", abortFromCaller, { once: true });
   }
 
+  const endpoint = remoteEndpoint(providerId);
+  const requestBody = JSON.stringify(
+    buildRemotePayload({ messages, providerId, model, temperature, topP, maxTokens, stream: true }),
+  );
+
+  // The ledger sees the shape of the departure, never the prompt or the key.
+  onEgress({
+    surface: "cloud-chain",
+    provider: provider.id,
+    url: endpoint,
+    method: "POST",
+    bytes: Buffer.byteLength(requestBody),
+    decision: "allowed",
+    reason: "free cloud turn",
+    model,
+    paid: provider.paid === true,
+  });
+
   let response;
 
   try {
-    response = await fetch(remoteEndpoint(providerId), {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: remoteHeaders(secret, providerId),
-      body: JSON.stringify(
-        buildRemotePayload({ messages, providerId, model, temperature, topP, maxTokens, stream: true }),
-      ),
+      body: requestBody,
       signal: controller.signal,
     });
   } catch (error) {
@@ -1047,11 +1127,35 @@ async function streamRemoteChain({
   onDelta = () => {},
   onProvider = () => {},
   onFailure = () => {},
+  onEgress = () => {},
+  policy = {},
+  cooldownMs = 1500,
 } = {}) {
   const config = await readConfig();
+  const freeOnly = policy.freeOnly !== false;
+  const maxRateRetries = Math.min(3, Math.max(0, Number(policy.rateLimitRetry) || 0));
 
   const queue = config.order
     .filter((providerId) => isConnected(config, providerId))
+    .filter((providerId) => {
+      const provider = PROVIDERS[providerId];
+      if (freeOnly && provider?.paid === true) {
+        // A saved key never overrides the "free only" rule. The refusal is
+        // recorded so the ledger can prove the bill was not even attempted.
+        onEgress({
+          surface: "cloud-chain",
+          provider: providerId,
+          url: provider?.baseUrl || "",
+          method: "POST",
+          bytes: 0,
+          decision: "blocked",
+          reason: "free-only policy: this provider is marked paid",
+          paid: true,
+        });
+        return false;
+      }
+      return true;
+    })
     .map((providerId) => {
       const provider = PROVIDERS[providerId];
       const chosen = String(config.models[providerId] || "").trim();
@@ -1074,48 +1178,77 @@ async function streamRemoteChain({
       onProvider(link.provider.id, model);
 
       let content = "";
+      let rateRetries = 0;
+      let stopModels = false;
 
-      try {
-        const result = await streamRemoteChat({
-          providerId: link.provider.id,
-          key: link.key,
-          messages,
-          model,
-          temperature,
-          topP,
-          maxTokens,
-          signal,
-          onDelta,
-        });
+      // A bounded retry is how "use the free quota fully" is honoured: a 429
+      // on NVIDIA is often a per-minute ceiling, not an exhausted day. Default
+      // is zero so an opt-in switch in Settings controls it.
+      for (;;) {
+        try {
+          const result = await streamRemoteChat({
+            providerId: link.provider.id,
+            key: link.key,
+            messages,
+            model,
+            temperature,
+            topP,
+            maxTokens,
+            signal,
+            onDelta,
+            onEgress,
+          });
 
-        return {
-          content: result.content || content,
-          providerId: link.provider.id,
-          model: result.model,
-          failures,
-        };
-      } catch (error) {
-        const failure = {
-          providerId: link.provider.id,
-          label: link.provider.label,
-          model,
-          code: error?.code || "failed",
-          status: error?.statusCode || 0,
-          message: error?.message || `${link.provider.label} could not be reached.`,
-        };
+          return {
+            content: result.content || content,
+            providerId: link.provider.id,
+            model: result.model,
+            failures,
+          };
+        } catch (error) {
+          const failure = {
+            providerId: link.provider.id,
+            label: link.provider.label,
+            model,
+            code: error?.code || "failed",
+            status: error?.statusCode || 0,
+            message: error?.message || `${link.provider.label} could not be reached.`,
+          };
 
-        failures.push(failure);
-        onFailure(failure);
+          failures.push(failure);
+          onFailure(failure);
 
-        // The model is the problem, not the provider — try the next free one
-        // under the same key before giving up on an account that still works.
-        if (MODEL_LEVEL_FAILURES.has(failure.code)) continue;
+          if (failure.code === "rate_limited" && rateRetries < maxRateRetries) {
+            rateRetries += 1;
+            onEgress({
+              surface: "cloud-chain",
+              provider: link.provider.id,
+              url: link.provider.baseUrl || "",
+              method: "POST",
+              bytes: 0,
+              decision: "blocked",
+              reason: `bounded rate-limit retry ${rateRetries}`,
+              model,
+            });
+            if (cooldownMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+            }
+            continue;
+          }
 
-        // A key the provider refuses is about this key, not about the chain:
-        // stop and say so, rather than trying the same thing three more times.
-        if (!isRetryable(failure.code) && failure.code !== "rate_limited") abandon = true;
-        break;
+          // The model is the problem, not the provider — try the next free one
+          // under the same key before giving up on an account that still works.
+          if (MODEL_LEVEL_FAILURES.has(failure.code)) break;
+
+          // A key the provider refuses is about this key, not about the chain:
+          // stop and say so, rather than trying the same thing three more times.
+          if (!isRetryable(failure.code) && failure.code !== "rate_limited") abandon = true;
+          stopModels = true;
+          break;
+        }
       }
+
+      if (stopModels || abandon) break;
     }
 
     if (abandon) break;

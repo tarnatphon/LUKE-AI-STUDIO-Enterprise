@@ -43,7 +43,7 @@
 
 ## <a id="what-is-luke-ai-studio"></a>📖 What is LUKE AI STUDIO?
 
-**LUKE AI STUDIO** is a completely offline, zero-setup, self-contained AI studio for Windows, Linux, and macOS. Unlike cloud-based AI systems, it runs entirely on your own hardware with no censorship, tracking, subscriptions, or login requirements.
+**LUKE AI STUDIO** is an **offline-first**, zero-setup, self-contained AI studio for Windows, Linux, and macOS. It runs on your own hardware with no tracking, subscriptions or login requirements — and, unlike an all-cloud assistant, it can also work with **no network connection at all**. Online capability is strictly opt-in: when you turn it on, LUKE borrows only free tiers, never pays, and records every outbound byte in an audit ledger you can read.
 
 It unifies four major local AI capabilities into one high-performance desktop interface:
 1. **🎨 Image Generation (Stable Diffusion):** Generate and edit high-quality images offline using `.safetensors`, `.gguf`, or `.ckpt` model weights.
@@ -55,7 +55,8 @@ It unifies four major local AI capabilities into one high-performance desktop in
 
 ## <a id="key-features"></a>🌟 Key Features
 
-*   **100% Offline & Private:** Run inferences locally. No internet, telemetry, cloud logging, or API keys required.
+*   **Offline by default · Online on your terms:** Every engine runs locally with no internet, telemetry or API key. Online surfaces are opt-in, free-only, and provable — see the Egress Ledger and the one-page air-gap attestation.
+*   **No-filter local lane:** An abliterated / Dolphin / Hermes GGUF checkpoint answers without a provider-side policy layer; that lane never sends anything off the machine.
 *   **Zero-Install Portability:** Entire runtime (Node.js, models, GPU backends) is self-contained. Zero global system environment changes.
 *   **Auto-Configured Acceleration:** Auto-detects hardware specs to load CUDA (Nvidia), ROCm (AMD), Vulkan (Intel/AMD/NVIDIA), Metal (macOS), or OpenVINO (Intel NPU) backends.
 *   **Integrated Model Manager:** Paste Hugging Face URLs to download weights directly, or drag-and-drop local weights to import them.
@@ -73,7 +74,8 @@ To avoid exhausting system RAM or VRAM, text and image engines are mutually excl
 *   **Speech Worker (Whisper):** Runs a localized `whisper-cli` process to convert your vocal input to text.
 *   **Audio Output (Kokoro TTS):** Utilizes `kokoro-js` locally on the server side to read responses in natural voices.
 *   **Luke AI Workflow:** A visual pipeline builder that chains the engines above — LLM chat, image generation, TTS, speech-to-text, text transforms, and conditions — into repeatable multi-step workflows that run locally. Workflows and run history are stored in `app/runtime-state/ai-workflow/` (see `docs/beta7/ai-workflow-builder-v1-spec.md`).
-*   **Cloud brains for Work (optional):** The **Work** tab can borrow a brain from free cloud providers, tried in order, with the local GGUF model as the last link when every quota is spent. A locally installed [Free Claude Code](https://github.com/alishahryar1/free-claude-code) proxy can be the first link — one local socket fronts its own providers, retries and fallbacks. See [docs/beta7/fcc-work-chat-bridge.md](docs/beta7/fcc-work-chat-bridge.md). The **Chat** tab always stays on this machine.
+*   **Cloud brains for Chat + Work (optional):** Both tabs can borrow a brain from free cloud providers, tried in order, with the local GGUF model as the last link when every free quota is spent. A locally installed [Free Claude Code](https://github.com/alishahryar1/free-claude-code) proxy can be the first link — one local socket fronts its own providers, retries and fallbacks. See [docs/beta7/fcc-work-chat-bridge.md](docs/beta7/fcc-work-chat-bridge.md). A paid provider is skipped even with a saved key; switch online-first Chat off, or turn on the no-filter / air-gap lane in **Settings → Online surfaces**, to keep a turn entirely on this machine.
+*   **Online surfaces (phases 1–4):** a unified provider catalogue with `verifiedAt` dates, an Egress Ledger + air-gap attestation, multimodal content-part translation, LAN device pairing, an installable PWA, an OpenAI-compatible `/v1` gateway and an MCP endpoint for editors, a Telegram/Discord/LINE webhook relay, and consent-gated trial-credit media generation. See [docs/beta7/online-surfaces-and-differentiation.md](docs/beta7/online-surfaces-and-differentiation.md).
 
 ---
 
