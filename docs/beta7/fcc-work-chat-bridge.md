@@ -155,9 +155,19 @@ Useful `~/.fcc/.env` keys: `HOST`, `PORT`, `PROXY_AUTH_ENABLED`,
 
 ## 5. Use it in chat
 
-In the sidebar choose the **Work** tab (not **Chat**) and send a message. Work
-turns go to the chain; the **Chat** tab still goes straight to the local GGUF
-model and never leaves this machine — no setting changes that.
+Both **Chat** and **Work** now use the free chain: online-first, free-only, with
+the local GGUF model as the last link. Settings → **Online surfaces** decides
+whether Chat joins in:
+
+- `Online-first Chat` on (default) → Chat tries FCC → NVIDIA → Gemini → Mistral
+  → OpenRouter → … before falling back to local.
+- `Online-first Chat` off → Chat behaves as it did before the online-surfaces
+  release and stays on this machine.
+- `No-filter lane` or `Air-gap proof mode` on → every turn stays local, and the
+  refusal is written to the Egress Ledger.
+
+See [online-surfaces-and-differentiation.md](online-surfaces-and-differentiation.md)
+for the full policy, the provider catalogue and the attestation format.
 
 The final SSE frame of a cloud answer carries
 `cloud: { provider: "fcc", model: "…" }`, so you can see which link answered.

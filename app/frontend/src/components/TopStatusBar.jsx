@@ -29,6 +29,9 @@ function TopStatusBar({
 }) {
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const menuRef = useRef(null);
+  // The online badge is computed on the server from the Egress Ledger, so the
+  // header cannot claim "air-gap" while the ledger says something went out.
+  const [onlineBadge, setOnlineBadge] = useState(null);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -38,6 +41,25 @@ function TopStatusBar({
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/online-surfaces/status");
+        const data = await response.json();
+        if (!cancelled) setOnlineBadge(data?.badge || null);
+      } catch {
+        if (!cancelled) setOnlineBadge(null);
+      }
+    };
+    load();
+    const timer = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   const formatGb = (value, { allowZero = false } = {}) => {
@@ -181,6 +203,16 @@ function TopStatusBar({
             {isStoppingServer ? <RefreshCw className="progress-spinner" size={14} /> : <Square size={14} />}
             <span>{isStoppingServer ? "Stopping" : "Stop Server"}</span>
           </button>
+        )}
+
+        {onlineBadge && (
+          <div
+            className="telemetry-chip"
+            title="Computed from the Egress Ledger. Open Settings > Online surfaces to change the policy."
+            style={{ color: onlineBadge.tone === "online" ? "var(--md-sys-color-primary)" : undefined }}
+          >
+            <span>{onlineBadge.tone === "online" ? "●" : "○"} {onlineBadge.label}</span>
+          </div>
         )}
 
         {/* CPU Telemetry Chip */}

@@ -13,10 +13,11 @@
  * turn the way the browser does:
  *
  *   1. a Work turn reaches a provider and streams back;
- *   2. a chat turn does not — it stays on this machine;
- *   3. with no key saved, a Work turn does not either;
- *   4. the Settings endpoints connect, test and disconnect;
- *   5. and no response ever contains the key.
+ *   2. an online-first Chat turn reaches it too;
+ *   3. switching online-first Chat off puts that turn back on this machine;
+ *   4. with no key saved, no turn leaves the machine;
+ *   5. the Settings endpoints connect, test and disconnect;
+ *   6. and no response ever contains the key.
  *
  * Run: node scripts/validation/test-work-cloud-reachable.cjs
  */
@@ -161,6 +162,8 @@ async function main() {
   // ── the application server ──────────────────────────────────────────────
 
   const scratchKeyFile = path.join(os.tmpdir(), `luke-reachable-keys-${process.pid}.json`);
+  const scratchSurfacesFile = path.join(os.tmpdir(), `luke-reachable-surfaces-${process.pid}.json`);
+  const scratchLedgerFile = path.join(os.tmpdir(), `luke-reachable-ledger-${process.pid}.jsonl`);
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -172,6 +175,8 @@ async function main() {
       LUKE_AI_HOST: "127.0.0.1",
       NODE_ENV: "test",
       LUKE_REMOTE_PROVIDER_FILE: scratchKeyFile,
+      LUKE_ONLINE_SURFACES_FILE: scratchSurfacesFile,
+      LUKE_EGRESS_LEDGER_FILE: scratchLedgerFile,
       LUKE_REMOTE_PROVIDER_BASE_URL: `http://127.0.0.1:${gatewayPort}/v1`,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -288,19 +293,49 @@ async function main() {
     check("the stream was closed cleanly", work.events.some((frame) => frame.includes("[DONE]")));
     check("and the key is nowhere in it", !work.content.includes("SECRET") && !work.events.join("").includes("SECRET"));
 
-    section("5. A chat turn never leaves this machine");
+    section("5. Online-first Chat uses the same free chain");
     seen.length = 0;
-    const chat = await post("/api/llm/chat", { messages, assistantMode: "chat", stream: true });
-    check("the gateway was not called for chat", seen.length === 0, String(seen.length));
-    check("chat still needs the local model",
-      chat.status === 409 && /text model/i.test(chat.data?.error || ""),
-      `${chat.status} ${JSON.stringify(chat.data)}`);
+    const chat = await fetch(`${baseUrl}/api/llm/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages, assistantMode: "chat", stream: true }),
+    });
+    const chatStream = await readSse(chat);
+    check("the gateway received the chat turn", seen.length === 1, String(seen.length));
+    check("the chat answer arrived in full",
+      chatStream.content === "Work answered from the cloud.", chatStream.content);
+    check("the system message travelled with it too",
+      seen[0]?.payload?.messages?.[0]?.role === "system",
+      JSON.stringify(seen[0]?.payload?.messages?.[0]));
 
     section("6. A request with no mode at all is treated as chat");
     seen.length = 0;
-    const unmarked = await post("/api/llm/chat", { messages, stream: true });
+    const unmarked = await fetch(`${baseUrl}/api/llm/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages, stream: true }),
+    });
+    const unmarkedStream = await readSse(unmarked);
+    check("the gateway was called for the unmarked turn", seen.length === 1, String(seen.length));
+    check("and it answered from the cloud", unmarkedStream.content === "Work answered from the cloud.",
+      unmarkedStream.content);
+
+    section("6b. Switching online-first Chat off puts it back on this machine");
+    const switchedOff = await post("/api/online-surfaces/config", { cloudForChat: false });
+    check("the switch is accepted",
+      switchedOff.status === 200 && switchedOff.data.config.cloudForChat === false,
+      JSON.stringify(switchedOff.data?.config));
+    seen.length = 0;
+    const localOnly = await post("/api/llm/chat", { messages, assistantMode: "chat", stream: true });
     check("the gateway was not called", seen.length === 0, String(seen.length));
-    check("and it fell through to the local path", unmarked.status === 409, String(unmarked.status));
+    check("chat needs the local model again",
+      localOnly.status === 409 && /text model/i.test(localOnly.data?.error || ""),
+      `${localOnly.status} ${JSON.stringify(localOnly.data)}`);
+    check("and the refusal is recorded in the Egress Ledger",
+      fs.existsSync(scratchLedgerFile)
+      && fs.readFileSync(scratchLedgerFile, "utf8").includes("decision\":\"blocked\""));
+
+    await post("/api/online-surfaces/config", { cloudForChat: true });
 
     section("7. When every provider is spent, the turn falls back rather than lying");
     seen.length = 0;
@@ -361,6 +396,8 @@ async function main() {
     child.kill("SIGTERM");
     gateway.close();
     fs.rmSync(scratchKeyFile, { force: true });
+    fs.rmSync(scratchSurfacesFile, { force: true });
+    fs.rmSync(scratchLedgerFile, { force: true });
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

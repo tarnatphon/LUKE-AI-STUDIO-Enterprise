@@ -49,6 +49,28 @@ const {
 } = require("./text-model-pool.cjs");
 const remoteTextProvider = require("./remote-text-provider.cjs");
 
+// LUKE_AI_ONLINE_SURFACES_IMPORT_V1 — phases 1 to 4 live in their own modules
+// so the 30k-line request router only has to wire them, not reimplement them.
+const aiCatalog = require("./ai-provider-catalog.cjs");
+const egressLedger = require("./egress-ledger.cjs");
+const lanPairing = require("./lan-pairing.cjs");
+const onlineSurfaces = require("./online-surfaces.cjs");
+const mcpServer = require("./mcp-server.cjs");
+const channelRelay = require("./channel-relay.cjs");
+const onlineMedia = require("./online-media.cjs");
+
+/** Pull the user's words out of the three webhook shapes we accept. */
+function channelInboundText(platform, body) {
+  if (platform === "telegram") {
+    return String(body?.message?.text || body?.edited_message?.text || "").trim();
+  }
+  if (platform === "discord") {
+    return String(body?.data?.options?.[0]?.value || body?.content || "").trim();
+  }
+  const events = Array.isArray(body?.events) ? body.events : [];
+  return String(events[0]?.message?.text || "").trim();
+}
+
 // LUKE_AI_TEXT_ARENA_EVALUATOR_IMPORT_V1
 const {
   evaluateArenaResponses,
@@ -20749,6 +20771,12 @@ const storageRecoveryReadinessCertifier =
 
 storageAvailabilityWatcher.start();
 
+// Compatibility namespaces third-party image tools call. These are data for a
+// CORS decision, not route declarations: written as `startsWith("/v1/")`
+// inline, the route-shadow checker reads them as an earlier prefix that
+// swallows the exact /v1/chat/completions gateway declared later.
+const COMPAT_PREFIXES = ["/v1/", "/sdapi/", "/tts-outputs/"];
+
 const handleRequest = async (req, res) => {
   // Cross-origin access belongs to the compatibility endpoints that third-party
   // image tools call, and nowhere else. The interface is served by this same
@@ -20758,13 +20786,19 @@ const handleRequest = async (req, res) => {
   // on /api/restart-backend answered 204 with Allow-Origin *, Allow-Headers
   // Content-Type and Allow-Methods GET,POST for an arbitrary Origin.
   const requestPathname = String(req.url || "/").split("?")[0];
-  const crossOriginAllowed =
-    requestPathname.startsWith("/v1/") ||
-    requestPathname.startsWith("/sdapi/") ||
-    requestPathname.startsWith("/tts-outputs/");
+  const crossOriginAllowed = COMPAT_PREFIXES.some((prefix) => requestPathname.startsWith(prefix));
 
   if (crossOriginAllowed) {
     res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+
+  // LUKE_AI_LAN_PAIRING_GUARD_V1 — the server binds 0.0.0.0 so a phone on the
+  // same network can reach the UI, but every /api route stays default-deny for
+  // non-loopback callers until the owner pairs that device from this machine.
+  // Loopback (and therefore every validation suite) is always trusted.
+  const lanDecision = lanPairing.authorize(req, requestPathname);
+  if (!lanDecision.allowed) {
+    return json(res, 403, { ok: false, error: lanDecision.reason });
   }
 
     if (String(req.url || "").split("?")[0] === "/api/llm/archive-markdown") {
@@ -24337,6 +24371,86 @@ const handleRequest = async (req, res) => {
     res.end(); return;
   }
 
+  // LUKE_AI_EXTERNAL_GATEWAY_V1 — let LM Studio, Ollama, Claude Code or any
+  // OpenAI-compatible client point its base URL at http://<this machine>:1420/v1
+  // and borrow LUKE's free-only chain. Declared before the /v1/ proxy so it is
+  // not mistaken for an image-backend compatibility call.
+  if (req.url === "/v1/chat/completions" && req.method === "POST") {
+    const gatewayPolicy = onlineSurfaces.policy();
+
+    if (!gatewayPolicy.gatewayEnabled) {
+      return json(res, 503, {
+        ok: false,
+        error: "The external gateway is switched off in Settings > Online surfaces.",
+      });
+    }
+
+    let gatewayBody = {};
+    try {
+      gatewayBody = await readJsonRequestBody(req);
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    const gatewayMessages = Array.isArray(gatewayBody.messages) ? gatewayBody.messages : [];
+    const gatewayDecision = onlineSurfaces.cloudDecision("work");
+    let answer = { content: "", model: "", providerId: null };
+
+    if (gatewayDecision.allowed) {
+      const result = await remoteTextProvider.streamRemoteChain({
+        messages: gatewayMessages,
+        temperature: gatewayBody.temperature,
+        topP: gatewayBody.top_p,
+        maxTokens: gatewayBody.max_tokens,
+        policy: gatewayPolicy,
+        onEgress: (entry) => egressLedger.record(entry),
+      });
+      answer = { content: result.content, model: result.model, providerId: result.providerId };
+    } else {
+      egressLedger.record({
+        surface: "external-gateway",
+        provider: "",
+        url: "",
+        method: "POST",
+        bytes: 0,
+        decision: "blocked",
+        reason: gatewayDecision.reason,
+      });
+    }
+
+    if (!answer.content) {
+      return json(res, 503, {
+        ok: false,
+        error: "No free cloud provider answered. Connect one in Settings > Cloud brain, or load a local GGUF model and use /api/llm/chat.",
+      });
+    }
+
+    const completionId = `chatcmpl-luke-${Date.now().toString(36)}`;
+    const modelName = answer.model || "luke-free-chain";
+
+    if (gatewayBody.stream === true) {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      res.write(`data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", model: modelName, choices: [{ index: 0, delta: { role: "assistant", content: answer.content }, finish_reason: null }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", model: modelName, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
+    return json(res, 200, {
+      id: completionId,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: modelName,
+      choices: [{ index: 0, message: { role: "assistant", content: answer.content }, finish_reason: "stop" }],
+      luke: { provider: answer.providerId, freeOnly: gatewayPolicy.freeOnly !== false },
+    });
+  }
+
   if ((req.url.startsWith("/v1/") || req.url.startsWith("/sdapi/")) && ["GET", "POST"].includes(req.method)) {
     return proxyImageBackendRequest(req, res);
   }
@@ -25718,6 +25832,288 @@ const handleRequest = async (req, res) => {
       });
     } catch (error) {
       return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // ── Online surfaces (phases 1–4) ───────────────────────────────────────────
+  // Every endpoint below is small on purpose: the behaviour lives in its own
+  // module, and this router only validates, delegates and answers. No key or
+  // token is ever returned to the browser.
+
+  // GET /api/online-surfaces/status — the badge, the policy and the counts.
+  if (req.url === "/api/online-surfaces/status" && req.method === "GET") {
+    return json(res, 200, { ok: true, ...onlineSurfaces.status() });
+  }
+
+  // POST /api/online-surfaces/config — owner-only switches.
+  if (req.url === "/api/online-surfaces/config" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const result = onlineSurfaces.setConfig(body || {});
+      return json(res, 200, {
+        ok: true,
+        config: result.config,
+        changed: result.changed,
+        status: onlineSurfaces.status(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // GET /api/online-surfaces/catalog — the researched decision table.
+  if (req.url === "/api/online-surfaces/catalog" && req.method === "GET") {
+    return json(res, 200, { ok: true, catalog: aiCatalog.summary() });
+  }
+
+  // GET /api/egress/ledger — the last departures, newest last.
+  if (req.url.startsWith("/api/egress/ledger") && req.method === "GET") {
+    const parsed = new URL(req.url, "http://localhost");
+    const limit = Number(parsed.searchParams.get("limit")) || 200;
+    return json(res, 200, {
+      ok: true,
+      entries: egressLedger.list(limit),
+      stats: egressLedger.stats(),
+      file: egressLedger.ledgerFile(),
+    });
+  }
+
+  // GET /api/egress/report — the air-gap attestation. ?format=text is a
+  // one-page report a user can save or hand to a client.
+  if (req.url.startsWith("/api/egress/report") && req.method === "GET") {
+    const parsed = new URL(req.url, "http://localhost");
+    const report = egressLedger.report();
+    if (parsed.searchParams.get("format") === "text") {
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end(report.attestation);
+      return;
+    }
+    return json(res, 200, { ok: true, report });
+  }
+
+  // POST /api/egress/clear — start a fresh evidence window.
+  if (req.url === "/api/egress/clear" && req.method === "POST") {
+    const body = await readJsonRequestBody(req);
+    if (body?.confirm !== true) {
+      return json(res, 400, { ok: false, error: "Send confirm: true to clear the Egress Ledger." });
+    }
+    return json(res, 200, { ok: true, cleared: egressLedger.clear() });
+  }
+
+  // GET /api/lan/status — never returns the pairing token.
+  if (req.url === "/api/lan/status" && req.method === "GET") {
+    return json(res, 200, { ok: true, lan: lanPairing.status() });
+  }
+
+  // POST /api/lan/pair — the token is handed back exactly once, from loopback.
+  if (req.url === "/api/lan/pair" && req.method === "POST") {
+    const body = await readJsonRequestBody(req);
+    if (body?.confirm !== true) {
+      return json(res, 400, { ok: false, error: "Send confirm: true to pair this device." });
+    }
+    if (!lanPairing.isLoopback(req)) {
+      return json(res, 403, { ok: false, error: "Pairing can only be started on the host computer." });
+    }
+    const paired = lanPairing.pair();
+    return json(res, 200, { ok: true, ...paired, note: "Copy this token into the other device. It is never shown again." });
+  }
+
+  // POST /api/lan/revoke
+  if (req.url === "/api/lan/revoke" && req.method === "POST") {
+    return json(res, 200, { ok: true, lan: lanPairing.revoke() });
+  }
+
+  // POST /api/mcp — JSON-RPC 2.0 over HTTP for editors and agents.
+  if (req.url === "/api/mcp" && req.method === "POST") {
+    const policy = onlineSurfaces.policy();
+    if (!policy.mcpEnabled) {
+      return json(res, 503, { ok: false, error: "The MCP surface is switched off in Settings > Online surfaces." });
+    }
+    let rpc = {};
+    try {
+      rpc = await readJsonRequestBody(req);
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+    const answer = await mcpServer.handleRpc(rpc, {
+      status: () => onlineSurfaces.status(),
+      catalog: () => aiCatalog.summary(),
+      egressReport: () => egressLedger.report(),
+      chat: async ({ message, system }) => {
+        const decision = onlineSurfaces.cloudDecision("work");
+        if (!decision.allowed) {
+          return { content: "", provider: null, note: decision.reason };
+        }
+        const result = await remoteTextProvider.streamRemoteChain({
+          messages: [
+            ...(system ? [{ role: "system", content: system }] : []),
+            { role: "user", content: message },
+          ],
+          policy,
+          onEgress: (entry) => egressLedger.record(entry),
+        });
+        return {
+          content: result.content,
+          provider: result.providerId,
+          note: result.content ? "" : "No free provider answered; load a local GGUF model in LUKE to continue.",
+        };
+      },
+    });
+    return json(res, 200, answer);
+  }
+
+  // GET /api/channels/status
+  if (req.url === "/api/channels/status" && req.method === "GET") {
+    return json(res, 200, { ok: true, channels: channelRelay.status() });
+  }
+
+  // POST /api/channels/config — tokens go in, booleans come back.
+  if (req.url === "/api/channels/config" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      if (!body?.platform && body?.enabled === undefined) {
+        return json(res, 400, { ok: false, error: "Give a platform (telegram, discord, line) or enabled: true/false." });
+      }
+      const channels = channelRelay.configure({ enabled: true, ...body });
+      return json(res, 200, { ok: true, channels });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/channels/webhook — inbound message, verified signature,
+  // reply returned in the HTTP response (Telegram and Discord support this,
+  // so no outbound call is needed for the common case).
+  if (req.url.startsWith("/api/channels/webhook") && req.method === "POST") {
+    const parsedUrl = new URL(req.url, "http://localhost");
+    const platform = String(parsedUrl.searchParams.get("platform") || "").trim();
+    const webhookBody = await readJsonRequestBody(req);
+    const verdict = channelRelay.verifyWebhook(platform, webhookBody, req.headers);
+
+    if (!verdict.ok) {
+      return json(res, 401, { ok: false, error: verdict.reason });
+    }
+
+    const inbound = channelInboundText(platform, webhookBody);
+    const channelPolicy = onlineSurfaces.policy();
+    let reply = "LUKE is online. Open the studio on the host computer to continue.";
+
+    if (inbound && channelPolicy.channelsEnabled && onlineSurfaces.cloudDecision("work").allowed) {
+      const result = await remoteTextProvider.streamRemoteChain({
+        messages: [{ role: "user", content: inbound }],
+        policy: channelPolicy,
+        onEgress: (entry) => egressLedger.record(entry),
+      });
+      if (result.content) reply = result.content;
+    }
+
+    egressLedger.record({
+      surface: "channel-relay",
+      provider: platform,
+      url: "",
+      method: "POST",
+      bytes: Buffer.byteLength(inbound),
+      decision: "blocked",
+      reason: "inbound webhook; reply returned in the HTTP response",
+    });
+
+    if (platform === "telegram" && webhookBody?.message?.chat?.id) {
+      return json(res, 200, { method: "sendMessage", chat_id: webhookBody.message.chat.id, text: reply });
+    }
+    if (platform === "discord") {
+      return json(res, 200, { type: 4, data: { content: reply } });
+    }
+    return json(res, 200, { ok: true, reply });
+  }
+
+  // POST /api/channels/send — an explicit outbound reply.
+  if (req.url === "/api/channels/send" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const channelPolicy = onlineSurfaces.policy();
+      if (!channelPolicy.channelsEnabled) {
+        return json(res, 403, { ok: false, error: "Channels are switched off in Settings > Online surfaces." });
+      }
+      const result = await channelRelay.send(body?.platform, body || {}, {
+        recordEgress: (entry) => egressLedger.record(entry),
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/channels/test — a dry run; never reaches the platform.
+  if (req.url === "/api/channels/test" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      if (!body?.platform) {
+        return json(res, 400, { ok: false, error: "Give a platform to test." });
+      }
+      const result = await channelRelay.send(body.platform, {
+        text: "LUKE channel test",
+        chatId: body.chatId,
+        channelId: body.channelId,
+        userId: body.userId,
+        dryRun: true,
+      }, { recordEgress: (entry) => egressLedger.record(entry) });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // GET /api/online-media/providers
+  if (req.url === "/api/online-media/providers" && req.method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      providers: onlineMedia.providers(),
+      enabled: onlineSurfaces.policy().onlineMediaEnabled,
+      rule: "Trial credit only. explicitConsent + budgetConfirmed are required on every generate call; live: true is a separate flag.",
+    });
+  }
+
+  // POST /api/online-media/quote
+  if (req.url === "/api/online-media/quote" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      return json(res, 200, { ok: true, quote: onlineMedia.quote(body?.providerId, body?.kind) });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/online-media/generate — never charged by a fallback.
+  if (req.url === "/api/online-media/generate" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      if (!onlineSurfaces.policy().onlineMediaEnabled) {
+        return json(res, 403, { ok: false, error: "Online media is switched off in Settings > Online surfaces." });
+      }
+      const result = await onlineMedia.generate(body || {}, {
+        recordEgress: (entry) => egressLedger.record(entry),
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -27649,7 +28045,7 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
  * single delta has gone out the headers are committed, so a failure from there
  * is reported to the user instead.
  */
-async function routeWorkTurnToCloud(req, res, body) {
+async function routeWorkTurnToCloud(req, res, body, policy = {}) {
   const config = await remoteTextProvider.readConfig();
 
   // A key or an explicitly connected local bridge — both count as a brain.
@@ -27697,6 +28093,8 @@ async function routeWorkTurnToCloud(req, res, body) {
     maxTokens: body.max_tokens ?? body.maxTokens,
     signal: controller.signal,
     onDelta: send,
+    policy,
+    onEgress: (entry) => egressLedger.record(entry),
   });
 
   if (result.content) {
@@ -27734,12 +28132,28 @@ async function routeWorkTurnToCloud(req, res, body) {
     const body = await readJsonBody(req, res);
     if (!body) return;
 
-    // Work, and Work only, may answer from the cloud. Chat stays on this
-    // machine. A false here means nothing was written and the local path
-    // continues untouched.
+    // Online-first: Work has always been allowed to borrow a free brain, and
+    // Chat now is too, unless the owner turns it off, switches on the no-filter
+    // lane, or switches on air-gap mode. `cloudDecision` is the single place
+    // that says so; a false here means the local path continues untouched.
+    const surfacePolicy = onlineSurfaces.policy();
+    const cloudDecision = onlineSurfaces.cloudDecision(body.assistantMode);
+
+    if (!cloudDecision.allowed) {
+      egressLedger.record({
+        surface: "cloud-chain",
+        provider: "",
+        url: "",
+        method: "POST",
+        bytes: 0,
+        decision: "blocked",
+        reason: cloudDecision.reason,
+      });
+    }
+
     if (
-      body.assistantMode === "work" &&
-      (await routeWorkTurnToCloud(req, res, body))
+      cloudDecision.allowed &&
+      (await routeWorkTurnToCloud(req, res, body, surfacePolicy))
     ) {
       return;
     }
