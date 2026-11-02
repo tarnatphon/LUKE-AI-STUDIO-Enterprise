@@ -1050,6 +1050,7 @@ const modelCache = require("./model-cache.cjs");
 const modelLoadGuard = require("./model-load-guard.cjs");
 const { readOverrides: readGovernorOverrides, describeGovernorSettings, saveOverrides: saveGovernorOverrides } = require("./resource-governor-settings.cjs");
 const backgroundLlm = require("./background-llm.cjs");
+const backgroundModelSuggestion = require("./background-model-suggestion.cjs");
 
 // LUKE_AI_STORAGE_DESTINATION_MANAGER_IMPORT_V2
 const {
@@ -1156,6 +1157,9 @@ function getSocialAgencyRuntime() {
   if (!socialAgencyRuntime) {
     socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
     socialAgencyRuntime.setLlmClient(makeSocialAgencyLlmClient());
+    // The Products tab asks which model would translate a name, so it can say
+    // "no small model downloaded yet" instead of quietly borrowing the chat one.
+    socialAgencyRuntime.setBackgroundModelProvider(() => makeSocialAgencyLlmClient().status());
     socialAgencyRuntime.setImageSaver(async (dataUrl, metadata) => {
       const saved = saveGeneratedOutput(dataUrl, metadata);
       return { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}`, absPath: path.join(OUTPUTS, saved.image) };
@@ -29767,7 +29771,24 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   // product-name translation never needs the chat model to be loaded.
   if (req.url === "/api/background-model" && req.method === "GET") {
     try {
-      return json(res, 200, { ok: true, result: makeSocialAgencyLlmClient().status() });
+      const status = makeSocialAgencyLlmClient().status();
+      // "No small model is downloaded" is only half an answer: the catalog knows
+      // which one this machine should get, so the panel can offer it in one click.
+      let suggestion = null;
+      let suggestionReason = "";
+      try {
+        const choice = backgroundModelSuggestion.chooseSuggestion({
+          catalog: readTextModelCatalog(),
+          installed: getLlmModels().map((model) => model.filename),
+          maxSizeGb: status.maxSizeGb,
+          totalRamGb: os.totalmem() / 1024 ** 3,
+        });
+        suggestion = choice.suggestion;
+        suggestionReason = choice.reason;
+      } catch (error) {
+        suggestionReason = `the model catalog could not be read: ${error?.message || error}`;
+      }
+      return json(res, 200, { ok: true, result: { ...status, suggestion, suggestionReason } });
     } catch (error) {
       return json(res, 500, { ok: false, error: error.message || String(error) });
     }

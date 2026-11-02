@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Gauge, HardDriveDownload, Trash2, Zap } from "lucide-react";
 import GovernorSettingsCard from "./GovernorSettingsCard.jsx";
+import BackgroundModelCard from "./BackgroundModelCard.jsx";
 
 /**
  * Speed lives in three places: how the runtime is tuned, whether a draft model
@@ -49,6 +50,10 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // existed, that only ever appeared as a line in the terminal.
   const [governor, setGovernor] = useState(null);
   const [governorNote, setGovernorNote] = useState("");
+  // Which model translates product names, so "no small model downloaded" is
+  // visible here instead of only inside a translation that never happens.
+  const [backgroundModel, setBackgroundModel] = useState(null);
+  const [backgroundNote, setBackgroundNote] = useState("");
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
@@ -77,6 +82,11 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const governorData = await governorResponse.json();
       if (governorResponse.ok) setGovernor(governorData.result || null);
     } catch {}
+    try {
+      const backgroundResponse = await fetch("/api/background-model");
+      const backgroundData = await backgroundResponse.json();
+      if (backgroundResponse.ok) setBackgroundModel(backgroundData.result || null);
+    } catch {}
   }, []);
 
   const saveGovernor = async (overrides) => {
@@ -102,6 +112,33 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       }
     } catch (error) {
       setGovernorNote(error?.message || "The governor settings could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  // One click on a catalogue model: the same queue Text Models uses, so the
+  // download, the checksum and the progress bar are the ones already built.
+  const downloadBackgroundModel = async (suggestion) => {
+    if (!suggestion || !suggestion.modelId) return;
+    setBusy("background-download");
+    setBackgroundNote("");
+    try {
+      const response = await fetch("/api/text-models/download-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: suggestion.modelId, variantId: suggestion.variantId }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setBackgroundNote(
+          `${suggestion.filename} was added to the download queue — progress is in Text Models. Translations use it automatically once it lands.`
+        );
+      } else {
+        setBackgroundNote(data.error || "That model could not be queued.");
+      }
+    } catch (error) {
+      setBackgroundNote(error?.message || "That model could not be queued.");
     } finally {
       setBusy("");
     }
@@ -314,6 +351,13 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
           {busy === "clear" ? "Clearing…" : `Clear the ${cache.cachedGb} GB cache`}
         </button>
       )}
+
+      <BackgroundModelCard
+        data={backgroundModel}
+        busy={busy}
+        note={backgroundNote}
+        onDownload={downloadBackgroundModel}
+      />
 
       <GovernorSettingsCard
         data={governor}

@@ -210,6 +210,13 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
   // implying the button is the only way.
   const imgAutofetch = activeClient?.imageAutofetch || {};
   const imgFetchedThisMonth = Number(imgAutofetch.months?.[currentMonth()]?.fetched || 0);
+  // Which model is translating names, straight from the server. "No small model
+  // downloaded" is the difference between a 2 GB chore and a 5 GB chat model the
+  // governor keeps taking away — worth saying instead of silently borrowing it.
+  const backgroundModel = autofill.backgroundModel || null;
+  const smallModelName = String(backgroundModel?.model?.filename || "");
+  const smallModelGb = Number(backgroundModel?.model?.sizeGb || 0);
+  const noSmallModel = Boolean(backgroundModel) && !smallModelName;
   const usedThisMonth = new Set(
     (activeClient?.calendar || []).filter((e) => String(e.date || "").startsWith(currentMonth())).map((e) => e.sku).filter(Boolean),
   ).size;
@@ -665,6 +672,12 @@ export default function ProductsTab({ activeClient, refreshKey, onChanged, subje
                 ? <>ชื่ออังกฤษที่ขาดจะถูกแปลให้เองเมื่อโมเดลพร้อม (เหลือ {missingSubjectCount} รายการ) — แก้เองได้ทุกแถว</>
                 : <>⚠ {missingSubjectCount} รายการยังไม่มีชื่ออังกฤษ — เปิดโมเดลภาษาแล้วระบบจะแปลให้เอง หรือกดที่ชื่อเพื่อพิมพ์เอง</>)
               : <>✓ ทุกสินค้ามีชื่ออังกฤษครบ — พรอมป์ภาพ/วิดีโอใช้ชื่อเหล่านี้</>}
+          {missingSubjectCount > 0 && noSmallModel && (
+            <> · ⚠ ยังไม่มีโมเดลเล็กระดับ 2–3 GB — งานแปลชื่อจึงใช้โมเดลแชท (กิน RAM มาก) · โหลดโมเดล 1–3B ได้ที่ Settings → Text Models แล้วระบบจะสลับมาใช้ตัวนั้นเอง</>
+          )}
+          {missingSubjectCount > 0 && smallModelName && (
+            <> · แปลด้วย {smallModelName}{smallModelGb ? ` (${smallModelGb} GB)` : ""} — ไม่ต้องใช้โมเดลแชท</>
+          )}
           {failedSubjectCount > 0 && <> · แปลอัตโนมัติไม่ได้ {failedSubjectCount} รายการ (พิมพ์เองในรายการนั้น)</>}
           {noImgCount > 0 && <> · <b>{noImgCount} รายการยังไม่มีรูป</b> — ระบบดึงจากเว็บให้เอง (เดือนละครั้ง + เติมที่ขาดทุกวัน) หรือคลิกกรอบรูปเพื่ออัปโหลดเอง</>}
           {imgAutofetch.lastRunAt && <> · ดึงรูปอัตโนมัติรอบล่าสุด {new Date(imgAutofetch.lastRunAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })} (ได้ {imgAutofetch.lastSaved || 0} รูป)</>}
