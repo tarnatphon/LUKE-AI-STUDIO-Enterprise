@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, Globe2, Radio, Bot, Copy, RefreshCw } from "lucide-react";
+import { ShieldCheck, Globe2, Radio, Bot, Video, Copy, RefreshCw } from "lucide-react";
 
 /**
- * One panel for the online surfaces that remain. Everything here is opt-in and
- * owner-controlled; the panel never receives a key, a bot token or a pairing
- * token after the moment it is created.
+ * One panel for the online surfaces. Everything here is opt-in and
+ * owner-controlled; the panel never receives a key, a bot token, a card number
+ * or a pairing token after the moment it is created.
  *
- * Online media generation was removed: images, video and audio are produced by
- * the local engines only. The badge text comes from the server, so the UI
- * cannot claim "air-gap" while the ledger says something went out.
+ * Free-credit media is usable while the grant lasts. LUKE never sees card data:
+ * where a trial needs one, the owner binds it on the provider's own site. When
+ * the credit is spent the job falls back to the local engines. The badge text
+ * comes from the server, so the UI cannot claim "air-gap" while the ledger says
+ * something went out.
  */
 
 const SWITCHES = [
@@ -18,6 +20,7 @@ const SWITCHES = [
   { key: "gatewayEnabled", label: "External /v1 gateway", hint: "Other apps can point an OpenAI-compatible client at this machine." },
   { key: "mcpEnabled", label: "MCP tools for editors", hint: "Exposes read-only status and chat tools over JSON-RPC." },
   { key: "channelsEnabled", label: "Telegram / Discord / LINE relay", hint: "Webhook mode; tokens stay in a 0600 file on the server." },
+  { key: "onlineMediaEnabled", label: "Free-credit media generation", hint: "Use free grants until spent, then local engines. Never tops up or pays." },
   { key: "rateLimitRetry", label: "Retry a 429 once", hint: "Uses more of a free minute-quota before moving to the next link." },
 ];
 
@@ -50,6 +53,7 @@ export default function OnlineSurfacesPanel({ showAlert }) {
   const [channelPlatform, setChannelPlatform] = useState("telegram");
   const [channelToken, setChannelToken] = useState("");
   const [channelSecret, setChannelSecret] = useState("");
+  const [media, setMedia] = useState(null);
   const [busy, setBusy] = useState("");
 
   const post = useCallback(async (url, body) => {
@@ -67,17 +71,19 @@ export default function OnlineSurfacesPanel({ showAlert }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [statusResult, ledgerResult, lanResult, channelsResult, catalogResult] = await Promise.all([
+      const [statusResult, ledgerResult, lanResult, channelsResult, mediaResult, catalogResult] = await Promise.all([
         fetch("/api/online-surfaces/status").then((r) => r.json()),
         fetch("/api/egress/ledger").then((r) => r.json()),
         fetch("/api/lan/status").then((r) => r.json()),
         fetch("/api/channels/status").then((r) => r.json()),
+        fetch("/api/online-media/providers").then((r) => r.json()),
         fetch("/api/online-surfaces/catalog").then((r) => r.json()),
       ]);
       setStatus(statusResult.status || statusResult);
       setLedger(ledgerResult.entries || []);
       setLan(lanResult.lan || null);
       setChannels(channelsResult.channels || null);
+      setMedia(mediaResult.providers || []);
       setCatalog(catalogResult.catalog || null);
     } catch {
       // The server is not up yet; the panel simply stays unconfigured.
@@ -312,15 +318,26 @@ export default function OnlineSurfacesPanel({ showAlert }) {
             </span>
           </Row>
 
-          <Row title="Media stays on this machine">
+          <Row title="Free-credit media — used until spent, then local">
             <span className="settings-option-desc">
-              Images (Stable Diffusion), speech (Whisper), voices (Kokoro) and image-to-video are
-              generated locally. The online media subsystem, its endpoints and its switches were
-              removed — there is no external image, video or audio generation endpoint to call.
+              A no-card daily allowance and card-backed trial grants are usable free usage.
+              Where a trial needs a card, you bind it on the provider's own site — LUKE never
+              stores card data, tops up credit or pays. Every job needs explicitConsent and
+              creditConfirmed, and the default is a dry run. When the grant is spent the job
+              falls back to the local Stable Diffusion / Whisper / Kokoro / image-to-video engines.
             </span>
             <span style={small}>
-              No media allowance to spend, no consent flow to approve, no billable fallback.
+              {(media || []).map((item) => `${item.label}: ${item.remaining}/${item.grantedCredits} free credits left${item.requiresCard ? " (card on provider site)" : ""}`).join(" · ") || "—"}
             </span>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
+              <button
+                type="button"
+                className="m3-button-outlined"
+                onClick={() => post("/api/online-media/quote", { providerId: "kling_free", kind: "video" }).then((data) => showAlert?.({ title: "Free-credit quote", message: `${data.quote.credits} free credits · ${data.quote.remaining} left. Exhaustion falls back to local.` })).catch((e) => showAlert?.({ title: "Free-credit quote", message: e.message }))}
+              >
+                <Video size={14} /> Quote the free allowance
+              </button>
+            </div>
           </Row>
 
           <Row title="Provider catalogue">
@@ -328,7 +345,7 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               {(catalog?.providers || []).filter((item) => item.transport).map((item) => item.label).join(" · ") || "—"}
             </span>
             <span style={small}>
-              {catalog?.freeCount ?? 0} free · {catalog?.count ?? 0} registered entries — all free and card-free. Paid, prepaid and card-backed trial services were deleted, not skipped.
+              {catalog?.freeCount ?? 0} free · {catalog?.count ?? 0} registered entries — recurring free tiers and free trial grants. Prepaid / paid-from-first-call services are not registered. Free usage is used fully, then local.
             </span>
           </Row>
         </div>

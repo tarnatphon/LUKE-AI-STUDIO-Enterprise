@@ -28,9 +28,11 @@
  *    `app/runtime-state/text-chat/remote-text-provider.json` — inside the app
  *    folder, mode 0600, gitignored — scrubbed out of every error, and never
  *    returned to the browser, not even masked.
- * 2. Only no-card free tiers are registered. Anything that billed, needed a
- *    card, or was prepaid (Groq, the Arena coding router, the big cloud trials)
- *    was removed rather than gated, so there is no paid path to fall into.
+ * 2. Only usable free usage is registered. "เสียตังค์" means having to pay to
+ *    KEEP USING, so a recurring free tier or a free trial grant is fine (the
+ *    card, where needed, is bound on the provider's site, never here). Anything
+ *    prepaid or paid from the first call — the Arena router, OpenAI, xAI, the
+ *    paid-only clouds — is deleted, not gated. A 402 is a refusal, not an upsell.
  * 3. A refusal is reported in the user's words. `403
  *    free_router_harness_restricted` means a free router answers only its own
  *    harnesses; `402` means a provider that used to be free now charges — and
@@ -197,11 +199,23 @@ const PROVIDERS = {
     docs: "console.mistral.ai → API keys → Limits",
     note: "Free mode with no card. Exact allowance and vision support are shown in the account's Limits page, so probe before relying on them.",
   },
-  // Groq (billed per token in this repo's records, disputed in 2026 sources)
-  // and the Arena coding router (prepaid) used to sit here. Both were removed
-  // outright: the owner asked that anything costing money not be registered
-  // at all, rather than merely skipped at runtime. A stale key in an old
-  // runtime-state file therefore cannot reach a paid endpoint.
+  // Groq has a reported free plan for open models. "เสียตังค์" means having to
+  // pay to KEEP USING, not "this vendor also sells a paid plan", so the free
+  // plan is usable free usage. It is deliberately NOT in DEFAULT_ORDER: the
+  // owner must connect a key and verify the live rate-limit page first. The
+  // instant Groq answers 402 it is classified now_paid, recorded as blocked,
+  // and the chain moves to the next free link or the local GGUF model. LUKE
+  // never upgrades it to a paid plan.
+  groq: {
+    id: "groq",
+    label: "Groq (free plan for open models)",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "openai/gpt-oss-120b",
+    docs: "console.groq.com → API Keys / Rate limits",
+    note: "Free plan for open models, contested in 2026 sources. Connect a key only after checking the live rate-limit page; a 402 means the free tier is gone and LUKE falls back to local instead of paying.",
+  },
+  // The Arena coding router was prepaid — payment was required from the first
+  // call — so it stays deleted. A stale legacy `key` cannot revive it.
   // Free Claude Code — a proxy on this machine, not another cloud account.
   // It owns the provider catalogue, the free keys, the retries and the
   // fallback list; this app only speaks one protocol to one local socket.
@@ -233,9 +247,11 @@ const PROVIDERS = {
  * Tried in this order; local is the last link, after all of them.
  *
  * Every provider here is free in the sense that matters — nothing is billed per
- * token and none needs a card. NVIDIA has no daily quota at all, OpenRouter's
- * :free models are priced at zero, Z.ai's Flash models are priced at zero.
- * No paid provider is registered in PROVIDERS at all.
+ * token. NVIDIA has no daily quota at all, OpenRouter's :free models are priced
+ * at zero, Z.ai's Flash models are priced at zero. Groq is registered but NOT
+ * in the default order: it joins only when the owner connects a key, and a 402
+ * sends the turn to the next free link or the local model. No prepaid provider
+ * is registered in PROVIDERS at all.
  */
 const DEFAULT_ORDER = ["nvidia", "openrouter", "zai"];
 

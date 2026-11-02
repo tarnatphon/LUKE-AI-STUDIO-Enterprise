@@ -5,16 +5,17 @@
  *
  * One small, owner-only config file decides whether Chat may borrow a free
  * brain, whether the "no filter" lane overrides everything, and whether the
- * LAN / MCP / channel surfaces are open. The no-filter and air-gap lanes are
- * off until the owner turns them on; online-first Chat is on because the owner
- * asked for it explicitly.
+ * LAN / MCP / channel / free-credit media surfaces are open. The no-filter,
+ * air-gap and media lanes are off until the owner turns them on; online-first
+ * Chat is on because the owner asked for it explicitly.
  *
- * No-pay is NOT a setting. Every provider that billed, needed a card, was
- * prepaid, or was a card-backed trial credit was removed from the catalogue
- * and from the transport registry outright. The external media subsystem was
- * deleted too: images, video and audio are generated locally. There is no
- * `freeOnly` switch to turn off, so a stale key or a hand-edited config cannot
- * buy anything.
+ * No-pay is NOT a setting. "เสียตังค์" means *having to pay to keep using
+ * something*, not "this vendor also sells a paid plan". So a no-card daily
+ * allowance or a card-backed trial grant is usable free usage: LUKE uses the
+ * grant fully, and when it is spent it stops and falls back to the local
+ * engines. Nothing tops up, upgrades, stores card data or pays. Providers that
+ * require payment from the first call are not registered at all, and there is
+ * no `freeOnly` switch to turn off.
  *
  * `airGapMode` is the hard stop: with it on, no cloud turn is attempted at all
  * and every would-be departure is recorded as blocked, which is what makes the
@@ -41,6 +42,7 @@ const DEFAULTS = Object.freeze({
   gatewayEnabled: true,
   mcpEnabled: true,
   channelsEnabled: false,
+  onlineMediaEnabled: false,
   rateLimitRetry: 0,
 });
 

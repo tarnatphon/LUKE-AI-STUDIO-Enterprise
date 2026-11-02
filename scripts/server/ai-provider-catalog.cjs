@@ -8,12 +8,16 @@
  * scripts/config/ai-provider-catalog.json with a visible `verifiedAt` date and
  * a source URL. This file only reads them; it never decides pricing by itself.
  *
- * Paid, prepaid, subscription, card-backed trial-credit and hardware entries
- * were removed from the catalogue outright. There is no "allow paid" switch
- * left anywhere: the chain only ever calls a provider whose catalogue entry
- * says free=true. An unknown id fails closed. That is what makes "use every
- * free thing, then fall back to local — never pay" structural rather than a
- * setting someone can turn off.
+ * "เสียตังค์" (costing money) means having to PAY TO KEEP USING something, not
+ * "this vendor also sells a paid plan". So no-card free tiers AND card-backed
+ * trial grants are registered with free=true: they are free usage, and LUKE
+ * spends the grant fully before falling back to local. Only providers that
+ * require payment from the first call are absent. There is no "allow paid"
+ * switch, no top-up, no card storage and no paid upgrade anywhere.
+ *
+ * An unknown id fails closed. That is what makes "use every free thing, then
+ * fall back to local — never pay" structural rather than a setting someone
+ * can turn off.
  */
 
 const fs = require("node:fs");
@@ -60,6 +64,10 @@ function transportPolicy(providerId, fallback = {}) {
   return {
     free,
     paid: !free,
+    neverPays: true,
+    allowance: entry ? String(entry.allowance || "") : "recurring",
+    exhaustion: "local",
+    freeWhileCreditsLast: entry ? entry.freeWhileCreditsLast === true : false,
     modalities: entry && Array.isArray(entry.modalities)
       ? entry.modalities
       : (Array.isArray(fallback.modalities) ? fallback.modalities : ["text"]),
@@ -83,6 +91,11 @@ function summary() {
     free: entry.free === true,
     paid: entry.free !== true,
     requiresCard: entry.requiresCard === true,
+    cardBoundOnProviderSite: entry.cardBoundOnProviderSite === true,
+    neverPays: true,
+    allowance: String(entry.allowance || ""),
+    exhaustion: "local",
+    freeWhileCreditsLast: entry.freeWhileCreditsLast === true,
     uncensored: entry.uncensored === true,
     modalities: Array.isArray(entry.modalities) ? entry.modalities : [],
     transport: entry.transport === true,

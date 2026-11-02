@@ -112,8 +112,10 @@ async function main() {
   check("the model is the one chosen for that provider", payload.model === "some/model", payload.model);
   check("it falls back to the provider's default", provider.buildRemotePayload({ providerId: "zai" }).model === provider.PROVIDERS.zai.model);
   let removedPaidRejected = false;
-  try { provider.buildRemotePayload({ providerId: "groq" }); } catch { removedPaidRejected = true; }
-  check("a paid provider that was deleted cannot even build a request", removedPaidRejected);
+  try { provider.buildRemotePayload({ providerId: "arena" }); } catch { removedPaidRejected = true; }
+  check("a deleted prepaid provider cannot even build a request", removedPaidRejected);
+  check("a registered free tier can be used normally",
+    provider.buildRemotePayload({ providerId: "groq" }).model === provider.PROVIDERS.groq.model);
   check("it streams", payload.stream === true);
   check("junk messages are dropped, not forwarded", payload.messages.length === 2, String(payload.messages.length));
   check("roles survive as themselves, not flattened",
@@ -150,9 +152,9 @@ async function main() {
   check("the default NVIDIA model is one the provider was seen to serve",
     VERIFIED_NVIDIA.includes(provider.PROVIDERS.nvidia.model), provider.PROVIDERS.nvidia.model);
 
-  // Every remaining transport is free and needs no card. Groq (disputed free
-  // plan vs per-token billing) and the prepaid Arena router were deleted
-  // outright, not merely left out of DEFAULT_ORDER.
+  // Every registered transport is free usage. Groq's free plan for open models
+  // is usable (402 -> now_paid -> next free link -> local); the prepaid Arena
+  // router was deleted outright because payment was required from the first call.
   check("no registered provider bills per token",
     Object.values(provider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false),
     JSON.stringify(Object.values(provider.PROVIDERS).map((entry) => [entry.id, entry.free, entry.paid])));
@@ -183,9 +185,12 @@ async function main() {
     ![provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]
       .some((model) => model.startsWith("nex-agi/")),
     JSON.stringify([provider.PROVIDERS.openrouter.model, ...provider.PROVIDERS.openrouter.fallbackModels]));
-  check("Groq and the Arena router are gone, not merely hidden",
-    !provider.PROVIDERS.groq && !provider.PROVIDERS.arena
+  check("the prepaid Arena router is gone, not merely hidden",
+    !provider.PROVIDERS.arena
     && !Object.values(provider.PROVIDERS).some((entry) => entry.forceModel === true));
+  check("Groq is registered free but never auto-enabled in the default chain",
+    provider.PROVIDERS.groq?.free === true && provider.PROVIDERS.groq?.paid === false
+    && !provider.DEFAULT_ORDER.includes("groq"));
   check("each provider has its own endpoint",
     provider.remoteEndpoint("nvidia") !== provider.remoteEndpoint("gemini")
     && provider.remoteEndpoint("zai").includes("z.ai"));
@@ -221,14 +226,15 @@ async function main() {
     provider.DEFAULT_ORDER[0] === "nvidia", provider.DEFAULT_ORDER.join(" -> "));
   check("and tries all three before giving up", provider.DEFAULT_ORDER.length === 3);
 
-  // The user asked for free, and free means nothing is billed per token. A
-  // rate limit is a free tier; a price per million tokens is not.
-  const REMOVED_PAID = ["groq", "arena"];
-  check("nothing in the chain bills per token",
-    !provider.DEFAULT_ORDER.some((providerId) => REMOVED_PAID.includes(providerId)),
+  // "เสียตังค์" means having to pay to KEEP USING. A free tier (even a contested
+  // one) is usable; a prepaid router is not. Using free until it is exhausted,
+  // then falling back to local, is exactly the requested behaviour.
+  const PREPAID = ["arena", "openai", "anthropic", "xai", "together", "fireworks"];
+  check("nothing prepaid is in the default chain",
+    !provider.DEFAULT_ORDER.some((providerId) => PREPAID.includes(providerId)),
     provider.DEFAULT_ORDER.join(" -> "));
-  check("paid providers are deleted from the registry, not just left off the chain",
-    REMOVED_PAID.every((providerId) => !provider.PROVIDERS[providerId]));
+  check("prepaid providers are deleted from the registry, not just left off the chain",
+    PREPAID.every((providerId) => !provider.PROVIDERS[providerId]));
   check("every remaining provider is free and needs no card",
     Object.values(provider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false));
   check("OpenRouter's free model carries the suffix that makes it zero",
@@ -382,11 +388,11 @@ async function main() {
 
   let removedModel = false;
   try {
-    await provider.setModel("groq", "something-else");
+    await provider.setModel("arena", "something-else");
   } catch {
     removedModel = true;
   }
-  check("a removed paid provider cannot be configured at all", removedModel);
+  check("a deleted prepaid provider cannot be configured at all", removedModel);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

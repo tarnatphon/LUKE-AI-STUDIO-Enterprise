@@ -36,7 +36,11 @@
       "transport": true,
       "rateLimit": "owned by FCC Admin",
       "sourceUrl": "https://github.com/alishahryar1/free-claude-code",
-      "note": "Keyless loopback proxy. LUKE enforces free-only on its own catalogue; FCC's own MODEL/Providers config decides what it spends."
+      "note": "Keyless loopback proxy. LUKE enforces free-only on its own catalogue; FCC's own MODEL/Providers config decides what it spends.",
+      "neverPays": true,
+      "allowance": "unlimited",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "nvidia",
@@ -53,7 +57,11 @@
       "transport": true,
       "rateLimit": "about 40 requests/minute, no daily quota",
       "sourceUrl": "https://build.nvidia.com/",
-      "note": "Free OpenAI-compatible endpoints. Model ids rotate and hosted models carry end-of-life dates; use List models."
+      "note": "Free OpenAI-compatible endpoints. Model ids rotate and hosted models carry end-of-life dates; use List models.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "gemini",
@@ -74,7 +82,11 @@
       "transport": true,
       "rateLimit": "per-project caps shown in AI Studio",
       "sourceUrl": "https://ai.google.dev/gemini-api/docs",
-      "note": "Best free multimodal input. Uses the OpenAI-compatible /v1beta/openai endpoint. Free-tier prompts may be used to improve Google products outside the EEA/UK/CH."
+      "note": "Best free multimodal input. Uses the OpenAI-compatible /v1beta/openai endpoint. Free-tier prompts may be used to improve Google products outside the EEA/UK/CH.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "mistral",
@@ -94,7 +106,11 @@
       "transport": true,
       "rateLimit": "usage caps shown in the Admin Panel Limits page",
       "sourceUrl": "https://docs.mistral.ai/",
-      "note": "Free mode without a card. Exact allowance and which models carry vision are shown in the account, so probe before relying on them."
+      "note": "Free mode without a card. Exact allowance and which models carry vision are shown in the account, so probe before relying on them.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "openrouter",
@@ -111,7 +127,11 @@
       "transport": true,
       "rateLimit": "about 20 requests/minute and 50 requests/day until $10 of credits, then 1,000/day",
       "sourceUrl": "https://openrouter.ai/docs/limits",
-      "note": "Only ids ending in :free are free. The whole free roster rotated between June and September 2026; List models is mandatory."
+      "note": "Only ids ending in :free are free. The whole free roster rotated between June and September 2026; List models is mandatory.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "zai",
@@ -128,7 +148,11 @@
       "transport": true,
       "rateLimit": "about 1 concurrent request",
       "sourceUrl": "https://docs.z.ai/",
-      "note": "GLM-4.7-Flash is priced at zero per token; the Flash suffix no longer guarantees a zero price."
+      "note": "GLM-4.7-Flash is priced at zero per token; the Flash suffix no longer guarantees a zero price.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "cloudflare",
@@ -147,7 +171,11 @@
       "transport": false,
       "rateLimit": "10,000 Neurons/day shared across models",
       "sourceUrl": "https://developers.cloudflare.com/workers-ai/",
-      "note": "Uses its own /ai/run URL rather than OpenAI chat completions; needs a dedicated adapter before it can join the chain."
+      "note": "Uses its own /ai/run URL rather than OpenAI chat completions; needs a dedicated adapter before it can join the chain.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "venice",
@@ -165,7 +193,11 @@
       "transport": false,
       "rateLimit": "about 10 text + 15 image prompts/day",
       "sourceUrl": "https://venice.ai/blog/best-uncensored-llm-apis",
-      "note": "Hosted open-weight models with no extra policy layer; illegal content is still blocked. A separate :free Venice model is also reachable through OpenRouter. Needs its own adapter."
+      "note": "Hosted open-weight models with no extra policy layer; illegal content is still blocked. A separate :free Venice model is also reachable through OpenRouter. Needs its own adapter.",
+      "neverPays": true,
+      "allowance": "recurring",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "meta_ai",
@@ -182,7 +214,11 @@
       "transport": false,
       "rateLimit": "hardware-bound",
       "sourceUrl": "https://www.llama.com/",
-      "note": "No direct free Meta API; Llama reaches LUKE for free as a local GGUF or through Groq/NVIDIA/OpenRouter/Cloudflare."
+      "note": "No direct free Meta API; Llama reaches LUKE for free as a local GGUF or through Groq/NVIDIA/OpenRouter/Cloudflare.",
+      "neverPays": true,
+      "allowance": "unlimited",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
     },
     {
       "id": "local_gguf",
@@ -199,7 +235,217 @@
       "transport": true,
       "rateLimit": "your hardware",
       "sourceUrl": "https://github.com/ggml-org/llama.cpp",
-      "note": "The last link of every chain and the only tier with no provider-side policy. An abliterated / Dolphin / Hermes checkpoint gives the 'no filter' lane; weights stay on this machine."
+      "note": "The last link of every chain and the only tier with no provider-side policy. An abliterated / Dolphin / Hermes checkpoint gives the 'no filter' lane; weights stay on this machine.",
+      "neverPays": true,
+      "allowance": "unlimited",
+      "exhaustion": "local",
+      "cardBoundOnProviderSite": false
+    },
+    {
+      "id": "groq",
+      "label": "Groq (LPU)",
+      "group": "Chipmaker",
+      "kind": "free-tier",
+      "free": true,
+      "paid": false,
+      "requiresCard": false,
+      "uncensored": false,
+      "modalities": [
+        "text"
+      ],
+      "transport": true,
+      "rateLimit": "published free plan ~30 RPM / 1,000 RPD on gpt-oss models",
+      "sourceUrl": "https://console.groq.com/docs/rate-limits",
+      "note": "Free plan for open models (2026 sources disagree with an older per-token note). LUKE never auto-enables it: connect a key only after checking the live rate-limit page. A 402 is classified now_paid, recorded as blocked, and falls through to the next free link or the local GGUF model.",
+      "allowance": "recurring",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": false,
+      "cardBoundOnProviderSite": false
+    },
+    {
+      "id": "cohere",
+      "label": "Cohere (trial key)",
+      "group": "Model lab / silicon",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": false,
+      "uncensored": false,
+      "modalities": [
+        "text"
+      ],
+      "transport": false,
+      "rateLimit": "about 20 RPM / 1,000 calls per month, non-commercial trial",
+      "sourceUrl": "https://docs.cohere.com/",
+      "note": "Non-commercial trial key with a bounded monthly call count. Free to use until the grant is spent; the owner binds the key on the provider site.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": false
+    },
+    {
+      "id": "azure",
+      "label": "Microsoft Azure AI / Azure OpenAI",
+      "group": "Cloud platform",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": true,
+      "uncensored": false,
+      "modalities": [
+        "text",
+        "image"
+      ],
+      "transport": false,
+      "rateLimit": "$100 student credit or startup grants, card for the general trial",
+      "sourceUrl": "https://azure.microsoft.com/",
+      "note": "$100 student credit / startup grants, card bound on the provider site. Free to use until the grant is spent; LUKE never sees card data and never tops up.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": true
+    },
+    {
+      "id": "aws",
+      "label": "AWS Bedrock / SageMaker / Trainium",
+      "group": "Cloud platform",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": true,
+      "uncensored": false,
+      "modalities": [
+        "text",
+        "image"
+      ],
+      "transport": false,
+      "rateLimit": "new-account credits / Activate grants",
+      "sourceUrl": "https://aws.amazon.com/bedrock/",
+      "note": "New-account credits / Activate grants, card bound on the provider site. Free to use until the grant is spent; never a paid upgrade.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": true
+    },
+    {
+      "id": "gcp",
+      "label": "Google Cloud Vertex AI / TPUs",
+      "group": "Cloud platform",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": true,
+      "uncensored": false,
+      "modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "transport": false,
+      "rateLimit": "$300 trial, card required",
+      "sourceUrl": "https://cloud.google.com/vertex-ai",
+      "note": "$300 cloud trial, card bound on the provider site. Veo video generation lives behind this credit and is usable until the grant is spent.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": true
+    },
+    {
+      "id": "cerebras",
+      "label": "Cerebras",
+      "group": "Chipmaker",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": true,
+      "uncensored": false,
+      "modalities": [
+        "text"
+      ],
+      "transport": false,
+      "rateLimit": "$5 / 30-day trial",
+      "sourceUrl": "https://cerebras.ai/",
+      "note": "$5 / 30-day trial, card bound on the provider site (the old 1M tokens/day tier became this trial in July 2026). Usable until spent.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": true
+    },
+    {
+      "id": "sambanova",
+      "label": "SambaNova Cloud",
+      "group": "Chipmaker",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": true,
+      "uncensored": false,
+      "modalities": [
+        "text"
+      ],
+      "transport": false,
+      "rateLimit": "stopped granting credits to new accounts in 2026",
+      "sourceUrl": "https://sambanova.ai/",
+      "note": "Only usable if the owner already holds a grant: new-account credits stopped in 2026. No new credit is assumed.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": true
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face Inference Providers",
+      "group": "Repository / inference",
+      "kind": "trial-credit",
+      "free": true,
+      "paid": false,
+      "requiresCard": false,
+      "uncensored": false,
+      "modalities": [
+        "text",
+        "image"
+      ],
+      "transport": false,
+      "rateLimit": "sources conflict: $0.10/month, no credits, or $2/month on PRO",
+      "sourceUrl": "https://huggingface.co/docs/inference-providers/",
+      "note": "Inference Providers credit; 2026 reports conflict on the exact amount. Probe the live account before relying on it; never assume a recurring tier.",
+      "allowance": "one-time",
+      "neverPays": true,
+      "exhaustion": "local",
+      "freeWhileCreditsLast": true,
+      "cardBoundOnProviderSite": false
     }
-  ]
+  ],
+  "policy": {
+    "id": "use-free-then-local",
+    "noPay": true,
+    "meaning": "เสียตังค์ = ต้องจ่ายตังค์มาใช้ต่อ (having to pay to keep using). Free tiers and card-backed trial grants are usable free usage.",
+    "rule": "Use every registered free allowance fully. When a grant or quota is exhausted, or an upstream answers 402 / quota / billing, LUKE refuses to pay: it moves to the next free link and finally to the local GGUF / local media engines.",
+    "never": [
+      "auto top-up",
+      "paid upgrade",
+      "storing card data",
+      "paying past a 402",
+      "a switch that allows paid providers"
+    ],
+    "removedBecausePaidOnly": [
+      "openai",
+      "anthropic",
+      "xai",
+      "oci",
+      "together",
+      "fireworks",
+      "coreweave",
+      "github_models",
+      "arena",
+      "amd"
+    ]
+  }
 }

@@ -4,8 +4,14 @@
 และ `scripts/config/ai-provider-catalog.json`
 
 เอกสารนี้ตอบสองคำถามจากเจ้าของงาน: *"ถ้าเป็นออนไลน์ ใช้ได้ในไหนบ้าง"* และ
-*"อะไรทำให้ LUKE โดดเด่นไม่เหมือนใคร"* แล้วแปลเป็นของที่รันได้จริง 3 ระยะ
-(ระยะที่ 4 — สื่อภายนอก — ถูกตัดออกทั้งระบบตามคำสั่งห้ามเสียตังค์)
+*"อะไรทำให้ LUKE โดดเด่นไม่เหมือนใคร"* แล้วแปลเป็นของที่รันได้จริง 4 ระยะ
+
+> **นิยามที่เจ้าของงานให้ (สำคัญที่สุด)**: คำว่า **"เสียตังค์" = ต้องจ่ายตังค์มาใช้ต่อ**
+> (having to pay to keep using) **ไม่ใช่** "เจ้านี้ก็ขายแพลนเสียเงินด้วย"
+> ดังนั้น **free tier, free daily allowance และ trial credit แบบต้องผูกบัตร
+> ล้วนคือ "การใช้ฟรี" ที่ใช้งานได้ตามปกติ** ใช้ให้เต็ม แล้วค่อยเปลี่ยนมาเป็น
+> local LLM / local engine — **ห้ามจ่ายเพื่อใช้ต่อเด็ดขาด**
+> (ไม่เติมเครดิต / ไม่ upgrade / ไม่เก็บข้อมูลบัตร / เจอ `402` ให้ถอย)
 
 ---
 
@@ -71,7 +77,7 @@
 | Social Agency | วิเคราะห์ reach / แนะนำมุมคอนเทนต์ |
 | Asset Library / Storage | `/api/storage/*` ~50 routes เดิม |
 | Model Manager / llmfit | `verifiedAt` + ปุ่ม Test กันโมเดล `:free` หมุนอายุ |
-| Whisper / Kokoro / SD / I2V | **local 100%** (ไม่มี external media generation อีกต่อไป) |
+| Whisper / Kokoro / SD / I2V | local 100% **และเป็นทางตกเมื่อ free credit หมด** |
 | Memory / RAG / web search | `augmentMessagesWithWebSearch()` เดิม |
 | TopStatusBar / Settings | badge ที่คำนวณจาก ledger + สวิตช์นโยบาย |
 
@@ -82,17 +88,24 @@
 **ไฟล์**: `scripts/config/ai-provider-catalog.json`, `scripts/server/ai-provider-catalog.cjs`,
 `scripts/server/online-surfaces.cjs`, `scripts/server/egress-ledger.cjs`
 
-- catalog เดียว **10 รายการ** หลังตัดออก 18 รายการ: ทุกตัว `free=true`,
-  `paid=false`, `requiresCard=false`, `kind` เป็น `free-tier` หรือ `local` พร้อม
-  `uncensored` / `modalities` / `transport` / `rateLimit` / `verifiedAt` / `sourceUrl`
-  รายการที่ถูกลบ: `groq`, `arena`, `openai`, `anthropic`, `xai`, `azure`, `aws`,
-  `gcp`, `oci`, `amd`, `cerebras`, `sambanova`, `github_models`, `huggingface`,
-  `together`, `fireworks`, `coreweave`, `cohere` (trial-credit)
-- `no-pay` เป็น **invariant ไม่ใช่สวิตช์**: ไม่มี `freeOnly` ใน config อีกต่อไป
+- catalog เดียว **18 รายการ**: ทุกตัว `free=true`, `paid=false`, `neverPays=true`,
+  `exhaustion="local"` และมี `allowance` บอกว่าฟรีแบบไหน
+  `kind` เป็น `free-tier` (ฟรีประจำ) / `trial-credit` (เครดิตฟรีใช้จนหมด) / `local`
+- **คืนรายการที่มีการใช้ฟรีจริง** 8 รายการ: `groq` (free plan สำหรับ open models),
+  `cohere`, `azure` ($100/student credit), `aws` (new-account credits),
+  `gcp` ($300 trial), `cerebras` ($5/30 วัน), `sambanova` (เฉพาะคนที่มี grant เดิม),
+  `huggingface` (Inference Providers credit) — 4 รายการแรกในกลุ่ม cloud ต้องผูกบัตร
+  **บนเว็บของ provider เอง** ไม่ใช่ใน LUKE
+- **ยังไม่มี** รายการที่ต้องจ่ายตั้งแต่ครั้งแรก: `arena` (prepaid), `openai`,
+  `anthropic`, `xai`, `oci`, `together`, `fireworks`, `coreweave`,
+  `github_models` (ปิดบริการ 2026-07-30), `amd` (hardware ไม่ใช่ API)
+- `groq` ลงทะเบียนเป็น free tier แต่ **ไม่ใส่ใน `DEFAULT_ORDER`** — เจ้าของต้องเชื่อม key
+  และเช็คหน้า rate limit เอง ถ้าเจอ `402` → `now_paid` → ไป link ฟรีถัดไป / local
+- `no-pay` เป็น **invariant ไม่ใช่สวิตช์**: ไม่มี `freeOnly` ใน config
   (export `NO_PAY = true`) และ `transportPolicy()` คืน `paid = !free` เสมอ
   ฉะนั้นการแก้ catalog ด้วยมือให้ `paid=false` ทั้งที่ `free=false` ก็ยังใช้ไม่ได้
   key เก่าที่ค้างในไฟล์ config (รวม legacy `key` ของ Arena router) ถูกปฏิเสธเงียบๆ
-- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored) — **7 สวิตช์**:
+- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored) — **8 สวิตช์**:
 
 | flag | default | ความหมาย |
 | :--- | :--- | :--- |
@@ -100,23 +113,14 @@
 | `uncensoredMode` | `false` | ทุกเทิร์นอยู่ local GGUF |
 | `airGapMode` | `false` | บล็อก cloud ทุกเทิร์น + บันทึกการปฏิเสธ |
 | `gatewayEnabled` / `mcpEnabled` | `true` | ประตูสำหรับแอปอื่น |
-| `channelsEnabled` | `false` | ต้องเปิดเอง |
+| `channelsEnabled` / `onlineMediaEnabled` | `false` | ต้องเปิดเอง |
 | `rateLimitRetry` | `0` | เปิดเองได้ 0–3; retry 429 แบบมีขอบเขตก่อนไป link ถัดไป |
 
 - Egress Ledger: `app/runtime-state/egress/ledger.jsonl` (JSONL, 0600, จำกัด 5,000 แถว)
   บันทึก `host / provider / surface / method / bytes / decision / reason / model / paid`
-  **ไม่มี prompt ไม่มี key ไม่มี response body**
+  **ไม่มี prompt ไม่มี key ไม่มีข้อมูลบัตร ไม่มี response body**
 - `GET /api/egress/report` → attestation + SHA-256; `?format=text` → หน้าเดียว
   รายงานระบุ scope ชัดเจนว่าเป็นเฉพาะ LUKE online surfaces (OS/browser อยู่นอก scope)
-
-**กฎที่เขียนลงโค้ด**: `PROVIDERS` ที่ลงทะเบียนอยู่มีแค่ `fcc / nvidia / gemini /
-mistral / openrouter / zai` ( Groq กับ Arena ถูกลบออกจาก object จริงๆ ไม่ใช่แค่ไม่ใส่ใน
-`DEFAULT_ORDER`) · `streamRemoteChain()` กรอง `provider.free !== true` ทิ้ง + ledger
-บันทึก `blocked` พร้อมเหตุผล `no-pay invariant: this provider is not a registered free tier`
-ไม่มีทางส่ง `freeOnly:false` ได้อีก — นี่คือสิ่งที่ทำให้ "ใช้ฟรีให้หมดก่อน แล้วค่อย local"
-บังคับใช้ได้จริง ไม่ใช่สวิตช์ที่เผลอปิดได้
-
----
 
 ## 3. ระยะที่ 2 — multimodal + LAN + PWA
 
@@ -162,34 +166,46 @@ route `/v1/chat/completions` ใน `serve.cjs`
 
 ---
 
-## 5. ระยะที่ 4 ถูกตัดออก — สื่อทุกอย่างอยู่บนเครื่อง
+## 5. ระยะที่ 4 — ใช้เครดิตฟรีให้เต็ม แล้วตก local
 
-**สื่อทุกอย่าง (รูป / วิดีโอ / เสียง) อยู่บนเครื่อง (local only)**
-ไม่มีโมดูล `online-media.cjs`, ไม่มี route, ไม่มีสวิตช์, ไม่มีการ์ดใน UI และไม่มี
-paid upgrade ให้กด → เรื่องนี้เป็นข้อเท็จจริงที่เทสต์อ่านจากโค้ดได้ ไม่ใช่คำสัญญา
+**ไฟล์**: `scripts/server/online-media.cjs`
 
-เหตุผล: frontier video/image generation **ไม่มี free tier แบบ recurring ในปี 2026**
-รอบก่อนลบ trial credit แบบต้องผูกบัตร 3 เจ้า (Fal.ai ~$20 / Veo via GCP ~$300 /
-Stability AI) แล้วเหลือ Kling free daily allowance ตัวเดียว แต่เจ้าของงานสั่ง
-"ตัวไหนต้องเสียตังค์ให้ตัดออกไปได้เลย" → **allowance ที่เหลืออยู่ก็ยังเป็น
-ปลายทางภายนอกที่ต้องขอ consent ทุก job** จึงลบทั้ง subsystem เสียเลยดีกว่า
-ปล่อยช่องไว้ให้เผลอไปเรียก service ที่วันหนึ่งเริ่มคิดเงิน
+Frontier image/video generation **ไม่มี free tier แบบ recurring ในปี 2026**
+แต่มี **การใช้ฟรี** อยู่ 2 แบบ ซึ่งตามนิยามของเจ้าของงานใช้งานได้ทั้งคู่:
 
-สิ่งที่ยังทำงานเหมือนเดิม (และไม่มี outbound request):
+| ประเภท | ตัวอย่าง | ปฏิบัติ |
+| :--- | :--- | :--- |
+| no-card daily allowance | `kling_free` 6 เครดิต/วัน | ใช้จนหมด → reset ทุก UTC day |
+| card-backed trial grant | `fal_trial` ~$20 · `veo_gcp_trial` $300 · `stability_trial` 25 | ใช้จนหมด → **ห้ามเติม** |
 
-- `stable-diffusion.cpp` — รูป / img2img
-- `whisper.cpp` — เสียง → ข้อความ (speech-to-text)
-- `kokoro-js` — ข้อความ → เสียง (TTS)
-- `image-to-video` job manager / process runner — วิดีโอจากรูป
-- Luke AI Workflow — เชน engine ข้างบนเป็น pipeline ในเครื่องเดียว
+บัตร (ถ้าต้องมี) **ผูกบนเว็บของ provider เอง** LUKE เห็นแค่ยอดเครดิต
+`requiresCard` เป็นข้อมูลให้เจ้าของทราบ **ไม่ใช่ด่าน** และไม่มี `cardConfirmed` อีกต่อไป
 
-ด่านเดิม (`explicitConsent` / `budgetConfirmed` / dry-run / `cardConfirmed`)
-ถูกลบพร้อมโมดูล ไม่มีอะไรให้ต้องอนุมัติอีกต่อไป
-Egress Ledger ระบุใน attestation ว่า media generation เป็น local only
-ชุดตรวจ `test-no-pay-audit.cjs` สแกน production source ทั้งหมดเพื่อยืนยันว่า
-ไม่มี token ของ subsystem นี้หลุดกลับมา (ดูหัวข้อ 7)
+ด่านที่ยังอยู่ (กันไม่ให้ใช้เครดิตโดยไม่ตั้งใจ):
 
----
+1. ต้องเปิด `onlineMediaEnabled` เอง
+2. provider ต้องเป็น `freeWhileCreditsLast` ที่ประกาศไว้ (4 ตัว) และ `paid=false`
+3. `quote()` ต้องอยู่ใน grant ที่เหลือ — ถ้าไม่พอคืน `eligible:false`
+4. ทุก request ต้องมี `explicitConsent: true` **และ** `creditConfirmed: true`
+5. **default คือ dry run** — `live: true` เป็น flag แยกต่างหาก
+6. field ที่เกี่ยวกับการจ่าย (`cardNumber` / `cvv` / `autoTopUp` / `paidPlan` /
+   `cardConfirmed` / `billing` …) ถูกปฏิเสธทันทีด้วย `400 payment_field_rejected`
+   **ก่อน** มี ledger entry หรือ network call
+
+**จุดตัดจ่าย (หัวใจของงานรอบนี้)**:
+
+- เครดิตหมด → `409 free_credit_exhausted` + `fallback: "local"` +
+  บันทึก ledger เป็น `blocked` (reason: *no top-up, no payment, falling back to local*)
+- upstream ตอบ `402` / `Payment Required` / `insufficient credits` / `quota exceeded`
+  → ตัดยอด grant เป็น `spent` เต็ม + `402 now_paid` + `fallback: "local"`
+  **ไม่ลองใหม่ด้วยเงิน ไม่ upgrade**
+- ไฟล์ `app/runtime-state/online-media/spend.json` (0600) เก็บแค่
+  `{ spent, day, savedAt }` — ไม่มีเลขบัตร ไม่มี key ไม่มี prompt
+
+เมื่อหมดฟรี งานตกไป engine ในเครื่องทันที:
+`stable-diffusion.cpp` (รูป/img2img) · `whisper.cpp` (เสียง→ข้อความ) ·
+`kokoro-js` (ข้อความ→เสียง) · `image-to-video` · Luke AI Workflow
+Egress Ledger ระบุใน attestation ว่า media dispatch เป็น free credit only และ LUKE never pays
 
 ## 6. API ใหม่ทั้งหมด
 
@@ -197,7 +213,7 @@ Egress Ledger ระบุใน attestation ว่า media generation เป�
 | :--- | :--- | :--- |
 | GET | `/api/online-surfaces/status` | badge + policy + counters |
 | POST | `/api/online-surfaces/config` | สวิตช์นโยบาย |
-| GET | `/api/online-surfaces/catalog` | ตาราง 10 provider ที่ฟรีและไม่ต้องใช้บัตร |
+| GET | `/api/online-surfaces/catalog` | ตาราง 18 รายการที่มีการใช้ฟรี (free tier + trial credit + local) |
 | GET | `/api/egress/ledger` | รายการล่าสุด |
 | GET | `/api/egress/report` | attestation (`?format=text`) |
 | POST | `/api/egress/clear` | ต้อง `confirm: true` |
@@ -207,6 +223,9 @@ Egress Ledger ระบุใน attestation ว่า media generation เป�
 | POST | `/api/mcp` | JSON-RPC 2.0 |
 | GET | `/api/channels/status` | |
 | POST | `/api/channels/config` / `webhook` / `send` / `test` | |
+| GET | `/api/online-media/providers` | ยอดเครดิตฟรีคงเหลือ + `neverPays` |
+| POST | `/api/online-media/quote` | quote เครดิตฟรี, บอก `fallback: "local"` |
+| POST | `/api/online-media/generate` | ต้อง consent ทุก job; หมด → 409 + fallback local |
 | POST | `/v1/chat/completions` | external gateway |
 
 ---
@@ -214,28 +233,37 @@ Egress Ledger ระบุใน attestation ว่า media generation เป�
 ## 7. ชุดตรวจ no-pay (regression guard)
 
 `node scripts/validation/test-no-pay-audit.cjs` ไม่ได้ทดสอบฟีเจอร์ แต่ตอบคำถามว่า
-*"มีทางเสียตังค์แฝงกลับเข้ามาไหม"* โดยเดิน production source ทุกไฟล์แล้วตรวจ:
+*"มีทางที่ LUKE **จ่ายเงินเพื่อใช้ต่อ** แฝงกลับเข้ามาไหม"* โดยเดิน production source
+ทุกไฟล์แล้วตรวจ 6 หมวด:
 
-1. `NO_PAY` เป็น invariant — config มี **7 สวิตช์** ไม่มี `freeOnly` / `paid` /
-   `billing` และ `setConfig({paidAllowed:true})` ไม่ถูกเขียนลงไฟล์
-2. catalog ทุก entry `free=true` · transport ทุกตัวชี้ host ใน allowlist ฟรี ·
-   provider ที่ไม่รู้จัก fail closed เป็น `paid`
-3. **ไม่มี host ของ API ที่คิดเงิน** (OpenAI / Anthropic / xAI / Groq / Together /
-   Fireworks / Cerebras / SambaNova / Cohere / Replicate / Stability / Fal / Kling /
-   Azure OpenAI …) ปรากฏในโค้ดเลย · web search ใช้ DuckDuckGo เท่านั้น ·
-   S3/R2/B2 ไม่มี endpoint hardcoded (รับจาก config ของเจ้าของเอง)
-4. token ของ external media ทุกตัวหายไปจาก production source · โมดูล  route
-   สวิตช์ และการเรียกจาก UI ไม่มีเหลือ · local engine ยังผูกอยู่ใน `serve.cjs`
+1. `NO_PAY` เป็น invariant — config มี **8 สวิตช์** ไม่มี `freeOnly` / `paid` /
+   `billing` / `card` และ `setConfig({paidAllowed:true, allowPaid:true})` ไม่ถูกเขียนลงไฟล์
+2. catalog ทุก entry `free=true` + `neverPays=true` + `exhaustion="local"` ·
+   การ์ดอนุญาตเฉพาะ `trial-credit` ที่ `cardBoundOnProviderSite=true` ·
+   ไม่มี id ที่จ่ายตั้งแต่ครั้งแรก · provider ไม่รู้จัก fail closed เป็น `paid` ·
+   transport ทุกตัวชี้ host ใน allowlist ของ free usage (รวม `api.groq.com`)
+3. **ไม่มี payment path**: ไม่มี host ของ API แบบ prepaid (OpenAI / Anthropic / xAI /
+   Together / Fireworks / Arena / Replicate / Azure OpenAI …) ·
+   ไม่มีโค้ดที่รับ `cardNumber` / `cvv` / `autoTopUp` / `paidPlan` / `cardConfirmed` /
+   `paymentMethod` · field พวกนี้มีอยู่ **เฉพาะใน denylist ของ `online-media.cjs`
+   เพื่อปฏิเสธ** · ตรวจว่า `assertNoPaymentFields()` ถูกเรียกก่อน `quote()` ·
+   web search ใช้ DuckDuckGo เท่านั้น · S3/R2/B2 ไม่มี endpoint hardcoded
+4. **การใช้ฟรีไม่ถูกตัด**: โมดูล media มีอยู่ 4 provider · card-backed trial quote ได้
+   โดยไม่ต้องส่ง flag บัตร · ปฏิเสธเลขบัตร / top-up / paid-plan ·
+   **ใช้ grant จนหมดทุกเครดิต** แล้ว job ถัดไปได้ `409` + `fallback:"local"`
+   และไม่มี dispatch เพิ่ม · `402` ถูกตัดยอดเป็น spent ทันที ·
+   spend file ไม่มีข้อมูลบัตร · 3 route ถูกประกาศและมีสวิตช์ gate ·
+   UI มี 8 สวิตช์ · local engine ยังผูกอยู่
 5. หมดฟรียังตกมา local GGUF: `setLocalProvider` + `/api/text-runtime/remote-provider/local`
-   ยังอยู่, air-gap / no-filter / ปิด online-first Chat ปฏิเสธ cloud ได้จริง
+   ยังอยู่, `402` → `now_paid` → ถอย, air-gap / no-filter / ปิด online-first Chat ปฏิเสธ cloud ได้จริง
 6. README + เอกสารนี้พูดตรงกัน
 
 การเพิ่ม free provider หรือ host ใหม่ต้องแก้ allowlist ในชุดตรวจพร้อมบอกเหตุผล
-→ ปลายทางที่คิดเงินไม่สามารถแอบกลับเข้ามาแบบเงียบๆ ได้
+→ ทางจ่ายไม่สามารถแอบกลับเข้ามาแบบเงียบๆ ได้
 
 **ขอบเขตที่ต้องพูดตรงๆ**: S3/R2/B2, GitHub, Telegram/Discord/LINE และ 24 ช่องทางโพสต์
 เป็น **บัญชีของเจ้าของเอง** ที่ต้องใส่ credential ก่อน ไม่มีค่าใช้จ่ายฝั่ง LUKE
-และไม่ถูกเรียกอัตโนมัติ ชุดตรวจกันเฉพาะ billable *AI/media API* ที่ LUKE hardcode เอง
+และไม่ถูกเรียกอัตโนมัติ
 
 ---
 
@@ -243,11 +271,12 @@ Egress Ledger ระบุใน attestation ว่า media generation เป�
 
 1. **FCC เป็นคนถือราคาฝั่งใน** — LUKE บังคับได้แค่ catalog ของตัวเอง
    ต้องตั้ง FCC Admin ให้ใช้ free provider เท่านั้น / pin free model ref
-2. **Groq / Arena / OpenAI / Anthropic / xAI / Azure / AWS / GCP / OCI / AMD /
-   Cerebras / SambaNova / GitHub Models / Hugging Face / Together / Fireworks /
-   CoreWeave / Cohere ถูกลบออกจาก catalog และ transport แล้ว** — ไม่ใช่ "ปิดไว้"
-   แต่ไม่มี object ให้เรียก, ไม่มี key ที่อ่านกลับมา, ไม่มีสวิตช์ปลด
-   (Groq ข้อมูลปี 2026 ขัดกันระหว่าง free plan กับคิดต่อ token → ตัดทิ้งเลยดีกว่ารับบิล)
+2. **เฉพาะเจ้าที่ต้องจ่ายตั้งแต่ครั้งแรกที่ถูกลบ** — `arena` (prepaid), `openai`,
+   `anthropic`, `xai`, `oci`, `together`, `fireworks`, `coreweave`,
+   `github_models` (ปิดแล้ว), `amd` (hardware) ไม่มี object ให้เรียก ไม่มี key ที่อ่านกลับมา
+   ส่วน `groq` / `azure` / `aws` / `gcp` / `cerebras` / `cohere` / `sambanova` /
+   `huggingface` **คืนมาแล้ว** เพราะมีการใช้ฟรีตามนิยามข้างต้น
+   (Groq ยังต้องเช็คหน้า rate limit เอง และ `402` = ถอย ไม่ใช่จ่าย)
 3. **catalog ที่เหลือก็ยังหมุนเวียน** — โมเดล `:free` เปลี่ยนได้ทุกเดือน
    → `verifiedAt` + ปุ่ม **List models / Test** ใน Settings คือเครื่องมือตรวจ
    อย่า hardcode ว่าฟรีตลอดไป; ถ้าเจ้าไหนเริ่มคิดเงิน (`402`) chain จะเดินต่อไป
@@ -275,19 +304,21 @@ cd ../.. && ./mac.sh
 > ⚠️ ต้อง build ใหม่เพราะ `app/dist/` อยู่ใน `.gitignore`
 > ⚠️ zsh บน Mac ไม่เปิด `interactivecomments` — ห้ามวางบรรทัดที่มี `#` ต่อท้ายคำสั่ง
 
-1. เปิด Settings → **Online surfaces** → ดู badge และ 7 สวิตช์
-   (ข้อความ "No paid provider is registered" ต้องปรากฏ และไม่มีสวิตช์ `freeOnly`)
+1. เปิด Settings → **Online surfaces** → ดู badge และ 8 สวิตช์
+   (ข้อความ "Free usage is used until it is spent, then local" ต้องปรากฏ และไม่มีสวิตช์ `freeOnly`)
 2. ปิดเน็ต → เปิดแอป → ยังใช้งานได้ (PWA shell) → `GET /api/egress/report?format=text`
    ต้องขึ้น `Allowed outbound requests: 0`
 3. ต่อ free provider → ส่งแชท → `cloud: {provider, model}` ปรากฏ → ledger มี `allowed`
    และ `paidCalls` ต้องเป็น `0`
-4. ลอง `POST /api/text-runtime/remote-provider/key` ด้วย `providerId: "groq"`
-   → ต้อง `400` "There is no provider called groq" (ไม่มี object ให้บันทึก)
-   → ถ้าแก้ไฟล์ config ด้วยมือใส่ key แล้ว ส่งแชท ต้องมี entry `blocked` เหตุผล
-   `no-pay invariant` และไม่มี request ออกไปหาเจ้านั้น
+4. ลอง `POST /api/text-runtime/remote-provider/key` ด้วย `providerId: "arena"`
+   → ต้อง `400` (prepaid router ถูกลบ) · `groq` บันทึก key ได้แต่ไม่อยู่ใน chain อัตโนมัติ
+   → ถ้า provider ตอบ `402` ต้องมี entry `blocked` เหตุผล `no-pay invariant`/`now_paid`
+   และไม่มี request ออกไปหาเจ้านั้น
 5. เปิด `Air-gap proof mode` → ทุกเทิร์นอยู่ local + ledger บันทึกการปฏิเสธ
 6. มือถือใน LAN → กด **Pair a device** → ใส่ `x-luke-pair` → เข้า UI ได้
 7. ตั้ง base URL ของแอปอื่นเป็น `http://127.0.0.1:1420/v1` → `/chat/completions` ตอบ
 8. ตั้ง Telegram webhook + secret → ส่งข้อความ → ได้คำตอบกลับใน response
 9. รัน `node scripts/validation/test-no-pay-audit.cjs` → ต้อง `0 failed`
-   (ยืนยันว่าไม่มีสื่อภายนอก / host ที่คิดเงิน / สวิตช์จ่าย กลับเข้ามา)
+   (ยืนยันว่าไม่มีทางจ่าย + การใช้ฟรียังใช้งานได้ + หมดแล้วตก local)
+10. เปิด `Free-credit media generation` → กด **Quote the free allowance** →
+    ใช้จนหมด → job ถัดไปต้องตอบ `409 free_credit_exhausted` + `fallback: "local"`
