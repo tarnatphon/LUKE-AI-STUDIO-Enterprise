@@ -1156,6 +1156,9 @@ function getSocialAgencyRuntime() {
   if (!socialAgencyRuntime) {
     socialAgencyRuntime = new SocialAgencyRuntime({ root: ROOT });
     socialAgencyRuntime.setLlmClient(makeSocialAgencyLlmClient());
+    // The Products tab asks which model would translate a name, so it can say
+    // "no small model downloaded yet" instead of quietly borrowing the chat one.
+    socialAgencyRuntime.setBackgroundModelProvider(() => makeSocialAgencyLlmClient().status());
     socialAgencyRuntime.setImageSaver(async (dataUrl, metadata) => {
       const saved = saveGeneratedOutput(dataUrl, metadata);
       return { ...saved, url: `/api/output-file?filename=${encodeURIComponent(saved.image)}`, absPath: path.join(OUTPUTS, saved.image) };

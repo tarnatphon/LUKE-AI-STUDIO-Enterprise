@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Gauge, HardDriveDownload, Trash2, Zap } from "lucide-react";
 import GovernorSettingsCard from "./GovernorSettingsCard.jsx";
+import BackgroundModelCard from "./BackgroundModelCard.jsx";
 
 /**
  * Speed lives in three places: how the runtime is tuned, whether a draft model
@@ -49,6 +50,9 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // existed, that only ever appeared as a line in the terminal.
   const [governor, setGovernor] = useState(null);
   const [governorNote, setGovernorNote] = useState("");
+  // Which model translates product names, so "no small model downloaded" is
+  // visible here instead of only inside a translation that never happens.
+  const [backgroundModel, setBackgroundModel] = useState(null);
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
@@ -76,6 +80,11 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const governorResponse = await fetch("/api/resource-governor");
       const governorData = await governorResponse.json();
       if (governorResponse.ok) setGovernor(governorData.result || null);
+    } catch {}
+    try {
+      const backgroundResponse = await fetch("/api/background-model");
+      const backgroundData = await backgroundResponse.json();
+      if (backgroundResponse.ok) setBackgroundModel(backgroundData.result || null);
     } catch {}
   }, []);
 
@@ -314,6 +323,8 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
           {busy === "clear" ? "Clearing…" : `Clear the ${cache.cachedGb} GB cache`}
         </button>
       )}
+
+      <BackgroundModelCard data={backgroundModel} />
 
       <GovernorSettingsCard
         data={governor}

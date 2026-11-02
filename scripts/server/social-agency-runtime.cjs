@@ -3653,7 +3653,18 @@ class SocialAgencyRuntime {
         if (product.imageSubjectError) failed += 1;
       }
     }
-    return { llmReady: this._llmReady(), missing, pending, failed, running: this._subjectJobs.size > 0 };
+    return {
+      llmReady: this._llmReady(),
+      missing,
+      pending,
+      failed,
+      running: this._subjectJobs.size > 0,
+      // Which model would translate a name right now. `model: null` means no
+      // small model is downloaded, so the chat model does it — worth saying out
+      // loud, because that is the difference between a 2 GB chore and a 5 GB
+      // model the governor keeps taking away.
+      backgroundModel: this._backgroundModel(),
+    };
   }
 
   async fillImageSubjects(clientId, body = {}) {
@@ -4857,6 +4868,21 @@ class SocialAgencyRuntime {
   // ── local LLM bridge (injected by serve.cjs — same llama-server as Chat) ──
   setLlmClient(llm) {
     this.llm = llm;
+  }
+  // Which model answers background chores, injected by serve.cjs (it owns the
+  // model folder and the arena pool). Read on demand so the Products tab can
+  // say "no small model yet" instead of silently borrowing the chat model.
+  setBackgroundModelProvider(fn) {
+    this.backgroundModelProvider = fn;
+  }
+  _backgroundModel() {
+    try {
+      if (typeof this.backgroundModelProvider === "function") {
+        const status = this.backgroundModelProvider();
+        if (status && typeof status === "object") return status;
+      }
+    } catch { /* the tab says "unknown" rather than breaking */ }
+    return null;
   }
   _llmReady() {
     try {

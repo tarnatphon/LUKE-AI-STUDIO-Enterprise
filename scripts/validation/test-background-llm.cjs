@@ -22,8 +22,11 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const os = require("node:os");
+
 const root = path.resolve(__dirname, "..", "..");
 const background = require(path.join(root, "scripts", "server", "background-llm.cjs"));
+const { SocialAgencyRuntime } = require(path.join(root, "scripts", "server", "social-agency-runtime.cjs"));
 const runtimeSource = fs.readFileSync(path.join(root, "scripts", "server", "social-agency-runtime.cjs"), "utf8");
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
 const GIB = 1024 ** 3;
@@ -210,9 +213,59 @@ async function main() {
     assert.strictEqual(empty.isReady(), false, "nothing small, nothing loaded: not ready");
   });
 
+  // ── what the Products tab is told ───────────────────────────────────────
+  test("สถานะของ tab บอกว่าโมเดลไหนจะแปลชื่อ และบอกตรง ๆ เมื่อยังไม่มีโมเดลเล็ก", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bg-llm-state-"));
+    const runtime = new SocialAgencyRuntime({ root: dir });
+    runtime.setLlmClient({ isReady: () => false, chat: async () => "" });
+    runtime.setBackgroundModelProvider(() => ({
+      enabled: true,
+      maxSizeGb: 3.2,
+      model: null,
+      reason: "no model between 0.2 and 3.2 GB is downloaded",
+      mainReady: false,
+    }));
+
+    runtime.createClient({ name: "Thai Modern Bags", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋าเก็บความเย็น" });
+    const state = runtime.getState();
+    assert.strictEqual(state.subjectAutofill.backgroundModel.model, null);
+    assert.strictEqual(state.subjectAutofill.backgroundModel.mainReady, false);
+    assert.match(state.subjectAutofill.backgroundModel.reason, /no model between/);
+
+    // Response-only: nothing about which model is chosen belongs in the data file.
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(dir, "app", "runtime-state", "social-agency", "thai-modern-bags.json"), "utf8"),
+    );
+    assert.strictEqual(onDisk.subjectAutofill, undefined, "not persisted");
+    assert.ok(!JSON.stringify(onDisk).includes("backgroundModel"), "the model choice is not stored");
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("provider ที่พังไม่ทำให้หน้า สินค้าพัง — ได้ null แล้วไปต่อ", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bg-llm-boom-"));
+    const runtime = new SocialAgencyRuntime({ root: dir });
+    runtime.setLlmClient({ isReady: () => false, chat: async () => "" });
+    runtime.setBackgroundModelProvider(() => {
+      throw new Error("model folder unreadable");
+    });
+    runtime.createClient({ name: "Thai Modern Bags", industry: "กระเป๋า", tone: "เจ้าของแบรนด์", firstProduct: "กระเป๋าเก็บความเย็น" });
+    assert.strictEqual(runtime.subjectAutofillStatus().backgroundModel, null);
+    assert.strictEqual(runtime.getState().subjectAutofill.backgroundModel, null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   // ── the wiring ──────────────────────────────────────────────────────────
   test("งานแปลชื่อส่ง purpose: \"translate\" เพื่อให้เปลี่ยนเส้นทางได้", () => {
     assert.match(runtimeSource, /purpose: "translate"/);
+  });
+
+  test("serve.cjs ฉีด provider ให้ runtime อ่านสถานะโมเดลพื้นหลัง", () => {
+    assert.match(
+      serveSource,
+      /socialAgencyRuntime\.setBackgroundModelProvider\(\(\) => makeSocialAgencyLlmClient\(\)\.status\(\)\)/,
+    );
+    assert.match(runtimeSource, /setBackgroundModelProvider\(fn\) \{\n\s*this\.backgroundModelProvider = fn;/);
   });
 
   test("serve.cjs ต่อ client ผ่าน background-llm และมี route ให้ดูว่าตัวไหนถูกเลือก", () => {
