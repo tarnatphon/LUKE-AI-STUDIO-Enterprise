@@ -38,6 +38,19 @@ const css = fromFrontend("postcss").parse(read("social-agency.css"));
 const calendarSource = read("social-agency/CalendarTab.jsx");
 const workflowSource = read("social-agency/WorkflowTab.jsx");
 
+// CalendarTab opens on the *current* Bangkok month. Fixtures pinned to
+// 2026-10-20 silently disappeared once November 2026 arrived: the suite then
+// measured an empty calendar and failed "1 โพสต์" with "0 โพสต์". Build the
+// fixtures in the month the component will actually render, so this suite
+// measures the layout rather than the date it was written on.
+const bangkokParts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+}).formatToParts(new Date());
+const bangkokPart = (type) => bangkokParts.find((part) => part.type === type).value;
+const FIXTURE_MONTH = `${bangkokPart("year")}-${bangkokPart("month")}`;
+const FIXTURE_DATE = `${FIXTURE_MONTH}-20`;
+const FIXTURE_PREVIOUS_DATE = `${FIXTURE_MONTH}-19`;
+
 // Only the rules that live at the top level of the sheet: a declaration inside
 // @media (hover: none) must not look like the resting state of a control.
 function declarations(selector) {
@@ -85,8 +98,8 @@ function makeRun(overrides = {}) {
     label: "โพสต์ทดสอบ",
     trigger: "manual",
     status: "needs_review",
-    startedAt: "2026-10-20T03:00:00.000Z",
-    finishedAt: "2026-10-20T03:00:45.000Z",
+    startedAt: `${FIXTURE_DATE}T03:00:00.000Z`,
+    finishedAt: `${FIXTURE_DATE}T03:00:45.000Z`,
     durationMs: 45000,
     nodes: NODE_DEFS.map(([key], i) => ({
       key,
@@ -114,7 +127,7 @@ function makeClient(overrides = {}) {
     researcherRoles: [{ id: "role-1", name: "นักวิจัยตลาด", questions: ["คู่แข่งพูดอะไรบ้าง"], builtIn: true }],
     calendar: [
       {
-        id: "entry-1", date: "2026-10-20", time: "10:00", platform: "facebook",
+        id: "entry-1", date: FIXTURE_DATE, time: "10:00", platform: "facebook",
         productName: "กระเป๋าหนังแท้ รุ่นทดสอบ", sku: "SKU-01", angle: "เปิดตัวสินค้า", pillar: "ขายตรง",
         status: "needs_review", caption: "แคปชันตัวอย่าง", tags: ["concept"],
       },
@@ -233,7 +246,7 @@ async function main() {
       assert.match(calendarMarkup, /class="sa-chip-context">เปิดตัวสินค้า · ขายตรง</);
       const noProduct = renderCalendar(makeClient({
         calendar: [{
-          id: "entry-2", date: "2026-10-20", time: "09:00", platform: "line", productName: "",
+          id: "entry-2", date: FIXTURE_DATE, time: "09:00", platform: "line", productName: "",
           angle: "เปิดตัวสินค้า", pillar: "ขายตรง", status: "planned",
         }],
       }));
@@ -313,7 +326,7 @@ async function main() {
       // "show on canvas", and each one is its own button.
       assert.equal((workflowMarkup.match(/class="sa-run-action"/g) || []).length, 1);
       const twoRuns = renderWorkflow(makeClient({
-        workflowRuns: [makeRun(), makeRun({ id: "run-0", status: "success", startedAt: "2026-10-19T03:00:00.000Z" })],
+        workflowRuns: [makeRun(), makeRun({ id: "run-0", status: "success", startedAt: `${FIXTURE_PREVIOUS_DATE}T03:00:00.000Z` })],
       }));
       assert.equal((twoRuns.match(/class="sa-run-toggle"/g) || []).length, 2);
       assert.equal((twoRuns.match(/class="sa-run-action"/g) || []).length, 3);
@@ -322,7 +335,7 @@ async function main() {
 
     test("the header carries the post facts, the run controls and the report", () => {
       assert.match(workflowMarkup, /class="sa-wf-entry-facts"/);
-      assert.match(workflowMarkup, /2026-10-20 · 10:00/);
+      assert.match(workflowMarkup, new RegExp(`${FIXTURE_DATE} · 10:00`));
       assert.match(workflowMarkup, /class="sa-platform-chip facebook">Facebook</);
       assert.match(workflowMarkup, /class="sa-pill needs-review">รออนุมัติ</);
       assert.match(workflowMarkup, /กระเป๋าหนังแท้ รุ่นทดสอบ/);

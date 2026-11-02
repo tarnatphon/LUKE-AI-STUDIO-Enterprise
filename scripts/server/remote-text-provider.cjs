@@ -15,6 +15,13 @@
  * spent the local model takes the turn. Nothing the user asked for is lost to
  * somebody else's quota.
  *
+ * The chain can also start with a bridge that runs on this machine: Free Claude
+ * Code (FCC) is a local proxy that owns the provider catalogue, the keys and
+ * its own fallback list. It speaks Anthropic Messages, not Chat Completions,
+ * and needs no API key of its own, so it is an opt-in link with its own small
+ * transport. Everything below still applies: it is tried first only when the
+ * user connects it, and the local model is still the last link.
+ *
  * Four rules hold everywhere in this file:
  *
  * 1. The keys belong to this machine. They are written to
@@ -51,6 +58,52 @@ const PROVIDER_FILE = process.env.LUKE_REMOTE_PROVIDER_FILE
 
 const DEFAULT_TIMEOUT_MS = 600000;
 const PROBE_TIMEOUT_MS = 60000;
+
+/** The local bridge is opt-in: nobody is sent to a socket until it is connected. */
+const LOCAL_BRIDGE_ID = "fcc";
+const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192;
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/**
+ * A URL written into Settings must not become a way to make this server call
+ * an arbitrary host. A local bridge is only ever allowed to point at this
+ * machine; a cloud provider only ever points at the https URL in its entry.
+ */
+function parseBaseUrl(value, { requireLoopback = false } = {}) {
+  const raw = String(value == null ? "" : value).trim().replace(/\/+$/, "");
+  if (!raw) return null;
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) return null;
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+
+  const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (requireLoopback && !LOOPBACK_HOSTS.has(host)) return null;
+
+  // FCC serves its API under /v1; accept a bare host and add it for them.
+  const path = !parsed.pathname || parsed.pathname === "/"
+    ? "/v1"
+    : parsed.pathname.replace(/\/+$/, "");
+
+  return `${parsed.protocol}//${parsed.host}${path}`;
+}
+
+function localBaseUrlOrThrow(value) {
+  const parsed = parseBaseUrl(value, { requireLoopback: true });
+  if (!parsed) {
+    throw httpError(
+      "The local bridge URL must be http://127.0.0.1:<port>/v1 (or localhost / ::1), with no remote host, credentials, query or fragment.",
+    );
+  }
+  return parsed;
+}
 
 /**
  * The providers Work can call, in the order they are tried.
@@ -137,6 +190,31 @@ const PROVIDERS = {
     // Naming a model directly is refused with a 403 the user cannot act on.
     forceModel: true,
   },
+  // Free Claude Code — a proxy on this machine, not another cloud account.
+  // It owns the provider catalogue, the free keys, the retries and the
+  // fallback list; this app only speaks one protocol to one local socket.
+  // It answers Anthropic Messages (/v1/messages), not Chat Completions, so it
+  // carries its own request shape and stream reader below.
+  fcc: {
+    id: "fcc",
+    label: "Free Claude Code (this machine)",
+    // FCC's own defaults, read from src/free_claude_code/config/settings.py
+    // (HOST=0.0.0.0, PORT=8082) and from its README install instructions.
+    baseUrl: "http://127.0.0.1:8082/v1",
+    endpoint: "/messages",
+    apiFormat: "anthropic-messages",
+    // Its /v1/models defaults to Claude tier names; the "messages" view lists
+    // the routable provider/model ids actually configured in FCC Admin.
+    modelsQuery: "?view=messages",
+    // A Claude tier name routes through whatever MODEL / MODEL_SONNET the user
+    // picked in FCC Admin, including FCC's own fallback list. A direct
+    // `<provider>/<model>` ref also resolves, if they want to force one.
+    model: "claude-sonnet-4-20250514",
+    docs: "fcc-server → Admin UI → Providers / Model Config",
+    note: "Free Claude Code runs on this machine and fronts its own free providers, retries and fallbacks. No API key needed unless Proxy Authentication is on. Normal Chat never uses it.",
+    local: true,
+    keyless: true,
+  },
 };
 
 /**
@@ -151,6 +229,32 @@ const PROVIDERS = {
 const DEFAULT_ORDER = ["nvidia", "openrouter", "zai"];
 
 // ── small helpers ──────────────────────────────────────────────────────────
+
+/**
+ * A link is connected either by a saved key or, for a local bridge, by an
+ * explicit "connect" with no key at all. Keeping this in one place matters:
+ * the live route, the Settings panel and the chain must agree on what counts
+ * as connected or Work would silently stay on the local model.
+ */
+function isConnected(config, providerId) {
+  if (config?.keys?.[providerId]) return true;
+  return PROVIDERS[providerId]?.keyless === true && config?.enabled?.[providerId] === true;
+}
+
+function hasCloudBrain(config) {
+  return (config?.order || []).some((providerId) => isConnected(config, providerId));
+}
+
+/** A connected local bridge is tried first — it already has its own fallbacks. */
+function ensureOrder(order, providerId) {
+  const next = (Array.isArray(order) ? order : [...DEFAULT_ORDER])
+    .filter((id) => PROVIDERS[id]);
+
+  if (!next.includes(providerId)) next.push(providerId);
+  if (PROVIDERS[providerId]?.local) return [providerId, ...next.filter((id) => id !== providerId)];
+
+  return next;
+}
 
 /** Every path out of this file goes through here: no key ever survives it. */
 function scrubKey(text, key) {
@@ -209,23 +313,67 @@ function buildRemotePayload({
       content: message.content,
     }));
 
+  const chosenModel = provider.forceModel ? provider.model : String(model || "").trim() || provider.model;
+  const numericTemperature = Number(temperature);
+  const numericTopP = Number(topP);
+  const numericMaxTokens = Number(maxTokens);
+
+  // FCC answers Anthropic Messages, where the system prompt is a top-level
+  // field, turns must alternate, and max_tokens is required. Sending the
+  // OpenAI-shaped body to /v1/messages is the one thing that makes a direct
+  // "paste the proxy URL into Settings" integration fail.
+  if (provider.apiFormat === "anthropic-messages") {
+    const system = normalizedMessages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n")
+      .trim();
+
+    const turns = [];
+    for (const message of normalizedMessages) {
+      if (message.role === "system") continue;
+      const previous = turns[turns.length - 1];
+      if (previous && previous.role === message.role) {
+        previous.content += `\n\n${message.content}`;
+      } else {
+        turns.push({ role: message.role, content: message.content });
+      }
+    }
+
+    const payload = {
+      model: chosenModel,
+      messages: turns,
+      max_tokens: Number.isFinite(numericMaxTokens) && numericMaxTokens > 0
+        ? Math.floor(numericMaxTokens)
+        : ANTHROPIC_DEFAULT_MAX_TOKENS,
+      stream: stream === true,
+    };
+
+    if (system) payload.system = system;
+    if (Number.isFinite(numericTemperature) && numericTemperature > 0) {
+      payload.temperature = numericTemperature;
+    }
+    if (Number.isFinite(numericTopP) && numericTopP > 0 && numericTopP <= 1) {
+      payload.top_p = numericTopP;
+    }
+
+    return payload;
+  }
+
   const payload = {
-    model: provider.forceModel ? provider.model : String(model || "").trim() || provider.model,
+    model: chosenModel,
     messages: normalizedMessages,
     stream: stream === true,
   };
 
-  const numericTemperature = Number(temperature);
   if (Number.isFinite(numericTemperature) && numericTemperature > 0) {
     payload.temperature = numericTemperature;
   }
 
-  const numericTopP = Number(topP);
   if (Number.isFinite(numericTopP) && numericTopP > 0 && numericTopP <= 1) {
     payload.top_p = numericTopP;
   }
 
-  const numericMaxTokens = Number(maxTokens);
   if (Number.isFinite(numericMaxTokens) && numericMaxTokens > 0) {
     payload.max_tokens = Math.floor(numericMaxTokens);
   }
@@ -233,12 +381,37 @@ function buildRemotePayload({
   return payload;
 }
 
-function remoteHeaders(key) {
-  return {
+/** The second argument defaults to the original cloud gateway, for callers
+ * that have only ever known one protocol. */
+function remoteHeaders(key, providerId = "nvidia") {
+  const provider = providerOrThrow(providerId);
+  const secret = String(key || "").trim();
+
+  const headers = {
     "content-type": "application/json",
     accept: "text/event-stream, application/json",
-    authorization: `Bearer ${String(key || "").trim()}`,
   };
+
+  if (provider.apiFormat === "anthropic-messages") {
+    headers["anthropic-version"] = ANTHROPIC_VERSION;
+    // FCC reads either `authorization: Bearer` or `x-api-key` when its own
+    // Proxy Authentication is on. With no token saved, neither is sent.
+    if (secret) headers["x-api-key"] = secret;
+    return headers;
+  }
+
+  headers.authorization = `Bearer ${secret}`;
+  return headers;
+}
+
+/** The saved base URLs, read synchronously because the request path is sync. */
+function readBasesSync() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PROVIDER_FILE, "utf8"));
+    return parsed?.bases && typeof parsed.bases === "object" ? parsed.bases : {};
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -247,18 +420,31 @@ function remoteHeaders(key) {
  * Overridable so the chain can be driven against a local stand-in instead of
  * the internet. Every assertion in the companion suite that only reads this
  * file's source proves what the code says; pointing it at a real socket proves
- * what the code does.
+ * what the code does. A local bridge additionally accepts its own loopback URL
+ * from Settings or LUKE_FCC_BASE_URL, and refuses anything off this machine.
  */
 function baseUrlFor(providerId) {
-  providerOrThrow(providerId);
+  const provider = providerOrThrow(providerId);
+
+  // A provider-specific address wins over the global test override, so a
+  // local stand-in can be exercised without redirecting every cloud link.
+  if (provider.local) {
+    const candidate =
+      String(process.env.LUKE_FCC_BASE_URL || "").trim() ||
+      readBasesSync()[providerId];
+
+    const parsed = parseBaseUrl(candidate, { requireLoopback: true });
+    if (parsed) return parsed;
+  }
 
   const override = String(process.env.LUKE_REMOTE_PROVIDER_BASE_URL || "").trim();
 
-  return (override || PROVIDERS[providerId].baseUrl).replace(/\/+$/, "");
+  return (override || provider.baseUrl).replace(/\/+$/, "");
 }
 
 function remoteEndpoint(providerId) {
-  return `${baseUrlFor(providerId)}/chat/completions`;
+  const provider = providerOrThrow(providerId);
+  return `${baseUrlFor(providerId)}${provider.endpoint || "/chat/completions"}`;
 }
 
 /**
@@ -273,6 +459,30 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
   const text = String(body || "");
   const code = Number(status) || 0;
   const label = PROVIDERS[providerId]?.label || "The provider";
+
+  // A local bridge is not a cloud account. Its 401 is a proxy token mismatch
+  // in FCC Admin, its 404 is a model FCC does not route, and a dead socket is
+  // a program that is simply not running on this machine.
+  if (PROVIDERS[providerId]?.local) {
+    if (code === 401) {
+      return {
+        code: "local_bridge_auth",
+        message: `${label} refused the proxy token. If Proxy Authentication is on in FCC's Admin UI, paste that token into Settings; otherwise turn it off (FCC only listens on this machine).`,
+      };
+    }
+    if (code === 403 || code === 404) {
+      return {
+        code: "unknown_model",
+        message: `${label} does not route that model. Pick one from its model list, or leave a Claude tier name so FCC chooses its configured MODEL.`,
+      };
+    }
+    if (code === 0) {
+      return {
+        code: "unreachable",
+        message: `${label} is not running on this machine. Start fcc-server (or open the Free Claude Code app), then try again.`,
+      };
+    }
+  }
 
   if (code === 403 && /free_router_harness_restricted|harness/i.test(text)) {
     return {
@@ -346,7 +556,7 @@ function classifyRemoteError({ status = 0, body = "", providerId = "" } = {}) {
  * exists for.
  */
 function isRetryable(code) {
-  return ["rate_limited", "now_paid", "unknown_model", "upstream_error", "unreachable", "harness_restricted"].includes(code);
+  return ["rate_limited", "now_paid", "unknown_model", "upstream_error", "unreachable", "harness_restricted", "local_bridge_auth"].includes(code);
 }
 
 /**
@@ -429,7 +639,36 @@ function extractDelta(data) {
     const choice = Array.isArray(parsed?.choices) ? parsed.choices[0] : null;
     const content = choice?.delta?.content;
 
-    return typeof content === "string" ? content : "";
+    if (typeof content === "string") return content;
+
+    // Anthropic Messages SSE, which is what FCC streams:
+    //   {"type":"content_block_delta","delta":{"type":"text_delta","text":"…"}}
+    // A `content_block_start` may carry the first piece of text eagerly.
+    if (parsed?.type === "content_block_delta" && typeof parsed?.delta?.text === "string") {
+      return parsed.delta.text;
+    }
+    if (parsed?.type === "content_block_start" && typeof parsed?.content_block?.text === "string") {
+      return parsed.content_block.text;
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+/** FCC reports a stream that died after HTTP 200 as an SSE `error` frame. */
+function extractStreamError(data) {
+  if (!data || data === "[DONE]") return "";
+
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed?.type !== "error") return "";
+
+    const message = parsed?.error?.message || parsed?.message;
+    return typeof message === "string" && message.trim()
+      ? message.trim()
+      : "The provider stream stopped with an error.";
   } catch {
     return "";
   }
@@ -461,20 +700,55 @@ async function readConfig() {
       }
     }
 
-    const order = Array.isArray(parsed.order)
+    // Only a declared keyless bridge can be on without a key. Anything else
+    // in this file is ignored, so a stale or hand-edited entry cannot invent a
+    // provider or silently turn one on.
+    const enabled = {};
+    if (parsed.enabled && typeof parsed.enabled === "object") {
+      for (const [providerId, value] of Object.entries(parsed.enabled)) {
+        if (PROVIDERS[providerId]?.keyless && value === true) enabled[providerId] = true;
+      }
+    }
+
+    const bases = {};
+    if (parsed.bases && typeof parsed.bases === "object") {
+      for (const [providerId, value] of Object.entries(parsed.bases)) {
+        if (PROVIDERS[providerId]?.local && typeof value === "string" && value.trim()) {
+          bases[providerId] = value.trim();
+        }
+      }
+    }
+
+    const storedOrder = Array.isArray(parsed.order)
       ? parsed.order.filter((providerId) => PROVIDERS[providerId])
-      : DEFAULT_ORDER;
+      : [];
+    const order = storedOrder.length ? storedOrder : [...DEFAULT_ORDER];
+
+    // Files written before the local bridge existed have no `fcc` in `order`.
+    // An enabled bridge still has to be reachable by the chain.
+    for (const providerId of Object.keys(enabled)) {
+      if (!order.includes(providerId)) order.unshift(providerId);
+    }
 
     const models = parsed.models && typeof parsed.models === "object" ? parsed.models : {};
 
     return {
       keys,
-      order: order.length ? order : DEFAULT_ORDER,
+      enabled,
+      bases,
+      order,
       models,
       useLocalFallback: parsed.useLocalFallback !== false,
     };
   } catch {
-    return { keys: {}, order: [...DEFAULT_ORDER], models: {}, useLocalFallback: true };
+    return {
+      keys: {},
+      enabled: {},
+      bases: {},
+      order: [...DEFAULT_ORDER],
+      models: {},
+      useLocalFallback: true,
+    };
   }
 }
 
@@ -497,26 +771,78 @@ async function saveKey(providerId, value) {
   const key = String(value == null ? "" : value).trim();
 
   if (!key) throw httpError("There is no key to save.");
-  if (key.length < 12) throw httpError(`That is too short to be a ${provider.label} key.`);
+  // A cloud API key has a recognisable minimum length; FCC's own proxy token
+  // defaults to "freecc", so holding it to twelve characters would make the
+  // documented setting impossible to save.
+  if (!provider.keyless && key.length < 12) {
+    throw httpError(`That is too short to be a ${provider.label} key.`);
+  }
   if (/\s/.test(key)) throw httpError("A key cannot contain spaces.");
 
   const config = await readConfig();
 
   config.keys[providerId] = key;
-
-  if (!config.order.includes(providerId)) config.order.push(providerId);
+  if (provider.keyless) config.enabled[providerId] = true;
+  config.order = ensureOrder(config.order, providerId);
 
   await writeConfig({ ...config, savedAt: new Date().toISOString() });
 
   return { saved: true, providerId };
 }
 
+/**
+ * Connect or forget a local bridge, and remember which loopback socket it is
+ * on. `token` is optional: it is FCC's own Proxy Authentication token, not a
+ * provider API key, and it is stored with the other secrets (mode 0600).
+ */
+async function setLocalProvider({
+  providerId = LOCAL_BRIDGE_ID,
+  enabled = true,
+  baseUrl = undefined,
+  token = undefined,
+} = {}) {
+  const provider = providerOrThrow(providerId);
+  if (!provider.keyless) throw httpError(`${provider.label} is not a local bridge.`);
+
+  const config = await readConfig();
+  const url = baseUrl === undefined
+    ? config.bases[providerId] || provider.baseUrl
+    : localBaseUrlOrThrow(baseUrl);
+
+  config.bases[providerId] = url;
+
+  if (token !== undefined) {
+    const value = String(token || "").trim();
+    if (value) {
+      if (/\s/.test(value)) throw httpError("A proxy token cannot contain spaces.");
+      config.keys[providerId] = value;
+    } else {
+      delete config.keys[providerId];
+    }
+  }
+
+  if (enabled) {
+    config.enabled[providerId] = true;
+    config.order = ensureOrder(config.order, providerId);
+  } else {
+    delete config.enabled[providerId];
+    delete config.keys[providerId];
+  }
+
+  await writeConfig({ ...config, savedAt: new Date().toISOString() });
+
+  return { saved: true, providerId, enabled: enabled === true, baseUrl: url };
+}
+
 async function clearKey(providerId) {
-  providerOrThrow(providerId);
+  const provider = providerOrThrow(providerId);
 
   const config = await readConfig();
 
   delete config.keys[providerId];
+  // For a keyless bridge, forgetting the token means disconnecting it too —
+  // otherwise the chain would keep calling a socket the user just cleared.
+  if (provider.keyless) delete config.enabled[providerId];
 
   await writeConfig({ ...config, savedAt: new Date().toISOString() });
 
@@ -551,7 +877,11 @@ async function providerStatus() {
     note: provider.note,
     model: provider.forceModel ? provider.model : config.models[provider.id] || provider.model,
     modelLocked: provider.forceModel === true,
-    configured: Boolean(config.keys[provider.id]),
+    keyless: provider.keyless === true,
+    local: provider.local === true,
+    apiFormat: provider.apiFormat || "openai-chat",
+    baseUrl: baseUrlFor(provider.id),
+    configured: isConnected(config, provider.id),
     keyHint: config.keys[provider.id] ? `…${config.keys[provider.id].slice(-4)}` : "",
   }));
 
@@ -559,7 +889,7 @@ async function providerStatus() {
     providers,
     order: config.order,
     localFallback: config.useLocalFallback,
-    chain: config.order.filter((providerId) => config.keys[providerId]),
+    chain: config.order.filter((providerId) => isConnected(config, providerId)),
     keyFile: path.relative(ROOT, PROVIDER_FILE),
   };
 }
@@ -587,7 +917,9 @@ async function streamRemoteChat({
   const provider = providerOrThrow(providerId);
   const secret = String(key || "").trim();
 
-  if (!secret) throw httpError(`No ${provider.label} key is saved yet.`, 401);
+  // A local bridge is deliberately keyless; its optional proxy token is the
+  // same field, but an empty one is a valid configuration.
+  if (!secret && !provider.keyless) throw httpError(`No ${provider.label} key is saved yet.`, 401);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -604,7 +936,7 @@ async function streamRemoteChat({
   try {
     response = await fetch(remoteEndpoint(providerId), {
       method: "POST",
-      headers: remoteHeaders(secret),
+      headers: remoteHeaders(secret, providerId),
       body: JSON.stringify(
         buildRemotePayload({ messages, providerId, model, temperature, topP, maxTokens, stream: true }),
       ),
@@ -612,7 +944,17 @@ async function streamRemoteChat({
     });
   } catch (error) {
     clearTimeout(timeout);
-    throw httpError(scrubKey(error?.message || `${provider.label} could not be reached.`, secret), 0);
+
+    // A bridge that is not running is the commonest FCC failure, and "fetch
+    // failed" is no help. It is also a retryable failure: the cloud links
+    // behind it should still get their turn.
+    const message = provider.local
+      ? `${provider.label} is not running at ${baseUrlFor(providerId)}. Start fcc-server (or open the Free Claude Code app), then try again.`
+      : scrubKey(error?.message || `${provider.label} could not be reached.`, secret);
+
+    const failure = httpError(message, 0);
+    failure.code = "unreachable";
+    throw failure;
   }
 
   if (!response.ok) {
@@ -631,6 +973,19 @@ async function streamRemoteChat({
 
   const consume = (data) => {
     if (isDone(data)) return;
+
+    // FCC can report an upstream outage *inside* a 200 stream. Before any
+    // token has gone out, that is a failed link and the chain should move on;
+    // after tokens are out, splicing a second answer onto the first would be
+    // worse than keeping the partial one.
+    const streamError = extractStreamError(data);
+    if (streamError) {
+      if (content) return;
+
+      const failure = httpError(scrubKey(`${provider.label}: ${streamError}`, secret), 502);
+      failure.code = "upstream_error";
+      throw failure;
+    }
 
     const delta = extractDelta(data);
 
@@ -663,6 +1018,9 @@ async function streamRemoteChat({
       throw httpError(`The request to ${provider.label} was cancelled.`, 499);
     }
 
+    // A classified SSE error already carries the code the chain needs.
+    if (error?.code === "upstream_error") throw error;
+
     throw httpError(scrubKey(error?.message || `The ${provider.label} stream broke off.`, secret), 502);
   } finally {
     clearTimeout(timeout);
@@ -693,7 +1051,7 @@ async function streamRemoteChain({
   const config = await readConfig();
 
   const queue = config.order
-    .filter((providerId) => config.keys[providerId])
+    .filter((providerId) => isConnected(config, providerId))
     .map((providerId) => {
       const provider = PROVIDERS[providerId];
       const chosen = String(config.models[providerId] || "").trim();
@@ -781,11 +1139,17 @@ async function listRemoteModels(providerId) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
+  const headers = { accept: "application/json" };
+  if (key) Object.assign(headers, remoteHeaders(key, providerId));
+  else if (provider.apiFormat === "anthropic-messages") {
+    headers["anthropic-version"] = ANTHROPIC_VERSION;
+  }
+
   try {
-    const response = await fetch(`${baseUrlFor(providerId)}/models`, {
-      headers: key ? remoteHeaders(key) : { accept: "application/json" },
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      `${baseUrlFor(providerId)}/models${provider.modelsQuery || ""}`,
+      { headers, signal: controller.signal },
+    );
 
     const text = await response.text();
 
@@ -830,10 +1194,16 @@ async function listRemoteModels(providerId) {
 async function testRemoteProvider(providerId) {
   const provider = providerOrThrow(providerId);
   const config = await readConfig();
-  const key = config.keys[providerId];
+  const key = config.keys[providerId] || "";
 
-  if (!key) {
-    return { ok: false, code: "no_key", message: `No ${provider.label} key is saved yet.` };
+  if (!isConnected(config, providerId)) {
+    return {
+      ok: false,
+      code: "no_key",
+      message: provider.keyless
+        ? `${provider.label} is not connected yet. Press Connect in Settings first.`
+        : `No ${provider.label} key is saved yet.`,
+    };
   }
 
   // Test the model the user actually chose, resolved the same way the chain
@@ -872,19 +1242,27 @@ async function testRemoteProvider(providerId) {
 }
 
 module.exports = {
+  ANTHROPIC_VERSION,
   DEFAULT_ORDER,
   baseUrlFor,
   DEFAULT_TIMEOUT_MS,
+  LOCAL_BRIDGE_ID,
   PROVIDERS,
   PROVIDER_FILE,
   buildRemotePayload,
   classifyRemoteError,
   clearKey,
   createSseDecoder,
+  ensureOrder,
   extractDelta,
+  extractStreamError,
+  hasCloudBrain,
+  isConnected,
   isDone,
   isRetryable,
   listRemoteModels,
+  localBaseUrlOrThrow,
+  parseBaseUrl,
   providerStatus,
   readConfig,
   readStoredKey,
@@ -892,6 +1270,7 @@ module.exports = {
   remoteHeaders,
   saveKey,
   scrubKey,
+  setLocalProvider,
   setModel,
   streamRemoteChain,
   streamRemoteChat,

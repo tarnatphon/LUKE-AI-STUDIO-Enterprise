@@ -90,6 +90,19 @@
 
 ## 2. งานล่าสุดที่เข้า `main`
 
+### session `arena/280fc7ba…` (2026-11-02) — Free Claude Code เป็น cloud brain ของ Work chat
+> ที่มา: “mac local path cd /volumes/ai and github is main … integrate this function into my chat work using [free-claude-code] theory” · เจ้าของงานเลือก “best option” = ลงโค้ดจริง + merge เข้า `main`
+
+- **ทฤษฎีเดียวกับที่มีอยู่แล้ว** — `scripts/server/remote-text-provider.cjs` เป็น chain ฟรี (NVIDIA → OpenRouter `:free` → Z.ai) + โมเดล local เป็น link สุดท้าย · FCC คือ local proxy ที่ถือ catalogue/keys/retry/fallback เอง → เพิ่มเป็น **link แรกแบบ opt-in** ไม่ใส่ใน `DEFAULT_ORDER` (ยัง 3 link เดิม)
+- **อุปสรรคจริงที่เจอจากการอ่านโค้ด FCC** — FCC เปิด `POST /v1/messages` (Anthropic) และ `/v1/responses` · **ไม่มี** `/v1/chat/completions` → เอา URL ไปวางใน client แบบ OpenAI ไม่ได้ · ต้องแปลง body (`system` แยก, turn สลับ, `max_tokens` บังคับ), อ่าน SSE `content_block_start/content_block_delta/error`, ใช้ `x-api-key` + `anthropic-version` · พอร์ต default `8082`, config `~/.fcc/.env`, auth คือ `PROXY_AUTH_ENABLED` / `ANTHROPIC_AUTH_TOKEN` (default `freecc`)
+- **keyless** — `enabled` + `bases` ใน `remote-text-provider.json` (`0600`, gitignored) · `isConnected()` / `hasCloudBrain()` เป็นแหล่งความจริงเดียวร่วมกับ `serve.cjs` + Settings · URL ผ่าน `parseBaseUrl()` ให้เฉพาะ loopback (กัน SSRF) · env override `LUKE_FCC_BASE_URL` · disconnect ลบทั้ง token และ enable flag
+- **failover** — FCC ไม่รัน → `code: "unreachable"` (เดิม fetch catch ไม่ใส่ code จึง abandon chain) + ข้อความ “start fcc-server” → link ถัดไปยังทำงาน · 401 → `local_bridge_auth` บอกให้ paste proxy token · SSE `error` ก่อนมี token = link ล้มเหลว หลังมี token = เก็บคำตอบเดิม ไม่ splice
+- **UI** — การ์ด “Free Claude Code (this machine)” ใน Settings → Cloud brain (Work): ช่อง Local proxy URL + Proxy token (optional) + ปุ่ม **Connect (no key)** / Test / List models (`/v1/models?view=messages`) / Disconnect · route ใหม่ `POST /api/text-runtime/remote-provider/local`
+- **เอกสาร** — `docs/beta7/fcc-work-chat-bridge.md` (ทฤษฎี + แผนภาพ chain + ติดตั้งบน Mac `/Volumes/AI` + checklist + troubleshooting + ข้อจำกัด ToS/offline/AGPL ของ FCC) · README เพิ่มบรรทัด “Cloud brains for Work”
+- **เทสต์** — ใหม่ `scripts/validation/test-remote-provider-fcc.cjs` **74 checks** ยิง stand-in FCC จริงบน socket (Anthropic SSE, ไทย, keyless, กัน URL นอกเครื่อง, 401, error frame, FCC ดับแล้ว chain ไป NVIDIA ต่อ) · ปรับ 2 เช็คเดิมให้รองรับ loopback/http และ gate ใหม่
+- **แก้ regression ที่วันทำให้ล้ม (นอกเหนือเรื่อง FCC)** — `test-social-agency-calendar-workflow-ui.cjs` พิน fixture `2026-10-20` แต่ CalendarTab เปิดเดือนปัจจุบัน → วันที่ 2026-11-02 เห็น `0 โพสต์` แทน `1` · เปลี่ยน fixture เป็นเดือนปัจจุบันตาม `Asia/Bangkok` (แก้ที่ต้นเหตุ ไม่ใส่ baseline)
+- **ตรวจ:** `run-all --include-python` ทั้งชุดเขียว · eslint 344 ไฟล์ 0 problems · vite build ผ่าน · API contracts ผ่าน
+
 ### session `arena/c0c7cc07…` (2026-10-27) — LinkedIn เข้าปฏิทินโพสต์ (วางแผนฟรี + โพสต์จริงเมื่อมี token)
 
 > ที่มา: “หากต้องการเพิ่ม LinkedIn เข้าไปด้วยในปฏิทินได้ไหม”

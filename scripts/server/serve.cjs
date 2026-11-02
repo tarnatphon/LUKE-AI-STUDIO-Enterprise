@@ -25660,6 +25660,40 @@ const handleRequest = async (req, res) => {
     }
   }
 
+  // POST /api/text-runtime/remote-provider/local — connect or forget a bridge
+  // that runs on this machine (Free Claude Code). It needs no provider API key;
+  // the optional token is FCC's own Proxy Authentication token and is stored
+  // with the other secrets, never returned to the browser.
+  if (
+    req.url === "/api/text-runtime/remote-provider/local" &&
+    req.method === "POST"
+  ) {
+    try {
+      const body = await readJsonRequestBody(req);
+
+      if (!body.providerId) {
+        return json(res, 400, { ok: false, error: "providerId is required." });
+      }
+
+      await remoteTextProvider.setLocalProvider({
+        providerId: body.providerId,
+        enabled: body.enabled !== false,
+        baseUrl: body.baseUrl,
+        token: body.token,
+      });
+
+      return json(res, 200, {
+        ok: true,
+        provider: await remoteTextProvider.providerStatus(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   // POST /api/text-runtime/remote-provider/test — one short call, so the user
   // finds out whether this account is allowed before relying on it.
   if (
@@ -27614,7 +27648,8 @@ async function getLlmfitRecommendations(useCase = "chat", limit = 10) {
 async function routeWorkTurnToCloud(req, res, body) {
   const config = await remoteTextProvider.readConfig();
 
-  if (!config.order.some((providerId) => config.keys[providerId])) return false;
+  // A key or an explicitly connected local bridge — both count as a brain.
+  if (!remoteTextProvider.hasCloudBrain(config)) return false;
 
   const messages = Array.isArray(body.messages) ? body.messages : [];
 

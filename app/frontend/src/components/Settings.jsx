@@ -333,6 +333,9 @@ function Settings({
   // for rather than remembered — a name that no longer exists costs a 404 and a
   // wasted link on every turn.
   const [remoteModelList, setRemoteModelList] = useState({});
+  // A local bridge (Free Claude Code) is addressed by its loopback URL, not by
+  // a cloud API key. The URL is not a secret, so it can be read back.
+  const [remoteBases, setRemoteBases] = useState({});
 
   const refreshRemoteProvider = useCallback(async () => {
     try {
@@ -373,6 +376,50 @@ function Settings({
 
       setRemoteProvider(data.provider || {});
       setRemoteKeys((current) => ({ ...current, [providerId]: "" }));
+    } catch (error) {
+      showAlert({
+        title: "Cloud brain",
+        message: error.message || String(error),
+      });
+    } finally {
+      setRemoteBusy("");
+    }
+  };
+
+  const sendRemoteLocal = async (providerId, enabled) => {
+    setRemoteBusy(providerId);
+    setRemoteTest(null);
+
+    const entry = (remoteProvider.providers || []).find((item) => item.id === providerId);
+    const token = (remoteKeys[providerId] || "").trim();
+
+    try {
+      const response = await fetch("/api/text-runtime/remote-provider/local", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // An empty token means "keep the one already saved"; only a typed one
+        // replaces it. Disconnect clears everything on the server.
+        body: JSON.stringify({
+          providerId,
+          enabled,
+          baseUrl: remoteBases[providerId] !== undefined ? remoteBases[providerId] : entry?.baseUrl,
+          ...(enabled && token ? { token } : {}),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "That local bridge could not be saved.");
+      }
+
+      setRemoteProvider(data.provider || {});
+      setRemoteKeys((current) => ({ ...current, [providerId]: "" }));
+
+      const saved = (data.provider?.providers || []).find((item) => item.id === providerId);
+      if (saved?.baseUrl) {
+        setRemoteBases((current) => ({ ...current, [providerId]: saved.baseUrl }));
+      }
     } catch (error) {
       showAlert({
         title: "Cloud brain",
@@ -1835,7 +1882,9 @@ function Settings({
             <div className="m3-field-group">
               <span className="settings-option-desc" style={{ display: "block", marginBottom: "12px" }}>
                 Work sends its turns to the first provider below that answers. A rate limit, a paywall or a
-                model that has disappeared moves to the next one. Chat never leaves this machine.
+                model that has disappeared moves to the next one. Chat never leaves this machine. A local
+                bridge such as Free Claude Code is tried first when connected — it has its own provider
+                list and fallbacks, and needs no API key unless Proxy Authentication is on.
               </span>
 
               {(remoteProvider.providers || []).map((item) => (
@@ -1864,23 +1913,59 @@ function Settings({
                     {item.note}
                   </span>
 
-                  <div className="m3-text-field">
-                    <label className="m3-text-field-label">API key</label>
-                    <input
-                      className="m3-input"
-                      type="password"
-                      value={remoteKeys[item.id] || ""}
-                      onChange={(event) =>
-                        setRemoteKeys((current) => ({ ...current, [item.id]: event.target.value }))
-                      }
-                      placeholder={item.configured ? "Paste a new key to replace it" : "Key from " + item.docs.split(" →")[0]}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
-                      {item.docs}
-                    </span>
-                  </div>
+                  {item.keyless ? (
+                    <>
+                      <div className="m3-text-field">
+                        <label className="m3-text-field-label">Local proxy URL</label>
+                        <input
+                          className="m3-input"
+                          type="text"
+                          value={remoteBases[item.id] !== undefined ? remoteBases[item.id] : item.baseUrl}
+                          onChange={(event) =>
+                            setRemoteBases((current) => ({ ...current, [item.id]: event.target.value }))
+                          }
+                          placeholder="http://127.0.0.1:8082/v1"
+                          spellCheck={false}
+                        />
+                        <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
+                          {item.docs} · only 127.0.0.1, localhost or ::1 is accepted.
+                        </span>
+                      </div>
+
+                      <div className="m3-text-field" style={{ marginTop: "8px" }}>
+                        <label className="m3-text-field-label">Proxy token (optional)</label>
+                        <input
+                          className="m3-input"
+                          type="password"
+                          value={remoteKeys[item.id] || ""}
+                          onChange={(event) =>
+                            setRemoteKeys((current) => ({ ...current, [item.id]: event.target.value }))
+                          }
+                          placeholder={item.configured ? "Paste a new token to replace it" : "Only if Proxy Authentication is on"}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="m3-text-field">
+                      <label className="m3-text-field-label">API key</label>
+                      <input
+                        className="m3-input"
+                        type="password"
+                        value={remoteKeys[item.id] || ""}
+                        onChange={(event) =>
+                          setRemoteKeys((current) => ({ ...current, [item.id]: event.target.value }))
+                        }
+                        placeholder={item.configured ? "Paste a new key to replace it" : "Key from " + item.docs.split(" → ")[0]}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      <span className="settings-option-desc" style={{ marginTop: "4px", display: "block" }}>
+                        {item.docs}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="m3-text-field" style={{ marginTop: "8px" }}>
                     <label className="m3-text-field-label">Model</label>
@@ -1937,10 +2022,16 @@ function Settings({
                     <button
                       type="button"
                       className="m3-button-filled"
-                      disabled={remoteBusy === item.id || !(remoteKeys[item.id] || "").trim()}
-                      onClick={() => sendRemoteKey(item.id, "save")}
+                      disabled={remoteBusy === item.id || (!item.keyless && !(remoteKeys[item.id] || "").trim())}
+                      onClick={() =>
+                        item.keyless
+                          ? sendRemoteLocal(item.id, true)
+                          : sendRemoteKey(item.id, "save")
+                      }
                     >
-                      {item.configured ? "Replace key" : "Connect"}
+                      {item.keyless
+                        ? item.configured ? "Save bridge" : "Connect (no key)"
+                        : item.configured ? "Replace key" : "Connect"}
                     </button>
 
                     <button
@@ -1967,7 +2058,11 @@ function Settings({
                       type="button"
                       className="m3-button-outlined"
                       disabled={remoteBusy === item.id || !item.configured}
-                      onClick={() => sendRemoteKey(item.id, "clear")}
+                      onClick={() =>
+                        item.keyless
+                          ? sendRemoteLocal(item.id, false)
+                          : sendRemoteKey(item.id, "clear")
+                      }
                     >
                       Disconnect
                     </button>
