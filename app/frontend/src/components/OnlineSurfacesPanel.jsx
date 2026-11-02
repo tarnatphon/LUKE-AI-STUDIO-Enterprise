@@ -12,13 +12,12 @@ import { ShieldCheck, Globe2, Radio, PlugZap, Bot, Video, Copy, RefreshCw } from
 
 const SWITCHES = [
   { key: "cloudForChat", label: "Online-first Chat", hint: "Chat tries every free provider before the local model." },
-  { key: "freeOnly", label: "Free only — never pay", hint: "Skips a provider marked paid even when a key is saved." },
   { key: "uncensoredMode", label: "No-filter lane (local only)", hint: "Every turn stays on the local GGUF model. Nothing leaves this machine." },
   { key: "airGapMode", label: "Air-gap proof mode", hint: "Blocks all cloud turns and records the refusal in the Egress Ledger." },
   { key: "gatewayEnabled", label: "External /v1 gateway", hint: "Other apps can point an OpenAI-compatible client at this machine." },
   { key: "mcpEnabled", label: "MCP tools for editors", hint: "Exposes read-only status and chat tools over JSON-RPC." },
   { key: "channelsEnabled", label: "Telegram / Discord / LINE relay", hint: "Webhook mode; tokens stay in a 0600 file on the server." },
-  { key: "onlineMediaEnabled", label: "Online media (trial credit)", hint: "Requires consent on every single job; never auto-charged." },
+  { key: "onlineMediaEnabled", label: "Online media (free allowance)", hint: "Only a no-card free daily allowance; consent on every job." },
   { key: "rateLimitRetry", label: "Retry a 429 once", hint: "Uses more of a free minute-quota before moving to the next link." },
 ];
 
@@ -215,6 +214,10 @@ export default function OnlineSurfacesPanel({ showAlert }) {
             <span style={small}>
               Catalogue: {catalog?.count ?? "—"} providers, verified {catalog?.verifiedAt || "—"}
             </span>
+            <span style={small}>
+              No paid provider is registered — billed, prepaid and card-backed services were removed
+              from the code, so there is no switch that can bring one back.
+            </span>
             <button type="button" className="m3-button-outlined" style={{ marginTop: "8px" }} onClick={refresh}>
               <RefreshCw size={14} /> Refresh
             </button>
@@ -312,10 +315,11 @@ export default function OnlineSurfacesPanel({ showAlert }) {
             </span>
           </Row>
 
-          <Row title="Online media — trial credit only">
+          <Row title="Online media — no-card free allowance only">
             <span className="settings-option-desc">
-              No free tier exists for frontier video generation. Every job needs explicitConsent and
-              budgetConfirmed on that exact request; the default is a dry run.
+              Card-backed trial credits (Fal.ai, Veo via GCP, Stability AI) were removed. Only a
+              no-card free daily allowance remains; every job still needs explicitConsent and
+              budgetConfirmed on that exact request, and the default is a dry run.
             </span>
             <span style={small}>
               {(media || []).map((item) => `${item.label}: ${item.remaining}/${item.grantedCredits} credits left`).join(" · ") || "—"}
@@ -336,7 +340,7 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               {(catalog?.providers || []).filter((item) => item.transport).map((item) => item.label).join(" · ") || "—"}
             </span>
             <span style={small}>
-              {catalog?.freeCount ?? 0} free · {catalog?.count ?? 0} researched entries. A provider marked paid is skipped by the chain even with a saved key.
+              {catalog?.freeCount ?? 0} free · {catalog?.count ?? 0} registered entries — all free and card-free. Paid, prepaid and card-backed trial services were deleted, not skipped.
             </span>
           </Row>
         </div>

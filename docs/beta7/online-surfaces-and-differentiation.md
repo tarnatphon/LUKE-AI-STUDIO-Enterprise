@@ -20,7 +20,7 @@
 | เสา | สิ่งที่ LUKE ทำ | สิ่งที่คนอื่นทำ |
 | :--- | :--- | :--- |
 | **1. หลักฐาน ไม่ใช่คำสัญญา** | Egress Ledger บันทึกทุก outbound ของ online surfaces + รายงาน air-gap หนึ่งหน้า | แอป local-first (Jan / LM Studio / Ollama / Open WebUI / AnythingLLM) มีความเป็นส่วนตัวเป็นคำโฆษณา; LM Studio มี analytics + update check แบบ opt-out, Jan ไม่มี telemetry แต่ก็ไม่มี log ให้ตรวจ |
-| **2. ฟรีอย่างเดียว + ห้ามจ่าย + เลนไม่กรอง** | `freeOnly` ข้าม provider ที่ `paid: true` แม้มี key; หมดฟรี → local GGUF; มีสวิตช์ no-filter ที่บังคับ local | router ฟรี (FreeLLMAPI / OpenRouter / FCC) รวม free tier + failover ได้ แต่ไม่มีกฎ "ห้ามเสียเงิน" และไม่มีเลน local อยู่ข้างๆ |
+| **2. ฟรีอย่างเดียว + ห้ามจ่าย + เลนไม่กรอง** | ตัด provider ที่ต้องจ่าย/ต้องผูกบัตร/prepaid ออกจาก catalog และ transport **ไปเลย** (ไม่มีสวิตช์ให้เปิดกลับ); หมดฟรี → local GGUF; มีสวิตช์ no-filter ที่บังคับ local | router ฟรี (FreeLLMAPI / OpenRouter / FCC) รวม free tier + failover ได้ แต่ยังมีปลายทางแบบเสียเงินให้กด และไม่มีเลน local อยู่ข้างๆ |
 | **3. ครบวงจรในโปรเซสเดียว** | 4 engine + Workflow Builder + 24 ช่องทางโพสต์ + ปฏิทิน/Insights + storage DR | ฝั่ง cloud all-in-one (Krater / Poe / Monica / Artificial Studio) มี media แต่เป็น subscription; ฝั่ง scheduler (Buffer / Postiz / Hootsuite) มีแต่โพสต์ |
 
 จังหวะตลาด: hybrid routing แบบ *local by default, cloud on escalation* กำลังกลายเป็น
@@ -81,14 +81,21 @@
 **ไฟล์**: `scripts/config/ai-provider-catalog.json`, `scripts/server/ai-provider-catalog.cjs`,
 `scripts/server/online-surfaces.cjs`, `scripts/server/egress-ledger.cjs`
 
-- catalog เดียว 28 รายการ: `free` / `paid` / `requiresCard` / `uncensored` /
-  `modalities` / `transport` / `rateLimit` / `verifiedAt` / `sourceUrl`
-- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored):
+- catalog เดียว **10 รายการ** หลังตัดออก 18 รายการ: ทุกตัว `free=true`,
+  `paid=false`, `requiresCard=false`, `kind` เป็น `free-tier` หรือ `local` พร้อม
+  `uncensored` / `modalities` / `transport` / `rateLimit` / `verifiedAt` / `sourceUrl`
+  รายการที่ถูกลบ: `groq`, `arena`, `openai`, `anthropic`, `xai`, `azure`, `aws`,
+  `gcp`, `oci`, `amd`, `cerebras`, `sambanova`, `github_models`, `huggingface`,
+  `together`, `fireworks`, `coreweave`, `cohere` (trial-credit)
+- `no-pay` เป็น **invariant ไม่ใช่สวิตช์**: ไม่มี `freeOnly` ใน config อีกต่อไป
+  (export `NO_PAY = true`) และ `transportPolicy()` คืน `paid = !free` เสมอ
+  ฉะนั้นการแก้ catalog ด้วยมือให้ `paid=false` ทั้งที่ `free=false` ก็ยังใช้ไม่ได้
+  key เก่าที่ค้างในไฟล์ config (รวม legacy `key` ของ Arena router) ถูกปฏิเสธเงียบๆ
+- config `app/runtime-state/online-surfaces/config.json` (0600, gitignored) — **8 สวิตช์**:
 
 | flag | default | ความหมาย |
 | :--- | :--- | :--- |
 | `cloudForChat` | `true` | แชท online-first ตามที่เจ้าของงานเลือก |
-| `freeOnly` | `true` | ข้าม provider `paid: true` แม้บันทึก key |
 | `uncensoredMode` | `false` | ทุกเทิร์นอยู่ local GGUF |
 | `airGapMode` | `false` | บล็อก cloud ทุกเทิร์น + บันทึกการปฏิเสธ |
 | `gatewayEnabled` / `mcpEnabled` | `true` | ประตูสำหรับแอปอื่น |
@@ -101,9 +108,12 @@
 - `GET /api/egress/report` → attestation + SHA-256; `?format=text` → หน้าเดียว
   รายงานระบุ scope ชัดเจนว่าเป็นเฉพาะ LUKE online surfaces (OS/browser อยู่นอก scope)
 
-**กฎที่เขียนลงโค้ด**: `paid: true` → `streamRemoteChain()` ไม่เรียก + ledger บันทึก
-`blocked` พร้อมเหตุผล `free-only policy: this provider is marked paid`
-นี่คือสิ่งที่ทำให้ "ใช้ฟรีให้หมดก่อน แล้วค่อย local" บังคับใช้ได้จริง ไม่ใช่แค่คอมเมนต์
+**กฎที่เขียนลงโค้ด**: `PROVIDERS` ที่ลงทะเบียนอยู่มีแค่ `fcc / nvidia / gemini /
+mistral / openrouter / zai` ( Groq กับ Arena ถูกลบออกจาก object จริงๆ ไม่ใช่แค่ไม่ใส่ใน
+`DEFAULT_ORDER`) · `streamRemoteChain()` กรอง `provider.free !== true` ทิ้ง + ledger
+บันทึก `blocked` พร้อมเหตุผล `no-pay invariant: this provider is not a registered free tier`
+ไม่มีทางส่ง `freeOnly:false` ได้อีก — นี่คือสิ่งที่ทำให้ "ใช้ฟรีให้หมดก่อน แล้วค่อย local"
+บังคับใช้ได้จริง ไม่ใช่สวิตช์ที่เผลอปิดได้
 
 ---
 
@@ -151,21 +161,27 @@ route `/v1/chat/completions` ใน `serve.cjs`
 
 ---
 
-## 5. ระยะที่ 4 — สื่อออนไลน์แบบไม่มีทางเสียตังค์โดยอัตโนมัติ
+## 5. ระยะที่ 4 — สื่อออนไลน์ที่ตัดทางเสียตังค์ออกแล้ว
 
 **ไฟล์**: `scripts/server/online-media.cjs`
 
- frontier video/image generation **ไม่มี free tier แบบ recurring ในปี 2026**
- มีเพียง trial credit → ออกแบบเป็น "การตัดสินใจซื้อ" ไม่ใช่ fallback:
+Frontier video/image generation **ไม่มี free tier แบบ recurring ในปี 2026**
+เดิมมี trial credit แบบต้องผูกบัตร 3 เจ้า (Fal.ai ~$20, Veo via GCP ~$300,
+Stability AI) → **ลบออกจาก `PROVIDERS` ไปเลย** ตามคำสั่ง "ตัวไหนต้องเสียตังค์
+ให้ตัดออก" เหลือเพียง **Kling free daily allowance** (`noCard: true`) ที่ไม่ต้อง
+ผูกบัตร และไม่มี paid upgrade ถูกประกาศไว้ในโค้ด
+
+ด่านที่เหลือ (กันไม่ให้แม้แต่ free allowance ถูกใช้โดยไม่ตั้งใจ):
 
 1. ต้องเปิด `onlineMediaEnabled` เอง
-2. provider ต้องเป็น `trialOnly` ที่ประกาศไว้ (Fal.ai / Veo via GCP / Stability / Kling daily)
-3. `quote()` ต้องอยู่ใน grant หัก `spent` แล้ว
+2. provider ต้องเป็น `freeAllowance` + `noCard` ที่ประกาศไว้ (มีอยู่ตัวเดียว)
+3. `quote()` ต้องอยู่ใน allowance ของวัน หัก `spent` แล้ว
 4. ทุก request ต้องมี `explicitConsent: true` **และ** `budgetConfirmed: true`
-5. provider ที่ `requiresCard` ต้องมี `cardConfirmed: true`
-6. **default คือ dry run** — `live: true` เป็น flag แยกต่างหาก
+5. **default คือ dry run** — `live: true` เป็น flag แยกต่างหาก
+6. ไม่มี `cardConfirmed` อีกต่อไป เพราะไม่มี provider ที่ต้องใช้บัตร
 
-ถ้าขาดข้อใด → `400` พร้อมเหตุผล ไม่มีการเรียก network และไม่มีการตัด credit
+ถ้าขาดข้อใด → `400` พร้อมเหตุผล ไม่มีการเรียก network และไม่มีการตัด allowance
+เมื่อ allowance หมด → ใช้ engine รูป/วิดีโอในเครื่องแทน
 `GET /api/online-media/providers`, `POST /api/online-media/quote`,
 `POST /api/online-media/generate`
 
@@ -177,7 +193,7 @@ route `/v1/chat/completions` ใน `serve.cjs`
 | :--- | :--- | :--- |
 | GET | `/api/online-surfaces/status` | badge + policy + counters |
 | POST | `/api/online-surfaces/config` | สวิตช์นโยบาย |
-| GET | `/api/online-surfaces/catalog` | ตาราง 28 provider |
+| GET | `/api/online-surfaces/catalog` | ตาราง 10 provider ที่ฟรีและไม่ต้องใช้บัตร |
 | GET | `/api/egress/ledger` | รายการล่าสุด |
 | GET | `/api/egress/report` | attestation (`?format=text`) |
 | POST | `/api/egress/clear` | ต้อง `confirm: true` |
@@ -197,11 +213,15 @@ route `/v1/chat/completions` ใน `serve.cjs`
 
 1. **FCC เป็นคนถือราคาฝั่งใน** — LUKE บังคับได้แค่ catalog ของตัวเอง
    ต้องตั้ง FCC Admin ให้ใช้ free provider เท่านั้น / pin free model ref
-2. **`Groq` ถูก标记 `paid` ไว้แบบ conservative** — แหล่งข้อมูล 2026 ขัดกันระหว่าง
-   free plan สำหรับโมเดลเปิดกับการคิดต่อ token; ให้กดดูหน้า rate-limits จริงก่อนปลด flag
-   (คอมเมนต์เก่าใน repo เคยบอกว่าคิดเงิน, ข้อมูลใหม่บอกว่ามีฟรี → เลือกทางที่ไม่มีบิล)
-3. **Hugging Face / SambaNova / Cerebras** — ข้อมูลแหล่งไม่ตรงกัน / free tier หายไป
-   → mark ineligible + ต้อง probe ตอนรัน อย่า hardcode
+2. **Groq / Arena / OpenAI / Anthropic / xAI / Azure / AWS / GCP / OCI / AMD /
+   Cerebras / SambaNova / GitHub Models / Hugging Face / Together / Fireworks /
+   CoreWeave / Cohere ถูกลบออกจาก catalog และ transport แล้ว** — ไม่ใช่ "ปิดไว้"
+   แต่ไม่มี object ให้เรียก, ไม่มี key ที่อ่านกลับมา, ไม่มีสวิตช์ปลด
+   (Groq ข้อมูลปี 2026 ขัดกันระหว่าง free plan กับคิดต่อ token → ตัดทิ้งเลยดีกว่ารับบิล)
+3. **catalog ที่เหลือก็ยังหมุนเวียน** — โมเดล `:free` เปลี่ยนได้ทุกเดือน
+   → `verifiedAt` + ปุ่ม **List models / Test** ใน Settings คือเครื่องมือตรวจ
+   อย่า hardcode ว่าฟรีตลอดไป; ถ้าเจ้าไหนเริ่มคิดเงิน (`402`) chain จะเดินต่อไป
+   link ฟรีถัดไป หรือตกมา local GGUF ไม่มีทางจ่าย
 4. **"ไม่กรอง" ทำได้จริงเฉพาะ local weights** — ไม่มีความพยายามหลบ moderation
    ของ provider ใดๆ; hosted ที่ขายว่า uncensored ก็ยังบล็อก illegal content
 5. **Air-gap attestation พิสูจน์เฉพาะ LUKE online surfaces** — ต้องการหลักฐานระดับ
@@ -225,13 +245,16 @@ cd ../.. && ./mac.sh
 > ⚠️ ต้อง build ใหม่เพราะ `app/dist/` อยู่ใน `.gitignore`
 > ⚠️ zsh บน Mac ไม่เปิด `interactivecomments` — ห้ามวางบรรทัดที่มี `#` ต่อท้ายคำสั่ง
 
-1. เปิด Settings → **Online surfaces** → ดู badge และ 9 สวิตช์
+1. เปิด Settings → **Online surfaces** → ดู badge และ 8 สวิตช์
+   (ข้อความ "No paid provider is registered" ต้องปรากฏ และไม่มีสวิตช์ `freeOnly`)
 2. ปิดเน็ต → เปิดแอป → ยังใช้งานได้ (PWA shell) → `GET /api/egress/report?format=text`
    ต้องขึ้น `Allowed outbound requests: 0`
 3. ต่อ free provider → ส่งแชท → `cloud: {provider, model}` ปรากฏ → ledger มี `allowed`
    และ `paidCalls` ต้องเป็น `0`
-4. บันทึก key ของ provider ที่ mark paid → ส่งแชท → ต้องมี entry `blocked` เหตุผล
-   `free-only policy` และไม่มี request ไปหาเจ้านั้น
+4. ลอง `POST /api/text-runtime/remote-provider/key` ด้วย `providerId: "groq"`
+   → ต้อง `400` "There is no provider called groq" (ไม่มี object ให้บันทึก)
+   → ถ้าแก้ไฟล์ config ด้วยมือใส่ key แล้ว ส่งแชท ต้องมี entry `blocked` เหตุผล
+   `no-pay invariant` และไม่มี request ออกไปหาเจ้านั้น
 5. เปิด `Air-gap proof mode` → ทุกเทิร์นอยู่ local + ledger บันทึกการปฏิเสธ
 6. มือถือใน LAN → กด **Pair a device** → ใส่ `x-luke-pair` → เข้า UI ได้
 7. ตั้ง base URL ของแอปอื่นเป็น `http://127.0.0.1:1420/v1` → `/chat/completions` ตอบ

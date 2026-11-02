@@ -24447,7 +24447,7 @@ const handleRequest = async (req, res) => {
       created: Math.floor(Date.now() / 1000),
       model: modelName,
       choices: [{ index: 0, message: { role: "assistant", content: answer.content }, finish_reason: "stop" }],
-      luke: { provider: answer.providerId, freeOnly: gatewayPolicy.freeOnly !== false },
+      luke: { provider: answer.providerId, noPay: onlineSurfaces.NO_PAY },
     });
   }
 

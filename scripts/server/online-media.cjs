@@ -1,24 +1,25 @@
 "use strict";
 
 /**
- * Online media generation — phase 4, with the "never auto-paid" rule baked in.
+ * Online media generation — phase 4, with every billable path removed.
  *
- * Frontier image/video/audio generation has no recurring free tier in 2026;
- * what exists is one-time trial credit. This module therefore treats every
- * request as a purchase decision, not as a fallback:
+ * Frontier image/video generation has no recurring free tier in 2026. The
+ * card-backed trial-credit offers (Fal.ai, Veo via GCP, Stability AI) were
+ * removed outright at the owner's request: anything that costs money or needs
+ * a payment card is not registered here at all. Only a no-card free daily
+ * allowance remains.
+ *
+ * What is left is still not automatic:
  *
  *   - the surface must be switched on by the owner in Settings;
- *   - the provider must be a declared trial-credit provider;
- *   - the quoted credits must fit inside the declared grant minus what was
- *     already spent;
+ *   - the provider must be the declared no-card free allowance;
+ *   - the quoted allowance must fit inside what is left for today;
  *   - the owner must send explicitConsent AND budgetConfirmed on THIS request;
- *   - a provider that needs a card also needs cardConfirmed;
  *   - and even then the default is a dry run. `live: true` is a separate,
  *     deliberate flag.
  *
- * A missing consent is a 400, not a silent charge. A paid provider is never
- * reachable through the free-only chain, and this module never reads a key
- * from that chain.
+ * A missing consent is a 400, not a silent dispatch. No paid provider exists
+ * in this module, and it never reads a key from the chat chain.
  */
 
 const fs = require("node:fs");
@@ -27,46 +28,19 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_SPEND_FILE = path.join(ROOT, "app", "runtime-state", "online-media", "spend.json");
 
+// Fal.ai ($20 card-backed trial), Veo via GCP ($300 card-backed trial) and
+// Stability AI (card-backed trial) used to be here. All three needed a payment
+// card, so all three were deleted — not hidden behind a consent checkbox.
 const PROVIDERS = Object.freeze({
-  fal_trial: {
-    id: "fal_trial",
-    label: "Fal.ai trial credit (Sora/Veo-class video)",
-    kind: "video",
-    grantedCredits: 20,
-    requiresCard: true,
-    trialOnly: true,
-    host: "https://fal.ai",
-    note: "Reported ~$20 of starting credit; verify the current offer on the provider's pricing page before confirming.",
-  },
-  veo_gcp_trial: {
-    id: "veo_gcp_trial",
-    label: "Google Veo via GCP trial credit",
-    kind: "video",
-    grantedCredits: 300,
-    requiresCard: true,
-    trialOnly: true,
-    host: "https://cloud.google.com",
-    note: "$300 cloud trial, card required. Never a recurring free tier.",
-  },
-  stability_trial: {
-    id: "stability_trial",
-    label: "Stability AI trial credit",
-    kind: "image",
-    grantedCredits: 25,
-    requiresCard: true,
-    trialOnly: true,
-    host: "https://stability.ai",
-    note: "One-time trial credit for image/video generation.",
-  },
   kling_free: {
     id: "kling_free",
-    label: "Kling free daily allowance",
+    label: "Kling free daily allowance (no card)",
     kind: "video",
     grantedCredits: 6,
-    requiresCard: false,
-    trialOnly: true,
+    noCard: true,
+    freeAllowance: true,
     host: "https://klingai.com",
-    note: "A small recurring daily allowance reported in 2026; probe availability before use.",
+    note: "A small recurring free daily allowance reported in 2026. When it is spent LUKE falls back to the local image/video engines; there is no paid upgrade registered.",
   },
 });
 
@@ -123,9 +97,10 @@ function quote(providerId, kind = "image") {
   const remaining = Math.max(0, provider.grantedCredits - spent);
   const reasons = [];
 
-  if (!provider.trialOnly) reasons.push("This provider is not a trial-credit provider.");
-  if (credits > remaining) reasons.push("The trial grant is spent.");
-  if (provider.requiresCard) reasons.push("A card is on file; cardConfirmed is required.");
+  if (!provider.freeAllowance || provider.noCard !== true) {
+    reasons.push("This provider is not a registered no-card free allowance.");
+  }
+  if (credits > remaining) reasons.push("Today's free allowance is spent.");
 
   return {
     providerId: provider.id,
@@ -135,7 +110,7 @@ function quote(providerId, kind = "image") {
     grantedCredits: provider.grantedCredits,
     spent,
     remaining,
-    requiresCard: provider.requiresCard,
+    noCard: provider.noCard === true,
     eligible: reasons.length === 0,
     reasons,
   };
@@ -160,13 +135,10 @@ async function generate(request = {}, options = {}) {
   if (!prompt) throw httpError("A prompt is required.");
   if (!quoted.eligible) throw httpError(quoted.reasons.join(" "));
   if (request.explicitConsent !== true) {
-    throw httpError("This needs explicitConsent: true on this request. LUKE never starts a paid job by itself.");
+    throw httpError("This needs explicitConsent: true on this request. LUKE never starts an online media job by itself.");
   }
   if (request.budgetConfirmed !== true) {
-    throw httpError("Confirm the quoted credits with budgetConfirmed: true.");
-  }
-  if (quoted.requiresCard && request.cardConfirmed !== true) {
-    throw httpError("This provider needs a card. Send cardConfirmed: true only if you accept that.");
+    throw httpError("Confirm the quoted free allowance with budgetConfirmed: true.");
   }
 
   const recordEgress = typeof options.recordEgress === "function" ? options.recordEgress : () => {};
@@ -180,7 +152,7 @@ async function generate(request = {}, options = {}) {
     method: "POST",
     bytes,
     decision: dryRun ? "blocked" : "allowed",
-    reason: dryRun ? "consented dry run" : "consented trial-credit dispatch",
+    reason: dryRun ? "consented dry run" : "consented free-allowance dispatch",
   });
 
   if (dryRun) {

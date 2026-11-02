@@ -4,10 +4,14 @@
  * Online surfaces — the single switchboard for phases 1 to 4.
  *
  * One small, owner-only config file decides whether Chat may borrow a free
- * brain, whether a paid provider may ever be tried, whether the "no filter"
- * lane overrides everything, and whether the LAN / MCP / channel / media
- * surfaces are open. Everything is off except online-first Chat and the
- * free-only rule, both of which the owner asked for explicitly.
+ * brain, whether the "no filter" lane overrides everything, and whether the
+ * LAN / MCP / channel / media surfaces are open. Everything is off except
+ * online-first Chat, which the owner asked for explicitly.
+ *
+ * No-pay is NOT a setting. Every provider that billed, needed a card, was
+ * prepaid, or was a card-backed trial credit was removed from the catalogue
+ * and from the transport registry outright. There is no `freeOnly` switch to
+ * turn off, so a stale key or a hand-edited config cannot buy anything.
  *
  * `airGapMode` is the hard stop: with it on, no cloud turn is attempted at all
  * and every would-be departure is recorded as blocked, which is what makes the
@@ -24,9 +28,11 @@ const aiCatalog = require("./ai-provider-catalog.cjs");
 const egressLedger = require("./egress-ledger.cjs");
 const lanPairing = require("./lan-pairing.cjs");
 
+/** Exported so tests and the UI can state the invariant without a switch. */
+const NO_PAY = true;
+
 const DEFAULTS = Object.freeze({
   cloudForChat: true,
-  freeOnly: true,
   uncensoredMode: false,
   airGapMode: false,
   gatewayEnabled: true,
@@ -133,6 +139,7 @@ function status() {
   return {
     config: getConfig(),
     defaults: { ...DEFAULTS },
+    noPay: NO_PAY,
     badge: badge(),
     catalog: {
       verifiedAt: catalog.verifiedAt,
@@ -149,6 +156,7 @@ function status() {
 
 module.exports = {
   DEFAULTS,
+  NO_PAY,
   configFile,
   getConfig,
   setConfig,

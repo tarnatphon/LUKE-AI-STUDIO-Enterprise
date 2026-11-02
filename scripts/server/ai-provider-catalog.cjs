@@ -8,9 +8,12 @@
  * scripts/config/ai-provider-catalog.json with a visible `verifiedAt` date and
  * a source URL. This file only reads them; it never decides pricing by itself.
  *
- * The hard rule is in the data, not in a comment: `paid: true` means the chain
- * skips the provider whenever freeOnly is on — even when a key is saved. That
- * is what makes "use every free thing before spending a satang" enforceable.
+ * Paid, prepaid, subscription, card-backed trial-credit and hardware entries
+ * were removed from the catalogue outright. There is no "allow paid" switch
+ * left anywhere: the chain only ever calls a provider whose catalogue entry
+ * says free=true. An unknown id fails closed. That is what makes "use every
+ * free thing, then fall back to local — never pay" structural rather than a
+ * setting someone can turn off.
  */
 
 const fs = require("node:fs");
@@ -50,10 +53,13 @@ function entryFor(providerId) {
 function transportPolicy(providerId, fallback = {}) {
   const entry = entryFor(providerId);
 
-  // Fail closed. An unknown provider is never assumed free.
+  // Fail closed. An unknown provider is never assumed free, and `paid` is
+  // derived from `free` rather than trusted as a separate field — a hand-edited
+  // catalogue cannot resurrect a billable link by flipping one flag.
+  const free = entry ? entry.free === true : fallback.free === true;
   return {
-    free: entry ? entry.free === true : fallback.free === true,
-    paid: entry ? entry.paid === true : fallback.paid !== false,
+    free,
+    paid: !free,
     modalities: entry && Array.isArray(entry.modalities)
       ? entry.modalities
       : (Array.isArray(fallback.modalities) ? fallback.modalities : ["text"]),
@@ -75,7 +81,7 @@ function summary() {
     group: entry.group,
     kind: entry.kind,
     free: entry.free === true,
-    paid: entry.paid === true,
+    paid: entry.free !== true,
     requiresCard: entry.requiresCard === true,
     uncensored: entry.uncensored === true,
     modalities: Array.isArray(entry.modalities) ? entry.modalities : [],

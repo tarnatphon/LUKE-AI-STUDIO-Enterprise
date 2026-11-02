@@ -60,17 +60,28 @@ function readSource(relative) {
 async function main() {
   const serveSource = readSource(path.join("scripts", "server", "serve.cjs"));
 
-  // ── 1. The catalogue is the single source of free/paid truth ──────────────
-  section("1. One catalogue, with a date the user can see");
+  // ── 1. The catalogue contains free, card-free providers only ──────────────
+  section("1. One catalogue, with every billable option removed");
   const catalog = aiCatalog.readCatalog();
-  check("the catalogue loads", catalog.providers.length >= 20, String(catalog.providers.length));
+  check("the catalogue loads", catalog.providers.length >= 8, String(catalog.providers.length));
   check("it carries a verification date", /^\d{4}-\d{2}-\d{2}$/.test(catalog.verifiedAt), catalog.verifiedAt);
-  check("every entry says whether it is free and paid",
-    catalog.providers.every((entry) => typeof entry.free === "boolean" && typeof entry.paid === "boolean"));
+  check("every entry is free, not paid, and needs no card",
+    catalog.providers.every((entry) => entry.free === true && entry.paid === false && entry.requiresCard === false));
+  check("only recurring free tiers and local providers remain",
+    catalog.providers.every((entry) => ["free-tier", "local"].includes(entry.kind)));
   check("every entry names its modalities and a source",
     catalog.providers.every((entry) => Array.isArray(entry.modalities) && typeof entry.sourceUrl === "string"));
-  check("the paid links are exactly the ones the chain must skip",
-    catalog.providers.filter((entry) => entry.paid && entry.transport).every((entry) => ["groq", "arena"].includes(entry.id)));
+  const REMOVED = [
+    "groq", "arena", "openai", "anthropic", "xai", "azure", "aws", "gcp", "oci",
+    "amd", "cerebras", "sambanova", "github_models", "huggingface", "together",
+    "fireworks", "coreweave", "cohere",
+  ];
+  check("nothing that costs money or needs a card is registered",
+    REMOVED.every((id) => !catalog.providers.some((entry) => entry.id === id)));
+  check("no transport provider is paid",
+    Object.values(remoteProvider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false));
+  check("Groq and the Arena router are deleted from the transport registry",
+    !remoteProvider.PROVIDERS.groq && !remoteProvider.PROVIDERS.arena);
   check("a provider missing from the catalogue fails closed",
     aiCatalog.transportPolicy("no-such-provider").free === false
     && aiCatalog.transportPolicy("no-such-provider").paid === true);
@@ -85,8 +96,9 @@ async function main() {
   section("2. Policy defaults and the four hard stops");
   const defaults = onlineSurfaces.getConfig();
   check("online-first Chat is on by default", defaults.cloudForChat === true);
-  check("free-only is on by default", defaults.freeOnly === true);
-  check("the paid / channel / media surfaces are off by default",
+  check("no-pay is an invariant, not a switch",
+    !("freeOnly" in defaults) && onlineSurfaces.NO_PAY === true);
+  check("the local-only / channel / media surfaces are off by default",
     defaults.uncensoredMode === false && defaults.airGapMode === false
     && defaults.channelsEnabled === false && defaults.onlineMediaEnabled === false);
   check("a Work turn is allowed", onlineSurfaces.cloudDecision("work").allowed === true);
@@ -109,8 +121,11 @@ async function main() {
     /No-filter lane/.test(onlineSurfaces.cloudDecision("work").reason));
   onlineSurfaces.setConfig({ uncensoredMode: false, rateLimitRetry: 0 });
   let badPatch = false;
-  try { onlineSurfaces.setConfig({ freeOnly: "yes" }); } catch { badPatch = true; }
+  try { onlineSurfaces.setConfig({ cloudForChat: "yes" }); } catch { badPatch = true; }
   check("a non-boolean switch is refused", badPatch);
+  const ignored = onlineSurfaces.setConfig({ freeOnly: false });
+  check("a hand-written freeOnly:false is ignored — there is no paid path to enable",
+    !("freeOnly" in ignored.config) && ignored.changed.length === 0);
   check("the config file is owner-only",
     (fs.statSync(onlineSurfaces.configFile()).mode & 0o777) === 0o600);
 
@@ -129,10 +144,10 @@ async function main() {
   });
   egressLedger.record({
     surface: "cloud-chain",
-    provider: "groq",
-    url: "https://api.groq.com/openai/v1/chat/completions",
+    provider: "__unregistered_paid_probe",
+    url: "https://paid.example/v1/chat/completions",
     decision: "blocked",
-    reason: "free-only policy",
+    reason: "no-pay invariant",
     paid: true,
   });
   const rows = egressLedger.list();
@@ -140,7 +155,7 @@ async function main() {
   check("only the host is kept, never a query or a secret",
     rows[0].host === "https://integrate.api.nvidia.com"
     && !JSON.stringify(rows).includes("SECRET-SHOULD-NOT-BE-STORED"));
-  check("the blocked paid link is counted as blocked, not allowed",
+  check("the refused billable link is counted as blocked, not allowed",
     egressLedger.stats().blocked === 1 && egressLedger.stats().allowed === 1);
   check("no paid endpoint was actually called", egressLedger.stats().paidCalls === 0);
   check("credentials in a URL are stripped",
@@ -289,12 +304,17 @@ async function main() {
   check("an unknown channel is refused",
     await channelRelay.send("carrier-pigeon", { text: "hi" }).then(() => false).catch((e) => e.statusCode === 400));
 
-  // ── 8. Online media: consent on every single job ─────────────────────────
-  section("8. Trial credit never becomes an automatic charge");
+  // ── 8. Online media: no card, no bill, consent on every job ──────────────
+  section("8. Card-backed trial credits are gone; only a free allowance remains");
   onlineMedia.resetSpend();
   const mediaProviders = onlineMedia.providers();
-  check("only declared trial providers are offered", mediaProviders.length === 4
-    && mediaProviders.every((entry) => entry.trialOnly === true));
+  check("only one no-card free allowance is registered", mediaProviders.length === 1
+    && mediaProviders.every((entry) => entry.noCard === true && entry.requiresCard !== true));
+  check("Fal.ai, Veo via GCP and Stability AI were deleted",
+    !mediaProviders.some((entry) => ["fal_trial", "veo_gcp_trial", "stability_trial"].includes(entry.id)));
+  let removedMediaRejected = false;
+  try { onlineMedia.quote("fal_trial", "video"); } catch { removedMediaRejected = true; }
+  check("a deleted card-backed provider cannot even be quoted", removedMediaRejected);
   const mediaQuote = onlineMedia.quote("kling_free", "video");
   check("a quote says what the job costs", mediaQuote.credits > 0 && mediaQuote.eligible === true);
   check("no consent means no job",
@@ -303,9 +323,8 @@ async function main() {
   check("consent without a budget confirmation is still refused",
     await onlineMedia.generate({ providerId: "kling_free", prompt: "a cat", explicitConsent: true }).then(() => false)
       .catch((e) => /budgetConfirmed/.test(e.message)));
-  check("a card-backed provider needs cardConfirmed too",
-    await onlineMedia.generate({ providerId: "fal_trial", prompt: "a cat", explicitConsent: true, budgetConfirmed: true })
-      .then(() => false).catch((e) => /cardConfirmed/.test(e.message)));
+  check("there is no cardConfirmed path left",
+    !/cardConfirmed|requiresCard/.test(readSource(path.join("scripts", "server", "online-media.cjs"))));
   const sent = [];
   const consented = await onlineMedia.generate({
     providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, budgetConfirmed: true,
@@ -324,8 +343,8 @@ async function main() {
   });
   check("live: true dispatches and debits the grant",
     liveMedia.dryRun === false && onlineMedia.providers().find((p) => p.id === "kling_free").spent === mediaQuote.credits);
-  check("an ordinary paid provider is not in the media catalogue",
-    !mediaProviders.some((entry) => entry.id === "openai"));
+  check("no paid provider is in the media catalogue",
+    mediaProviders.every((entry) => entry.paid !== true && entry.freeAllowance === true));
 
   // ── 9. PWA and zero static egress ────────────────────────────────────────
   section("9. Installable shell with no external font call");
@@ -369,6 +388,10 @@ async function main() {
     /onlineSurfaces\.cloudDecision\(body\.assistantMode\)/.test(serveSource));
   check("the chain receives the policy and the ledger hook",
     /policy,\s*onEgress: \(entry\) => egressLedger\.record\(entry\)/.test(serveSource));
+  check("the external gateway advertises the no-pay invariant, not a switch",
+    /noPay: onlineSurfaces\.NO_PAY/.test(serveSource));
+  check("no freeOnly switch survives in the live server",
+    !/freeOnly/.test(serveSource));
 
   // ── 11. README tells the truth ───────────────────────────────────────────
   section("11. Positioning is honest");
@@ -377,14 +400,18 @@ async function main() {
     /Offline by default · Online on your terms/.test(readme));
   check("the no-filter lane is documented", /No-filter local lane/.test(readme));
   check("the online-surfaces doc is linked", /online-surfaces-and-differentiation\.md/.test(readme));
+  check("the README says no paid provider is registered",
+    /No paid provider is registered at all/.test(readme));
   check("the new doc exists", fs.existsSync(path.join(root, "docs", "beta7", "online-surfaces-and-differentiation.md")));
 
-  // ── 12. freeOnly over a real socket ──────────────────────────────────────
-  section("12. A saved paid key is still never called");
+  // ── 12. No-pay over a real socket ────────────────────────────────────────
+  // Groq/Arena no longer exist, so a paid-shaped provider is injected ONLY for
+  // this test. It proves the invariant still holds if a stale config file, a
+  // hand edit, or a future mistake ever puts a billable link back in `order`.
+  section("12. Even a stale paid key can never reach the network");
   const seenKeys = [];
   const gateway = http.createServer((req, res) => {
-    let raw = "";
-    req.on("data", (chunk) => { raw += chunk; });
+    req.on("data", () => {});
     req.on("end", () => {
       seenKeys.push(String(req.headers.authorization || ""));
       res.writeHead(200, { "content-type": "text/event-stream" });
@@ -396,39 +423,51 @@ async function main() {
   await new Promise((resolve) => gateway.listen(0, "127.0.0.1", resolve));
   process.env.LUKE_REMOTE_PROVIDER_BASE_URL = `http://127.0.0.1:${gateway.address().port}/v1`;
 
+  remoteProvider.PROVIDERS.__paid_probe = {
+    id: "__paid_probe",
+    label: "Paid probe (test only)",
+    baseUrl: "https://paid.example/v1",
+    model: "paid/model",
+    docs: "none",
+    note: "test only",
+    free: false,
+    paid: true,
+    modalities: ["text"],
+  };
+
   fs.writeFileSync(process.env.LUKE_REMOTE_PROVIDER_FILE, `${JSON.stringify({
-    keys: { nvidia: "nvapi-TEST-KEY-00000001", groq: "gsk-TEST-KEY-00000002" },
-    enabled: {}, bases: {}, models: {}, order: ["groq", "nvidia"], useLocalFallback: true,
+    keys: { nvidia: "nvapi-TEST-KEY-00000001", __paid_probe: "paid-TEST-KEY-00000002" },
+    enabled: {}, bases: {}, models: {}, order: ["__paid_probe", "nvidia"], useLocalFallback: true,
   }, null, 2)}\n`);
 
   const freeEgress = [];
   const freeResult = await remoteProvider.streamRemoteChain({
     messages: [{ role: "user", content: "hello" }],
-    policy: { freeOnly: true },
     cooldownMs: 0,
     onEgress: (entry) => freeEgress.push(entry),
   });
   check("the chain still answers", freeResult.content === "free answer", freeResult.content);
-  check("the paid provider was not called",
-    !seenKeys.some((key) => key.includes("gsk-TEST-KEY")), seenKeys.join(" | "));
+  check("the injected paid link was never called",
+    !seenKeys.some((key) => key.includes("paid-TEST-KEY")), seenKeys.join(" | "));
   check("only the free key left this machine",
     seenKeys.length === 1 && seenKeys[0].includes("nvapi-TEST-KEY"), seenKeys.join(" | "));
   check("the refusal is in the ledger hook",
-    freeEgress.some((entry) => entry.decision === "blocked" && /free-only policy/.test(entry.reason)));
+    freeEgress.some((entry) => entry.decision === "blocked" && /no-pay invariant/.test(entry.reason)));
 
   seenKeys.length = 0;
-  const allowedEgress = [];
+  const noSwitchEgress = [];
   await remoteProvider.streamRemoteChain({
     messages: [{ role: "user", content: "hello" }],
     policy: { freeOnly: false },
     cooldownMs: 0,
-    onEgress: (entry) => allowedEgress.push(entry),
+    onEgress: (entry) => noSwitchEgress.push(entry),
   });
-  check("turning free-only off really does let the paid link answer",
-    seenKeys.length === 1 && seenKeys[0].includes("gsk-TEST-KEY"), seenKeys.join(" | "));
-  check("and that departure is marked paid in the ledger hook",
-    allowedEgress.some((entry) => entry.paid === true));
+  check("passing freeOnly:false changes nothing — no paid path exists",
+    !seenKeys.some((key) => key.includes("paid-TEST-KEY")), seenKeys.join(" | "));
+  check("and the refusal is still marked paid in the ledger hook",
+    noSwitchEgress.some((entry) => entry.paid === true && entry.decision === "blocked"));
 
+  delete remoteProvider.PROVIDERS.__paid_probe;
   gateway.close();
   delete process.env.LUKE_REMOTE_PROVIDER_BASE_URL;
 }
