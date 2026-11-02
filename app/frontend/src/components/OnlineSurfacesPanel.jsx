@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, Globe2, Radio, PlugZap, Bot, Video, Copy, RefreshCw } from "lucide-react";
+import { ShieldCheck, Globe2, Radio, Bot, Copy, RefreshCw } from "lucide-react";
 
 /**
- * One panel for the four online phases. Everything here is opt-in and
+ * One panel for the online surfaces that remain. Everything here is opt-in and
  * owner-controlled; the panel never receives a key, a bot token or a pairing
  * token after the moment it is created.
  *
- * The badge text comes from the server, so the UI cannot claim "air-gap" while
- * the ledger says something went out.
+ * Online media generation was removed: images, video and audio are produced by
+ * the local engines only. The badge text comes from the server, so the UI
+ * cannot claim "air-gap" while the ledger says something went out.
  */
 
 const SWITCHES = [
@@ -17,7 +18,6 @@ const SWITCHES = [
   { key: "gatewayEnabled", label: "External /v1 gateway", hint: "Other apps can point an OpenAI-compatible client at this machine." },
   { key: "mcpEnabled", label: "MCP tools for editors", hint: "Exposes read-only status and chat tools over JSON-RPC." },
   { key: "channelsEnabled", label: "Telegram / Discord / LINE relay", hint: "Webhook mode; tokens stay in a 0600 file on the server." },
-  { key: "onlineMediaEnabled", label: "Online media (free allowance)", hint: "Only a no-card free daily allowance; consent on every job." },
   { key: "rateLimitRetry", label: "Retry a 429 once", hint: "Uses more of a free minute-quota before moving to the next link." },
 ];
 
@@ -50,7 +50,6 @@ export default function OnlineSurfacesPanel({ showAlert }) {
   const [channelPlatform, setChannelPlatform] = useState("telegram");
   const [channelToken, setChannelToken] = useState("");
   const [channelSecret, setChannelSecret] = useState("");
-  const [media, setMedia] = useState(null);
   const [busy, setBusy] = useState("");
 
   const post = useCallback(async (url, body) => {
@@ -68,19 +67,17 @@ export default function OnlineSurfacesPanel({ showAlert }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [statusResult, ledgerResult, lanResult, channelsResult, mediaResult, catalogResult] = await Promise.all([
+      const [statusResult, ledgerResult, lanResult, channelsResult, catalogResult] = await Promise.all([
         fetch("/api/online-surfaces/status").then((r) => r.json()),
         fetch("/api/egress/ledger").then((r) => r.json()),
         fetch("/api/lan/status").then((r) => r.json()),
         fetch("/api/channels/status").then((r) => r.json()),
-        fetch("/api/online-media/providers").then((r) => r.json()),
         fetch("/api/online-surfaces/catalog").then((r) => r.json()),
       ]);
       setStatus(statusResult.status || statusResult);
       setLedger(ledgerResult.entries || []);
       setLan(lanResult.lan || null);
       setChannels(channelsResult.channels || null);
-      setMedia(mediaResult.providers || []);
       setCatalog(catalogResult.catalog || null);
     } catch {
       // The server is not up yet; the panel simply stays unconfigured.
@@ -315,24 +312,15 @@ export default function OnlineSurfacesPanel({ showAlert }) {
             </span>
           </Row>
 
-          <Row title="Online media — no-card free allowance only">
+          <Row title="Media stays on this machine">
             <span className="settings-option-desc">
-              Card-backed trial credits (Fal.ai, Veo via GCP, Stability AI) were removed. Only a
-              no-card free daily allowance remains; every job still needs explicitConsent and
-              budgetConfirmed on that exact request, and the default is a dry run.
+              Images (Stable Diffusion), speech (Whisper), voices (Kokoro) and image-to-video are
+              generated locally. The online media subsystem, its endpoints and its switches were
+              removed — there is no external image, video or audio generation endpoint to call.
             </span>
             <span style={small}>
-              {(media || []).map((item) => `${item.label}: ${item.remaining}/${item.grantedCredits} credits left`).join(" · ") || "—"}
+              No media allowance to spend, no consent flow to approve, no billable fallback.
             </span>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
-              <button
-                type="button"
-                className="m3-button-outlined"
-                onClick={() => post("/api/online-media/quote", { providerId: "kling_free", kind: "video" }).then(() => refresh()).catch((e) => showAlert?.({ title: "Media quote", message: e.message }))}
-              >
-                <Video size={14} /> Quote a dry run
-              </button>
-            </div>
           </Row>
 
           <Row title="Provider catalogue">

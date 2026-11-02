@@ -1,17 +1,20 @@
 "use strict";
 
 /**
- * Online surfaces — the single switchboard for phases 1 to 4.
+ * Online surfaces — the single switchboard for the free-cloud policy.
  *
  * One small, owner-only config file decides whether Chat may borrow a free
  * brain, whether the "no filter" lane overrides everything, and whether the
- * LAN / MCP / channel / media surfaces are open. Everything is off except
- * online-first Chat, which the owner asked for explicitly.
+ * LAN / MCP / channel surfaces are open. The no-filter and air-gap lanes are
+ * off until the owner turns them on; online-first Chat is on because the owner
+ * asked for it explicitly.
  *
  * No-pay is NOT a setting. Every provider that billed, needed a card, was
  * prepaid, or was a card-backed trial credit was removed from the catalogue
- * and from the transport registry outright. There is no `freeOnly` switch to
- * turn off, so a stale key or a hand-edited config cannot buy anything.
+ * and from the transport registry outright. The external media subsystem was
+ * deleted too: images, video and audio are generated locally. There is no
+ * `freeOnly` switch to turn off, so a stale key or a hand-edited config cannot
+ * buy anything.
  *
  * `airGapMode` is the hard stop: with it on, no cloud turn is attempted at all
  * and every would-be departure is recorded as blocked, which is what makes the
@@ -38,7 +41,6 @@ const DEFAULTS = Object.freeze({
   gatewayEnabled: true,
   mcpEnabled: true,
   channelsEnabled: false,
-  onlineMediaEnabled: false,
   rateLimitRetry: 0,
 });
 

@@ -141,8 +141,9 @@ function report() {
     `Ledger SHA-256: ${digest}`,
     "",
     "Scope: this attests to outbound HTTP requests made through LUKE's online",
-    "surfaces (the free cloud chain, channel relay, media dispatch and the",
-    "external gateway). OS, browser and third-party traffic are out of scope.",
+    "surfaces (the free cloud chain, channel relay and external gateway).",
+    "OS, browser and third-party traffic are out of scope. Media generation",
+    "is local only and never produces an outbound request.",
     "A zero-entry report means LUKE recorded no departures in the retained",
     "window; verify at the network layer for regulated work.",
   ].join("\n");

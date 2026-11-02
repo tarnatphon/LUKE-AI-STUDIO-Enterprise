@@ -1,12 +1,14 @@
 "use strict";
 
 /**
- * Online surfaces, phases 1–4, without leaving this machine.
+ * Online surfaces and the no-pay invariant, without leaving this machine.
  *
  * Every state file is pointed at a throwaway directory before a single module
  * is loaded, and every outbound call is either a local stand-in socket or an
  * injected transport. That is the point: the suite proves the policy, the
  * ledger and the consent gates, not that a free provider happens to be up.
+ * External media generation was removed entirely, so its former tests now
+ * assert that the module, the routes and the switches no longer exist.
  *
  * Run: node scripts/validation/test-online-surfaces.cjs
  */
@@ -23,7 +25,6 @@ process.env.LUKE_ONLINE_SURFACES_FILE = path.join(scratch, "surfaces.json");
 process.env.LUKE_EGRESS_LEDGER_FILE = path.join(scratch, "ledger.jsonl");
 process.env.LUKE_LAN_PAIRING_FILE = path.join(scratch, "lan.json");
 process.env.LUKE_CHANNEL_RELAY_FILE = path.join(scratch, "channels.json");
-process.env.LUKE_ONLINE_MEDIA_SPEND_FILE = path.join(scratch, "media-spend.json");
 process.env.LUKE_REMOTE_PROVIDER_FILE = path.join(scratch, "providers.json");
 
 const aiCatalog = require(path.join(root, "scripts", "server", "ai-provider-catalog.cjs"));
@@ -32,7 +33,6 @@ const lanPairing = require(path.join(root, "scripts", "server", "lan-pairing.cjs
 const onlineSurfaces = require(path.join(root, "scripts", "server", "online-surfaces.cjs"));
 const mcpServer = require(path.join(root, "scripts", "server", "mcp-server.cjs"));
 const channelRelay = require(path.join(root, "scripts", "server", "channel-relay.cjs"));
-const onlineMedia = require(path.join(root, "scripts", "server", "online-media.cjs"));
 const contentParts = require(path.join(root, "scripts", "server", "content-parts.cjs"));
 const remoteProvider = require(path.join(root, "scripts", "server", "remote-text-provider.cjs"));
 
@@ -98,9 +98,11 @@ async function main() {
   check("online-first Chat is on by default", defaults.cloudForChat === true);
   check("no-pay is an invariant, not a switch",
     !("freeOnly" in defaults) && onlineSurfaces.NO_PAY === true);
-  check("the local-only / channel / media surfaces are off by default",
+  check("the local-only / channel surfaces are off by default",
     defaults.uncensoredMode === false && defaults.airGapMode === false
-    && defaults.channelsEnabled === false && defaults.onlineMediaEnabled === false);
+    && defaults.channelsEnabled === false);
+  check("no online-media switch is registered at all",
+    !("onlineMediaEnabled" in defaults));
   check("a Work turn is allowed", onlineSurfaces.cloudDecision("work").allowed === true);
   check("a Chat turn is allowed too", onlineSurfaces.cloudDecision("chat").allowed === true);
   check("an unmarked turn is treated as chat", onlineSurfaces.cloudDecision(undefined).mode === "chat");
@@ -304,47 +306,26 @@ async function main() {
   check("an unknown channel is refused",
     await channelRelay.send("carrier-pigeon", { text: "hi" }).then(() => false).catch((e) => e.statusCode === 400));
 
-  // ── 8. Online media: no card, no bill, consent on every job ──────────────
-  section("8. Card-backed trial credits are gone; only a free allowance remains");
-  onlineMedia.resetSpend();
-  const mediaProviders = onlineMedia.providers();
-  check("only one no-card free allowance is registered", mediaProviders.length === 1
-    && mediaProviders.every((entry) => entry.noCard === true && entry.requiresCard !== true));
-  check("Fal.ai, Veo via GCP and Stability AI were deleted",
-    !mediaProviders.some((entry) => ["fal_trial", "veo_gcp_trial", "stability_trial"].includes(entry.id)));
-  let removedMediaRejected = false;
-  try { onlineMedia.quote("fal_trial", "video"); } catch { removedMediaRejected = true; }
-  check("a deleted card-backed provider cannot even be quoted", removedMediaRejected);
-  const mediaQuote = onlineMedia.quote("kling_free", "video");
-  check("a quote says what the job costs", mediaQuote.credits > 0 && mediaQuote.eligible === true);
-  check("no consent means no job",
-    await onlineMedia.generate({ providerId: "kling_free", prompt: "a cat" }).then(() => false)
-      .catch((e) => /explicitConsent/.test(e.message)));
-  check("consent without a budget confirmation is still refused",
-    await onlineMedia.generate({ providerId: "kling_free", prompt: "a cat", explicitConsent: true }).then(() => false)
-      .catch((e) => /budgetConfirmed/.test(e.message)));
-  check("there is no cardConfirmed path left",
-    !/cardConfirmed|requiresCard/.test(readSource(path.join("scripts", "server", "online-media.cjs"))));
-  const sent = [];
-  const consented = await onlineMedia.generate({
-    providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, budgetConfirmed: true,
-  }, {
-    transport: async () => { throw new Error("default must be a dry run"); },
-    recordEgress: (entry) => sent.push(entry),
-  });
-  check("a fully consented request is still a dry run by default", consented.dryRun === true);
-  check("and the consent is recorded as blocked, not spent", sent[0].decision === "blocked");
-  check("a dry run spends nothing", onlineMedia.providers().find((p) => p.id === "kling_free").spent === 0);
-  const liveMedia = await onlineMedia.generate({
-    providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, budgetConfirmed: true, live: true,
-  }, {
-    transport: async () => ({ status: 200, body: "ok" }),
-    recordEgress: (entry) => sent.push(entry),
-  });
-  check("live: true dispatches and debits the grant",
-    liveMedia.dryRun === false && onlineMedia.providers().find((p) => p.id === "kling_free").spent === mediaQuote.credits);
-  check("no paid provider is in the media catalogue",
-    mediaProviders.every((entry) => entry.paid !== true && entry.freeAllowance === true));
+  // ── 8. No external media generation surface at all ──────────────────────
+  section("8. External media generation is deleted, not disabled");
+  const mediaModule = path.join(root, "scripts", "server", "online-media.cjs");
+  check("the online-media module is gone from the repository", !fs.existsSync(mediaModule));
+  check("serve.cjs no longer requires it",
+    !/require\("\.\/online-media\.cjs"\)/.test(serveSource));
+  check("the server declares no /api/online-media route",
+    !serveSource.includes("/api/online-media/"));
+  const onlineSurfacesSource = readSource(path.join("scripts", "server", "online-surfaces.cjs"));
+  check("no onlineMediaEnabled switch survives in the policy",
+    !/onlineMediaEnabled/.test(onlineSurfacesSource));
+  const panelSource = readSource(path.join("app", "frontend", "src", "components", "OnlineSurfacesPanel.jsx"));
+  check("the panel never calls an online-media endpoint",
+    !panelSource.includes("/api/online-media/"));
+  check("the panel explains that media is produced locally",
+    /Media stays on this machine/i.test(panelSource));
+  check("no media trial, allowance or card-confirmation path survives in the server",
+    !/kling_free|fal_trial|veo_gcp_trial|stability_trial|cardConfirmed|budgetConfirmed|freeAllowance/.test(serveSource));
+  check("Settings shows the seven remaining switches",
+    /count=\{7\}/.test(readSource(path.join("app", "frontend", "src", "components", "Settings.jsx"))));
 
   // ── 9. PWA and zero static egress ────────────────────────────────────────
   section("9. Installable shell with no external font call");
@@ -373,12 +354,13 @@ async function main() {
     "/api/lan/status", "/api/lan/pair", "/api/lan/revoke", "/api/mcp",
     "/api/channels/status", "/api/channels/config", "/api/channels/webhook",
     "/api/channels/send", "/api/channels/test",
-    "/api/online-media/providers", "/api/online-media/quote", "/api/online-media/generate",
     "/v1/chat/completions",
   ];
   for (const endpoint of endpoints) {
     check(`route declared: ${endpoint}`, serveSource.includes(endpoint));
   }
+  check("no deleted online-media endpoint can be re-declared silently",
+    !serveSource.includes("/api/online-media/"));
   check("the LAN guard runs before the routes",
     serveSource.indexOf("lanPairing.authorize") < serveSource.indexOf("/api/online-surfaces/status"));
   check("the external gateway is declared before the /v1/ proxy",

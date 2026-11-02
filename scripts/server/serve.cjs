@@ -57,7 +57,8 @@ const lanPairing = require("./lan-pairing.cjs");
 const onlineSurfaces = require("./online-surfaces.cjs");
 const mcpServer = require("./mcp-server.cjs");
 const channelRelay = require("./channel-relay.cjs");
-const onlineMedia = require("./online-media.cjs");
+// Online media generation was removed entirely. Image, video and audio are
+// produced by the local engines only; there is no external media endpoint.
 
 /** Pull the user's words out of the three webhook shapes we accept. */
 function channelInboundText(platform, body) {
@@ -26078,47 +26079,9 @@ const handleRequest = async (req, res) => {
     }
   }
 
-  // GET /api/online-media/providers
-  if (req.url === "/api/online-media/providers" && req.method === "GET") {
-    return json(res, 200, {
-      ok: true,
-      providers: onlineMedia.providers(),
-      enabled: onlineSurfaces.policy().onlineMediaEnabled,
-      rule: "Trial credit only. explicitConsent + budgetConfirmed are required on every generate call; live: true is a separate flag.",
-    });
-  }
-
-  // POST /api/online-media/quote
-  if (req.url === "/api/online-media/quote" && req.method === "POST") {
-    try {
-      const body = await readJsonRequestBody(req);
-      return json(res, 200, { ok: true, quote: onlineMedia.quote(body?.providerId, body?.kind) });
-    } catch (error) {
-      return json(res, error.statusCode || 400, {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  // POST /api/online-media/generate — never charged by a fallback.
-  if (req.url === "/api/online-media/generate" && req.method === "POST") {
-    try {
-      const body = await readJsonRequestBody(req);
-      if (!onlineSurfaces.policy().onlineMediaEnabled) {
-        return json(res, 403, { ok: false, error: "Online media is switched off in Settings > Online surfaces." });
-      }
-      const result = await onlineMedia.generate(body || {}, {
-        recordEgress: (entry) => egressLedger.record(entry),
-      });
-      return json(res, 200, { ok: true, result });
-    } catch (error) {
-      return json(res, error.statusCode || 400, {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  // There are no online media routes here: every image, video and audio
+  // engine runs on this machine. Deleting the endpoints (rather than merely
+  // disabling them) is what makes local-only media a fact a test can assert.
 
   // POST /api/text-runtime/recovery/stop
   if (
