@@ -192,7 +192,7 @@ async function main() {
         "utf8",
       );
       assert.match(panel, /fetch\("\/api\/background-model"\)/);
-      assert.match(panel, /<BackgroundModelCard data=\{backgroundModel\}/);
+      assert.match(panel, /<BackgroundModelCard[\s\S]{0,120}?data=\{backgroundModel\}/);
     });
   } finally {
     fs.rmSync(work, { recursive: true, force: true });

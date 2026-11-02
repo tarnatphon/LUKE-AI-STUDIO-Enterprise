@@ -53,6 +53,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // Which model translates product names, so "no small model downloaded" is
   // visible here instead of only inside a translation that never happens.
   const [backgroundModel, setBackgroundModel] = useState(null);
+  const [backgroundNote, setBackgroundNote] = useState("");
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
@@ -111,6 +112,33 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       }
     } catch (error) {
       setGovernorNote(error?.message || "The governor settings could not be saved.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  // One click on a catalogue model: the same queue Text Models uses, so the
+  // download, the checksum and the progress bar are the ones already built.
+  const downloadBackgroundModel = async (suggestion) => {
+    if (!suggestion || !suggestion.modelId) return;
+    setBusy("background-download");
+    setBackgroundNote("");
+    try {
+      const response = await fetch("/api/text-models/download-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: suggestion.modelId, variantId: suggestion.variantId }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setBackgroundNote(
+          `${suggestion.filename} was added to the download queue — progress is in Text Models. Translations use it automatically once it lands.`
+        );
+      } else {
+        setBackgroundNote(data.error || "That model could not be queued.");
+      }
+    } catch (error) {
+      setBackgroundNote(error?.message || "That model could not be queued.");
     } finally {
       setBusy("");
     }
@@ -324,7 +352,12 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         </button>
       )}
 
-      <BackgroundModelCard data={backgroundModel} />
+      <BackgroundModelCard
+        data={backgroundModel}
+        busy={busy}
+        note={backgroundNote}
+        onDownload={downloadBackgroundModel}
+      />
 
       <GovernorSettingsCard
         data={governor}
