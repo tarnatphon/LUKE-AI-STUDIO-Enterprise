@@ -90,8 +90,11 @@ async function main() {
   check("and for each one whether a key is saved", status.providers.every((item) => typeof item.configured === "boolean"));
   check("a hint is shown, never the key",
     status.providers.every((item) => item.keyHint === "" || /^…[A-Za-z0-9]{1,6}$/.test(item.keyHint)));
-  check("it names the gateway each provider uses",
-    status.providers.every((item) => /^https:\/\//.test(provider.PROVIDERS[item.id].baseUrl)));
+  check("every gateway is https, except a bridge confined to loopback",
+    status.providers.every((item) =>
+      /^https:\/\//.test(provider.PROVIDERS[item.id].baseUrl)
+      || (provider.PROVIDERS[item.id].local === true
+        && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\/v1$/.test(provider.PROVIDERS[item.id].baseUrl))));
 
   section("2. No error, log or echo can carry a key");
   const scrubbed = provider.scrubKey(`request failed with ${FAKE_KEY} attached`, FAKE_KEY);
@@ -306,7 +309,7 @@ async function main() {
     /result\.failures \|\| \[\]/.test(routeFn)
     && /failure\.label\}: \$\{failure\.message\}/.test(routeFn));
   check("an empty provider list never reaches the network",
-    /if \(!config\.order\.some\(\(providerId\) => config\.keys\[providerId\]\)\) return false;/.test(routeFn));
+    /if \(!remoteTextProvider\.hasCloudBrain\(config\)\) return false;/.test(routeFn));
 
   section("10. The Settings panel never shows a key it already holds");
   check("the field is write-only", /type="password"/.test(settings));
@@ -315,6 +318,9 @@ async function main() {
   check("it says where the keys are kept", /app\/runtime-state/.test(settings));
   check("it can forget a key from the same place", /sendRemoteKey\(/.test(settings));
   check("it can test a provider before relying on it", /remote-provider\/test/.test(settings));
+  check("a keyless local bridge has its own URL field and no-key Connect",
+    /Local proxy URL/.test(settings) && /Connect \(no key\)/.test(settings)
+    && /remote-provider\/local/.test(settings));
 
   section("11. A key that is saved can be forgotten, and an old file still reads");
   try {
