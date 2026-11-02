@@ -102,6 +102,14 @@ function makeRun(overrides = {}) {
   };
 }
 
+// The calendar always opens on the CURRENT month, so a pinned fixture date stops
+// being counted the moment the month rolls over — which is exactly what happened
+// on 2026-11-01: the fixture said 2026-10-20 and the summary chip honestly said
+// 0 โพสต์. Pin the day, derive the month.
+const NOW = new Date();
+const CURRENT_MONTH = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, "0")}`;
+const ENTRY_DATE = `${CURRENT_MONTH}-20`;
+
 function makeClient(overrides = {}) {
   const run = makeRun();
   return {
@@ -114,7 +122,7 @@ function makeClient(overrides = {}) {
     researcherRoles: [{ id: "role-1", name: "นักวิจัยตลาด", questions: ["คู่แข่งพูดอะไรบ้าง"], builtIn: true }],
     calendar: [
       {
-        id: "entry-1", date: "2026-10-20", time: "10:00", platform: "facebook",
+        id: "entry-1", date: ENTRY_DATE, time: "10:00", platform: "facebook",
         productName: "กระเป๋าหนังแท้ รุ่นทดสอบ", sku: "SKU-01", angle: "เปิดตัวสินค้า", pillar: "ขายตรง",
         status: "needs_review", caption: "แคปชันตัวอย่าง", tags: ["concept"],
       },
@@ -233,7 +241,7 @@ async function main() {
       assert.match(calendarMarkup, /class="sa-chip-context">เปิดตัวสินค้า · ขายตรง</);
       const noProduct = renderCalendar(makeClient({
         calendar: [{
-          id: "entry-2", date: "2026-10-20", time: "09:00", platform: "line", productName: "",
+          id: "entry-2", date: ENTRY_DATE, time: "09:00", platform: "line", productName: "",
           angle: "เปิดตัวสินค้า", pillar: "ขายตรง", status: "planned",
         }],
       }));
@@ -322,7 +330,7 @@ async function main() {
 
     test("the header carries the post facts, the run controls and the report", () => {
       assert.match(workflowMarkup, /class="sa-wf-entry-facts"/);
-      assert.match(workflowMarkup, /2026-10-20 · 10:00/);
+      assert.match(workflowMarkup, new RegExp(`${ENTRY_DATE} · 10:00`));
       assert.match(workflowMarkup, /class="sa-platform-chip facebook">Facebook</);
       assert.match(workflowMarkup, /class="sa-pill needs-review">รออนุมัติ</);
       assert.match(workflowMarkup, /กระเป๋าหนังแท้ รุ่นทดสอบ/);
