@@ -57,8 +57,9 @@ const lanPairing = require("./lan-pairing.cjs");
 const onlineSurfaces = require("./online-surfaces.cjs");
 const mcpServer = require("./mcp-server.cjs");
 const channelRelay = require("./channel-relay.cjs");
-// Online media generation was removed entirely. Image, video and audio are
-// produced by the local engines only; there is no external media endpoint.
+// Free-credit media generation: usable while the grant lasts, then local.
+// The module never stores card data, tops up credit or pays for a job.
+const onlineMedia = require("./online-media.cjs");
 
 /** Pull the user's words out of the three webhook shapes we accept. */
 function channelInboundText(platform, body) {
@@ -26079,9 +26080,51 @@ const handleRequest = async (req, res) => {
     }
   }
 
-  // There are no online media routes here: every image, video and audio
-  // engine runs on this machine. Deleting the endpoints (rather than merely
-  // disabling them) is what makes local-only media a fact a test can assert.
+  // GET /api/online-media/providers
+  if (req.url === "/api/online-media/providers" && req.method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      providers: onlineMedia.providers(),
+      enabled: onlineSurfaces.policy().onlineMediaEnabled,
+      neverPays: onlineMedia.NEVER_PAYS,
+      rule: "Free credit only, including card-backed trial grants. explicitConsent + creditConfirmed are required on every job; the default is a dry run. When the grant is spent LUKE falls back to the local engines — it never tops up, stores card data or pays.",
+    });
+  }
+
+  // POST /api/online-media/quote
+  if (req.url === "/api/online-media/quote" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      return json(res, 200, { ok: true, quote: onlineMedia.quote(body?.providerId, body?.kind) });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/online-media/generate — free credit only, never a charge.
+  if (req.url === "/api/online-media/generate" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      if (!onlineSurfaces.policy().onlineMediaEnabled) {
+        return json(res, 403, { ok: false, error: "Free-credit media is switched off in Settings > Online surfaces." });
+      }
+      const result = await onlineMedia.generate(body || {}, {
+        recordEgress: (entry) => egressLedger.record(entry),
+      });
+      return json(res, 200, { ok: true, result });
+    } catch (error) {
+      return json(res, error.statusCode || 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        code: error.code,
+        exhausted: error.exhausted === true,
+        fallback: error.fallback,
+      });
+    }
+  }
 
   // POST /api/text-runtime/recovery/stop
   if (

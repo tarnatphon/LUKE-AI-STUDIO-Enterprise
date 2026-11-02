@@ -7,8 +7,10 @@
  * is loaded, and every outbound call is either a local stand-in socket or an
  * injected transport. That is the point: the suite proves the policy, the
  * ledger and the consent gates, not that a free provider happens to be up.
- * External media generation was removed entirely, so its former tests now
- * assert that the module, the routes and the switches no longer exist.
+ *
+ * "เสียตังค์" means having to pay to KEEP USING. Free tiers and free trial
+ * grants (including card-backed ones) are usable free usage: LUKE spends the
+ * grant, then falls back to local. It never tops up, pays or stores card data.
  *
  * Run: node scripts/validation/test-online-surfaces.cjs
  */
@@ -26,6 +28,7 @@ process.env.LUKE_EGRESS_LEDGER_FILE = path.join(scratch, "ledger.jsonl");
 process.env.LUKE_LAN_PAIRING_FILE = path.join(scratch, "lan.json");
 process.env.LUKE_CHANNEL_RELAY_FILE = path.join(scratch, "channels.json");
 process.env.LUKE_REMOTE_PROVIDER_FILE = path.join(scratch, "providers.json");
+process.env.LUKE_ONLINE_MEDIA_SPEND_FILE = path.join(scratch, "media-spend.json");
 
 const aiCatalog = require(path.join(root, "scripts", "server", "ai-provider-catalog.cjs"));
 const egressLedger = require(path.join(root, "scripts", "server", "egress-ledger.cjs"));
@@ -33,6 +36,7 @@ const lanPairing = require(path.join(root, "scripts", "server", "lan-pairing.cjs
 const onlineSurfaces = require(path.join(root, "scripts", "server", "online-surfaces.cjs"));
 const mcpServer = require(path.join(root, "scripts", "server", "mcp-server.cjs"));
 const channelRelay = require(path.join(root, "scripts", "server", "channel-relay.cjs"));
+const onlineMedia = require(path.join(root, "scripts", "server", "online-media.cjs"));
 const contentParts = require(path.join(root, "scripts", "server", "content-parts.cjs"));
 const remoteProvider = require(path.join(root, "scripts", "server", "remote-text-provider.cjs"));
 
@@ -60,28 +64,39 @@ function readSource(relative) {
 async function main() {
   const serveSource = readSource(path.join("scripts", "server", "serve.cjs"));
 
-  // ── 1. The catalogue contains free, card-free providers only ──────────────
-  section("1. One catalogue, with every billable option removed");
+  // ── 1. Every usable free allowance is registered ─────────────────────────
+  section("1. One catalogue of usable free usage, paid-from-first-call absent");
   const catalog = aiCatalog.readCatalog();
   check("the catalogue loads", catalog.providers.length >= 8, String(catalog.providers.length));
   check("it carries a verification date", /^\d{4}-\d{2}-\d{2}$/.test(catalog.verifiedAt), catalog.verifiedAt);
-  check("every entry is free, not paid, and needs no card",
-    catalog.providers.every((entry) => entry.free === true && entry.paid === false && entry.requiresCard === false));
-  check("only recurring free tiers and local providers remain",
-    catalog.providers.every((entry) => ["free-tier", "local"].includes(entry.kind)));
+  check("every entry is free, unpaid and marked neverPays",
+    catalog.providers.every((entry) => entry.free === true && entry.paid === false && entry.neverPays === true));
+  check("a card is allowed only for a free trial grant bound on the provider site",
+    catalog.providers.every((entry) => entry.requiresCard !== true
+      || (entry.kind === "trial-credit" && entry.cardBoundOnProviderSite === true)));
+  check("only free tiers, free trial credit and local engines remain",
+    catalog.providers.every((entry) => ["free-tier", "trial-credit", "local"].includes(entry.kind)));
+  check("every non-local entry says exhausted free usage goes to local",
+    catalog.providers.filter((entry) => entry.kind !== "local")
+      .every((entry) => entry.exhaustion === "local" && typeof entry.allowance === "string"));
+  check("free trial grants are marked free only while the credit lasts",
+    catalog.providers.filter((entry) => entry.kind === "trial-credit")
+      .every((entry) => entry.freeWhileCreditsLast === true));
   check("every entry names its modalities and a source",
     catalog.providers.every((entry) => Array.isArray(entry.modalities) && typeof entry.sourceUrl === "string"));
-  const REMOVED = [
-    "groq", "arena", "openai", "anthropic", "xai", "azure", "aws", "gcp", "oci",
-    "amd", "cerebras", "sambanova", "github_models", "huggingface", "together",
-    "fireworks", "coreweave", "cohere",
+  const PAID_ONLY = [
+    "arena", "openai", "anthropic", "xai", "oci", "together", "fireworks",
+    "coreweave", "github_models", "amd",
   ];
-  check("nothing that costs money or needs a card is registered",
-    REMOVED.every((id) => !catalog.providers.some((entry) => entry.id === id)));
+  check("nothing prepaid or paid from the first call is registered",
+    PAID_ONLY.every((id) => !catalog.providers.some((entry) => entry.id === id)));
+  check("card-backed trial credit is restored, not cut",
+    ["azure", "aws", "gcp", "cerebras"].every((id) => catalog.providers.some((entry) => entry.id === id)));
   check("no transport provider is paid",
     Object.values(remoteProvider.PROVIDERS).every((entry) => entry.free === true && entry.paid === false));
-  check("Groq and the Arena router are deleted from the transport registry",
-    !remoteProvider.PROVIDERS.groq && !remoteProvider.PROVIDERS.arena);
+  check("the prepaid Arena router is deleted, Groq is a free tier the owner must connect",
+    !remoteProvider.PROVIDERS.arena && remoteProvider.PROVIDERS.groq?.free === true
+    && !remoteProvider.DEFAULT_ORDER.includes("groq"));
   check("a provider missing from the catalogue fails closed",
     aiCatalog.transportPolicy("no-such-provider").free === false
     && aiCatalog.transportPolicy("no-such-provider").paid === true);
@@ -98,11 +113,11 @@ async function main() {
   check("online-first Chat is on by default", defaults.cloudForChat === true);
   check("no-pay is an invariant, not a switch",
     !("freeOnly" in defaults) && onlineSurfaces.NO_PAY === true);
-  check("the local-only / channel surfaces are off by default",
+  check("the local-only / channel / free-credit media surfaces are off by default",
     defaults.uncensoredMode === false && defaults.airGapMode === false
-    && defaults.channelsEnabled === false);
-  check("no online-media switch is registered at all",
-    !("onlineMediaEnabled" in defaults));
+    && defaults.channelsEnabled === false && defaults.onlineMediaEnabled === false);
+  check("there are eight switches and no allow-paid switch",
+    Object.keys(defaults).length === 8 && !("freeOnly" in defaults));
   check("a Work turn is allowed", onlineSurfaces.cloudDecision("work").allowed === true);
   check("a Chat turn is allowed too", onlineSurfaces.cloudDecision("chat").allowed === true);
   check("an unmarked turn is treated as chat", onlineSurfaces.cloudDecision(undefined).mode === "chat");
@@ -306,26 +321,106 @@ async function main() {
   check("an unknown channel is refused",
     await channelRelay.send("carrier-pigeon", { text: "hi" }).then(() => false).catch((e) => e.statusCode === 400));
 
-  // ── 8. No external media generation surface at all ──────────────────────
-  section("8. External media generation is deleted, not disabled");
-  const mediaModule = path.join(root, "scripts", "server", "online-media.cjs");
-  check("the online-media module is gone from the repository", !fs.existsSync(mediaModule));
-  check("serve.cjs no longer requires it",
-    !/require\("\.\/online-media\.cjs"\)/.test(serveSource));
-  check("the server declares no /api/online-media route",
-    !serveSource.includes("/api/online-media/"));
-  const onlineSurfacesSource = readSource(path.join("scripts", "server", "online-surfaces.cjs"));
-  check("no onlineMediaEnabled switch survives in the policy",
-    !/onlineMediaEnabled/.test(onlineSurfacesSource));
-  const panelSource = readSource(path.join("app", "frontend", "src", "components", "OnlineSurfacesPanel.jsx"));
-  check("the panel never calls an online-media endpoint",
-    !panelSource.includes("/api/online-media/"));
-  check("the panel explains that media is produced locally",
-    /Media stays on this machine/i.test(panelSource));
-  check("no media trial, allowance or card-confirmation path survives in the server",
-    !/kling_free|fal_trial|veo_gcp_trial|stability_trial|cardConfirmed|budgetConfirmed|freeAllowance/.test(serveSource));
-  check("Settings shows the seven remaining switches",
-    /count=\{7\}/.test(readSource(path.join("app", "frontend", "src", "components", "Settings.jsx"))));
+  // ── 8. Free-credit media: usable until spent, then local ─────────────────
+  section("8. Free credit is used normally; exhausting it never pays");
+  onlineMedia.resetSpend();
+  const mediaProviders = onlineMedia.providers();
+  check("all four free-credit providers are registered",
+    mediaProviders.length === 4
+    && ["fal_trial", "veo_gcp_trial", "stability_trial", "kling_free"]
+      .every((id) => mediaProviders.some((entry) => entry.id === id)));
+  check("card-backed trial grants are usable free usage",
+    mediaProviders.filter((entry) => entry.requiresCard).length === 3
+    && mediaProviders.filter((entry) => entry.requiresCard)
+      .every((entry) => entry.freeWhileCreditsLast === true && entry.paid === false
+        && entry.cardBoundOnProviderSite === true));
+  check("the no-card daily allowance is registered",
+    mediaProviders.find((entry) => entry.id === "kling_free")?.requiresCard === false);
+  check("every provider declares local fallback on exhaustion",
+    mediaProviders.every((entry) => entry.exhaustion === "local" && entry.localFallbackOnExhaustion === true));
+  check("there is no cardConfirmed gate; card data is a rejected field",
+    onlineMedia.PAYMENT_FIELDS.includes("cardConfirmed")
+    && onlineMedia.PAYMENT_FIELDS.includes("autoTopUp"));
+
+  const mediaQuote = onlineMedia.quote("kling_free", "video");
+  check("a quote reports free credit remaining, not a price",
+    mediaQuote.credits > 0 && mediaQuote.eligible === true
+    && mediaQuote.neverPays === true && mediaQuote.fallback === "local");
+  check("a card-backed trial can be quoted without a card flag",
+    onlineMedia.quote("fal_trial", "video").eligible === true);
+
+  const sent = [];
+  const recorder = { recordEgress: (entry) => sent.push(entry) };
+  const rejection = async (extra, code) => {
+    try {
+      await onlineMedia.generate({ providerId: "kling_free", kind: "video", prompt: "a cat", ...extra }, recorder);
+      return false;
+    } catch (error) {
+      return code ? error.code === code : true;
+    }
+  };
+  check("a card number is refused before any ledger entry",
+    await rejection({ cardNumber: "4242424242424242" }, "payment_field_rejected"));
+  check("an auto top-up flag is refused", await rejection({ autoTopUp: true }, "payment_field_rejected"));
+  check("no consent means no job", await rejection({}, "consent_required"));
+  check("consent without confirming the free credit is refused",
+    await rejection({ explicitConsent: true }, "credit_confirmation_required"));
+
+  const consented = await onlineMedia.generate({
+    providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, creditConfirmed: true,
+  }, { ...recorder, transport: async () => { throw new Error("default must be a dry run"); } });
+  check("a fully consented request is still a dry run by default", consented.dryRun === true);
+  check("and the consent is recorded as blocked, not spent", sent[0].decision === "blocked");
+  check("a dry run spends nothing",
+    onlineMedia.providers().find((entry) => entry.id === "kling_free").spent === 0);
+
+  const upstreamBodies = [];
+  const liveMedia = await onlineMedia.generate({
+    providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, creditConfirmed: true, live: true,
+  }, {
+    ...recorder,
+    transport: async (url, init) => { upstreamBodies.push(String(init.body)); return { status: 200, body: "ok" }; },
+  });
+  check("live: true spends free credit and never pays",
+    liveMedia.dryRun === false && liveMedia.spent === mediaQuote.credits && liveMedia.neverPaid === true);
+  check("the upstream body carries no card, top-up or payment field",
+    !/card|cvv|topup|payment|paid/i.test(upstreamBodies[0]), upstreamBodies[0]);
+  const spendState = JSON.parse(fs.readFileSync(onlineMedia.spendFile(), "utf8"));
+  check("the spend file stores a credit counter and nothing else",
+    Object.keys(spendState).every((key) => ["spent", "day", "savedAt"].includes(key))
+    && !/card|cvv|payment/i.test(JSON.stringify(spendState)));
+
+  onlineMedia.resetSpend();
+  await onlineMedia.generate({
+    providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, creditConfirmed: true, live: true,
+  }, { ...recorder, transport: async () => ({ status: 200, body: "ok" }) });
+  check("after one video the no-card grant has 2 credits left",
+    onlineMedia.quote("kling_free", "video").remaining === 2);
+  let exhausted;
+  try {
+    await onlineMedia.generate({
+      providerId: "kling_free", kind: "video", prompt: "a cat", explicitConsent: true, creditConfirmed: true, live: true,
+    }, { ...recorder, transport: async () => { throw new Error("must not dispatch"); } });
+  } catch (error) { exhausted = error; }
+  check("an exhausted grant is refused with 409 and fallback local",
+    exhausted?.statusCode === 409 && exhausted.code === "free_credit_exhausted"
+    && exhausted.exhausted === true && exhausted.fallback === "local");
+  check("the exhaustion is recorded as blocked, never as a purchase",
+    sent[sent.length - 1].decision === "blocked" && /no top-up, no payment/i.test(sent[sent.length - 1].reason));
+
+  onlineMedia.resetSpend();
+  let nowPaid;
+  try {
+    await onlineMedia.generate({
+      providerId: "fal_trial", kind: "video", prompt: "a cat", explicitConsent: true, creditConfirmed: true, live: true,
+    }, { ...recorder, transport: async () => ({ status: 402, body: "Payment Required" }) });
+  } catch (error) { nowPaid = error; }
+  check("a 402 is a refusal, not an upsell",
+    nowPaid?.statusCode === 402 && nowPaid.code === "now_paid" && nowPaid.fallback === "local");
+  check("and the grant is marked spent so LUKE never tries that link again",
+    onlineMedia.quote("fal_trial", "video").remaining === 0);
+  check("an unknown media provider is rejected",
+    await (async () => { try { await onlineMedia.quote("made_up", "video"); return false; } catch { return true; } })());
 
   // ── 9. PWA and zero static egress ────────────────────────────────────────
   section("9. Installable shell with no external font call");
@@ -354,13 +449,17 @@ async function main() {
     "/api/lan/status", "/api/lan/pair", "/api/lan/revoke", "/api/mcp",
     "/api/channels/status", "/api/channels/config", "/api/channels/webhook",
     "/api/channels/send", "/api/channels/test",
+    "/api/online-media/providers", "/api/online-media/quote", "/api/online-media/generate",
     "/v1/chat/completions",
   ];
   for (const endpoint of endpoints) {
     check(`route declared: ${endpoint}`, serveSource.includes(endpoint));
   }
-  check("no deleted online-media endpoint can be re-declared silently",
-    !serveSource.includes("/api/online-media/"));
+  check("the free-credit media route is gated by its own switch",
+    /onlineSurfaces\.policy\(\)\.onlineMediaEnabled/.test(serveSource));
+  check("an exhausted grant is reported to the caller as a local fallback",
+    /exhausted: error\.exhausted === true/.test(serveSource)
+    && /fallback: error\.fallback/.test(serveSource));
   check("the LAN guard runs before the routes",
     serveSource.indexOf("lanPairing.authorize") < serveSource.indexOf("/api/online-surfaces/status"));
   check("the external gateway is declared before the /v1/ proxy",
@@ -382,14 +481,14 @@ async function main() {
     /Offline by default · Online on your terms/.test(readme));
   check("the no-filter lane is documented", /No-filter local lane/.test(readme));
   check("the online-surfaces doc is linked", /online-surfaces-and-differentiation\.md/.test(readme));
-  check("the README says no paid provider is registered",
-    /No paid provider is registered at all/.test(readme));
+  check("the README says free usage is used until it is spent",
+    /free until it is spent|free usage/i.test(readme));
   check("the new doc exists", fs.existsSync(path.join(root, "docs", "beta7", "online-surfaces-and-differentiation.md")));
 
   // ── 12. No-pay over a real socket ────────────────────────────────────────
-  // Groq/Arena no longer exist, so a paid-shaped provider is injected ONLY for
-  // this test. It proves the invariant still holds if a stale config file, a
-  // hand edit, or a future mistake ever puts a billable link back in `order`.
+  // A paid-shaped provider is injected ONLY for this test. It proves the
+  // invariant still holds if a stale config file, a hand edit, or a future
+  // mistake ever puts a prepaid link back in `order`.
   section("12. Even a stale paid key can never reach the network");
   const seenKeys = [];
   const gateway = http.createServer((req, res) => {
