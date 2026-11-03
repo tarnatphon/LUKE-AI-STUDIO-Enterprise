@@ -57,6 +57,70 @@ export async function restoreProjectGrants(project, { force = false } = {}) {
   return { grants: data.grants || {}, failed: data.failed || [] };
 }
 
+/**
+ * Turn the server's `failed` array into a small, safe list for the UI.
+ * The endpoint returns `{ root, error }`; a hand-edited or older reply could
+ * contain anything, so nothing here is trusted as a path without being trimmed,
+ * and duplicate roots are collapsed.
+ */
+export function normaliseFailedFolders(failed) {
+  const seen = new Set();
+  const entries = [];
+  for (const item of Array.isArray(failed) ? failed : []) {
+    const root = String(item?.root || "").trim();
+    const error = String(item?.error || "").trim();
+    if (!root || seen.has(root)) continue;
+    seen.add(root);
+    entries.push({ root, error: error || "This folder could not be granted." });
+  }
+  return entries;
+}
+
+/**
+ * Only failures for folders the project STILL saves are worth showing. A
+ * failure left over from a folder the user already removed is stale — without
+ * this filter "Forget missing folders" would come back after being used.
+ */
+export function missingFolderEntries(project, failures = []) {
+  const saved = new Set(allProjectFolders(project));
+  return normaliseFailedFolders(failures).filter((entry) => saved.has(entry.root));
+}
+
+/**
+ * Drop folders from a project without touching anything on disk. Returns the
+ * grant ids that should be revoked, so the caller never has to guess which
+ * ones belonged to the forgotten paths.
+ */
+export function pruneProjectFolders(project, roots = []) {
+  const doomed = new Set((Array.isArray(roots) ? roots : []).map(String));
+  if (!project || doomed.size === 0) return { project, grantIds: [], removed: [] };
+  const grantIds = [];
+  const prune = (map) => Object.fromEntries(
+    Object.entries(map || {}).filter(([root]) => !doomed.has(root)),
+  );
+  for (const [root, grantId] of Object.entries(project.folderGrants || {})) {
+    if (doomed.has(root) && grantId) grantIds.push(grantId);
+  }
+  const sourceFolders = allProjectFolders(project);
+  return {
+    project: {
+      ...project,
+      sourceFolders: sourceFolders.filter((root) => !doomed.has(root)),
+      folderGrants: prune(project.folderGrants),
+      sessionGrants: prune(project.sessionGrants),
+    },
+    grantIds,
+    removed: sourceFolders.filter((root) => doomed.has(root)),
+  };
+}
+
+/** The whole "Forget missing folders" click, as a pure plan. */
+export function forgetMissingFolders(project, failures = []) {
+  const entries = missingFolderEntries(project, failures);
+  const pruned = pruneProjectFolders(project, entries.map((entry) => entry.root));
+  return { entries, roots: pruned.removed, project: pruned.project, grantIds: pruned.grantIds };
+}
+
 /** Merge freshly restored grant ids into one project. */
 export function withRestoredGrants(project, grants) {
   const entries = Object.entries(grants || {});

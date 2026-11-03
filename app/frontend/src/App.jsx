@@ -4,7 +4,7 @@ import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
 import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
 import "./App.css";
-import { missingGrants, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
+import { missingGrants, normaliseFailedFolders, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
 
 const workspaceLoaders = {
   generator: () => import("./components/Generator"),
@@ -375,6 +375,39 @@ function App() {
   const [activeProjectId, setActiveProjectId] = useState(() => localStorage.getItem("active_chat_project") || null);
   const [assistantMode, setAssistantMode] = useState(() => localStorage.getItem("luke_assistant_mode") === "work" ? "work" : "chat");
 
+  // `/api/work/folder/restore` answers with a `failed` list. Keeping it here is
+  // what lets Edit project show WHICH saved path is gone instead of leaving the
+  // user with a console line they have to copy by hand.
+  const [failedProjectFolders, setFailedProjectFolders] = useState({});
+  const recordFailedFolders = useCallback((projectId, failed) => {
+    const id = String(projectId || "").trim();
+    if (!id) return;
+    const entries = normaliseFailedFolders(failed);
+    setFailedProjectFolders((current) => {
+      if (entries.length === 0) {
+        if (!(id in current)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      }
+      // Focus/visibility re-checks call this often; an unchanged list must not
+      // hand React a new object on every window focus.
+      const existing = current[id] || [];
+      const unchanged = entries.length === existing.length
+        && entries.every((entry, index) => entry.root === existing[index]?.root
+          && entry.error === existing[index]?.error);
+      return unchanged ? current : { ...current, [id]: entries };
+    });
+  }, []);
+  const clearFailedFolders = useCallback((projectId) => {
+    setFailedProjectFolders((current) => {
+      if (!(projectId in current)) return current;
+      const next = { ...current };
+      delete next[projectId];
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     // Grant ids are session state: writing them down is what made Work believe
     // it still had permission after a restart.
@@ -395,7 +428,8 @@ function App() {
       const patches = [];
       for (const project of pending) {
         try {
-          const { grants } = await restoreProjectGrants(project);
+          const { grants, failed } = await restoreProjectGrants(project);
+          recordFailedFolders(project.id, failed);
           if (Object.keys(grants).length > 0) patches.push({ id: project.id, grants });
         } catch (_) {}
       }
@@ -405,7 +439,7 @@ function App() {
         return patch ? withRestoredGrants(project, patch.grants) : project;
       }));
     })();
-  }, [chatProjects]);
+  }, [chatProjects, recordFailedFolders]);
 
   /**
    * Ask the server which folders it can actually reach, and re-grant the ones
@@ -438,14 +472,15 @@ function App() {
       const data = await response.json();
       const missing = (data?.result?.folders || []).filter((folder) => folder.exists && !folder.granted);
       if (missing.length === 0) return;
-      const { grants } = await restoreProjectGrants(project, { force: true });
+      const { grants, failed } = await restoreProjectGrants(project, { force: true });
+      recordFailedFolders(project.id, failed);
       if (Object.keys(grants || {}).length === 0) return;
       setChatProjects((current) => current.map((entry) => (entry.id === project.id ? withRestoredGrants(entry, grants) : entry)));
     } catch {
       // A folder that cannot be granted says so where the user is working —
       // the Work panels keep their own button for that case.
     }
-  }, [chatProjects, activeProjectId]);
+  }, [chatProjects, activeProjectId, recordFailedFolders]);
 
   // Checked when Work is opened, and again whenever the window comes back:
   // a restart while the tab sat in the background is invisible otherwise.
@@ -1079,12 +1114,14 @@ function App() {
       onDeleteTtsOutput={handleDeleteTtsOutput}
       projects={chatProjects}
       setProjects={setChatProjects}
+      failedProjectFolders={failedProjectFolders}
+      onForgetMissingFolders={clearFailedFolders}
       activeProjectId={activeProjectId}
       setActiveProjectId={setActiveProjectId}
       assistantMode={assistantMode}
       setAssistantMode={handleAssistantModeChange}
     />
-  ), [sidebarVisible, activeTab, specs, conversations, activeConversationId, showHistory, handleDeleteConversation, handleMoveConversationToProject, speechTranscriptions, selectedSpeechTranscript, showSpeechHistory, handleDeleteSpeechTranscription, ttsOutputs, selectedTtsOutput, showTtsHistory, handleDeleteTtsOutput, chatProjects, activeProjectId, assistantMode, handleAssistantModeChange]);
+  ), [sidebarVisible, activeTab, specs, conversations, activeConversationId, showHistory, handleDeleteConversation, handleMoveConversationToProject, speechTranscriptions, selectedSpeechTranscript, showSpeechHistory, handleDeleteSpeechTranscription, ttsOutputs, selectedTtsOutput, showTtsHistory, handleDeleteTtsOutput, chatProjects, failedProjectFolders, clearFailedFolders, activeProjectId, assistantMode, handleAssistantModeChange]);
 
   const handleStopServer = useCallback(async () => {
     if (!serverRunning || isStoppingServer) return;

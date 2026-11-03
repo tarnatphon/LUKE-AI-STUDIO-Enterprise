@@ -160,6 +160,12 @@ async function main() {
   section("4. Restoring grants nothing new");
   const missingFolder = await call("/api/work/folder/restore", { projectId: project, roots: [gone] });
   check("a folder that no longer exists is refused", missingFolder.data?.failed?.length === 1 && !missingFolder.data?.grants?.[gone], JSON.stringify(missingFolder.data?.failed || []));
+  // Edit project renders this list, so the shape is a contract, not a detail.
+  check("the failure names the exact root for the UI",
+    missingFolder.data?.failed?.[0]?.root === gone, JSON.stringify(missingFolder.data?.failed?.[0]));
+  check("the failure carries the reason in the user's words",
+    /no longer available/i.test(String(missingFolder.data?.failed?.[0]?.error || "")),
+    String(missingFolder.data?.failed?.[0]?.error || ""));
   // A count alone ("1 saved folder(s) could not be granted") leaves the user
   // guessing which folder and why; the log has to name both.
   const restoreLog = String(child.appLog ? child.appLog() : "");
@@ -240,9 +246,89 @@ async function main() {
     allProjectFolders(granted).length === 1);
   check("the Work tools button asks for the forced re-grant",
     /restoreProjectGrants\(project, \{ force: true \}\)/.test(toolsPanel));
+  const editorFile = path.join(root, "app", "frontend", "src", "components", "ChatProjects.jsx");
+  const bannerFile = path.join(root, "app", "frontend", "src", "components", "MissingFoldersBanner.jsx");
+  const sidebarFile = path.join(root, "app", "frontend", "src", "components", "Sidebar.jsx");
+  const editor = fs.readFileSync(editorFile, "utf8");
+  const banner = fs.readFileSync(bannerFile, "utf8");
+  const sidebar = fs.readFileSync(sidebarFile, "utf8");
+  check("App keeps the restore failures instead of dropping them",
+    /const \{ grants, failed \} = await restoreProjectGrants\(project\)/.test(app)
+    && /recordFailedFolders\(project\.id, failed\)/.test(app));
+  check("the failures reach the project editor",
+    /failedProjectFolders=\{failedProjectFolders\}/.test(app)
+    && /failedProjectFolders=\{failedProjectFolders\}/.test(sidebar));
+  check("Edit project shows the failed folders as a strip",
+    /<MissingFoldersBanner/.test(editor) && /data-testid="missing-folders-banner"/.test(banner));
+  check("and offers one button to forget them all",
+    /Forget missing folders/.test(banner) && /forgetMissingFolders\(draftProject/.test(editor));
+  check("forgetting persists immediately, not only on Save",
+    /setProjects\(\(current\)/.test(editor) && /pruneProjectFolders\(project, plan\.roots\)/.test(editor));
   check("a project with no folders asks for nothing",
     missingGrants({ sourceFolders: [] }).length === 0
       && missingGrants(undefined).length === 0);
+
+  section("7. The one-click forget plan is pure and non-destructive");
+  const {
+    normaliseFailedFolders,
+    missingFolderEntries,
+    pruneProjectFolders,
+    forgetMissingFolders,
+  } = await import(`file://${libFile}`);
+
+  const folderA = path.join(sandbox, "gone-a");
+  const folderB = path.join(sandbox, "gone-b");
+  const liveFolder = path.join(sandbox, "still-here");
+  const raw = [
+    { root: `  ${folderA}  `, error: "The selected Work folder is no longer available." },
+    { root: folderA, error: "duplicate" },
+    { root: folderB, error: "" },
+    { root: "", error: "no root" },
+    null,
+  ];
+  const normalised = normaliseFailedFolders(raw);
+  check("a malformed failure list is trimmed, deduped and defaulted",
+    normalised.length === 2 && normalised[0].root === folderA
+    && /no longer available/.test(normalised[0].error)
+    && normalised[1].root === folderB && Boolean(normalised[1].error),
+    JSON.stringify(normalised));
+  check("a missing or garbage reply is harmless",
+    normaliseFailedFolders(undefined).length === 0 && normaliseFailedFolders("nope").length === 0);
+
+  const saved = {
+    id: "p1",
+    name: "Example",
+    sourceFolders: [folderA, folderB, liveFolder],
+    folderGrants: { [folderA]: "dead-a", [liveFolder]: "fresh-live" },
+    sessionGrants: { [liveFolder]: true },
+  };
+  const staleFailure = { root: path.join(sandbox, "removed-last-week"), error: "gone" };
+  const entries = missingFolderEntries(saved, [...normalised, staleFailure]);
+  check("only failures for folders the project still saves are shown",
+    entries.length === 2 && entries.every((entry) => entry.root !== staleFailure.root),
+    JSON.stringify(entries));
+  check("a project with no saved folders shows no strip",
+    missingFolderEntries({ sourceFolders: [] }, normalised).length === 0);
+
+  const plan = forgetMissingFolders(saved, [...normalised, staleFailure]);
+  check("the plan forgets exactly the failed folders",
+    plan.roots.length === 2 && plan.roots.includes(folderA) && plan.roots.includes(folderB));
+  check("the surviving folder and its grant are kept",
+    plan.project.sourceFolders.length === 1 && plan.project.sourceFolders[0] === liveFolder
+    && plan.project.folderGrants[liveFolder] === "fresh-live"
+    && plan.project.sessionGrants[liveFolder] === true,
+    JSON.stringify(plan.project.sourceFolders));
+  check("the dead grant is reported for revocation",
+    plan.grantIds.length === 1 && plan.grantIds[0] === "dead-a", JSON.stringify(plan.grantIds));
+  check("the original project object is not mutated",
+    saved.sourceFolders.length === 3 && saved.folderGrants[folderA] === "dead-a");
+  check("the banner disappears after the plan is applied",
+    missingFolderEntries(plan.project, [...normalised, staleFailure]).length === 0);
+  check("re-running forget with nothing to forget is a no-op",
+    forgetMissingFolders(plan.project, normalised).roots.length === 0
+    && pruneProjectFolders(saved, []).removed.length === 0);
+  check("no file on disk is touched by any of this",
+    fs.existsSync(path.join(approved, "notes.txt")));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

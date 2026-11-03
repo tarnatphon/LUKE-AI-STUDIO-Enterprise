@@ -39,6 +39,8 @@ function Sidebar({
   onDeleteTtsOutput,
   projects = [],
   setProjects,
+  failedProjectFolders = {},
+  onForgetMissingFolders,
   activeProjectId,
   setActiveProjectId,
   assistantMode = "chat",
@@ -545,6 +547,8 @@ function Sidebar({
         {assistantMode === "work" && <ChatProjects
           projects={projects}
           setProjects={setProjects}
+          failedProjectFolders={failedProjectFolders}
+          onForgetMissingFolders={onForgetMissingFolders}
           conversations={conversations}
           activeProjectId={activeProjectId}
           setActiveProjectId={setActiveProjectId}

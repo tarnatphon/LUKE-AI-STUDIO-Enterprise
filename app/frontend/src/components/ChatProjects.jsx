@@ -1,11 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { Folder, FolderPlus, MoreHorizontal, Pencil, Pin, Plus, Trash2, X } from "lucide-react";
+import MissingFoldersBanner from "./MissingFoldersBanner";
+import { forgetMissingFolders, missingFolderEntries, pruneProjectFolders } from "../lib/work-grants.mjs";
 
 const createProjectId = () => `project-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export default function ChatProjects({
   projects = [],
   setProjects,
+  failedProjectFolders = {},
+  onForgetMissingFolders,
   conversations = [],
   activeProjectId,
   setActiveProjectId,
@@ -17,6 +21,48 @@ export default function ChatProjects({
   const [draftFolders, setDraftFolders] = useState([]);
   const [draftFolderGrants, setDraftFolderGrants] = useState({});
   const [pickerBusy, setPickerBusy] = useState(false);
+
+  // `failed` comes from the server, but the editor drafts are what the user is
+  // looking at right now. A path already removed from the draft must not keep
+  // the banner alive.
+  const missingFolders = useMemo(() => {
+    if (!editingProject?.id) return [];
+    return missingFolderEntries(
+      { sourceFolders: draftFolders },
+      failedProjectFolders?.[editingProject.id] || [],
+    );
+  }, [editingProject, draftFolders, failedProjectFolders]);
+
+  const forgetFolders = () => {
+    if (!editingProject?.id || missingFolders.length === 0) return;
+    const draftProject = { ...editingProject, sourceFolders: draftFolders, folderGrants: draftFolderGrants };
+    const plan = forgetMissingFolders(draftProject, failedProjectFolders?.[editingProject.id] || []);
+    if (plan.roots.length === 0) return;
+
+    // One click really is one click: persist the removal now rather than making
+    // the user press Save afterwards (and lose it if they press Cancel).
+    setProjects((current) => (current || []).map((project) => (
+      project.id === editingProject.id
+        ? { ...pruneProjectFolders(project, plan.roots).project, updatedAt: Date.now() }
+        : project
+    )));
+    plan.grantIds.forEach((grantId) => {
+      void fetch("/api/work/folder/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: editingProject.id, grantId }),
+      }).catch(() => {});
+    });
+
+    const cleanedGrants = { ...draftFolderGrants };
+    plan.roots.forEach((root) => delete cleanedGrants[root]);
+    setDraftFolders(plan.project.sourceFolders);
+    setDraftFolderGrants(cleanedGrants);
+    setEditingProject((current) => (current
+      ? { ...current, sourceFolders: plan.project.sourceFolders, folderGrants: cleanedGrants }
+      : current));
+    onForgetMissingFolders?.(editingProject.id);
+  };
 
   const sortedProjects = useMemo(
     () => [...projects].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || Number(b.updatedAt || 0) - Number(a.updatedAt || 0)),
@@ -162,6 +208,7 @@ export default function ChatProjects({
               <h2 id="chat-project-dialog-title">{editingProject.isNew ? "New project" : "Edit project"}</h2>
               <button type="button" onClick={closeEditor} aria-label="Close project editor"><X size={18} /></button>
             </div>
+            <MissingFoldersBanner entries={missingFolders} onForget={forgetFolders} />
             <label className="chat-project-name">
               <span>Project name</span>
               <div><Folder size={17} /><input autoFocus value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="My project" /></div>
