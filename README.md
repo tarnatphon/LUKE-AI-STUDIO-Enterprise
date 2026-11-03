@@ -150,14 +150,16 @@ Uncensored-AI-Studio/
 Ensure you have a modern web browser installed. Follow the quick guide below for your platform:
 
 **One command for macOS / Linux:** `./start.sh` runs the right launcher for this machine
-(`mac.sh` on macOS, `linux.sh` on Linux). If you just pulled new code, run `bash validate.sh`
-first — it installs what is missing, builds the UI, and runs every validation suite, so the app
-never starts against a half-built frontend.
+(`mac.sh` on macOS, `linux.sh` on Linux). After `git pull` the launcher **rebuilds the frontend
+automatically** when `app/dist/build-info.json` does not match the checkout's HEAD (or an emitted
+asset is missing), then verifies the new stamp before opening the app — so you never have to
+remember `npx vite build`, and the app will not silently serve a stale UI. `bash validate.sh`
+remains the full check (deps → build → every validation suite). See
+[`docs/beta7/frontend-build-self-heal.md`](docs/beta7/frontend-build-self-heal.md).
 
 ```bash
 git pull
-bash validate.sh     # deps (if needed) → vite build → node scripts/validation/run-all.cjs
-./start.sh           # mac.sh (macOS) or linux.sh (Linux)
+./start.sh           # rebuilds the UI itself if the bundle is stale
 ```
 
 Then open the app and load a text model in the **Text Models** tab before using any Local AI
