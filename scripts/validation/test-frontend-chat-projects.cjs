@@ -4,6 +4,7 @@ const { readAllStylesheets } = require("./helpers/app-stylesheets.cjs");
 
 const fs = require("node:fs");
 const projects = fs.readFileSync("app/frontend/src/components/ChatProjects.jsx", "utf8");
+const missingBanner = fs.readFileSync("app/frontend/src/components/MissingFoldersBanner.jsx", "utf8");
 const app = fs.readFileSync("app/frontend/src/App.jsx", "utf8");
 const sidebar = fs.readFileSync("app/frontend/src/components/Sidebar.jsx", "utf8");
 const chat = fs.readFileSync("app/frontend/src/components/TextChat.jsx", "utf8");
@@ -241,6 +242,26 @@ requireText(actionRunner, 'file === "head" || file === "tail"', "TERMINAL_HEAD_T
 requireText(terminalDock, 'title="Copy Terminal output"', "TERMINAL_COPY_MISSING");
 requireText(terminalDock, 'aria-label="Terminal source folder"', "MULTI_SOURCE_TERMINAL_SELECTOR_MISSING");
 
+requireText(server, "failed.push({ root: String(root), error: error.message || String(error) })", "RESTORE_FAILURE_SHAPE_MISSING");
+requireText(server, "return json(res, 200, { ok: true, grants, failed })", "RESTORE_FAILURE_REPLY_MISSING");
+requireText(app, "recordFailedFolders(project.id, failed)", "RESTORE_FAILURES_NOT_COLLECTED");
+requireText(app, "failedProjectFolders={failedProjectFolders}", "FAILURES_NOT_PASSED_TO_SIDEBAR");
+requireText(app, "onForgetMissingFolders={clearFailedFolders}", "FORGET_CALLBACK_NOT_PASSED_TO_SIDEBAR");
+requireText(sidebar, "failedProjectFolders={failedProjectFolders}", "FAILURES_NOT_PASSED_TO_EDITOR");
+requireText(sidebar, "onForgetMissingFolders={onForgetMissingFolders}", "FORGET_CALLBACK_NOT_PASSED_TO_EDITOR");
+requireText(projects, "<MissingFoldersBanner", "MISSING_FOLDERS_BANNER_NOT_RENDERED");
+requireText(projects, "missingFolderEntries(", "MISSING_FOLDERS_NOT_FILTERED");
+requireText(projects, "forgetMissingFolders(draftProject", "FORGET_PLAN_MISSING");
+requireText(projects, "pruneProjectFolders(project, plan.roots).project", "FORGET_NOT_PERSISTED");
+requireText(projects, "onForgetMissingFolders?.(editingProject.id)", "FORGET_NOT_CLEARED");
+requireText(missingBanner, 'data-testid="missing-folders-banner"', "MISSING_FOLDERS_STRIP_MISSING");
+requireText(missingBanner, 'data-testid="forget-missing-folders"', "FORGET_BUTTON_MISSING");
+requireText(missingBanner, "Forget missing folders", "FORGET_BUTTON_LABEL_MISSING");
+requireText(missingBanner, "if (entries.length === 0) return null", "EMPTY_BANNER_GUARD_MISSING");
+requireText(missingBanner, "Files on disk are not deleted", "NON_DESTRUCTIVE_FORGET_NOTICE_MISSING");
+requireText(styles, ".chat-project-missing", "MISSING_FOLDERS_STYLE_MISSING");
+requireText(styles, ".chat-project-forget", "FORGET_BUTTON_STYLE_MISSING");
+
 console.log("PASS: Projects persist locally and link new Chat conversations.");
 console.log("PASS: Projects can be created, renamed, pinned, selected and removed.");
 console.log("PASS: Native source folders can be added and detached without deleting files.");
@@ -265,4 +286,5 @@ console.log("PASS: Work Files edits confined text files with explicit write appr
 console.log("PASS: Work Terminal reads files with allowlisted commands and copies output.");
 console.log("PASS: Work Terminal remains editable while commands run and processes a removable FIFO queue.");
 console.log("PASS: Work Terminal preserves bounded per-project drafts and history with debounced storage.");
+console.log("PASS: Edit project shows failed folder restores and offers a one-click Forget missing folders.");
 console.log("PASS: Frontend Chat Projects foundation validation completed.");

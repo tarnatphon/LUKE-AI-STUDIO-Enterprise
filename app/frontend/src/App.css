@@ -2387,6 +2387,19 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
 .chat-project-name>div { display:flex; align-items:center; gap:10px; padding:0 14px; border:1px solid var(--md-sys-color-outline-variant); border-radius:14px; }
 .chat-project-name input { flex:1; min-width:0; padding:13px 0; border:0; outline:0; background:transparent; color:var(--md-sys-color-on-surface); font:inherit; }
 .chat-project-folders { display:flex; flex-direction:column; gap:8px; margin-top:18px; }
+/* The "Forget missing folders" strip in Edit project. It sits above the
+   folder list, names every path the server could not grant, and offers one
+   button that removes all of them from this project. */
+.chat-project-missing { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; padding:14px 16px; border:1px solid color-mix(in srgb,var(--md-sys-color-error) 45%,transparent); border-radius:16px; background:color-mix(in srgb,var(--md-sys-color-error) 9%,var(--md-sys-color-surface-container-high)); }
+.chat-project-missing-head { display:flex; align-items:center; gap:9px; color:var(--md-sys-color-error); font-size:.86rem; }
+.chat-project-missing-list { display:flex; flex-direction:column; gap:6px; margin:0; padding:0; list-style:none; }
+.chat-project-missing-list li { display:flex; flex-direction:column; gap:2px; min-width:0; padding:7px 10px; border-radius:10px; background:var(--md-sys-color-surface-container-highest); }
+.chat-project-missing-list li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8rem; }
+.chat-project-missing-list li small { color:var(--md-sys-color-on-surface-variant); font-size:.72rem; }
+.chat-project-missing-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.chat-project-missing-actions>span { flex:1; min-width:180px; color:var(--md-sys-color-on-surface-variant); font-size:.72rem; }
+.chat-project-forget { display:flex; align-items:center; gap:7px; min-height:38px; padding:0 14px; border:0; border-radius:12px; color:var(--md-sys-color-on-error); background:var(--md-sys-color-error); font:inherit; font-size:.8rem; font-weight:700; cursor:pointer; }
+.chat-project-forget:hover { filter:brightness(1.08); }
 .chat-project-folder,.chat-project-add-folder { display:flex; align-items:center; gap:10px; min-height:48px; padding:0 14px; border:1px solid var(--md-sys-color-outline-variant); background:transparent; }
 .chat-project-folder:first-of-type { border-radius:14px 14px 0 0; }
 .chat-project-folder span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
