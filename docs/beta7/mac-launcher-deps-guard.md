@@ -1,4 +1,4 @@
-# mac.sh — frontend dependency guard
+# Launcher — frontend dependency guard
 
 > "แอปยังบอก Running! อยู่ แต่ `vite build` พัง" — ปัญหาที่เจอบน `/Volumes/AI`
 
@@ -52,7 +52,7 @@ cd /Volumes/AI && ./mac.sh
 
 ## หลักฐาน
 
-`node scripts/validation/test-mac-deps-guard.cjs` — **26 checks** แบ่งเป็น
+`node scripts/validation/test-launcher-deps-guard.cjs` — **58 checks** ครอบ **mac.sh + linux.sh + setup.sh** แบ่งเป็น
 
 - static: `bash -n`, guard อยู่ **ก่อน** `ln -sfn`, ไม่เหลือ `mkdir -p "$MAC_NODE_MODULES"`, fatal guard อยู่ **หลัง** `SETUP_REASON` ทุกเงื่อนไขและมี `-z "$SETUP_REASON"`, `setup.sh` ยังลง deps ได้
 - **รันโค้ดจริง**: ตัด `mac.sh` ก่อน first-time setup block ไปรันใน throwaway repo บน Linux โดย stub `uname -s` → `Darwin` และ stub `ln` ให้ล้มเหลวเฉพาะตอน probe symlink (จำลอง exFAT)
@@ -64,6 +64,17 @@ cd /Volumes/AI && ./mac.sh
   - fallback exFAT ทั้งสองกรณี
 
 `node scripts/validation/test-mac-launch-files-tracked.cjs` ยังผ่าน (guard ไม่ได้เพิ่มไฟล์ที่ต้องมากับ git)
+
+## ขยายไปทุก launcher
+
+| ไฟล์ | สิ่งที่แก้ |
+| :--- | :--- |
+| `mac.sh` | PR #84 — guard เดิม (`node_modules_mac`) |
+| `linux.sh` | guard เดียวกันแต่ใช้ `node_modules_linux` + fatal guard หลัง `SETUP_REASON` (ก่อนหน้านี้มี `mkdir -p "$LINUX_NODE_MODULES"` + `ln -sf` แบบเดียวกับ Mac และ **ไม่มี** dist self-heal เลย) |
+| `scripts/setup/setup.sh` | หลัง `npm install --prefer-offline` **ตรวจ `node_modules/vite/package.json` + `node_modules/vite/bin/vite.js` ก่อน Step 4 build** — npm อาจ exit 0 ทิ้ง vite ไว้ไม่ได้ (cache ว่าง / symlink ลอย / install ถูกขัดจังหวะ) ถ้าไม่มีจะ `print_fail` พร้อมอธิบาย `ERR_MODULE_NOT_FOUND` + คำสั่งซ่อม แล้ว `exit 1` แทนที่จะไปพังตอน `vite build` |
+| `windows.bat` | ไม่มี node_modules symlink logic → ไม่ต้องแก้ |
+
+ชุดเทสต์รันโค้ดจริงของ **`linux.sh` ด้วย** โดย stub `uname -s` → `Linux` ครบ 8 สถานะเหมือน Mac และรัน **verification block ของ `setup.sh` จริง** ใน temp dir ทั้งกรณีมี vite (pass) และไม่มี vite (`exit 1` + ข้อความซ่อม)
 
 ## หมายเหตุสำหรับ `/Volumes/AI`
 

@@ -197,7 +197,7 @@ model is loaded.
 3. **Add Models:** Drop your weights into `app/models/` or download them via the **Model Manager** tab.
 4. **Generate:** Open `http://localhost:1420` in your browser.
    > [!TIP]
-   > If `./mac.sh` stops with **"Frontend dependencies are incomplete: vite was not found"**, it is refusing to create a `node_modules` symlink that points at an empty folder (which would silently break every later `vite build`). Run the repair it prints — `cd app/frontend && rm -rf node_modules && npm ci` — once, then launch again. See [`docs/beta7/mac-launcher-deps-guard.md`](docs/beta7/mac-launcher-deps-guard.md).
+   > If `./mac.sh` (or `./linux.sh`) stops with **"Frontend dependencies are incomplete: vite was not found"**, the launcher is refusing to create a `node_modules` symlink that points at an empty folder (which would silently break every later `vite build`). Run the repair it prints — `cd app/frontend && rm -rf node_modules && npm ci` — once, then launch again. `setup.sh` performs the same check after `npm install`. See [`docs/beta7/mac-launcher-deps-guard.md`](docs/beta7/mac-launcher-deps-guard.md).
 
 ---
 

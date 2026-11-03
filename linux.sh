@@ -64,6 +64,15 @@ FRONTEND_NODE_MODULES="$APP_DIR/frontend/node_modules"
 LINUX_NODE_MODULES="$APP_DIR/frontend/node_modules_linux"
 ACTIVE_OS_FILE="$APP_DIR/frontend/.active_modules_os"
 
+# Same guard as mac.sh: a node_modules symlink to an EMPTY folder is worse
+# than none. `npm run build` then dies with ERR_MODULE_NOT_FOUND and the app
+# still looks healthy because serve.cjs only serves app/dist. See
+# docs/beta7/mac-launcher-deps-guard.md for the full root-cause write-up.
+has_frontend_deps() {
+  [[ -f "$1/vite/package.json" && -f "$1/vite/bin/vite.js" ]]
+}
+FRONTEND_DEPS_INCOMPLETE=0
+
 # Attempt to create a test symlink to check if filesystem supports symlinks
 USE_SYMLINKS=true
 TEST_LINK="$APP_DIR/frontend/.test_symlink"
@@ -76,13 +85,29 @@ fi
 
 if [ "$USE_SYMLINKS" = true ]; then
   if [[ -d "$FRONTEND_NODE_MODULES" && ! -L "$FRONTEND_NODE_MODULES" ]]; then
-    echo "  >> Migrating existing node_modules to node_modules_linux..."
-    rm -rf "$LINUX_NODE_MODULES"
-    mv "$FRONTEND_NODE_MODULES" "$LINUX_NODE_MODULES"
+    # npm install replaces the symlink with a real directory. Only keep that
+    # copy when it is the healthier one, so a complete node_modules_linux is
+    # never deleted to make room for an empty directory.
+    if has_frontend_deps "$FRONTEND_NODE_MODULES" || ! has_frontend_deps "$LINUX_NODE_MODULES"; then
+      echo "  >> Migrating existing node_modules to node_modules_linux..."
+      rm -rf "$LINUX_NODE_MODULES"
+      mv "$FRONTEND_NODE_MODULES" "$LINUX_NODE_MODULES"
+    else
+      echo "  >> Discarding an incomplete node_modules; node_modules_linux is complete."
+      rm -rf "$FRONTEND_NODE_MODULES"
+    fi
   fi
-  rm -f "$FRONTEND_NODE_MODULES"
-  mkdir -p "$LINUX_NODE_MODULES"
-  ln -sf "node_modules_linux" "$FRONTEND_NODE_MODULES"
+
+  # GUARD: check the target BEFORE creating the symlink.
+  if has_frontend_deps "$LINUX_NODE_MODULES"; then
+    rm -f "$FRONTEND_NODE_MODULES"
+    ln -sfn "node_modules_linux" "$FRONTEND_NODE_MODULES"
+  else
+    rm -f "$FRONTEND_NODE_MODULES"
+    FRONTEND_DEPS_INCOMPLETE=1
+    echo "  [deps] $LINUX_NODE_MODULES has no vite — refusing to link to an empty folder."
+    echo "         Setup will reinstall the frontend dependencies."
+  fi
 else
   # Fallback: Filesystem does not support symlinks (e.g. FAT32/exFAT)
   echo "  >> Filesystem does not support symlinks. Using directory swapping fallback..."
@@ -116,6 +141,11 @@ else
   fi
   
   echo "linux" > "$ACTIVE_OS_FILE"
+
+  if ! has_frontend_deps "$FRONTEND_NODE_MODULES"; then
+    FRONTEND_DEPS_INCOMPLETE=1
+    echo "  [deps] $FRONTEND_NODE_MODULES has no vite — setup will reinstall dependencies."
+  fi
 fi
 
 # ── First-time setup check ─────────────────────────────────────────────────
@@ -152,6 +182,26 @@ if [[ ! -x "$SPEECH_BACKEND_PATH" ]]; then
 fi
 if [[ ! -d "$TTS_RUNTIME_PATH" ]]; then
   SETUP_REASON="Kokoro text-to-speech runtime is missing."
+fi
+
+# On an already installed machine, setup.sh is not about to run and there is
+# nothing left to repair the dependency folder. Stop with the exact repair
+# instead of launching over a build chain that cannot build. A fresh checkout
+# has SETUP_REASON set (no portable Node and/or no app/dist), so setup.sh
+# still installs the dependencies there.
+if [[ "$FRONTEND_DEPS_INCOMPLETE" == "1" && -z "$SETUP_REASON" ]]; then
+  echo "" >&2
+  echo "  [ERROR] Frontend dependencies are incomplete: vite was not found." >&2
+  echo "          LUKE will not start with a broken build chain." >&2
+  echo "" >&2
+  echo "  Repair once, then start again:" >&2
+  echo "      cd \"$SCRIPT_DIR/app/frontend\"" >&2
+  echo "      rm -rf node_modules" >&2
+  echo "      npm ci" >&2
+  echo "      cd \"$SCRIPT_DIR\" && ./linux.sh" >&2
+  echo "" >&2
+  echo "  (npm ci needs the npm cache or a network connection, once.)" >&2
+  exit 1
 fi
 
 if [[ -n "$SETUP_REASON" ]]; then
