@@ -104,6 +104,12 @@ const PAYMENT_FIELDS = Object.freeze([
   "payment", "paymentMethod", "payment_method", "autoTopUp", "topUp",
   "topup", "allowPaid", "paidPlan", "upgrade", "subscription", "checkout",
   "cardConfirmed", "budget", "invoice",
+  // Payment-processor and upgrade handles. They used to pass through as
+  // harmless unknown fields; refusing them makes "LUKE never pays" explicit
+  // even if a future caller wires one of them to a provider adapter.
+  "buyCredits", "addCredits", "subscriptionId", "paymentUrl", "checkoutUrl",
+  "billingKey", "priceId", "planId", "autoRenew", "creditCard", "cardToken",
+  "paymentToken", "stripe", "paypal", "paddle", "lemonsqueezy", "gumroad",
 ]);
 
 /** LUKE never spends money. This is a fact about the code, not a switch. */
