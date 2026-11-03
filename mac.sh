@@ -92,6 +92,23 @@ FRONTEND_NODE_MODULES="$APP_DIR/frontend/node_modules"
 MAC_NODE_MODULES="$APP_DIR/frontend/node_modules_mac"
 ACTIVE_OS_FILE="$APP_DIR/frontend/.active_modules_os"
 
+# A node_modules that points at an EMPTY folder is worse than no node_modules
+# at all. npm and vite then resolve nothing, `npm run build` dies with
+# ERR_MODULE_NOT_FOUND, the self-heal above swallows that error, and the app
+# still prints "Running!". That is exactly what happened when node_modules_mac
+# was renamed while `node_modules` was a symlink to it: `mkdir -p` + `ln`
+# quietly manufactured a brand new empty target on every launch.
+#
+# So: never create the symlink unless the folder it points at really contains
+# vite. A fresh checkout is the exception — it has no dependencies yet and
+# setup.sh installs them into the (still empty) link later. The fatal check
+# below only fires when setup is NOT going to run, i.e. on an installed
+# machine that has lost its dependencies.
+has_frontend_deps() {
+  [[ -f "$1/vite/package.json" && -f "$1/vite/bin/vite.js" ]]
+}
+FRONTEND_DEPS_INCOMPLETE=0
+
 # Attempt to create a test symlink to check if filesystem supports symlinks
 USE_SYMLINKS=true
 TEST_LINK="$APP_DIR/frontend/.test_symlink"
@@ -104,13 +121,29 @@ fi
 
 if [ "$USE_SYMLINKS" = true ]; then
   if [[ -d "$FRONTEND_NODE_MODULES" && ! -L "$FRONTEND_NODE_MODULES" ]]; then
-    echo "  >> Migrating existing node_modules to node_modules_mac..."
-    rm -rf "$MAC_NODE_MODULES"
-    mv "$FRONTEND_NODE_MODULES" "$MAC_NODE_MODULES"
+    # `npm install` replaces the symlink with a real directory. Only move that
+    # directory in when it is the healthier copy: deleting a complete
+    # node_modules_mac to make room for an empty one lost vite just as surely.
+    if has_frontend_deps "$FRONTEND_NODE_MODULES" || ! has_frontend_deps "$MAC_NODE_MODULES"; then
+      echo "  >> Migrating existing node_modules to node_modules_mac..."
+      rm -rf "$MAC_NODE_MODULES"
+      mv "$FRONTEND_NODE_MODULES" "$MAC_NODE_MODULES"
+    else
+      echo "  >> Discarding an incomplete node_modules; node_modules_mac is complete."
+      rm -rf "$FRONTEND_NODE_MODULES"
+    fi
   fi
-  rm -f "$FRONTEND_NODE_MODULES"
-  mkdir -p "$MAC_NODE_MODULES"
-  ln -sf "node_modules_mac" "$FRONTEND_NODE_MODULES"
+
+  # GUARD: check the target BEFORE creating the symlink.
+  if has_frontend_deps "$MAC_NODE_MODULES"; then
+    rm -f "$FRONTEND_NODE_MODULES"
+    ln -sfn "node_modules_mac" "$FRONTEND_NODE_MODULES"
+  else
+    rm -f "$FRONTEND_NODE_MODULES"
+    FRONTEND_DEPS_INCOMPLETE=1
+    echo "  [deps] $MAC_NODE_MODULES has no vite — refusing to link to an empty folder."
+    echo "         Setup will reinstall the frontend dependencies."
+  fi
 else
   # Fallback: Filesystem does not support symlinks (e.g. FAT32/exFAT)
   echo "  >> Filesystem does not support symlinks. Using directory swapping fallback..."
@@ -144,6 +177,13 @@ else
   fi
   
   echo "mac" > "$ACTIVE_OS_FILE"
+
+  # No symlink here, but the same silent failure applies: an empty real
+  # directory leaves `vite build` broken with nothing said about it.
+  if ! has_frontend_deps "$FRONTEND_NODE_MODULES"; then
+    FRONTEND_DEPS_INCOMPLETE=1
+    echo "  [deps] $FRONTEND_NODE_MODULES has no vite — setup will reinstall dependencies."
+  fi
 fi
 
 # ── First-time setup check ─────────────────────────────────────────────────
@@ -181,6 +221,28 @@ if [[ ! -x "$SPEECH_BACKEND_PATH" ]]; then
 fi
 if [[ ! -x "$SPEECH_BACKEND_PATH" ]]; then
   SETUP_REASON="macOS whisper.cpp speech backend is missing."
+fi
+
+# On a machine that is already set up, an incomplete dependency folder has
+# nothing left to repair it: setup.sh is not about to run, and the self-heal at
+# the top only rebuilds app/dist (which needs vite). Stop with the exact repair
+# instead of printing "Running!" over a build chain that cannot build.
+#
+# A fresh checkout is unaffected: it has no portable Node and/or no app/dist,
+# so SETUP_REASON is already set and setup.sh installs the dependencies.
+if [[ "$FRONTEND_DEPS_INCOMPLETE" == "1" && -z "$SETUP_REASON" ]]; then
+  echo "" >&2
+  echo "  [ERROR] Frontend dependencies are incomplete: vite was not found." >&2
+  echo "          LUKE will not start with a broken build chain." >&2
+  echo "" >&2
+  echo "  Repair once, then start again:" >&2
+  echo "      cd \"$SCRIPT_DIR/app/frontend\"" >&2
+  echo "      rm -rf node_modules" >&2
+  echo "      npm ci" >&2
+  echo "      cd \"$SCRIPT_DIR\" && ./mac.sh" >&2
+  echo "" >&2
+  echo "  (npm ci needs the npm cache or a network connection, once.)" >&2
+  exit 1
 fi
 
 if [[ -n "$SETUP_REASON" ]]; then
