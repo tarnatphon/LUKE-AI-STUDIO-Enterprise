@@ -704,6 +704,22 @@ else
   fi
 fi
 
+# npm can exit 0 while leaving no usable vite behind (empty npm cache, a
+# `node_modules` that used to be a dangling symlink, an interrupted install).
+# Building straight away then fails with a cryptic
+# ERR_MODULE_NOT_FOUND from vite.config.js. Check the two files vite actually
+# needs BEFORE the build, while the failure still has an obvious cause.
+FRONTEND_VITE_DIR="$FRONTEND_DIR/node_modules/vite"
+if [[ ! -f "$FRONTEND_VITE_DIR/package.json" || ! -f "$FRONTEND_VITE_DIR/bin/vite.js" ]]; then
+  print_fail "npm install did not produce a usable vite in $FRONTEND_VITE_DIR."
+  echo "         A node_modules symlink pointing at an empty folder makes every"
+  echo "         frontend build fail with ERR_MODULE_NOT_FOUND. Repair once:"
+  echo "           cd \"$FRONTEND_DIR\" && rm -f node_modules && npm ci"
+  echo "         then start the app again (setup.sh will run once more)."
+  exit 1
+fi
+print_ok "vite is present in node_modules; frontend build can run."
+
 # ── Step 4: Build frontend ──────────────────────────────────────────────────
 print_step 7 $TOTAL_STEPS "Building frontend -> app/dist/"
 
