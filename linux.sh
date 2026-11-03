@@ -237,6 +237,21 @@ if [[ -n "$SETUP_REASON" ]]; then
   fi
 fi
 
+# ── Make the served frontend belong to this checkout ───────────────────────
+# Called AFTER the node_modules guard and AFTER first-time setup, so a rebuild
+# can never run on a broken dependency folder. A `git pull` without a rebuild
+# used to leave the browser on the previous version while /api/health reported
+# stale: True and the launcher still said "Running!". The helper compares the
+# commit stamped into app/dist/build-info.json with HEAD, rebuilds when they
+# differ (or an emitted asset is missing), verifies the new stamp, and exits
+# non-zero rather than serving a stale UI when it cannot. No .git => skips
+# quietly, which keeps zip/offline installs working.
+CHECK_FRONTEND_BUILD="$SCRIPT_DIR/scripts/setup/check-frontend-build.sh"
+if ! bash "$CHECK_FRONTEND_BUILD"; then
+  echo "  [ERROR] Frontend bundle check failed — LUKE will not serve a stale UI." >&2
+  exit 1
+fi
+
 # ── Offline-first automatic update check ────────────────────────────────────
 # Never blocks Local AI when the internet or update server is unavailable.
 UPDATER_SCRIPT="$SCRIPT_DIR/scripts/updater/update.cjs"

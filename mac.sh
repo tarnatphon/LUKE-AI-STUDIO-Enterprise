@@ -38,48 +38,13 @@ PLATFORM_LABEL="macOS"
 DIST_INDEX="$APP_DIR/dist/index.html"
 SETUP_SCRIPT="$SCRIPT_DIR/scripts/setup/setup.sh"
 
-# ── Self-heal the built frontend: every file the build emitted must exist ───
-#    on disk, otherwise the browser loads a half broken app.
-#
-#    index.html names only the entry point, so checking it sees 3 files out of
-#    ~65. The code-split chunks the app fetches when you open Asset Library,
-#    Generator, Settings and so on are referenced from inside the entry script,
-#    not from index.html, so the authoritative list is the build manifest vite
-#    writes beside the output (build.manifest in app/frontend/vite.config.js).
-#
-#    This used to restore missing files with `git checkout`, which stopped
-#    working the moment app/dist/ was gitignored: `git ls-files app/dist`
-#    answered with an empty list, the loop below it never ran a single time,
-#    and the script reported a healthy frontend over a broken one. There is
-#    nothing left to restore from, so the repair is to rebuild.
-MANIFEST="$APP_DIR/dist/.vite/manifest.json"
-if [[ -f "$DIST_INDEX" ]]; then
-  MISSING_ASSET=0
-  if [[ -f "$MANIFEST" ]]; then
-    # Only "file" and the "css"/"assets" arrays name emitted files. "src" names
-    # the source, including paths under node_modules, so matching on "any
-    # string with a slash" would call those missing and rebuild every launch.
-    while IFS= read -r asset; do
-      [[ -z "$asset" ]] && continue
-      [[ -f "$APP_DIR/dist/$asset" ]] || MISSING_ASSET=1
-    done < <(tr -d ' \t\n' < "$MANIFEST" \
-      | grep -oE '"file":"[^"]*"|"(css|assets)":\[[^]]*\]' \
-      | grep -oE '"[^"]+\.[a-zA-Z0-9]+"' | tr -d '"' | sort -u)
-  else
-    # Built before the manifest existed. Unknown is not the same as healthy.
-    MISSING_ASSET=1
-  fi
-  if [[ "$MISSING_ASSET" == "1" ]]; then
-    echo "  [dist] The built frontend is incomplete — rebuilding it."
-    if (cd "$APP_DIR/frontend" && npm run build) >/dev/null 2>&1; then
-      echo "  [dist] Rebuilt."
-    else
-      echo "  [dist] Could not rebuild. Run this by hand, then start the app again:"
-      echo "         (cd app/frontend && npm install && npm run build)"
-    fi
-  fi
-fi
-
+# ── Frontend freshness is checked AFTER the dependency guard ───────────────
+# It used to live here as a manifest-only self-heal that called
+# `npm run build` with its output swallowed. That ran before the node_modules
+# guard, so a broken dependency folder made it fail silently while the app
+# cheerfully served the previous bundle. Both checks (commit stamp + emitted
+# assets) now live in scripts/setup/check-frontend-build.sh, called after the
+# guard and after first-time setup, where vite is guaranteed to be usable.
 SERVE_SCRIPT="$SCRIPT_DIR/scripts/server/serve.cjs"
 
 FRONTEND_PORT="${FRONTEND_PORT:-1420}"
@@ -276,6 +241,21 @@ if [[ -n "$SETUP_REASON" ]]; then
     read -rp "  Press Enter to close..."
     exit 1
   fi
+fi
+
+# ── Make the served frontend belong to this checkout ───────────────────────
+# Called AFTER the node_modules guard and AFTER first-time setup, so a rebuild
+# can never run on a broken dependency folder. A `git pull` without a rebuild
+# used to leave the browser on the previous version while /api/health reported
+# stale: True and the launcher still said "Running!". The helper compares the
+# commit stamped into app/dist/build-info.json with HEAD, rebuilds when they
+# differ (or an emitted asset is missing), verifies the new stamp, and exits
+# non-zero rather than serving a stale UI when it cannot. No .git => skips
+# quietly, which keeps zip/offline installs working.
+CHECK_FRONTEND_BUILD="$SCRIPT_DIR/scripts/setup/check-frontend-build.sh"
+if ! bash "$CHECK_FRONTEND_BUILD"; then
+  echo "  [ERROR] Frontend bundle check failed — LUKE will not serve a stale UI." >&2
+  exit 1
 fi
 
 # ── Offline-first automatic update check ────────────────────────────────────

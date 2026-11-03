@@ -155,13 +155,15 @@ function main() {
   console.log("\n  PASS: mac.sh launch files are tracked completed.\n");
 }
 
-// The self-heal block at the top of mac.sh used to be covered here: it
-// restores app/dist out of the git index, and this suite deleted a real
-// bundle to watch it do so. It is not covered any more because it cannot
-// be — `git ls-files app/dist` is empty now that the folder is build
-// output, so the block finds nothing to restore and always stays quiet.
-// The block itself is left in mac.sh untouched: deleting launcher code is
-// a separate decision, and until then it is harmless rather than wrong.
+// The manifest-only self-heal that used to sit at the top of mac.sh is gone:
+// it called `npm run build` BEFORE the node_modules guard, with its output
+// swallowed, so a broken dependency folder produced a silent failure while
+// the app served the previous bundle. Commit-stamp freshness and emitted
+// asset completeness now live together in
+// scripts/setup/check-frontend-build.sh, called after the guard and after
+// setup.sh, and are exercised behaviourally by
+// test-frontend-build-self-heal.cjs. This suite still pins that every path
+// mac.sh reaches — including that helper — actually comes from git.
 
 try {
   main();

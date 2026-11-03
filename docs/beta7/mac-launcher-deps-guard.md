@@ -81,3 +81,7 @@ cd /Volumes/AI && ./mac.sh
 - ถ้าจะ `npm ci` / `npm install` ให้ทำ **ก่อน** `./mac.sh` แล้ว `npx vite build` ต่อทันที — อย่าทำหลัง `mac.sh` สร้าง symlink แล้ว
 - `app/dist/` ถูก gitignore และ `vite.config.js` ฝัง `git rev-parse HEAD` ลง bundle → **ทุก pull ต้อง build ใหม่**
 - external drive ถูกอ่านทั้ง `git`, `node_modules` และ `app/dist` ทุก launch ถ้ายังช้าหลังแก้ ตัวแปรสุดท้ายคือย้าย repo ไป internal SSD
+
+## ถัดไป
+
+`scripts/setup/check-frontend-build.sh` ใช้ guard นี้เป็นประตูแรก แล้วค่อยเช็ค commit ของ `app/dist` — ดู [`frontend-build-self-heal.md`](frontend-build-self-heal.md)
