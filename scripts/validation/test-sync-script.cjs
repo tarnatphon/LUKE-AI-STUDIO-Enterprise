@@ -34,11 +34,29 @@ function assert(condition, message) {
 }
 
 function git(cwd, args, options = {}) {
-  return execFileSync("git", args, { cwd, encoding: "utf8", ...options }).trim();
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", ...options }).trim();
+  } catch (error) {
+    // A git failure used to surface only as a bare stack trace on stderr, which
+    // run-all.cjs drops when the suite already printed something on stdout.
+    // Name the command and include its own stderr so a CI failure is readable.
+    const detail = String(error?.stderr || "").trim();
+    throw new Error(`git ${args.join(" ")} failed in ${cwd}${detail ? `: ${detail}` : ""}`);
+  }
 }
 
 function run(cwd, command, args) {
   return spawnSync(command, args, { cwd, encoding: "utf8" });
+}
+
+/** Show why a sync.sh run failed, on stdout where the CI report keeps it. */
+function explainRun(label, result) {
+  if (result.status === 0) return;
+  const stderr = String(result.stderr || "").trim();
+  const stdout = String(result.stdout || "").trim();
+  console.log(`  FAIL  ${label} exited ${result.status}`);
+  if (stderr) console.log(stderr.split("\n").slice(-12).join("\n"));
+  if (stdout) console.log(stdout.split("\n").slice(-12).join("\n"));
 }
 
 function main() {
@@ -61,7 +79,7 @@ function main() {
     // them. Cloning locally needs no network.
     execFileSync(
       "git",
-      ["clone", "--quiet", root, origin],
+      ["clone", "--quiet", "--no-hardlinks", root, origin],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
     );
     // A clone of a detached HEAD is detached as well, so the branch the clones
@@ -125,6 +143,7 @@ function main() {
     assert(behind !== ahead, `The user checkout starts behind the origin (${behind} vs ${ahead}).`);
 
     const first = run(user, "bash", ["sync.sh"]);
+    explainRun("first sync", first);
 
     console.log(
       first.stdout
@@ -184,7 +203,7 @@ function main() {
 
     execFileSync(
       "git",
-      ["clone", "--quiet", root, origin2],
+      ["clone", "--quiet", "--no-hardlinks", root, origin2],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
     );
     git(origin2, ["checkout", "-B", branch]);
@@ -248,6 +267,7 @@ function main() {
     const recordAhead = git(origin2, ["rev-parse", "--short", "HEAD"]);
 
     const transition = run(user2, "bash", ["sync.sh"]);
+    explainRun("untrack transition sync", transition);
 
     console.log(
       transition.stdout
@@ -313,6 +333,11 @@ function main() {
 try {
   main();
 } catch (error) {
+  // run-all.cjs only puts the last meaningful STDOUT line in its report. Keep
+  // the reason on stdout too, so a failing CI run says what actually broke.
+  const message = error instanceof Error ? error.message : String(error);
+  console.log(`  FAIL  ${message}`);
+  if (error?.stderr) console.log(String(error.stderr).trim().split("\n").slice(-12).join("\n"));
   console.error(error instanceof Error ? error.stack || error.message : String(error));
   process.exit(1);
 }
