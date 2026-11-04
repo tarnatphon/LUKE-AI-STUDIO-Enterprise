@@ -23,7 +23,7 @@ import {
   getDownloadProgress,
   getBackendOptions,
 } from "../services/api";
-import { THEMES } from "../themes";
+import { THEME_LIST } from "../themes";
 import "./Settings.css";
 
 const ASPECT_RATIOS = [
@@ -1740,7 +1740,7 @@ function Settings({
       <SectionHeader 
         icon={Palette} 
         title="Appearance & Themes" 
-        count={2}
+        count={THEME_LIST.length}
         color="var(--md-sys-color-primary)"
         isExpanded={expandedSections.appearance}
         onToggle={() => toggleSection("appearance")}
@@ -1760,7 +1760,7 @@ function Settings({
               gap: "14px",
               marginTop: "14px"
             }}>
-              {THEMES.map((t) => {
+              {THEME_LIST.map((t) => {
                 const isActive = theme === t.id;
                 return (
                   <button

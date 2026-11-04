@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect } from "react";
 import { Square, RefreshCw, Sun, Moon, Palette, Check, PanelLeftClose, PanelLeft } from "lucide-react";
-import { THEMES } from "../themes";
+import { THEME_LIST } from "../themes";
 
 const truncateModelName = (name) => {
   if (!name || typeof name !== "string") return "";
@@ -25,9 +25,10 @@ function TopStatusBar({
   theme, 
   setTheme,
   sidebarVisible,
-  onToggleSidebar
+  onToggleSidebar,
+  initialThemeMenuOpen = false
 }) {
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [showThemeMenu, setShowThemeMenu] = useState(initialThemeMenuOpen);
   const menuRef = useRef(null);
   // The online badge is computed on the server from the Egress Ledger, so the
   // header cannot claim "air-gap" while the ledger says something went out.
@@ -166,7 +167,7 @@ function TopStatusBar({
             <div className="theme-dropdown-menu">
               <div className="theme-dropdown-header">Select Theme</div>
               <div className="theme-dropdown-divider"></div>
-              {THEMES.map((t) => {
+              {THEME_LIST.map((t) => {
                 const isActive = theme === t.id;
                 return (
                   <button

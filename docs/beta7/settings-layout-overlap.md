@@ -89,3 +89,12 @@ git fetch origin && git checkout main && git pull --ff-only
 
 ถ้ายังทับ ให้ paste ผล 5 คำสั่ง health + ข้อความ `[dist]`/`[storage]` ที่ launcher พิมพ์
 (ดูชุดคำสั่งใน [`settings-page-stale-ui.md`](settings-page-stale-ui.md)) มาพร้อมภาพหน้าจอครับ
+
+---
+
+## ถัดมา: หน้าโหลดไม่ขึ้นเลย (`ae.map is not a function`)
+
+หลัง PR #90 เจ้าของเจอ `Workspace could not be loaded. ae.map is not a function` แทน —
+นั่นเป็น **runtime error ตอน render** จาก `THEMES.map` (catalog เป็น object ไม่ใช่ array)
+ไม่ใช่ layout/stale อีกต่อไป ดูการ reproduce ใน sandbox และการแก้ทั้งระบบธีมที่
+[`settings-theme-crash.md`](settings-theme-crash.md) (`test-theme-catalog.cjs` **41 checks**)

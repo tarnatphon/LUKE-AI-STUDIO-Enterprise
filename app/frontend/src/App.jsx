@@ -4,6 +4,7 @@ import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
 import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
 import "./App.css";
+import { canonicalThemeId } from "./themes";
 import { missingGrants, normaliseFailedFolders, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
 
 const workspaceLoaders = {
@@ -166,7 +167,7 @@ function App() {
   });
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.setAttribute("data-theme", canonicalThemeId(theme));
     localStorage.setItem("theme", theme);
   }, [theme]);
 
