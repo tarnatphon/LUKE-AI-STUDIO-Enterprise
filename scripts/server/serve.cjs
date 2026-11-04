@@ -1295,6 +1295,13 @@ const DIST    = path.join(ROOT, "app", "dist");
 // guess why a shipped feature is missing.
 const { readSourceInfo, createSourceInfoReader } = require("./source-info.cjs");
 const readRuntimeSource = createSourceInfoReader(ROOT);
+// Captured ONCE, when this process boots. readRuntimeSource() is cached for
+// 15s and therefore follows a `git pull` made while the app is running; if the
+// checkout moved past the commit this process loaded, the backend in memory is
+// old even though /api/health's source and frontend stamps look up to date.
+// That is exactly the state where a new Settings panel is served but its API
+// still answers 404. Report it instead of leaving the user to guess.
+const PROCESS_SOURCE = readSourceInfo(ROOT);
 
 let distBuildCache = { at: 0, value: null };
 function getDistBuildInfo() {
@@ -5255,6 +5262,13 @@ async function getHealth() {
       stale: Boolean(frontendBuild && source.available && frontendBuild.commit && frontendBuild.commit !== source.commit),
       sourceCommit: source.available ? source.shortCommit : "",
     },
+    process: {
+      ...PROCESS_SOURCE,
+      restartRequired: Boolean(PROCESS_SOURCE.available && source.available
+        && PROCESS_SOURCE.commit !== source.commit),
+    },
+    restartRequired: Boolean(PROCESS_SOURCE.available && source.available
+      && PROCESS_SOURCE.commit !== source.commit),
     platform: osPlatform,
     checks,
     ports,
@@ -30768,11 +30782,28 @@ function cacheControlForStaticFile(requestUrl) {
     requestedPath.startsWith("/") ? `.${requestedPath}` : `./${requestedPath}`
   );
 
+  // A missing hashed bundle used to fall through to index.html while keeping
+  // the .js/.css MIME type. The browser then tried to parse HTML as JavaScript,
+  // the whole SPA failed to boot, and Settings looked broken in a dozen
+  // unrelated ways (no borders, no separators, half the page missing). Assets
+  // must 404 loudly; only extensionless SPA routes get the index.html shell.
+  const isStaticAsset = requestedPath.startsWith("/assets/")
+    || /\.(js|mjs|cjs|css|map|json|webmanifest|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|wasm|mp3|mp4)$/i.test(requestedPath);
+  const missingAsset = () => {
+    res.writeHead(404, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end("Frontend asset missing: the built bundle is incomplete or the browser cached an old index.html. Restart LUKE (./mac.sh / ./linux.sh) to rebuild, then hard-refresh.");
+  };
+
   if (filePath !== distRoot && !filePath.startsWith(`${distRoot}${path.sep}`)) {
+    if (isStaticAsset) return missingAsset();
     filePath = path.join(distRoot, "index.html");
   }
 
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    if (isStaticAsset) return missingAsset();
     filePath = path.join(distRoot, "index.html");
   }
 

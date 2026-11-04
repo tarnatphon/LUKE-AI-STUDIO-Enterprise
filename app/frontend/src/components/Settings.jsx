@@ -309,7 +309,12 @@ function Settings({
       tts: localStorage.getItem("settings_section_tts") === "true",
       cloud: localStorage.getItem("settings_section_cloud") === "true",
       online: localStorage.getItem("settings_section_online") === "true",
-      storage: localStorage.getItem("settings_section_storage") === "true",
+      // A brand-new section is expanded the first time it is seen, so an
+      // update is visible instead of looking like "nothing changed". After
+      // that the owner's own open/closed choice is kept like every section.
+      storage: localStorage.getItem("settings_section_storage") === null
+        ? true
+        : localStorage.getItem("settings_section_storage") === "true",
     };
   });
 
@@ -1996,7 +2001,7 @@ function Settings({
                       <>
                         <button
                           type="button"
-                          className="m3-button-outlined"
+                          className="m3-btn-outlined"
                           style={{ marginTop: "8px" }}
                           disabled={remoteBusy === item.id}
                           onClick={() => loadRemoteModels(item.id)}
@@ -2027,7 +2032,7 @@ function Settings({
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" }}>
                     <button
                       type="button"
-                      className="m3-button-filled"
+                      className="m3-btn-filled"
                       disabled={remoteBusy === item.id || (!item.keyless && !(remoteKeys[item.id] || "").trim())}
                       onClick={() =>
                         item.keyless
@@ -2042,7 +2047,7 @@ function Settings({
 
                     <button
                       type="button"
-                      className="m3-button-outlined"
+                      className="m3-btn-outlined"
                       disabled={remoteBusy === item.id || !item.configured}
                       onClick={() => testRemote(item.id)}
                     >
@@ -2052,7 +2057,7 @@ function Settings({
                     {!item.modelLocked && (
                       <button
                         type="button"
-                        className="m3-button-outlined"
+                        className="m3-btn-outlined"
                         disabled={remoteBusy === item.id}
                         onClick={() => saveRemoteModel(item.id)}
                       >
@@ -2062,7 +2067,7 @@ function Settings({
 
                     <button
                       type="button"
-                      className="m3-button-outlined"
+                      className="m3-btn-outlined"
                       disabled={remoteBusy === item.id || !item.configured}
                       onClick={() =>
                         item.keyless

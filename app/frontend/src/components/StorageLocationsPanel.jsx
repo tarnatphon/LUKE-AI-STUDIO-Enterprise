@@ -44,6 +44,9 @@ function StorageLocationsPanel({ showAlert }) {
   const refresh = useCallback(async () => {
     try {
       const response = await fetch("/api/storage/locations");
+      if (response.status === 404) {
+        throw new Error("The running server is older than this UI (no /api/storage/locations). Quit LUKE and start it again with ./mac.sh or ./linux.sh, then hard-refresh the browser.");
+      }
       const body = await response.json();
       if (!response.ok || !body.ok) throw new Error(body.error || "Could not read storage locations.");
       setData(body);
@@ -170,15 +173,16 @@ function StorageLocationsPanel({ showAlert }) {
                     <td style={{ padding: "8px", verticalAlign: "top", whiteSpace: "nowrap" }}>
                       <button
                         type="button"
-                        className="settings-small-button"
+                        className="m3-btn m3-btn-filled"
                         disabled={busy === folder.id}
                         onClick={() => void choose(folder)}
-                        style={{ marginRight: 6 }}
+                        style={{ marginRight: 6, padding: "5px 10px", fontSize: 11 }}
                       >{busy === folder.id ? "…" : "Choose…"}</button>
                       <button
                         type="button"
-                        className="settings-small-button"
+                        className="m3-btn m3-btn-outlined"
                         disabled={busy === folder.id || (!folder.target && folder.state === "in-checkout")}
+                        style={{ padding: "5px 10px", fontSize: 11 }}
                         onClick={() => void reset(folder)}
                       >Reset</button>
                     </td>
