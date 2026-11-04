@@ -14,6 +14,15 @@ if [[ -f "$SCRIPT_DIR/scripts/setup/git-local-state.sh" ]]; then
   bash "$SCRIPT_DIR/scripts/setup/git-local-state.sh" || true
 fi
 
+
+# Choose where each heavy folder lives (internal SSD vs external SSD). The
+# owner decides per folder in storage-layout.conf or Settings → Storage
+# locations. This runs BEFORE the frontend freshness check and the server, and
+# is deliberately non-fatal: an unmounted external disk must not stop LUKE.
+if [[ -f "$SCRIPT_DIR/scripts/setup/storage-layout.sh" ]]; then
+  bash "$SCRIPT_DIR/scripts/setup/storage-layout.sh" --apply || true
+fi
+
 PLATFORM="$(uname -s)"
 
 if [[ "$PLATFORM" != "Linux" ]]; then

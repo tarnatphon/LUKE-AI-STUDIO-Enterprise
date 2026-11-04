@@ -2,6 +2,7 @@ import { getSliderStyle } from "../lib/slider-style.mjs";
 import React, { memo, useEffect, useState, useCallback } from "react";
 import PerformancePanel from "./PerformancePanel";
 import OnlineSurfacesPanel from "./OnlineSurfacesPanel";
+import StorageLocationsPanel from "./StorageLocationsPanel";
 import {
   Crop, Sliders, Cpu, Info, MessageSquare, SlidersHorizontal, Zap,
   ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
@@ -308,6 +309,7 @@ function Settings({
       tts: localStorage.getItem("settings_section_tts") === "true",
       cloud: localStorage.getItem("settings_section_cloud") === "true",
       online: localStorage.getItem("settings_section_online") === "true",
+      storage: localStorage.getItem("settings_section_storage") === "true",
     };
   });
 
@@ -2117,6 +2119,17 @@ function Settings({
       />
 
       {expandedSections.online && <OnlineSurfacesPanel showAlert={showAlert} />}
+
+      <SectionHeader
+        icon={HardDrive}
+        title="Storage locations"
+        count={8}
+        color="#a78bfa"
+        isExpanded={expandedSections.storage}
+        onToggle={() => toggleSection("storage")}
+      />
+
+      {expandedSections.storage && <StorageLocationsPanel showAlert={showAlert} />}
 
       {renderSpeechSettings()}
 
