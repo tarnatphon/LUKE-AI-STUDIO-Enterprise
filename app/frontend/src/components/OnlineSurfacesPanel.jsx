@@ -24,6 +24,9 @@ const SWITCHES = [
   { key: "rateLimitRetry", label: "Retry a 429 once", hint: "Uses more of a free minute-quota before moving to the next link." },
 ];
 
+/** Settings.jsx shows the real number of switches instead of a hard-coded 8. */
+export const ONLINE_SURFACE_SWITCH_COUNT = SWITCHES.length;
+
 const box = {
   border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: "12px",
