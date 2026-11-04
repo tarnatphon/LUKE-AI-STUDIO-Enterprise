@@ -1175,7 +1175,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v1";
+const SERVER_BUILD = "text-image-v2";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;

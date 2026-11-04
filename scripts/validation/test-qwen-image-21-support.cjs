@@ -59,6 +59,11 @@ try {
   }), false);
 
   const serveSource = fs.readFileSync(path.join(__dirname, "..", "server", "serve.cjs"), "utf8");
+  const frontendApiSource = fs.readFileSync(path.join(__dirname, "..", "..", "app", "frontend", "src", "services", "api.js"), "utf8");
+  const serverBuild = serveSource.match(/const SERVER_BUILD = "([^"]+)";/)?.[1];
+  const expectedFrontendBuild = frontendApiSource.match(/EXPECTED_SERVER_BUILD = "([^"]+)";/)?.[1];
+  assert.equal(serverBuild, "text-image-v2", "the Qwen multi-file backend changes the API build contract");
+  assert.equal(expectedFrontendBuild, serverBuild, "the frontend must detect a stale pre-Qwen server");
   assert.match(serveSource, /imageDiffusionSupport\.buildModelComponentArgs\(imageModelPlan, imageLoadPath\)/);
   assert.match(serveSource, /backendSupportsMultiFileDiffusion\(backendPath\)/);
   assert.match(serveSource, /"--sigmas", "qwen-image-2\.1-turbo"/);
