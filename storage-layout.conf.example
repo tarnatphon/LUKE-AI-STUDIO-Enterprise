@@ -1,0 +1,22 @@
+# LUKE AI STUDIO — ตัวอย่างไฟล์เลือกที่อยู่โฟลเดอร์
+# ก๊อปปี้เป็น storage-layout.conf (ไฟล์นี้ไม่ถูก commit / ไม่ติด git)
+#   cp storage-layout.conf.example storage-layout.conf
+#
+# รูปแบบ: <folder-id>=<path สัมบูรณ์>   บรรทัดที่ขึ้นต้น # คือคอมเมนต์
+# ดูรายการ id ทั้งหมดได้จาก: bash scripts/setup/storage-layout.sh --list
+#
+# ตัวอย่าง: เอาโมเดลไปไว้ External SSD แต่เก็บ history / UI ไว้ Internal SSD
+# llm-models=/Volumes/ExternalSSD/LUKE/llm-models
+# speech-models=/Volumes/ExternalSSD/LUKE/speech-models
+# tts-models=/Volumes/ExternalSSD/LUKE/tts-models
+# openvino-models=/Volumes/ExternalSSD/LUKE/openvino-models
+# models=/Volumes/ExternalSSD/LUKE/models
+# runtimes=/Volumes/ExternalSSD/LUKE/runtimes
+# runtime-state=/Users/me/Library/Application Support/LUKE/runtime-state
+# dist=/Users/me/Library/Application Support/LUKE/dist
+#
+# บน Linux มักใช้ /media/<user>/<label>/LUKE/... หรือ /mnt/... แทน /Volumes/...
+#
+# หลังแก้ไฟล์ ให้ปิดแอปแล้วเปิดใหม่ด้วย ./mac.sh หรือ ./linux.sh
+# launcher จะย้ายข้อมูล + ทำ symlink ให้เองก่อนสตาร์ทเซิร์ฟเวอร์
+# (ไม่มีการย้ายตอนแอปกำลังทำงาน → ไม่เสี่ยงข้อมูลกำลังถูกเขียน)

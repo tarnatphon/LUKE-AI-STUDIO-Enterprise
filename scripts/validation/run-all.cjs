@@ -137,7 +137,16 @@ function runSuite(suite) {
     ms,
     timedOut,
     status: result.status,
-    note: timedOut ? `timed out after ${timeoutMs / 1000}s` : lastMeaningfulLine(result.stdout || result.stderr),
+    // A failing suite's reason may be on stderr (a bare `console.error`, a
+    // native crash, a child process). `stdout || stderr` used to discard it
+    // whenever stdout held even one ✓ line, so CI named the last passing check
+    // instead of the failure. For failures, read both; passing suites keep the
+    // clean stdout-only note.
+    note: timedOut
+      ? `timed out after ${timeoutMs / 1000}s`
+      : lastMeaningfulLine(ok
+        ? result.stdout || ""
+        : `${result.stdout || ""}\n${result.stderr || ""}`),
     output: timedOut ? result.stdout || "" : `${result.stdout || ""}${result.stderr || ""}`,
   };
 }

@@ -87,6 +87,10 @@ runtime-logs/
 # This is anchored at the repository root.
 app/runtime-state/
 
+# Machine-local choice of which folders live on which SSD (see
+# storage-layout.conf.example and docs/beta7/storage-locations.md).
+storage-layout.conf
+
 # macOS metadata and local workspace junk
 .fseventsd/
 .Spotlight-V100/

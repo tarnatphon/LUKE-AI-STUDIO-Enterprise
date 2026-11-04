@@ -1,0 +1,10 @@
+[
+  { "id": "llm-models", "label": "LLM models (GGUF)", "recommended": "external", "note": "หลาย GB โหลดครั้งเดียว อ่านช้าได้" },
+  { "id": "speech-models", "label": "Whisper speech models", "recommended": "external", "note": "โมเดลถอดเสียง" },
+  { "id": "tts-models", "label": "Kokoro TTS models", "recommended": "external", "note": "โมเดลเสียงพูด" },
+  { "id": "openvino-models", "label": "OpenVINO models", "recommended": "external", "note": "โมเดล NPU" },
+  { "id": "models", "label": "Image / Stable Diffusion models", "recommended": "external", "note": "checkpoint ภาพ" },
+  { "id": "runtimes", "label": "Downloaded runtimes", "recommended": "external", "note": "venv / image-to-video runtime" },
+  { "id": "runtime-state", "label": "Chat history & app state", "recommended": "internal", "note": "เขียนบ่อยมาก ควรอยู่ SSD ภายในเพื่อความเร็ว" },
+  { "id": "dist", "label": "Built frontend", "recommended": "internal", "note": "UI ที่เสิร์ฟทุกครั้ง ควรอยู่ SSD ภายใน" }
+]

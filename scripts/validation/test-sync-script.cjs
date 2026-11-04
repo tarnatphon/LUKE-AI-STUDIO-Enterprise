@@ -28,6 +28,38 @@ const { execFileSync, spawnSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..", "..");
 
+// ── Hermetic git ───────────────────────────────────────────────────────────
+// This suite is a fixture, not a user of the machine's git setup. It used to
+// inherit the global config, so a runner with `commit.gpgsign=true`,
+// `user.useConfigOnly=true` or a `core.hooksPath` made every fixture commit
+// fail instantly — while the same suite passed locally on a clean config. That
+// is the reproducible "passes here, fails in CI" class behind PR #83's flake.
+//
+// The other half of the problem: the error used to reach only stderr, and
+// run-all.cjs kept `stdout || stderr`, so once a ✓ line had been printed the
+// reason was discarded. Both are fixed: git below is hermetic, and run-all now
+// reads stdout + stderr for a failing suite.
+const GIT_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: os.devNull,
+  GIT_CONFIG_SYSTEM: os.devNull,
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_TERMINAL_PROMPT: "0",
+  GIT_OPTIONAL_LOCKS: "0",
+};
+const GIT_FLAGS = [
+  "-c", "commit.gpgsign=false",
+  "-c", "tag.gpgsign=false",
+  "-c", "user.useConfigOnly=false",
+  "-c", "core.hooksPath=/dev/null",
+  "-c", "core.autocrlf=false",
+  "-c", "gc.auto=0",
+  "-c", "init.defaultBranch=fixture",
+];
+function gitArgs(args) {
+  return [...GIT_FLAGS, ...args];
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(`FAIL: ${message}`);
   console.log(`  ✓ ${message}`);
@@ -35,7 +67,7 @@ function assert(condition, message) {
 
 function git(cwd, args, options = {}) {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", ...options }).trim();
+    return execFileSync("git", gitArgs(args), { cwd, encoding: "utf8", env: GIT_ENV, ...options }).trim();
   } catch (error) {
     // A git failure used to surface only as a bare stack trace on stderr, which
     // run-all.cjs drops when the suite already printed something on stdout.
@@ -46,7 +78,8 @@ function git(cwd, args, options = {}) {
 }
 
 function run(cwd, command, args) {
-  return spawnSync(command, args, { cwd, encoding: "utf8" });
+  // sync.sh calls git internally; it must be hermetic for the same reason.
+  return spawnSync(command, args, { cwd, encoding: "utf8", env: GIT_ENV });
 }
 
 /** Show why a sync.sh run failed, on stdout where the CI report keeps it. */
@@ -79,8 +112,8 @@ function main() {
     // them. Cloning locally needs no network.
     execFileSync(
       "git",
-      ["clone", "--quiet", "--no-hardlinks", root, origin],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      gitArgs(["clone", "--quiet", "--no-hardlinks", root, origin]),
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV }
     );
     // A clone of a detached HEAD is detached as well, so the branch the clones
     // below ask for is created here rather than inherited.
@@ -94,8 +127,8 @@ function main() {
 
     execFileSync(
       "git",
-      ["clone", "--quiet", "--branch", branch, "--single-branch", origin, user],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      gitArgs(["clone", "--quiet", "--no-hardlinks", "--branch", branch, "--single-branch", origin, user]),
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV }
     );
     git(user, ["config", "user.email", "user@example.invalid"]);
     git(user, ["config", "user.name", "user"]);
@@ -203,8 +236,8 @@ function main() {
 
     execFileSync(
       "git",
-      ["clone", "--quiet", "--no-hardlinks", root, origin2],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      gitArgs(["clone", "--quiet", "--no-hardlinks", root, origin2]),
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV }
     );
     git(origin2, ["checkout", "-B", branch]);
     git(origin2, ["config", "user.email", "sync-test@example.invalid"]);
@@ -223,8 +256,8 @@ function main() {
 
     execFileSync(
       "git",
-      ["clone", "--quiet", "--branch", branch, "--single-branch", origin2, user2],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      gitArgs(["clone", "--quiet", "--no-hardlinks", "--branch", branch, "--single-branch", origin2, user2]),
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV }
     );
     git(user2, ["config", "user.email", "user@example.invalid"]);
     git(user2, ["config", "user.name", "user"]);

@@ -53,6 +53,7 @@ const remoteTextProvider = require("./remote-text-provider.cjs");
 // so the 30k-line request router only has to wire them, not reimplement them.
 const aiCatalog = require("./ai-provider-catalog.cjs");
 const egressLedger = require("./egress-ledger.cjs");
+const storageLocations = require("./storage-locations.cjs");
 const lanPairing = require("./lan-pairing.cjs");
 const onlineSurfaces = require("./online-surfaces.cjs");
 const mcpServer = require("./mcp-server.cjs");
@@ -23556,6 +23557,47 @@ const handleRequest = async (req, res) => {
               : String(error),
         }
       );
+    }
+  }
+
+  // GET /api/storage/locations — where each heavy folder actually lives.
+  // Read-only: the choice is applied by the launcher on the next restart, so a
+  // request here can never move data while the server is using it.
+  if (req.url === "/api/storage/locations" && req.method === "GET") {
+    try {
+      return json(res, 200, {
+        ok: true,
+        platform: storageLocations.platform(),
+        layoutFile: path.relative(ROOT, storageLocations.layoutFile()),
+        folders: storageLocations.list(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // POST /api/storage/locations — choose (or reset) one folder.
+  // { folder: "llm-models", target: "/Volumes/SSD/LUKE/llm-models" }
+  // { folder: "llm-models", target: null } puts it back in the checkout.
+  if (req.url === "/api/storage/locations" && req.method === "POST") {
+    try {
+      const body = await readJsonRequestBody(req);
+      const id = String(body.folder || "").trim();
+      const result = body.target === null || body.target === ""
+        ? storageLocations.resetTarget(id)
+        : storageLocations.setTarget(id, body.target);
+      return json(res, 200, {
+        ...result,
+        folders: storageLocations.list(),
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
