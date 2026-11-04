@@ -180,6 +180,32 @@ function Expand-WithProgress {
     Write-Host ""
 }
 
+function Test-MultiFileDiffusionBackend {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return $false }
+    try {
+        $helpText = (& $Path --help 2>&1 | Out-String -Width 4096)
+        return ($helpText -match "--diffusion-model" -and
+                $helpText -match "--vae" -and
+                $helpText -match "(?m)(^|\s)--llm(?=[\s,=<]|$)")
+    } catch {
+        return $false
+    }
+}
+
+function Move-LegacyCudaBackendFiles {
+    param([string]$Directory)
+    $stamp = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+    foreach ($name in @("sd-cuda.exe", "stable-diffusion.dll")) {
+        $source = Join-Path $Directory $name
+        if (Test-Path $source) {
+            $destination = "$source.legacy-$stamp"
+            Move-Item -LiteralPath $source -Destination $destination -Force -ErrorAction Stop
+            Print-Info "Preserved the previous CUDA file as $(Split-Path -Leaf $destination)."
+        }
+    }
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 Print-Header
 
@@ -271,18 +297,22 @@ Print-Step 2 $steps "Setting up stable-diffusion.cpp CPU backend (app/backend/wi
 $cpuBackendDest = Join-Path $appDir "backend\win\cpu"
 $cpuBackendExe  = Join-Path $cpuBackendDest "sd-cpu.exe"
 $cpuBackendDll  = Join-Path $cpuBackendDest "stable-diffusion.dll"
+$cpuBackendCurrent = (Test-Path $cpuBackendExe) -and (Test-Path $cpuBackendDll) -and (Test-MultiFileDiffusionBackend $cpuBackendExe)
 
-if ((Test-Path $cpuBackendExe) -and (Test-Path $cpuBackendDll)) {
-    Print-OK "CPU backend binaries already ready."
+if ($cpuBackendCurrent) {
+    Print-OK "CPU backend binaries already ready and support multi-file diffusion."
 } else {
+    if ((Test-Path $cpuBackendExe) -or (Test-Path $cpuBackendDll)) {
+        Print-Warn "Existing CPU backend is too old for multi-file diffusion; upgrading it."
+    }
     $cpuBackendZip = Join-Path $toolsDir "sd-cpu.zip"
     New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
     New-Item -ItemType Directory -Force -Path $cpuBackendDest | Out-Null
 
     $ok = Invoke-RichDownload `
-        -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-avx2-x64.zip" `
+        -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-cpu-x64.zip" `
         -Dest $cpuBackendZip `
-        -Label "stable-diffusion.cpp CPU Backend (Windows x64 AVX2)"
+        -Label "stable-diffusion.cpp CPU Backend (Windows x64)"
 
     if (-not $ok) { Print-Fail "Cannot download CPU backend binaries."; Read-Host; exit 1 }
 
@@ -309,10 +339,10 @@ if ((Test-Path $cpuBackendExe) -and (Test-Path $cpuBackendDll)) {
         Remove-Item $tempExt -Recurse -Force
     }
 
-    if ((Test-Path $cpuBackendExe) -and (Test-Path $cpuBackendDll)) {
-        Print-OK "CPU backend binaries installed successfully!"
+    if ((Test-Path $cpuBackendExe) -and (Test-Path $cpuBackendDll) -and (Test-MultiFileDiffusionBackend $cpuBackendExe)) {
+        Print-OK "CPU backend binaries installed and multi-file diffusion support verified!"
     } else {
-        Print-Fail "Failed to copy backend binaries to app/backend/win/cpu/."
+        Print-Fail "Failed to install a CPU backend with multi-file diffusion support in app/backend/win/cpu/."
         Read-Host; exit 1
     }
 }
@@ -324,16 +354,22 @@ if ($hasNvidia) {
     $backendDll  = Join-Path $backendDest "stable-diffusion.dll"
     $cudaBackendReady = $false
     
-    if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-        Print-OK "CUDA GPU backend binaries already ready."
+    if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+        Print-OK "CUDA GPU backend binaries already ready and support multi-file diffusion."
         $cudaBackendReady = $true
     } else {
+        if ((Test-Path $backendExe) -or (Test-Path $backendDll)) {
+            Print-Warn "Existing CUDA backend is too old or incomplete for multi-file diffusion; upgrading it."
+            # Preserve but hide an unusable CUDA binary so a declined or failed
+            # refresh really falls back to the verified Vulkan backend.
+            Move-LegacyCudaBackendFiles -Directory $backendDest
+        }
         $backendZip = Join-Path $toolsDir "sd-cuda.zip"
         New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
         New-Item -ItemType Directory -Force -Path $backendDest | Out-Null
 
         $ok = Invoke-RichDownload `
-            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-cuda12-x64.zip" `
+            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-cuda12-x64.zip" `
             -Dest $backendZip `
             -Label "stable-diffusion.cpp CUDA Backend (Windows x64)"
 
@@ -365,11 +401,14 @@ if ($hasNvidia) {
                 Remove-Item $tempExt -Recurse -Force
             }
 
-            if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-                Print-OK "CUDA GPU backend binaries installed successfully!"
+            if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+                Print-OK "CUDA GPU backend installed and multi-file diffusion support verified!"
                 $cudaBackendReady = $true
             } else {
-                Print-Warn "Failed to copy CUDA backend binaries. Continuing with the Vulkan backend fallback."
+                if ((Test-Path $backendExe) -or (Test-Path $backendDll)) {
+                    Move-LegacyCudaBackendFiles -Directory $backendDest
+                }
+                Print-Warn "Failed to install a CUDA backend with multi-file diffusion support. Continuing with the Vulkan backend fallback."
             }
         }
     }
@@ -402,15 +441,18 @@ if ($hasNvidia) {
     $backendExe  = Join-Path $backendDest "sd-vulkan.exe"
     $backendDll  = Join-Path $backendDest "stable-diffusion.dll"
 
-    if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-        Print-OK "Vulkan GPU backend binaries already ready."
+    if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+        Print-OK "Vulkan GPU backend binaries already ready and support multi-file diffusion."
     } else {
+        if ((Test-Path $backendExe) -or (Test-Path $backendDll)) {
+            Print-Warn "Existing Vulkan backend is too old for multi-file diffusion; upgrading it."
+        }
         $backendZip = Join-Path $toolsDir "sd-vulkan.zip"
         New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
         New-Item -ItemType Directory -Force -Path $backendDest | Out-Null
 
         $ok = Invoke-RichDownload `
-            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-669-2d40a8b/sd-master-2d40a8b-bin-win-vulkan-x64.zip" `
+            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-vulkan-x64.zip" `
             -Dest $backendZip `
             -Label "stable-diffusion.cpp Vulkan Backend (Windows x64)"
 
@@ -439,10 +481,10 @@ if ($hasNvidia) {
             Remove-Item $tempExt -Recurse -Force
         }
 
-        if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-            Print-OK "Vulkan GPU backend binaries installed successfully!"
+        if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+            Print-OK "Vulkan GPU backend installed and multi-file diffusion support verified!"
         } else {
-            Print-Fail "Failed to copy backend binaries to app/backend/win/vulkan/."
+            Print-Fail "Failed to install a Vulkan backend with multi-file diffusion support in app/backend/win/vulkan/."
             Read-Host; exit 1
         }
     }
@@ -452,15 +494,18 @@ if ($hasNvidia) {
     $backendExe  = Join-Path $backendDest "sd-vulkan.exe"
     $backendDll  = Join-Path $backendDest "stable-diffusion.dll"
     
-    if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-        Print-OK "Vulkan GPU backend binaries already ready."
+    if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+        Print-OK "Vulkan GPU backend binaries already ready and support multi-file diffusion."
     } else {
+        if ((Test-Path $backendExe) -or (Test-Path $backendDll)) {
+            Print-Warn "Existing Vulkan backend is too old for multi-file diffusion; upgrading it."
+        }
         $backendZip = Join-Path $toolsDir "sd-vulkan.zip"
         New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
         New-Item -ItemType Directory -Force -Path $backendDest | Out-Null
 
         $ok = Invoke-RichDownload `
-            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-669-2d40a8b/sd-master-2d40a8b-bin-win-vulkan-x64.zip" `
+            -Url  "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-vulkan-x64.zip" `
             -Dest $backendZip `
             -Label "stable-diffusion.cpp Vulkan Backend (Windows x64)"
 
@@ -491,10 +536,10 @@ if ($hasNvidia) {
             Remove-Item $tempExt -Recurse -Force
         }
 
-        if ((Test-Path $backendExe) -and (Test-Path $backendDll)) {
-            Print-OK "Vulkan GPU backend binaries installed successfully!"
+        if ((Test-Path $backendExe) -and (Test-Path $backendDll) -and (Test-MultiFileDiffusionBackend $backendExe)) {
+            Print-OK "Vulkan GPU backend installed and multi-file diffusion support verified!"
         } else {
-            Print-Fail "Failed to copy backend binaries to app/backend/win/vulkan/."
+            Print-Fail "Failed to install a Vulkan backend with multi-file diffusion support in app/backend/win/vulkan/."
             Read-Host; exit 1
         }
     }

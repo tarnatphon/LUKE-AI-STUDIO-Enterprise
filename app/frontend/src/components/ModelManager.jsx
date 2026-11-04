@@ -5,11 +5,13 @@ import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
   listLocalModels, 
+  listImageModelComponents,
   startServer, 
   stopServer, 
   importModelFile, 
   deleteModel, 
-  downloadModel, 
+  downloadModel,
+  downloadImageModelComponent,
   downloadOpenVinoModel, 
   cancelModelDownload, 
   getDownloadProgress, 
@@ -157,6 +159,47 @@ const MODEL_LIBRARY = [
   },
 ];
 
+const QWEN_IMAGE_COMPONENT_LIBRARY = [
+  {
+    group: "Qwen Image 2.1 Components",
+    items: [
+      {
+        id: "qwen-image-21-vae",
+        componentType: "qwen-image-21-vae",
+        requiredComponent: true,
+        name: "Qwen Image 2.1 VAE",
+        filename: "qwen_image_2.1_vae_bf16.safetensors",
+        format: "VAE component",
+        notes: "Required decoder for Qwen Image 2.1. Stored separately in app/models/vae/; the older Qwen Image and Wan 2.2 VAE files are not compatible.",
+        url: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+        pageUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/vae",
+      },
+      {
+        id: "qwen-image-21-llm",
+        componentType: "qwen-image-21-llm",
+        requiredComponent: true,
+        name: "Qwen3-VL 8B Instruct Q4_K_M",
+        filename: "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+        format: "GGUF text encoder",
+        notes: "Required Qwen Image 2.1 text encoder. Stored in app/llm-models/diffusion-encoders/ and loaded as --llm, not as the image diffusion model.",
+        url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+        pageUrl: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF",
+      },
+      {
+        id: "qwen-image-21-vision",
+        componentType: "qwen-image-21-vision",
+        requiredComponent: false,
+        name: "Qwen3-VL Vision Projector (F16)",
+        filename: "mmproj-Qwen3VL-8B-Instruct-F16.gguf",
+        format: "Optional GGUF projector",
+        notes: "Optional for text-to-image. Add this projector if you plan to use Qwen Image 2.1 with reference images or image editing.",
+        url: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-F16.gguf",
+        pageUrl: "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF",
+      },
+    ],
+  },
+];
+
 // The library lives in its own module so the chat can ask what Work needs
 // without pulling the whole manager into the first paint.
 const OPENVINO_MODEL_LIBRARY = [
@@ -281,6 +324,7 @@ function ModelManager({
   const [videoCompatibility, setVideoCompatibility] = useState({ models: [] });
   const [videoActionBusy, setVideoActionBusy] = useState(false);
   const [localModels, setLocalModels] = useState([]);
+  const [imageComponentStatus, setImageComponentStatus] = useState({});
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [downloadingModelId, setDownloadingModelId] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -491,7 +535,7 @@ function ModelManager({
   
   let visibleModelLibrary = [];
   if (activeModelType === "image") {
-    visibleModelLibrary = [...MODEL_LIBRARY];
+    visibleModelLibrary = [...MODEL_LIBRARY, ...QWEN_IMAGE_COMPONENT_LIBRARY];
     if (openvinoSupported) {
       visibleModelLibrary = [...visibleModelLibrary, ...OPENVINO_MODEL_LIBRARY];
     }
@@ -608,8 +652,12 @@ function ModelManager({
     setIsLoadingModels(true);
     try {
       if (activeModelType === "image") {
-        const list = await listLocalModels();
+        const [list, components] = await Promise.all([
+          listLocalModels(),
+          listImageModelComponents().catch(() => ({})),
+        ]);
         setLocalModels(list.map(normalizeModel).filter((model) => model.filename));
+        setImageComponentStatus(components || {});
       } else if (activeModelType === "text") {
         const list = await listLlmModels();
         setLocalModels(list.map(normalizeModel).filter((model) => model.filename));
@@ -828,6 +876,29 @@ function ModelManager({
   };
 
   const handleLibraryDownload = async (model) => {
+    if (model.componentType) {
+      const confirmed = await showConfirm({
+        title: model.requiredComponent ? "Install Required Component?" : "Install Optional Component?",
+        message: `${model.requiredComponent ? "Required for Qwen Image 2.1 Turbo" : "Optional, for image editing"}: download "${model.name}" into LUKE's managed component folder?`,
+        confirmLabel: "Download component",
+      });
+      if (!confirmed) return;
+
+      const isTauriDesktop = typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
+      if (!isTauriDesktop && !isLocalServerMode()) {
+        showAlert({ title: "Server Required", message: "Image component downloads require the local server.", danger: true });
+        return;
+      }
+      try {
+        const result = await downloadImageModelComponent(model.url, model.componentType);
+        if (result?.ok) startProgressPolling(result.filename || model.filename);
+        else showAlert({ title: "Component Download Failed", message: result?.error || "Unknown error", danger: true });
+      } catch (error) {
+        showAlert({ title: "Component Download Failed", message: error.message || String(error), danger: true });
+      }
+      return;
+    }
+
     if (activeModelType === "speech") {
       const confirmed = await showConfirm({
         title: "Download Speech Model?",
@@ -1128,8 +1199,19 @@ function ModelManager({
     try {
       const modelInfo = getLocalModelInfo(modelId);
       const isCoreMLModel = modelInfo?.format === "CoreML" || modelInfo?.backendType === "apple-npu";
+      const isQwenImage21Turbo = /qwen[-_ ]?image.*2[._-]?1.*turbo/i.test(String(modelId || ""));
       const activeConstraints = forcedConstraints || constraints;
-      const loadConstraints = isCoreMLModel
+      const qwenDimension = (value) => Math.max(32, Math.round((Number(value) || 1024) / 32) * 32);
+      const loadConstraints = isQwenImage21Turbo
+        ? {
+            ...activeConstraints,
+            width: qwenDimension(activeConstraints.width),
+            height: qwenDimension(activeConstraints.height),
+            steps: 8,
+            cfgScale: 1,
+            sampler: "euler",
+          }
+        : isCoreMLModel
         ? {
             ...activeConstraints,
             backendType: "apple-npu",
@@ -1207,6 +1289,9 @@ function ModelManager({
           total: prev?.total || 0,
           model: loadedModelId,
         }));
+        if (isQwenImage21Turbo) {
+          setConstraints((previous) => ({ ...previous, ...loadConstraints }));
+        }
         setActiveModel(loadedModelId);
         setServerRunning(true);
       } else {
@@ -2084,10 +2169,13 @@ function ModelManager({
             <h4 style={{ fontWeight: 700, marginBottom: "12px" }}>{section.group}</h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
               {section.items.map((model) => {
-                const hasMainModel = modelNames.includes(model.filename);
+                const componentStatus = model.componentType ? imageComponentStatus[model.componentType] : null;
+                const hasMainModel = model.componentType
+                  ? Boolean(componentStatus?.installed)
+                  : modelNames.includes(model.filename);
                 const hasProjector = !model.projectorFilename || allModelNames.includes(model.projectorFilename);
                 const needsProjector = Boolean(hasMainModel && model.projectorFilename && !hasProjector);
-                const installed = hasMainModel && hasProjector;
+                const installed = model.componentType ? hasMainModel : hasMainModel && hasProjector;
                 const downloadJob = getDownloadJob(model.filename, model.projectorFilename, `${model.filename}.zip`);
                 const downloading = Boolean(downloadJob?.active);
                 const systemTier = getHardwareTier(specs);
@@ -2117,6 +2205,12 @@ function ModelManager({
                       <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)" }}>
                         {model.format} {model.resolution && model.resolution !== "N/A" && `• ${model.resolution}`}
                       </span>
+                      {model.componentType && (
+                        <span style={{ fontSize: "0.72rem", fontWeight: 600, color: componentStatus?.installed ? "var(--md-sys-color-primary)" : "var(--md-sys-color-outline)" }}>
+                          {model.requiredComponent ? "Required for generation" : "Optional for image editing"}
+                          {componentStatus?.installed ? " • Installed" : " • Not installed"}
+                        </span>
+                      )}
                       {model.size && model.size !== "Unknown" ? (
                         <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-on-surface-variant)", fontWeight: 600 }}>
                           File size: {model.size}
@@ -2170,7 +2264,7 @@ function ModelManager({
                       disabled={(installed || downloading) && !model.actionType}
                     >
                       {model.actionType === "connect-cloud" ? <Library size={14} /> : model.actionType === "open-page" ? <Library size={14} /> : installed ? <HardDrive size={14} /> : downloading ? <RefreshCw className="progress-spinner" size={14} /> : <DownloadCloud size={14} />}
-                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? "View Official Model" : installed ? "Downloaded" : downloading ? "Downloading" : needsProjector ? "Download Vision File" : "Download"}</span>
+                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? "View Official Model" : installed ? (model.componentType ? "Installed" : "Downloaded") : downloading ? "Downloading" : needsProjector ? "Download Vision File" : model.componentType ? "Install component" : "Download"}</span>
                     </button>
                     <a
                       href={safeExternalUrl(model.pageUrl) || safeExternalUrl(model.url) || undefined}
@@ -2240,14 +2334,14 @@ function ModelManager({
           <input
             type="file"
             style={{ display: "none" }}
-            accept={activeModelType === "image" ? ".safetensors,.ckpt" : activeModelType === "text" ? ".gguf" : activeModelType === "speech" ? ".bin" : ".json"}
+            accept={activeModelType === "image" ? ".safetensors,.ckpt,.gguf" : activeModelType === "text" ? ".gguf" : activeModelType === "speech" ? ".bin" : ".json"}
             onChange={handleImportFile}
             disabled={importProgress !== null}
           />
           <FolderOpen className="import-icon" />
           <span style={{ fontWeight: 600 }}>Choose weights file</span>
           <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)", textAlign: "center" }}>
-            Select {activeModelType === "image" ? "`.safetensors` or `.ckpt` weights." : activeModelType === "text" ? "`.gguf` weights." : activeModelType === "speech" ? "`whisper.cpp .bin` weights." : "`Kokoro .json` manifest."}
+            Select {activeModelType === "image" ? "`.safetensors`, `.ckpt`, or diffusion `.gguf` weights." : activeModelType === "text" ? "`.gguf` weights." : activeModelType === "speech" ? "`whisper.cpp .bin` weights." : "`Kokoro .json` manifest."}
           </span>
         </label>
 
@@ -2257,7 +2351,7 @@ function ModelManager({
             Download Model from URL
           </h4>
           <p style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)", marginBottom: "12px" }}>
-            Download any {activeModelType === "image" ? "Safetensors" : activeModelType === "text" ? "GGUF" : activeModelType === "speech" ? "Whisper .bin" : "Kokoro manifest"} model from Hugging Face directly to your models folder.
+            Download any {activeModelType === "image" ? "Safetensors, CKPT, or diffusion GGUF" : activeModelType === "text" ? "GGUF" : activeModelType === "speech" ? "Whisper .bin" : "Kokoro manifest"} model from Hugging Face directly to your models folder.
           </p>
           {activeDownloadJobs.length > 0 && (
             <div className="model-progress-section" style={{ marginTop: "0px", marginBottom: "12px" }}>

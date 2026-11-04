@@ -19,7 +19,7 @@ BUILD_DIR="$APP_DIR/tools/build-sd"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
 # Pinned release tag
-PINNED_TAG="master-685-19bdfe2"
+PINNED_TAG="master-1043-3be2378"
 
 echo "=== LUKE AI STUDIO - Build from Source ==="
 echo "Target directories:"

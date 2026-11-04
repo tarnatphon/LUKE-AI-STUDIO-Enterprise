@@ -40,7 +40,7 @@ else
 fi
 
 # Release pins
-SD_RELEASE="master-685-19bdfe2"
+SD_RELEASE="master-1043-3be2378"
 SD_SHORT_HASH="${SD_RELEASE##*-}"
 SD_BASE_URL="https://github.com/leejet/stable-diffusion.cpp/releases/download/$SD_RELEASE"
 NODE_VERSION="22.12.0"
@@ -298,6 +298,15 @@ copy_macos_backend_from_extracted() {
   chmod +x "$target" 2>/dev/null || true
 }
 
+backend_supports_multi_file_diffusion() {
+  local backend="$1"
+  [[ -x "$backend" ]] || return 1
+  local help_output
+  help_output="$("$backend" --help 2>&1 || true)"
+  [[ "$help_output" == *"--diffusion-model"* && "$help_output" == *"--vae"* ]] || return 1
+  printf '%s\n' "$help_output" | grep -Eq -- '(^|[[:space:]])--llm([[:space:],=<]|$)'
+}
+
 # ════════════════════════════════════════════════════════════════════════════
 print_header
 
@@ -386,16 +395,23 @@ if [[ "$PLATFORM" == "Darwin" ]]; then
   fi
 
   MAC_BACKEND="$BACKEND_DIR/sd"
-  if [[ -x "$MAC_BACKEND" ]]; then
-    print_ok "macOS Metal backend already ready."
+  if backend_supports_multi_file_diffusion "$MAC_BACKEND"; then
+    print_ok "macOS Metal backend already ready and supports multi-file diffusion."
   else
+    if [[ -x "$MAC_BACKEND" ]]; then
+      print_warn "Existing macOS backend is too old for multi-file diffusion; upgrading it."
+    fi
     MAC_ZIP="$TOOLS_DIR/sd-mac-metal.zip"
-    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Darwin-macOS-15.7.7-arm64.zip" "$MAC_ZIP" "stable-diffusion.cpp Metal Backend (macOS arm64)"
+    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Darwin-macOS-26.6.2-arm64.zip" "$MAC_ZIP" "stable-diffusion.cpp Metal Backend (macOS arm64)"
     extract_zip "$MAC_ZIP" "$BACKEND_DIR/extracted" "macOS Metal Backend"
     rm -f "$MAC_ZIP"
     copy_macos_backend_from_extracted "$BACKEND_DIR/extracted" "$BACKEND_DIR"
     rm -rf "$BACKEND_DIR/extracted"
-    print_ok "macOS Metal backend installed."
+    if ! backend_supports_multi_file_diffusion "$MAC_BACKEND"; then
+      print_fail "The downloaded macOS backend does not expose the required multi-file diffusion flags."
+      exit 1
+    fi
+    print_ok "macOS Metal backend installed and verified."
   fi
 
   # CoreML NPU Environment setup (macOS Apple Silicon only)
@@ -426,7 +442,10 @@ else
 
 # CPU backend (always)
 CPU_BACKEND_DIR="$BACKEND_DIR/cpu"
-if [[ ! -f "$CPU_BACKEND_DIR/sd-cpu" || ! -f "$CPU_BACKEND_DIR/sd-server-cpu" ]]; then
+if [[ ! -f "$CPU_BACKEND_DIR/sd-cpu" || ! -f "$CPU_BACKEND_DIR/sd-server-cpu" ]] || ! backend_supports_multi_file_diffusion "$CPU_BACKEND_DIR/sd-server-cpu"; then
+  if [[ -f "$CPU_BACKEND_DIR/sd-server-cpu" ]]; then
+    print_warn "Existing CPU backend is too old for multi-file diffusion; upgrading it."
+  fi
   mkdir -p "$CPU_BACKEND_DIR"
   CPU_ZIP="$TOOLS_DIR/sd-cpu.zip"
   download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64.zip" "$CPU_ZIP" "stable-diffusion.cpp CPU Backend (Linux x86_64)"
@@ -439,10 +458,17 @@ else
   print_ok "CPU backend already ready."
 fi
 chmod +x "$CPU_BACKEND_DIR/sd-cpu" "$CPU_BACKEND_DIR/sd-server-cpu" 2>/dev/null || true
+if ! backend_supports_multi_file_diffusion "$CPU_BACKEND_DIR/sd-server-cpu"; then
+  print_fail "CPU backend installation is missing --diffusion-model/--vae/--llm support."
+  exit 1
+fi
 
 # Vulkan backend (always - cross-vendor GPU fallback)
 VULKAN_BACKEND_DIR="$BACKEND_DIR/vulkan"
-if [[ ! -f "$VULKAN_BACKEND_DIR/sd-vulkan" || ! -f "$VULKAN_BACKEND_DIR/sd-server-vulkan" ]]; then
+if [[ ! -f "$VULKAN_BACKEND_DIR/sd-vulkan" || ! -f "$VULKAN_BACKEND_DIR/sd-server-vulkan" ]] || ! backend_supports_multi_file_diffusion "$VULKAN_BACKEND_DIR/sd-server-vulkan"; then
+  if [[ -f "$VULKAN_BACKEND_DIR/sd-server-vulkan" ]]; then
+    print_warn "Existing Vulkan backend is too old for multi-file diffusion; upgrading it."
+  fi
   mkdir -p "$VULKAN_BACKEND_DIR"
   VULKAN_ZIP="$TOOLS_DIR/sd-vulkan.zip"
   download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip" "$VULKAN_ZIP" "stable-diffusion.cpp Vulkan Backend (Linux x86_64)"
@@ -455,15 +481,19 @@ else
   print_ok "Vulkan backend already ready."
 fi
 chmod +x "$VULKAN_BACKEND_DIR/sd-vulkan" "$VULKAN_BACKEND_DIR/sd-server-vulkan" 2>/dev/null || true
+if ! backend_supports_multi_file_diffusion "$VULKAN_BACKEND_DIR/sd-server-vulkan"; then
+  print_fail "Vulkan backend installation is missing --diffusion-model/--vae/--llm support."
+  exit 1
+fi
 
 # ROCm backend (optional --max-perf, or auto-detected AMD)
 ROCM_BACKEND_DIR="$BACKEND_DIR/rocm"
 if [[ $MAX_PERF -eq 1 ]] && [[ "$VENDOR" == "amd" || "$VENDOR" == "" ]]; then
-  if [[ ! -f "$ROCM_BACKEND_DIR/sd-rocm" || ! -f "$ROCM_BACKEND_DIR/sd-server-rocm" ]]; then
+  if [[ ! -f "$ROCM_BACKEND_DIR/sd-rocm" || ! -f "$ROCM_BACKEND_DIR/sd-server-rocm" ]] || ! backend_supports_multi_file_diffusion "$ROCM_BACKEND_DIR/sd-server-rocm"; then
     mkdir -p "$ROCM_BACKEND_DIR"
     ROCM_ZIP="$TOOLS_DIR/sd-rocm.zip"
     print_warn "ROCm backend is ~1.2 GB. This may take a while..."
-    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64-rocm-7.13.0.zip" "$ROCM_ZIP" "stable-diffusion.cpp ROCm Backend (Linux x86_64)"
+    download_file "$SD_BASE_URL/sd-master-${SD_SHORT_HASH}-bin-Linux-Ubuntu-24.04-x86_64-rocm-10.1.0.zip" "$ROCM_ZIP" "stable-diffusion.cpp ROCm Backend (Linux x86_64)"
     extract_zip "$ROCM_ZIP" "$ROCM_BACKEND_DIR/extracted" "ROCm Backend"
     rm -f "$ROCM_ZIP"
     copy_binaries_from_extracted "$ROCM_BACKEND_DIR/extracted" "$ROCM_BACKEND_DIR" "sd-rocm" "sd-server-rocm"
@@ -473,12 +503,28 @@ if [[ $MAX_PERF -eq 1 ]] && [[ "$VENDOR" == "amd" || "$VENDOR" == "" ]]; then
     print_ok "ROCm backend already ready."
   fi
   chmod +x "$ROCM_BACKEND_DIR/sd-rocm" "$ROCM_BACKEND_DIR/sd-server-rocm" 2>/dev/null || true
+  if ! backend_supports_multi_file_diffusion "$ROCM_BACKEND_DIR/sd-server-rocm"; then
+    print_fail "ROCm backend installation is missing --diffusion-model/--vae/--llm support."
+    exit 1
+  fi
 fi
 
 # CUDA backend on Linux: ask user, download prebuilt first, and compile from source as a fallback.
 CUDA_BACKEND_DIR="$BACKEND_DIR/cuda"
 if [[ "$VENDOR" == "nvidia" ]]; then
-  if [[ ! -f "$CUDA_BACKEND_DIR/sd-cuda" || ! -f "$CUDA_BACKEND_DIR/sd-server-cuda" ]]; then
+  if [[ ! -f "$CUDA_BACKEND_DIR/sd-cuda" || ! -f "$CUDA_BACKEND_DIR/sd-server-cuda" ]] || ! backend_supports_multi_file_diffusion "$CUDA_BACKEND_DIR/sd-server-cuda"; then
+    if [[ -f "$CUDA_BACKEND_DIR/sd-server-cuda" ]] && ! backend_supports_multi_file_diffusion "$CUDA_BACKEND_DIR/sd-server-cuda"; then
+      print_warn "Existing CUDA backend is too old for multi-file diffusion; it will be refreshed or rebuilt."
+      # Keep the legacy binaries for manual recovery, but hide them from the
+      # app's backend discovery so a declined/failed CUDA refresh really falls
+      # back to the newly installed Vulkan backend.
+      LEGACY_SUFFIX="$(date +%Y%m%d-%H%M%S)-$$"
+      for legacy_file in "$CUDA_BACKEND_DIR/sd-server-cuda" "$CUDA_BACKEND_DIR/sd-cuda"; do
+        if [[ -f "$legacy_file" ]]; then
+          mv "$legacy_file" "$legacy_file.legacy-$LEGACY_SUFFIX"
+        fi
+      done
+    fi
     echo ""
     echo "  ============================================================"
     echo "   NVIDIA GPU Detected"
@@ -513,8 +559,8 @@ if [[ "$VENDOR" == "nvidia" ]]; then
         chmod +x "$CUDA_BACKEND_DIR/sd-server-cuda" "$CUDA_BACKEND_DIR/sd-cuda" 2>/dev/null || true
         
         print_info "Testing downloaded prebuilt CUDA binary..."
-        if "$CUDA_BACKEND_DIR/sd-server-cuda" --help >/dev/null 2>&1; then
-          print_ok "Prebuilt CUDA binary verified and works! Skipping compilation."
+        if backend_supports_multi_file_diffusion "$CUDA_BACKEND_DIR/sd-server-cuda"; then
+          print_ok "Prebuilt CUDA binary verified and supports multi-file diffusion! Skipping compilation."
           TRY_DOWNLOAD=0
         else
           print_warn "Prebuilt CUDA binary failed verification test (missing libraries or library mismatch)."
@@ -577,7 +623,12 @@ if [[ "$VENDOR" == "nvidia" ]]; then
             if [[ -f "$CUDA_BACKEND_DIR/sd-cli-cuda" ]]; then
               chmod +x "$CUDA_BACKEND_DIR/sd-cli-cuda" 2>/dev/null || true
             fi
-            print_ok "CUDA backend compiled and installed successfully from source."
+            if backend_supports_multi_file_diffusion "$CUDA_BACKEND_DIR/sd-server-cuda"; then
+              print_ok "CUDA backend compiled and installed successfully from source."
+            else
+              print_fail "The CUDA build does not expose the required multi-file diffusion flags."
+              exit 1
+            fi
           else
             print_warn "CUDA backend build from source failed. Falling back to Vulkan."
           fi

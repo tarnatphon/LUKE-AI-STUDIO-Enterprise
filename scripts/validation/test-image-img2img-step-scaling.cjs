@@ -277,6 +277,43 @@ async function main() {
         );
         return { result, seen: calls };
       };
+      const callQwen = async (inputImageBase64 = null, referenceSettings = {}) => {
+        calls = [];
+        const result = await frontend.generateImage(
+          "a red bag on a beach", "", {
+            width: 1000, height: 777, steps: 24, cfgScale: 9, seed: 42,
+            sampler: "ddim", denoisingStrength: 0.4,
+          }, "Qwen Image 2.1 Turbo Q6_K.gguf", inputImageBase64,
+          undefined, undefined, [], referenceSettings
+        );
+        return { result, seen: calls };
+      };
+
+      test("Qwen Image 2.1 Turbo sends its fixed 8-step txt2img profile and aligned dimensions", async () => {
+        const { result, seen } = await callQwen();
+        assert.strictEqual(seen.length, 1);
+        assert.ok(seen[0].url.endsWith("/v1/images/generations"), seen[0].url);
+        assert.strictEqual(seen[0].body.size, "992x768", "dimensions are rounded to multiples of 32");
+        assert.strictEqual(seen[0].body.steps, 8);
+        assert.strictEqual(seen[0].body.cfg_scale, 1);
+        assert.strictEqual(seen[0].body.sample_method, "euler");
+        assert.strictEqual(result.steps, 8);
+        assert.strictEqual(result.stepsSent, 8);
+      });
+
+      test("Qwen Image 2.1 Turbo keeps img2img at 8 steps without generic denoise scaling", async () => {
+        const { result, seen } = await callQwen(`data:image/png;base64,${PNG_BASE64}`);
+        assert.strictEqual(seen.length, 1);
+        assert.ok(seen[0].url.endsWith("/sdapi/v1/img2img"), seen[0].url);
+        assert.strictEqual(seen[0].body.width, 992);
+        assert.strictEqual(seen[0].body.height, 768);
+        assert.strictEqual(seen[0].body.steps, 8);
+        assert.strictEqual(seen[0].body.denoising_strength, 0.4);
+        assert.strictEqual(seen[0].body.sample_method, "euler");
+        assert.strictEqual(result.steps, 8);
+        assert.strictEqual(result.stepsSent, 8);
+        assert.strictEqual(result.stepsCapped, false);
+      });
 
       test("the Generator's img2img request carries the scaled steps", async () => {
         const { result, seen } = await callOnce(`data:image/png;base64,${PNG_BASE64}`, { denoiseGuidance: 0.38 });

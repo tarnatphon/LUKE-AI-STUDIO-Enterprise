@@ -86,7 +86,7 @@ To avoid exhausting system RAM or VRAM, text and image engines are mutually excl
 
 ## <a id="supported-models"></a>Supported Models
 
-The app is designed around single-file local models that can be loaded directly by the bundled backend engines.
+Most local image and text models load as single files. Qwen Image 2.1 Turbo is also supported as a multi-file diffusion workflow, with dedicated VAE and text-encoder components managed separately.
 
 ### Image generation
 
@@ -97,8 +97,18 @@ The app is designed around single-file local models that can be loaded directly 
 | Single-file SD/SDXL GGUF checkpoints | Limited | `app/models/` | Only complete single-file checkpoints are supported. |
 | OpenVINO image model folders | Intel NPU only | `app/openvino-models/` | Download from the Model Manager after running the OpenVINO setup. |
 | CoreML image models | Apple Silicon only | `app/models/` | Requires macOS on Apple Silicon and the CoreML setup path. |
-| Flux, HiDream, Hunyuan, Wan, Qwen Image, Z-Image workflows | No | N/A | These usually require separate diffusion, VAE, and text encoder files and are not one-click checkpoint loads in this app. |
-| LoRA, ControlNet, VAE-only, text-encoder-only, or diffusion-only files | No | N/A | Companion files are not loaded as standalone image models. |
+| Qwen Image 2.1 Turbo | Yes, multi-file | `app/models/` plus the component folders below | Requires the latest stable-diffusion.cpp multi-file backend, the Qwen Image 2.1 VAE, and a Qwen3-VL text encoder. Add the optional vision projector for image editing/reference images. Model Manager lists the managed downloads. Turbo defaults to 8 steps, CFG 1, Euler, and the `qwen-image-2.1-turbo` sigma schedule. |
+| Flux, HiDream, Hunyuan, Wan, Z-Image workflows | No | N/A | These need their own multi-file recipes and are not standalone checkpoints in this app. |
+| LoRA, ControlNet, VAE-only, text-encoder-only, or unsupported diffusion-only files | No | N/A | Companion files are not loaded as standalone image models. |
+
+#### Qwen Image 2.1 Turbo component layout
+
+- Diffusion weights: place the model file (for example, `Qwen-Image-2.1-Turbo-Uncensored-AD-Q6_K.gguf`) in `app/models/` and select it in the Image workspace.
+- Required VAE: `qwen_image_2.1_vae_bf16.safetensors` under `app/models/vae/`.
+- Required text encoder: a Qwen3-VL-8B-Instruct GGUF under `app/llm-models/diffusion-encoders/`.
+- Optional image-editing projector: the matching `mmproj-Qwen3VL-8B-Instruct-*.gguf` in that same encoder folder. Text-to-image does not require it.
+
+Model Manager → Image Models → Qwen Image 2.1 Components can download and track these files for you. The backend must expose `--diffusion-model`, `--vae`, and `--llm` (plus optional `--llm_vision`). If the app says the image backend needs an update, close LUKE and run `scripts/setup/setup.ps1` on Windows or `bash scripts/setup/setup.sh` on Linux/macOS; the setup detects and replaces older prebuilt backends. The bundled prebuilt package pin is `master-1043-3be2378`.
 
 Known-good image models available from the Model Manager:
 
