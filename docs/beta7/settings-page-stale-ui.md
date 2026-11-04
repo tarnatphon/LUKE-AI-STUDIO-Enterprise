@@ -62,3 +62,11 @@ git fetch origin && git checkout main && git pull --ff-only
 
 `test-settings-storage-ui.cjs` — **21 checks** รวม **สตาร์ทเซิร์ฟเวอร์จริง**บน throwaway checkout:
 ทุก class ปุ่มใน 3 panel มีนิยามใน CSS จริง · `.m3-btn-outlined` ยังมี `border` · section ใหม่เปิดครั้งแรก · health มี process stamp · **asset หาย → 404 ไม่ใช่ HTML** · SPA route ยัง fallback ได้ · bundle จริงเสิร์ฟเป็น JS · `/api/storage/locations` ตอบ 8 โฟลเดอร์ · bundle มีข้อความ `Storage locations` และไม่มี `m3-button-*` ตกค้าง
+
+---
+
+## ถ้า health ครบถ้วนแต่หัวข้อ Settings แทรกกลางการ์ด Runtime cache
+
+ผล `checkout = bundle = process`, `stale : False`, `restart : False` **ตัดทั้ง bundle เก่าและ process เก่าออกได้เลย** — แต่ sidebar `ตรงกับซอร์ส` ไม่ได้ตรวจ process จึงต้องอ่านบรรทัด `process` / `restart` ใน health เสมอ
+
+กรณีนี้เป็น **layout overlap** ในโค้ด: flex หด `.runtime-dashboard-shell` แล้ว `overflow: visible` ปล่อยการ์ดทับหัวข้อที่ตามหลัง แก้แล้วด้วยหนึ่ง scroll container + หัวข้ออยู่บนสุด ดูรายละเอียด ผล health ที่ paste มา และวิธีเช็คที่ [settings-layout-overlap.md](settings-layout-overlap.md) (`test-settings-layout.cjs` **41 checks**)

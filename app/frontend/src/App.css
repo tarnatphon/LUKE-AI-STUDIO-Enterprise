@@ -3707,7 +3707,33 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
 .app-container { height: 100vh; overflow: hidden; }
 .main-content { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .workspace-panel { flex: 1 1 auto; min-height: 0; }
-.runtime-dashboard-shell { overflow: visible; }
+
+/* LUKE_SETTINGS_LAYOUT_FIX
+   The Settings tab has exactly ONE scroll container: the workspace panel
+   itself (WorkspacePanel passes overflow="auto"). Its children must not
+   shrink and must not open a second scroll box. The old global
+   `.runtime-dashboard-shell { overflow: visible }` let a flex-shrunken
+   runtime dashboard paint its cleanup cards on top of the Settings heading
+   that followed it — the reported "Settings แทรกกลาง runtime cache".
+   Scoped to data-tab="settings" so Chat/Generator/Model Manager keep their
+   own scrolling behaviour. */
+.workspace-panel[data-tab="settings"] > * {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.workspace-panel[data-tab="settings"] > .settings-workspace-header {
+  padding: 28px 28px 0;
+  margin-bottom: 0;
+}
+.workspace-panel[data-tab="settings"] > .runtime-dashboard-shell {
+  overflow: visible;
+}
+.workspace-panel[data-tab="settings"] > .workspace-area {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding-bottom: 48px;
+}
 .chat-arena-chip.selected {
   border-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-primary);
