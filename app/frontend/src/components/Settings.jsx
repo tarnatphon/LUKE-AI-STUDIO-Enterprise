@@ -1,8 +1,9 @@
 import { getSliderStyle } from "../lib/slider-style.mjs";
 import React, { memo, useEffect, useState, useCallback } from "react";
 import PerformancePanel from "./PerformancePanel";
-import OnlineSurfacesPanel from "./OnlineSurfacesPanel";
+import OnlineSurfacesPanel, { ONLINE_SURFACE_SWITCH_COUNT } from "./OnlineSurfacesPanel";
 import StorageLocationsPanel from "./StorageLocationsPanel";
+import StorageAdminPanel, { STORAGE_ADMIN_ACTIONS } from "./StorageAdminPanel";
 import {
   Crop, Sliders, Cpu, Info, MessageSquare, SlidersHorizontal, Zap,
   ChevronDown, Image, Type, Settings2, Gauge, Brain, Sparkles,
@@ -41,65 +42,6 @@ const isSD15OrCustomModel = (modelName) => {
   if (name.includes("sd3")) return false;
   return true;
 };
-
-// ─── Collapsible Card Component ───
-function CollapsibleCard({ icon: Icon, title, subtitle, children, defaultExpanded = false, id, badge, badgeColor }) {
-  const [isExpanded, setIsExpanded] = useState(() => {
-    const saved = localStorage.getItem(`settings_card_${id}`);
-    return saved !== null ? saved === "true" : defaultExpanded;
-  });
-
-  const toggle = useCallback(() => {
-    const newState = !isExpanded;
-    setIsExpanded(newState);
-    localStorage.setItem(`settings_card_${id}`, String(newState));
-  }, [isExpanded, id]);
-
-  return (
-    <div className="collapsible-card">
-      <button
-        className="collapsible-header"
-        onClick={toggle}
-        aria-expanded={isExpanded}
-        type="button"
-      >
-        <div className="collapsible-header-left">
-          <div className="collapsible-header-icon">
-            <Icon size={18} />
-          </div>
-          <div>
-            <div className="collapsible-header-title">
-              {title}
-              {badge && (
-                <span 
-                  className="collapsible-header-badge" 
-                  style={{ 
-                    background: badgeColor || "var(--md-sys-color-primary-container)",
-                    color: badgeColor ? "#fff" : "var(--md-sys-color-on-primary-container)"
-                  }}
-                >
-                  {badge}
-                </span>
-              )}
-            </div>
-            {subtitle && <div className="collapsible-header-subtitle">{subtitle}</div>}
-          </div>
-        </div>
-        <div className="collapsible-header-right">
-          <ChevronDown
-            size={20}
-            className={`collapsible-chevron ${isExpanded ? "expanded" : ""}`}
-          />
-        </div>
-      </button>
-      {isExpanded && (
-        <div className="collapsible-content">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Hardware Tier Badge Component ───
 function HardwareTierBadge({ specs }) {
@@ -251,6 +193,7 @@ function Settings({
   const [llmBackends, setLlmBackends] = useState({ available: [], candidates: [] });
   const [llmStats, setLlmStats] = useState({ benchmarks: [] });
   const [benchmarkBusy, setBenchmarkBusy] = useState(false);
+  const [storageFolderCount, setStorageFolderCount] = useState(0);
   const [backendDownload, setBackendDownload] = useState({
     active: false,
     backendId: "",
@@ -318,6 +261,10 @@ function Settings({
       storage: localStorage.getItem("settings_section_storage") === null
         ? true
         : localStorage.getItem("settings_section_storage") === "true",
+      // New section: open on first visit, then remember the owner's choice.
+      storageAdmin: localStorage.getItem("settings_section_storageAdmin") === null
+        ? true
+        : localStorage.getItem("settings_section_storageAdmin") === "true",
     };
   });
 
@@ -1254,6 +1201,29 @@ function Settings({
                 onApply={handleSaveTextSettings}
                 showAlert={showAlert}
               />
+
+              <div className="m3-field-group" style={{ marginTop: 14 }}>
+                <PremiumToggle
+                  checked={pendingTextSettings.enableThinking === true}
+                  onChange={(enabled) => void handleThinkingToggle(enabled)}
+                  label="DeepThink (reasoning mode)"
+                  description={supportsThinking
+                    ? "The loaded model supports thinking. Changing this asks before reloading the model."
+                    : "Load a model that supports thinking to use this switch; the preference is still saved."}
+                />
+                <button
+                  type="button"
+                  className="m3-btn m3-btn-outlined"
+                  disabled={benchmarkBusy || !llmStatus.ready}
+                  onClick={() => void handleBenchmarkTextBackend()}
+                  style={{ marginTop: 10, padding: "7px 12px", fontSize: 12 }}
+                >
+                  {benchmarkBusy ? "Benchmarking…" : "Benchmark text backends"}
+                </button>
+                <span className="settings-option-desc" style={{ display: "block", marginTop: 4 }}>
+                  Times the available backends on the loaded GGUF model and reports the fastest one.
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1864,6 +1834,7 @@ function Settings({
           </p>
         </div>
       )}
+      <HardwareTierBadge specs={specs} />
 
 
       {/* Appearance & Themes Section */}
@@ -2122,7 +2093,7 @@ function Settings({
       <SectionHeader
         icon={Globe2}
         title="Online surfaces"
-        count={8}
+        count={ONLINE_SURFACE_SWITCH_COUNT}
         color="#22d3ee"
         isExpanded={expandedSections.online}
         onToggle={() => toggleSection("online")}
@@ -2133,13 +2104,26 @@ function Settings({
       <SectionHeader
         icon={HardDrive}
         title="Storage locations"
-        count={8}
+        count={storageFolderCount}
         color="#a78bfa"
         isExpanded={expandedSections.storage}
         onToggle={() => toggleSection("storage")}
       />
 
-      {expandedSections.storage && <StorageLocationsPanel showAlert={showAlert} />}
+      {expandedSections.storage && (
+        <StorageLocationsPanel showAlert={showAlert} onFoldersChange={setStorageFolderCount} />
+      )}
+
+      <SectionHeader
+        icon={HardDrive}
+        title="Storage administration"
+        count={STORAGE_ADMIN_ACTIONS.length}
+        color="#f472b6"
+        isExpanded={expandedSections.storageAdmin}
+        onToggle={() => toggleSection("storageAdmin")}
+      />
+
+      {expandedSections.storageAdmin && <StorageAdminPanel />}
 
       {renderSpeechSettings()}
 

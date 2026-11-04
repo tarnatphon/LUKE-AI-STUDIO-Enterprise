@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { HardDrive } from "lucide-react";
 
 /**
@@ -36,7 +36,10 @@ function Badge({ tone, children }) {
   );
 }
 
-function StorageLocationsPanel({ showAlert }) {
+function StorageLocationsPanel({ showAlert, onFoldersChange }) {
+  // A ref keeps the effect stable even when the parent passes an inline callback.
+  const onFoldersChangeRef = useRef(onFoldersChange);
+  onFoldersChangeRef.current = onFoldersChange;
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -50,6 +53,7 @@ function StorageLocationsPanel({ showAlert }) {
       const body = await response.json();
       if (!response.ok || !body.ok) throw new Error(body.error || "Could not read storage locations.");
       setData(body);
+      onFoldersChangeRef.current?.(Array.isArray(body.folders) ? body.folders.length : 0);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -136,8 +140,8 @@ function StorageLocationsPanel({ showAlert }) {
               <thead>
                 <tr style={{ textAlign: "left", opacity: 0.7 }}>
                   <th style={{ padding: "6px 8px" }}>Folder</th>
-                  <th style={{ padding: "6px 8px" }}>Volume</th>
-                  <th style={{ padding: "6px 8px" }}>Suggested</th>
+                  <th style={{ padding: "6px 8px" }} title="The disk this folder is on right now">Current volume</th>
+                  <th style={{ padding: "6px 8px" }} title="Where LUKE suggests keeping this folder">Suggested volume</th>
                   <th style={{ padding: "6px 8px" }}>Status</th>
                   <th style={{ padding: "6px 8px" }} />
                 </tr>

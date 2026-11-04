@@ -2077,7 +2077,7 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
 }
 
 /* ============================================================
-   PROFESSIONAL SETTINGS UI - Collapsible Cards, Tabs, Hardware Badge
+   PROFESSIONAL SETTINGS UI - Section Headers, Tabs, Hardware Badge
    ============================================================ */
 
 /* --- Section Tabs (Image | Text) --- */
@@ -2131,11 +2131,6 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
 
 .settings-tab.active .tab-icon {
   transform: scale(1.1);
-}
-
-.collapsible-chevron.expanded {
-  transform: rotate(180deg);
-  color: var(--md-sys-color-primary);
 }
 
 @keyframes fadeInSlide {
@@ -2255,14 +2250,6 @@ html[data-theme^="dark"] .m3-segment-item:hover:not(.active):not(.disabled) {
 
   .hardware-tier-name {
     font-size: 1rem;
-  }
-
-  .collapsible-header {
-    padding: 14px 16px;
-  }
-
-  .collapsible-content {
-    padding: 0 16px 16px;
   }
 
   .settings-section-header {

@@ -194,97 +194,6 @@ html[data-theme^="dark"] .hardware-tier-badge:hover {
   box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
 }
 
-/* --- Collapsible Card --- */
-.collapsible-card {
-  border: 1px solid var(--md-sys-color-card-border);
-  border-radius: 16px;
-  overflow: hidden;
-  margin-bottom: 16px;
-  background: var(--md-sys-color-surface);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-shadow);
-  transition: all 0.3s ease;
-}
-
-.collapsible-card:hover {
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 15%, var(--md-sys-color-card-border));
-  transform: translateY(-1px);
-}
-
-html[data-theme^="dark"] .collapsible-card:hover {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-card-border));
-}
-
-.collapsible-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.25s ease;
-  border: none;
-  width: 100%;
-  background: transparent;
-  color: inherit;
-  font-family: inherit;
-  text-align: left;
-}
-
-.collapsible-header:hover {
-  background: var(--md-sys-color-surface-variant);
-}
-
-.collapsible-header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.collapsible-header-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent),
-    color-mix(in srgb, var(--md-sys-color-secondary) 8%, transparent)
-  );
-  color: var(--md-sys-color-primary);
-  flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
-}
-
-.collapsible-header-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--md-sys-color-on-surface);
-  letter-spacing: -0.01em;
-}
-
-.collapsible-header-subtitle {
-  font-size: 0.75rem;
-  color: var(--md-sys-color-outline);
-  margin-top: 2px;
-  font-weight: 500;
-}
-
-.collapsible-chevron {
-  transition: transform 0.35s var(--md-transition-easing);
-  color: var(--md-sys-color-outline);
-  flex-shrink: 0;
-}
-
-.collapsible-content {
-  padding: 0 22px 22px;
-  animation: fadeInSlide 0.3s var(--md-transition-easing);
-}
-
 /* --- Settings Section Header --- */
 .settings-section-header {
   display: flex;
@@ -343,22 +252,6 @@ html[data-theme^="dark"] .settings-section-header:hover {
   font-weight: 700;
   border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
   letter-spacing: 0.02em;
-}
-
-/* --- Collapsible Header Badge --- */
-.collapsible-header-badge {
-  font-size: 0.7rem;
-  padding: 2px 10px;
-  border-radius: 999px;
-  margin-left: 10px;
-  font-weight: 700;
-  vertical-align: middle;
-}
-
-.collapsible-header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 /* --- Premium Toggle Switch --- */

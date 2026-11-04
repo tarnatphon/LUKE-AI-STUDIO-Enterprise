@@ -312,9 +312,10 @@ async function main() {
     ["/api/online-media/providers", "/api/online-media/quote", "/api/online-media/generate"]
       .every((route) => serve.includes(route))
     && /onlineSurfaces\.policy\(\)\.onlineMediaEnabled/.test(serve));
-  check("the panel shows eight switches and Settings counts eight",
+  check("the panel shows eight switches and Settings uses their real count",
     (panelSource.match(/\{ key: "/g) || []).length === 8
-    && /count=\{8\}/.test(settingsSource));
+    && /export const ONLINE_SURFACE_SWITCH_COUNT = SWITCHES\.length/.test(panelSource)
+    && /count=\{ONLINE_SURFACE_SWITCH_COUNT\}/.test(settingsSource));
   check("the panel explains that exhausted credit falls back to local",
     /fall back to the local|local engines/i.test(panelSource));
   check("the local engines are still wired in",
