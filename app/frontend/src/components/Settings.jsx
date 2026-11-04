@@ -243,6 +243,9 @@ function Settings({
   setTheme,
   fontSize,
   setFontSize,
+  // The Settings tab owns the page heading (App.jsx renders it above the
+  // runtime dashboard). Standalone renders keep their own heading.
+  showHeader = true,
 }) {
   const [llmStatus, setLlmStatus] = useState({ ready: false, settings: {} });
   const [llmBackends, setLlmBackends] = useState({ available: [], candidates: [] });
@@ -1852,13 +1855,15 @@ function Settings({
 
   return (
     <div className="workspace-area">
-      {/* Page Header */}
-      <div className="workspace-title-section">
-        <h2 className="workspace-title">Settings & Parameters</h2>
-        <p className="workspace-subtitle">
-          Configure your AI models for optimal performance.
-        </p>
-      </div>
+      {/* Page Header — rendered once, by the Settings tab in App.jsx. */}
+      {showHeader && (
+        <div className="workspace-title-section">
+          <h2 className="workspace-title">Settings & Parameters</h2>
+          <p className="workspace-subtitle">
+            Configure your AI models for optimal performance.
+          </p>
+        </div>
+      )}
 
 
       {/* Appearance & Themes Section */}

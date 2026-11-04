@@ -126,7 +126,7 @@ class WorkspaceErrorBoundary extends Component {
 }
 
 const WorkspacePanel = ({ tab, activeTab, onReturnHome, overflow = "hidden", children }) => (
-  <div className="workspace-panel" style={{ display: activeTab === tab ? "flex" : "none", overflow, flex: "1 1 0", height: 0, minHeight: 0 }}>
+  <div className="workspace-panel" data-tab={tab} style={{ display: activeTab === tab ? "flex" : "none", overflow, flex: "1 1 0", height: 0, minHeight: 0 }}>
     <WorkspaceErrorBoundary onReturnHome={() => onReturnHome(tab)}>
       {children}
     </WorkspaceErrorBoundary>
@@ -1294,6 +1294,12 @@ function App() {
 
         {visitedTabs.has("settings") && (
         <WorkspacePanel tab="settings" activeTab={activeTab} onReturnHome={recoverFailedWorkspace} overflow="auto">
+          <div className="workspace-title-section settings-workspace-header">
+            <h2 className="workspace-title">Settings & Parameters</h2>
+            <p className="workspace-subtitle">
+              Configure your AI models for optimal performance.
+            </p>
+          </div>
           <div className="runtime-dashboard-shell">
           <SoftWorkspaceBoundary>
             <RuntimeDownloadDashboard />
@@ -1333,6 +1339,7 @@ function App() {
             setTheme={setTheme}
             fontSize={fontSize}
             setFontSize={setFontSize}
+            showHeader={false}
           />
         </WorkspacePanel>
         )}
