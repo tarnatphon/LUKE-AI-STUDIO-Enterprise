@@ -225,10 +225,26 @@ async function main() {
       "index.html is always revalidated, so an update reaches the browser"
     );
 
-    const assetResponse = await fetch(`${baseUrl}/assets/does-not-exist.js`);
+    // Use a REAL hashed bundle. A made-up /assets/*.js used to be a cheap way
+    // to hit the immutable-cache branch, but it is exactly the request that
+    // must now 404: serving index.html with a .js MIME type made the browser
+    // parse HTML as JavaScript and broke every screen at once.
+    const builtHtml = fs.readFileSync(path.join(root, "app", "dist", "index.html"), "utf8");
+    const realAsset = (builtHtml.match(/src="\/(assets\/[^"]+\.js)"/) || [])[1];
+    assert(realAsset, "the built index.html points at a hashed JS bundle");
+    const assetResponse = await fetch(`${baseUrl}/${realAsset}`);
     assert(
-      (assetResponse.headers.get("cache-control") || "").includes("max-age=31536000"),
+      assetResponse.status === 200
+      && (assetResponse.headers.get("cache-control") || "").includes("max-age=31536000"),
       "fingerprinted bundles are cached immutably (fast reloads)"
+    );
+    const missingAssetResponse = await fetch(`${baseUrl}/assets/does-not-exist.js`);
+    const missingAssetBody = await missingAssetResponse.text();
+    assert(
+      missingAssetResponse.status === 404
+      && (missingAssetResponse.headers.get("cache-control") || "").includes("no-store")
+      && !/<html/i.test(missingAssetBody),
+      "a missing asset 404s instead of returning index.html as JavaScript"
     );
 
     // One boot of the app, plus ordinary reads, must not touch a single

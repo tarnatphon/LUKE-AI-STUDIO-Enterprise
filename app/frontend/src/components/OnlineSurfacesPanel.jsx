@@ -221,7 +221,7 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               No paid provider is registered — billed, prepaid and card-backed services were removed
               from the code, so there is no switch that can bring one back.
             </span>
-            <button type="button" className="m3-button-outlined" style={{ marginTop: "8px" }} onClick={refresh}>
+            <button type="button" className="m3-btn-outlined" style={{ marginTop: "8px" }} onClick={refresh}>
               <RefreshCw size={14} /> Refresh
             </button>
           </Row>
@@ -248,13 +248,13 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               {ledger.length} recent entries. Keys and prompt text are never written here.
             </span>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
-              <button type="button" className="m3-button-filled" disabled={busy === "report"} onClick={loadReport}>
+              <button type="button" className="m3-btn-filled" disabled={busy === "report"} onClick={loadReport}>
                 <ShieldCheck size={14} /> Air-gap report
               </button>
-              <button type="button" className="m3-button-outlined" onClick={() => fetch("/api/egress/report?format=text").then((r) => r.text()).then((t) => navigator.clipboard?.writeText(t))}>
+              <button type="button" className="m3-btn-outlined" onClick={() => fetch("/api/egress/report?format=text").then((r) => r.text()).then((t) => navigator.clipboard?.writeText(t))}>
                 <Copy size={14} /> Copy attestation
               </button>
-              <button type="button" className="m3-button-outlined" disabled={busy === "clear"} onClick={clearLedger}>
+              <button type="button" className="m3-btn-outlined" disabled={busy === "clear"} onClick={clearLedger}>
                 Clear window
               </button>
             </div>
@@ -270,10 +270,10 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               {lan?.enabled ? "Paired devices are allowed." : "Default-deny: other devices cannot call the API."}
             </span>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
-              <button type="button" className="m3-button-filled" disabled={busy === "lan"} onClick={pairDevice}>
+              <button type="button" className="m3-btn-filled" disabled={busy === "lan"} onClick={pairDevice}>
                 <Radio size={14} /> Pair a device
               </button>
-              <button type="button" className="m3-button-outlined" disabled={busy === "lan"} onClick={revokeDevice}>
+              <button type="button" className="m3-btn-outlined" disabled={busy === "lan"} onClick={revokeDevice}>
                 Revoke
               </button>
             </div>
@@ -306,10 +306,10 @@ export default function OnlineSurfacesPanel({ showAlert }) {
               <input className="m3-input" type="password" style={{ maxWidth: "220px" }} placeholder="Webhook secret" value={channelSecret} onChange={(e) => setChannelSecret(e.target.value)} autoComplete="off" />
             </div>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
-              <button type="button" className="m3-button-filled" disabled={busy === "channels"} onClick={saveChannel}>
+              <button type="button" className="m3-btn-filled" disabled={busy === "channels"} onClick={saveChannel}>
                 <Bot size={14} /> Save channel
               </button>
-              <button type="button" className="m3-button-outlined" disabled={busy === "channels"} onClick={testChannel}>
+              <button type="button" className="m3-btn-outlined" disabled={busy === "channels"} onClick={testChannel}>
                 Dry-run test
               </button>
             </div>
@@ -332,7 +332,7 @@ export default function OnlineSurfacesPanel({ showAlert }) {
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
               <button
                 type="button"
-                className="m3-button-outlined"
+                className="m3-btn-outlined"
                 onClick={() => post("/api/online-media/quote", { providerId: "kling_free", kind: "video" }).then((data) => showAlert?.({ title: "Free-credit quote", message: `${data.quote.credits} free credits · ${data.quote.remaining} left. Exhaustion falls back to local.` })).catch((e) => showAlert?.({ title: "Free-credit quote", message: e.message }))}
               >
                 <Video size={14} /> Quote the free allowance
