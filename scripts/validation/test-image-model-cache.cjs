@@ -190,10 +190,12 @@ async function main() {
 
     check("the image load path is resolved through the cache", /modelCache\.cachedCopyFor\(imageModelPath\)/.test(backendBody));
     check("the copy is only used when it is inside the cache folder", /pathInside\(imageCachePlan\.cachedPath, imageCachePlan\.cacheDir\)/.test(backendBody));
-    const modelFlags = backendBody.match(/"--model",\s*([A-Za-z0-9_.]+)/g) || [];
-    check("both image backends are given the resolved path", modelFlags.length === 2 && modelFlags.every((flag) => flag.includes("imageLoadPath")), modelFlags.join(" | "));
-    check("a worker is never handed the raw setting again", !/"--model",\s*currentSettings\.model/.test(backendBody));
-    check("the memory budget still measures the model the user manages", /targetPaths:\s*\[imageModelPath\]/.test(backendBody));
+    check("backend launch arguments use the cache-resolved model path and Qwen component plan", /imageDiffusionSupport\.buildModelComponentArgs\(imageModelPlan, imageLoadPath\)/.test(backendBody));
+    check("a backend worker is never handed the raw setting again", !/"--model",\s*currentSettings\.model/.test(backendBody));
+    check("the memory budget measures the model and every required component", /targetPaths:\s*imageTargetPaths/.test(backendBody));
+    const diffusionSupportSource = fs.readFileSync(path.join(root, "scripts", "server", "image-diffusion-support.cjs"), "utf8");
+    check("single-file models keep the standard --model flag", /return \["--model", loadPath\]/.test(diffusionSupportSource));
+    check("Qwen is launched with --diffusion-model rather than --model", /"--diffusion-model", loadPath/.test(diffusionSupportSource));
     check("the Core ML worker is told which model the user picked", /"--model-version",\s*String\(currentSettings\.model/.test(backendBody));
     check("the text loader searches both folders too", /modelCache\.cachedCopyFor\(modelPath\)/.test(serverSource));
 

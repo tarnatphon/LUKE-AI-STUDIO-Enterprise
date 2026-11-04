@@ -524,6 +524,7 @@ function Settings({
 
   const isSD15OrCustom = activeModel ? isSD15OrCustomModel(activeModel) : false;
   const isOpenVinoNpu = constraints.backendType === "openvino-npu";
+  const isQwenImage21Turbo = /qwen[-_ ]?image.*2[._-]?1.*turbo/i.test(String(activeModel || ""));
   const supportsThinking = Boolean(llmStatus.ready && llmStatus.settings?.supportsThinking);
   const availableBackends = backendOptions?.options?.length
     ? backendOptions.options
@@ -969,20 +970,23 @@ function Settings({
             <div className="m3-field-group">
               <div className="m3-slider-group">
                 <div className="m3-slider-header">
-                  <span className="m3-slider-label">Detail Steps</span>
-                  <span className="settings-value-badge">{constraints.steps}</span>
+                  <span className="m3-slider-label">{isQwenImage21Turbo ? "Turbo Steps (fixed)" : "Detail Steps"}</span>
+                  <span className="settings-value-badge">{isQwenImage21Turbo ? 8 : constraints.steps}</span>
                 </div>
                 <input
                   type="range"
                   className="m3-slider"
-                  value={constraints.steps}
+                  value={isQwenImage21Turbo ? 8 : constraints.steps}
                   onChange={(e) => updateConstraint("steps", parseInt(e.target.value))}
-                  min="1"
-                  max={isOpenVinoNpu ? "8" : "60"}
-                  style={getSliderStyle(constraints.steps, 1, isOpenVinoNpu ? 8 : 60)}
+                  min={isQwenImage21Turbo ? "8" : "1"}
+                  max={isQwenImage21Turbo ? "8" : isOpenVinoNpu ? "8" : "60"}
+                  disabled={isQwenImage21Turbo}
+                  style={getSliderStyle(isQwenImage21Turbo ? 8 : constraints.steps, isQwenImage21Turbo ? 8 : 1, isQwenImage21Turbo ? 8 : isOpenVinoNpu ? 8 : 60)}
                 />
                 <span className="settings-option-desc">
-                  {isOpenVinoNpu
+                  {isQwenImage21Turbo
+                    ? "Qwen Image 2.1 Turbo uses a fixed 8-step sigma schedule."
+                    : isOpenVinoNpu
                     ? "LCM OpenVINO: 1-8 fast steps"
                     : "More steps = sharper details, longer time"}
                 </span>

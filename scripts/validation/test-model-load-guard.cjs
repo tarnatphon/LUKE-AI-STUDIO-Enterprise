@@ -167,15 +167,16 @@ async function main() {
   });
 
   test("serve.cjs: ตั้งค่า in-flight ตอนสั่งโหลด และเคลียร์เมื่อพร้อม/ถูกปิด", () => {
-    assert.match(serveSource, /imageModelLoadingBytes = estimateModelBytes\(imageLoadPath\)/);
+    assert.match(serveSource, /imageModelLoadingPaths = \[imageLoadPath, \.\.\.imageComponentPaths\]/);
+    assert.match(serveSource, /imageModelLoadingBytes = estimateModelPathsBytes\(imageModelLoadingPaths\)/);
     assert.match(
       serveSource,
-      /imageModelResidentBytes = 0;\n\s*imageModelLoadingBytes = 0;/,
+      /imageModelResidentBytes = 0;\n\s*imageModelResidentPaths = \[\];\n\s*imageModelLoadingBytes = 0;/,
       "cleared when the backend is stopped",
     );
     assert.match(
       serveSource,
-      /imageModelResidentBytes = estimateModelBytes\([\s\S]{0,220}?\);\n\s*imageModelLoadingBytes = 0;/,
+      /imageModelResidentBytes = estimateModelPathsBytes\(imageModelResidentPaths\);\n\s*imageModelLoadingPaths = \[\];\n\s*imageModelLoadingBytes = 0;/,
       "cleared when the image model becomes resident",
     );
     assert.match(serveSource, /llmModelLoadingBytes = estimateModelBytes\(loadPath\)/);
@@ -196,13 +197,13 @@ async function main() {
       serveSource.indexOf("function markBackendReady()"),
       serveSource.indexOf("function pingBackendReady()"),
     );
-    assert.match(ready, /imageModelResidentBytes = estimateModelBytes\(/, "ready means resident");
-    assert.match(ready, /imageModelLoadingBytes = 0;/, "and no longer in flight");
+    assert.match(ready, /imageModelResidentBytes = estimateModelPathsBytes\(imageModelResidentPaths\)/, "ready means resident");
+    assert.match(ready, /imageModelLoadingPaths = \[\];\n\s*imageModelLoadingBytes = 0;/, "and no longer in flight");
     // The backend's own exit handler clears it too: a model that died mid-load
     // must not make the next text load look like the machine is full.
     assert.match(
       serveSource,
-      /backendLoadState\.active = false;\n\s*\/\/ It never became resident,[\s\S]{0,120}?imageModelLoadingBytes = 0;/,
+      /backendLoadState\.active = false;\n\s*\/\/ The process exited,[\s\S]{0,180}?imageModelLoadingBytes = 0;\n\s*imageModelLoadingPaths = \[\];/,
       "a backend that died mid-load holds nothing",
     );
     assert.match(serveSource, /llmModelLoadingBytes = 0;\n\s*if \(code !== 0 && code !== null && !llmError\)/);

@@ -179,6 +179,56 @@ function dependencyHealthIsHealthy(endpoint, result) {
 async function runNegativeTests(baseUrl) {
   const tests = [];
 
+  const imageComponents = await requestEndpoint(`${baseUrl}/api/image-model-components`);
+  tests.push({
+    name: "Qwen image component status endpoint",
+    passed: imageComponents.transportOk && imageComponents.status === 200 &&
+      imageComponents.json?.components?.["qwen-image-21-vae"]?.id === "qwen-image-21-vae" &&
+      imageComponents.json?.components?.["qwen-image-21-llm"]?.id === "qwen-image-21-llm",
+    expected: "HTTP 200 with Qwen VAE and text-encoder status",
+    actual: `HTTP ${imageComponents.status}`,
+    body: imageComponents.body,
+  });
+
+  const invalidImageComponent = await requestEndpoint(`${baseUrl}/api/download-image-component`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ component: "unknown", url: "https://huggingface.co/example.gguf" }),
+  });
+  tests.push({
+    name: "Unknown image component download is rejected",
+    passed: invalidImageComponent.transportOk && invalidImageComponent.status === 400,
+    expected: "HTTP 400",
+    actual: `HTTP ${invalidImageComponent.status}`,
+    body: invalidImageComponent.body,
+  });
+
+  const invalidImageComponentHost = await requestEndpoint(`${baseUrl}/api/download-image-component`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ component: "qwen-image-21-vae", url: "https://example.com/qwen_image_2.1_vae_bf16.safetensors" }),
+  });
+  tests.push({
+    name: "Image component downloads are restricted to Hugging Face",
+    passed: invalidImageComponentHost.transportOk && invalidImageComponentHost.status === 400,
+    expected: "HTTP 400",
+    actual: `HTTP ${invalidImageComponentHost.status}`,
+    body: invalidImageComponentHost.body,
+  });
+
+  const mismatchedImageComponent = await requestEndpoint(`${baseUrl}/api/download-image-component`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ component: "qwen-image-21-vae", url: "https://huggingface.co/example/resolve/main/not-the-vae.safetensors" }),
+  });
+  tests.push({
+    name: "Image component URLs must match the selected file",
+    passed: mismatchedImageComponent.transportOk && mismatchedImageComponent.status === 400,
+    expected: "HTTP 400",
+    actual: `HTTP ${mismatchedImageComponent.status}`,
+    body: mismatchedImageComponent.body,
+  });
+
   const missingRoute = await requestEndpoint(
     `${baseUrl}/api/__luke_missing_route__`
   );

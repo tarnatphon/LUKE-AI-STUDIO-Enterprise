@@ -1070,6 +1070,7 @@ const chatHistory = require("./chat-history-archive.cjs");
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
 const modelCache = require("./model-cache.cjs");
+const imageDiffusionSupport = require("./image-diffusion-support.cjs");
 // Two heavy loads at once is what makes a small machine swap, and a model that is
 // still loading is not "resident" yet — so it is counted, and the second load waits.
 const modelLoadGuard = require("./model-load-guard.cjs");
@@ -1547,10 +1548,12 @@ let backendReady = false;
 // text context to 8192 even though nothing else was loaded, so the resident
 // size is tracked from the backend's own load messages instead.
 let imageModelResidentBytes = 0;
+let imageModelResidentPaths = [];
 // A model that is still being read, converted and copied to the GPU is already
 // holding the memory it will need. Counting it only once it answers is how SDXL
 // spent 825 s loading while a 9B model was started on top of it.
 let imageModelLoadingBytes = 0;
+let imageModelLoadingPaths = [];
 let llmModelLoadingBytes = 0;
 let backendError = null;
 let openvinoProc = null;
@@ -1820,6 +1823,11 @@ function estimateModelBytes(modelPath) {
     if (stats.isDirectory()) return directorySizeBytes(modelPath);
   } catch (_) {}
   return 0;
+}
+
+function estimateModelPathsBytes(modelPaths = []) {
+  return [...new Set((Array.isArray(modelPaths) ? modelPaths : [modelPaths]).filter(Boolean))]
+    .reduce((sum, modelPath) => sum + estimateModelBytes(modelPath), 0);
 }
 
 function residentHeavyModelBytes() {
@@ -5622,6 +5630,23 @@ function getBackendOptions() {
   return cachedBackendOptions;
 }
 
+function backendEnvironmentFor(binaryPath) {
+  const spawnEnv = { ...process.env };
+  const dir = path.dirname(binaryPath || "");
+  if (osPlatform === "linux") {
+    spawnEnv.LD_LIBRARY_PATH = dir + (spawnEnv.LD_LIBRARY_PATH ? `:${spawnEnv.LD_LIBRARY_PATH}` : "");
+  } else if (osPlatform === "darwin") {
+    spawnEnv.DYLD_LIBRARY_PATH = dir + (spawnEnv.DYLD_LIBRARY_PATH ? `:${spawnEnv.DYLD_LIBRARY_PATH}` : "");
+  }
+  return spawnEnv;
+}
+
+function backendSupportsMultiFileDiffusion(binaryPath) {
+  return imageDiffusionSupport.backendSupportsMultiFileDiffusion(binaryPath, {
+    env: backendEnvironmentFor(binaryPath),
+  });
+}
+
 function backendAccepts(binaryPath, backendName) {
   if (!binaryPath || !fs.existsSync(binaryPath)) return false;
   try {
@@ -5759,13 +5784,18 @@ function markBackendReady() {
   noteEngineUsed("image");
   // Ready means resident: the in-flight mark becomes a real one, so a later
   // text load is refused on the truth rather than on a guess.
-  if (!(Number(imageModelResidentBytes) > 0)) {
-    imageModelResidentBytes = estimateModelBytes(
-      path.isAbsolute(String(currentSettings.model || ""))
-        ? String(currentSettings.model)
-        : path.join(MODELS, String(currentSettings.model || ""))
-    );
-  }
+  const residentPaths = imageModelLoadingPaths.length > 0
+    ? imageModelLoadingPaths
+    : imageModelResidentPaths.length > 0
+      ? imageModelResidentPaths
+      : [
+          path.isAbsolute(String(currentSettings.model || ""))
+            ? String(currentSettings.model)
+            : path.join(MODELS, String(currentSettings.model || "")),
+        ];
+  imageModelResidentPaths = residentPaths.filter(Boolean);
+  imageModelResidentBytes = estimateModelPathsBytes(imageModelResidentPaths);
+  imageModelLoadingPaths = [];
   imageModelLoadingBytes = 0;
   backendLoadState = {
     ...backendLoadState,
@@ -6373,6 +6403,10 @@ function killBackend() {
     resetGenerationState();
     const proc = backendProc;
     if (!proc) {
+      imageModelResidentBytes = 0;
+      imageModelResidentPaths = [];
+      imageModelLoadingBytes = 0;
+      imageModelLoadingPaths = [];
       backendUnloadState = { active: false, phase: "", progress: 0 };
       resolve();
       return;
@@ -6380,7 +6414,9 @@ function killBackend() {
     backendUnloadState = { active: true, phase: "Stopping backend process...", progress: 10 };
     backendReady = false;
     imageModelResidentBytes = 0;
+    imageModelResidentPaths = [];
     imageModelLoadingBytes = 0;
+    imageModelLoadingPaths = [];
     try { proc.kill("SIGTERM"); } catch (_) {}
     backendUnloadState = { active: true, phase: "Waiting for process exit...", progress: 50 };
     setTimeout(() => {
@@ -6985,6 +7021,14 @@ async function startLlmWithBackend(settings = {}, backend) {
 async function startBackend(settings = {}) {
   const requestedSettings = { ...currentSettings, ...settings };
   if (!requestedSettings.model) requestedSettings.model = getDefaultModel();
+  const imageModelPlan = imageDiffusionSupport.resolveImageModel({
+    modelPath: requestedSettings.model,
+    modelsDir: MODELS,
+    llmModelsDir: LLM_MODELS,
+  });
+  if (requestedSettings.backendType === "openvino-npu" && imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
+    throw new Error("Qwen Image 2.1 Turbo needs the stable-diffusion.cpp multi-file diffusion backend; OpenVINO image mode does not support this model.");
+  }
   // Concurrency: any loaded text model stays resident while the image backend
   // starts. Loading one runtime never unloads another one.
   const imageConcurrency = describeRuntimeConcurrency("image", requestedSettings.model);
@@ -6998,12 +7042,22 @@ async function startBackend(settings = {}) {
   await killOpenVinoWorker();
   backendError = null;
   currentSettings = requestedSettings;
+  if (imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
+    // Qwen Image 2.1 Turbo has an 8-step sigma preset. Apply its upstream
+    // defaults even when the request came from a client that still carries the
+    // generic SD defaults.
+    currentSettings.steps = 8;
+    currentSettings.cfgScale = 1;
+    currentSettings.sampler = "euler";
+    if (!Number(currentSettings.width)) currentSettings.width = 1024;
+    if (!Number(currentSettings.height)) currentSettings.height = 1024;
+  }
   if (!currentSettings.model) {
     console.log("  [backend] No model found in app/models/ — backend not started");
     return;
   }
 
-  const modelLoadIssue = getModelLoadIssue(currentSettings.model);
+  const modelLoadIssue = getModelLoadIssue(currentSettings.model, imageModelPlan);
   if (modelLoadIssue) {
     backendError = modelLoadIssue;
     backendLoadState = {
@@ -7033,8 +7087,12 @@ async function startBackend(settings = {}) {
   const imageModelPath = path.isAbsolute(String(currentSettings.model))
     ? String(currentSettings.model)
     : path.join(MODELS, String(currentSettings.model));
+  const imageComponentPaths = imageModelPlan.components
+    ? Object.values(imageModelPlan.components).filter(Boolean)
+    : [];
+  const imageTargetPaths = [imageModelPath, ...imageComponentPaths];
   let imageBudget = evaluateModelMemoryBudget({
-    targetPaths: [imageModelPath],
+    targetPaths: imageTargetPaths,
     targetType: "image",
     gpuLayers: currentSettings.useGpu ? -1 : 0,
   });
@@ -7050,7 +7108,7 @@ async function startBackend(settings = {}) {
     });
     if (madeRoom.released.length > 0) {
       imageBudget = evaluateModelMemoryBudget({
-        targetPaths: [imageModelPath],
+        targetPaths: imageTargetPaths,
         targetType: "image",
         gpuLayers: currentSettings.useGpu ? -1 : 0,
       });
@@ -7084,16 +7142,37 @@ async function startBackend(settings = {}) {
     const setupHint = resolvedBackendType === "apple-npu"
       ? "CoreML Python environment is not set up. Run scripts/setup/setup-coreml-npu.sh first."
       : resolvedBackendType === "cpu" && osPlatform === "win32"
-        ? "Windows CPU backend is not installed. Run scripts/setup.ps1 again so app/backend/win/cpu is created."
+        ? "Windows CPU backend is not installed. Run scripts/setup/setup.ps1 again so app/backend/win/cpu is created."
         : "No compatible backend executable was found.";
     throw new Error(setupHint);
+  }
+  if (
+    imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO &&
+    !backendSupportsMultiFileDiffusion(backendPath)
+  ) {
+    const setupCommand = osPlatform === "win32"
+      ? "powershell -ExecutionPolicy Bypass -File scripts/setup/setup.ps1"
+      : "bash scripts/setup/setup.sh";
+    const message = `${path.basename(currentSettings.model)} needs the newer stable-diffusion.cpp multi-file loader (--diffusion-model, --vae, and --llm), but ${path.basename(backendPath)} is too old. Close LUKE and run ${setupCommand} to update the image backend, then restart the app. If you built a custom backend, rebuild it from stable-diffusion.cpp master-1043-3be2378 or newer.`;
+    backendError = message;
+    backendLoadState = {
+      ...backendLoadState,
+      active: false,
+      phase: "Image backend update required",
+      model: path.basename(currentSettings.model),
+      backendMode: "",
+      backendBinary: path.basename(backendPath),
+      device: "",
+    };
+    throw new Error(message);
   }
   const backendMode = getBackendMode(backendPath, currentSettings.useGpu, currentSettings.backendType);
   currentSettings.backendMode = backendMode;
   currentSettings.backendBinary = path.basename(backendPath);
 
   // From here until the backend answers, these bytes are already spoken for.
-  imageModelLoadingBytes = estimateModelBytes(imageLoadPath);
+  imageModelLoadingPaths = [imageLoadPath, ...imageComponentPaths];
+  imageModelLoadingBytes = estimateModelPathsBytes(imageModelLoadingPaths);
   backendLoadState = {
     active: true,
     phase: "Starting backend...",
@@ -7131,14 +7210,18 @@ async function startBackend(settings = {}) {
       "--cfg-scale",   String(currentSettings.cfgScale),
     ];
   } else {
+    const modelInputArgs = imageDiffusionSupport.buildModelComponentArgs(imageModelPlan, imageLoadPath);
     args = [
       "--listen-port", String(PORT_BACKEND),
-      "--model",       imageLoadPath,
+      ...modelInputArgs,
       "--steps",       String(currentSettings.steps),
       "--cfg-scale",   String(currentSettings.cfgScale),
       "--sampling-method", currentSettings.sampler,
       "--threads",     String(runThreads),
     ];
+    if (imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
+      args.push("--sigmas", "qwen-image-2.1-turbo");
+    }
 
     if (requestedBackend === "cpu") {
       if (supportsFlags) {
@@ -7248,11 +7331,15 @@ async function startBackend(settings = {}) {
         backendLoadState.active = true;
         backendLoadState.phase = "Initializing model...";
         backendLoadState.progress = Math.max(backendLoadState.progress, 95);
-        imageModelResidentBytes = estimateModelBytes(
-          path.isAbsolute(String(currentSettings.model || ""))
-            ? String(currentSettings.model)
-            : path.join(MODELS, String(currentSettings.model || ""))
-        );
+        imageModelResidentPaths = imageModelLoadingPaths.length > 0
+          ? [...imageModelLoadingPaths]
+          : [
+              path.isAbsolute(String(currentSettings.model || ""))
+                ? String(currentSettings.model)
+                : path.join(MODELS, String(currentSettings.model || "")),
+            ];
+        imageModelResidentBytes = estimateModelPathsBytes(imageModelResidentPaths);
+        imageModelLoadingPaths = [];
         imageModelLoadingBytes = 0;
       }
 
@@ -7368,8 +7455,12 @@ async function startBackend(settings = {}) {
       }
     }
     backendLoadState.active = false;
-    // It never became resident, so nothing is holding these bytes either.
+    // The process exited, so neither the in-flight model nor its components
+    // remain resident.
+    imageModelResidentBytes = 0;
+    imageModelResidentPaths = [];
     imageModelLoadingBytes = 0;
+    imageModelLoadingPaths = [];
     generationState.active = false;
     generationState.step = 0;
     generationState.steps = 0;
@@ -7514,7 +7605,7 @@ const IMAGE_BACKEND_DOWNLOADS = {
   "cpu": {
     id: "cpu",
     label: "CPU",
-    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-avx2-x64.zip",
+    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-cpu-x64.zip",
     destDir: path.join(ROOT, "app", "backend", "win", "cpu"),
     exeName: "sd-cpu.exe",
     requiredDll: "stable-diffusion.dll",
@@ -7522,7 +7613,7 @@ const IMAGE_BACKEND_DOWNLOADS = {
   "vulkan": {
     id: "vulkan",
     label: "Vulkan GPU",
-    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-669-2d40a8b/sd-master-2d40a8b-bin-win-vulkan-x64.zip",
+    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-vulkan-x64.zip",
     destDir: path.join(ROOT, "app", "backend", "win", "vulkan"),
     exeName: "sd-vulkan.exe",
     requiredDll: "stable-diffusion.dll",
@@ -7530,7 +7621,7 @@ const IMAGE_BACKEND_DOWNLOADS = {
   "cuda": {
     id: "cuda",
     label: "CUDA GPU",
-    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-721-8caa3f9/sd-master-8caa3f9-bin-win-cuda12-x64.zip",
+    url: "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-1043-3be2378/sd-master-3be2378-bin-win-cuda12-x64.zip",
     destDir: path.join(ROOT, "app", "backend", "win", "cuda"),
     exeName: "sd-cuda.exe",
     requiredDll: "stable-diffusion.dll",
@@ -7579,8 +7670,12 @@ function installImageBackendArchive(zipPath, backend) {
       fs.copyFileSync(file, path.join(backend.destDir, path.basename(file)));
     }
 
-    if (!fs.existsSync(path.join(backend.destDir, backend.exeName)) || !fs.existsSync(path.join(backend.destDir, backend.requiredDll))) {
+    const installedBackendPath = path.join(backend.destDir, backend.exeName);
+    if (!fs.existsSync(installedBackendPath) || !fs.existsSync(path.join(backend.destDir, backend.requiredDll))) {
       throw new Error(`Backend install did not create ${backend.exeName} and ${backend.requiredDll}.`);
+    }
+    if (!imageDiffusionSupport.backendSupportsMultiFileDiffusion(installedBackendPath)) {
+      throw new Error(`Backend ${backend.exeName} installed, but it does not expose --diffusion-model, --vae, and --llm support.`);
     }
     cachedBackendOptions = null;
   } finally {
@@ -7801,6 +7896,7 @@ function startModelDownload(url, overrideFilename = null, targetDir = MODELS, ki
     throw new Error(`Maximum ${MAX_PARALLEL_MODEL_DOWNLOADS} parallel downloads are already active. Wait for one to finish or cancel one.`);
   }
 
+  fs.mkdirSync(targetDir, { recursive: true });
   const destPath = path.join(targetDir, filename);
   const tempPath = `${destPath}.part`;
   if (redirectCount === 0) {
@@ -7818,10 +7914,12 @@ function startModelDownload(url, overrideFilename = null, targetDir = MODELS, ki
     downloadedBytes: 0,
     error: null,
     kind,
+    targetDir,
   };
   Object.assign(job, {
     active: true,
     filename,
+    targetDir,
     progress: redirectCount > 0 ? job.progress : 0,
     speed: redirectCount > 0 ? "Following redirect" : "0 MB/s",
     eta: 0,
@@ -8026,7 +8124,8 @@ function cancelModelDownload(filenameOrId = "") {
       if (job.fileStream) {
         try { job.fileStream.destroy(); } catch (_) {}
       }
-      try { fs.unlinkSync(job.tempPath || `${path.join(job.kind === "text" ? LLM_MODELS : job.kind === "speech" ? SPEECH_MODELS : job.kind === "tts" ? TTS_MODELS : MODELS, job.filename)}.part`); } catch (_) {}
+      const downloadTargetDir = job.targetDir || (job.kind === "text" ? LLM_MODELS : job.kind === "speech" ? SPEECH_MODELS : job.kind === "tts" ? TTS_MODELS : MODELS);
+      try { fs.unlinkSync(job.tempPath || `${path.join(downloadTargetDir, job.filename)}.part`); } catch (_) {}
       job.active = false;
       job.progress = 0;
       job.speed = "Cancelled";
@@ -8161,7 +8260,7 @@ function isModelFile(filename) {
   return false;
 }
 
-function getModelLoadIssue(modelPath) {
+function getModelLoadIssue(modelPath, modelPlan = null) {
   const filename = path.basename(modelPath || "");
   const lower = filename.toLowerCase();
   const ext = path.extname(lower);
@@ -8178,26 +8277,17 @@ function getModelLoadIssue(modelPath) {
     const knownDiffusionOnlyGguf =
       lower === "stable-diffusion-xl-base-1.0-q4_0.gguf" ||
       lower.includes("stable-diffusion-xl-base-1.0");
-    const requiresSeparateComponents =
-      knownDiffusionOnlyGguf ||
-      lower.includes("z_image") ||
-      lower.includes("z-image") ||
-      lower.includes("zimage") ||
-      lower.includes("qwen") ||
-      lower.includes("hidream") ||
-      lower.includes("hunyuan") ||
-      lower.includes("wan") ||
-      lower.includes("flux");
-
-    if (requiresSeparateComponents) {
-      if (knownDiffusionOnlyGguf) {
-        return `${filename} is not supported as a one-click model in this app. This SDXL GGUF is a diffusion-only component and needs matching VAE/text encoder files instead of being loaded with --model. Use one of the recommended Safetensors SDXL/SD 1.5 checkpoints, or import a complete single-file GGUF checkpoint.`;
-      }
-      return `${filename} looks like a multi-file diffusion GGUF. This app currently loads single-file SD 1.5/SDXL checkpoints directly. Models like Z-Image, Qwen, Flux, HiDream, Hunyuan, and Wan usually need extra files such as VAE/text encoders and must be launched with --diffusion-model instead of --model.`;
+    if (knownDiffusionOnlyGguf) {
+      return `${filename} is not supported as a one-click model in this app. This SDXL GGUF is a diffusion-only component and needs matching VAE/text encoder files instead of being loaded with --model. Use one of the recommended Safetensors SDXL/SD 1.5 checkpoints, or import a complete single-file GGUF checkpoint.`;
     }
   }
 
-  return null;
+  const plan = modelPlan || imageDiffusionSupport.resolveImageModel({
+    modelPath,
+    modelsDir: MODELS,
+    llmModelsDir: LLM_MODELS,
+  });
+  return imageDiffusionSupport.loadIssue(plan, filename);
 }
 
 function describeBackendError(rawError, modelPath) {
@@ -8210,6 +8300,10 @@ function describeBackendError(rawError, modelPath) {
   }
 
   if (!raw.includes("new_sd_ctx_t failed")) return raw;
+
+  if (imageDiffusionSupport.classifyImageModel(modelPath) === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
+    return `${raw}\n\nQwen Image 2.1 Turbo requires its matching Qwen Image 2.1 VAE and Qwen3-VL text encoder. Confirm both components are installed in Model Manager → Image Models → Qwen Image 2.1 Components, then verify the selected backend supports --diffusion-model, --vae, and --llm.`;
+  }
 
   if (lower.endsWith(".gguf")) {
     if (lower === "stable-diffusion-xl-base-1.0-q4_0.gguf" || lower.includes("stable-diffusion-xl-base-1.0")) {
@@ -30306,6 +30400,12 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     } catch (_) { return json(res, 200, { models: [] }); }
   }
 
+  if (req.url === "/api/image-model-components" && req.method === "GET") {
+    return json(res, 200, {
+      components: imageDiffusionSupport.getComponentStatus({ modelsDir: MODELS, llmModelsDir: LLM_MODELS }),
+    });
+  }
+
   if (req.url === "/api/openvino-models" && req.method === "GET") {
     const npuInfo = getOpenVinoNpuInfo();
     return json(res, 200, {
@@ -30446,6 +30546,45 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     try {
       const job = startModelDownload(url);
       return json(res, 200, { ok: true, message: "Download started", filename: job.filename, downloadId: job.id });
+    } catch (err) {
+      return json(res, 409, { ok: false, error: err.message || String(err) });
+    }
+  }
+
+  if (req.url === "/api/download-image-component" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const componentId = String(body.component || body.componentId || "");
+    const definition = imageDiffusionSupport.getComponentDefinition(componentId);
+    if (!definition) return json(res, 400, { ok: false, error: "Unsupported image model component." });
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(String(body.url || ""));
+    } catch (_) {
+      return json(res, 400, { ok: false, error: "A valid component download URL is required." });
+    }
+    if (parsedUrl.protocol !== "https:" || !/(^|\.)huggingface\.co$/i.test(parsedUrl.hostname)) {
+      return json(res, 400, { ok: false, error: "Image model components must be downloaded from HTTPS Hugging Face URLs." });
+    }
+    let urlFilename = path.basename(parsedUrl.pathname);
+    try { urlFilename = decodeURIComponent(urlFilename); } catch (_) {}
+    if (urlFilename !== definition.filename) {
+      return json(res, 400, { ok: false, error: `The selected component URL must point to ${definition.filename}.` });
+    }
+    const targetDir = imageDiffusionSupport.getComponentTarget(componentId, { modelsDir: MODELS, llmModelsDir: LLM_MODELS });
+    if (!targetDir || !pathInside(targetDir, componentId === "qwen-image-21-vae" ? MODELS : LLM_MODELS)) {
+      return json(res, 400, { ok: false, error: "Invalid image model component destination." });
+    }
+    try {
+      fs.mkdirSync(targetDir, { recursive: true });
+      const job = startModelDownload(String(body.url), definition.filename, targetDir, "image-component");
+      return json(res, 200, {
+        ok: true,
+        message: `Downloading ${definition.label}`,
+        component: componentId,
+        filename: job.filename,
+        downloadId: job.id,
+      });
     } catch (err) {
       return json(res, 409, { ok: false, error: err.message || String(err) });
     }

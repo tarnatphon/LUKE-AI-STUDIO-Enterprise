@@ -1328,26 +1328,42 @@ export function planImageSteps(constraints = {}, referenceSettings = {}, hasInit
 export async function generateImage(prompt, negativePrompt, constraints, activeModelName, inputImageBase64, onProgress, signal, referenceImages = [], referenceSettings = {}) {
   console.log("Initiating image generation:", { prompt, negativePrompt, constraints, activeModelName });
   const startTime = Date.now();
+  const isQwenImage21Turbo = /qwen[-_ ]?image.*2[._-]?1.*turbo/i.test(String(activeModelName || ""));
+  const fitQwenDimension = (value) => Math.max(32, Math.round((Number(value) || 1024) / 32) * 32);
+  const generationConstraints = isQwenImage21Turbo
+    ? {
+        ...constraints,
+        steps: 8,
+        cfgScale: 1,
+        sampler: "euler",
+        width: fitQwenDimension(constraints?.width),
+        height: fitQwenDimension(constraints?.height),
+      }
+    : constraints;
 
   const referenceBoost = buildReferencePromptBoost(referenceImages, referenceSettings);
   const effectivePrompt = referenceBoost.promptSuffix ? `${prompt}\n\nReference guidance: ${referenceBoost.promptSuffix}` : prompt;
   const effectiveNegativePrompt = [negativePrompt || "", referenceBoost.negativeSuffix].filter(Boolean).join(", ");
 
-  // When an init image is present, one plan settles the whole request: the
-  // denoise it carries and the steps it needs so the backend's SDEdit trim still
-  // leaves the number the user asked for (see planImageSteps).
-  const img2imgPlan = inputImageBase64 ? planImageSteps(constraints, referenceSettings, true) : null;
+  // Qwen Image 2.1 Turbo uses its fixed eight-sigma schedule. Do not inflate
+  // img2img steps with the generic SDEdit trim rule; that would contradict the
+  // model's sigma count and report a step count it cannot execute.
+  const img2imgPlan = inputImageBase64
+    ? isQwenImage21Turbo
+      ? { steps: 8, sent: 8, strength: Number(referenceSettings.denoiseGuidance ?? constraints?.denoisingStrength ?? 0.38), scaled: false, capped: false }
+      : planImageSteps(generationConstraints, referenceSettings, true)
+    : null;
 
   // Prepare payload based on standard stable-diffusion.cpp REST endpoint schemas
   const payload = {
     prompt: effectivePrompt,
     negative_prompt: effectiveNegativePrompt,
-    width: constraints.width || 512,
-    height: constraints.height || 512,
-    steps: constraints.steps || 20,
-    cfg_scale: constraints.cfgScale || 7.0,
-    seed: constraints.seed === -1 ? Math.floor(Math.random() * 1000000) : constraints.seed,
-    sampler: constraints.sampler || "euler_a",
+    width: generationConstraints.width || 512,
+    height: generationConstraints.height || 512,
+    steps: generationConstraints.steps || 20,
+    cfg_scale: generationConstraints.cfgScale || 7.0,
+    seed: generationConstraints.seed === -1 ? Math.floor(Math.random() * 1000000) : generationConstraints.seed,
+    sampler: generationConstraints.sampler || "euler_a",
     image: inputImageBase64 || null, // Image to image source (base64)
     denoising_strength: img2imgPlan ? img2imgPlan.strength : (constraints.denoisingStrength || 0.7),
     reference_images: referenceImages,
@@ -1719,6 +1735,26 @@ export async function downloadModel(url) {
     return await res.json();
   } catch (e) {
     console.error("Failed to start model download:", e);
+    return { ok: false, error: e.message };
+  }
+}
+
+export async function listImageModelComponents() {
+  const res = await fetch("/api/image-model-components");
+  const data = await readJsonResponse(res, "The local server returned invalid image component data.");
+  return data.components || {};
+}
+
+export async function downloadImageModelComponent(url, component) {
+  try {
+    const res = await fetch("/api/download-image-component", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, component }),
+    });
+    return await readJsonResponse(res, "The local server returned an invalid image component download response.");
+  } catch (e) {
+    console.error("Failed to start image component download:", e);
     return { ok: false, error: e.message };
   }
 }
