@@ -97,7 +97,7 @@ Most local image and text models load as single files. Qwen Image 2.1 Turbo is a
 | Single-file SD/SDXL GGUF checkpoints | Limited | `app/models/` | Only complete single-file checkpoints are supported. |
 | OpenVINO image model folders | Intel NPU only | `app/openvino-models/` | Download from the Model Manager after running the OpenVINO setup. |
 | CoreML image models | Apple Silicon only | `app/models/` | Requires macOS on Apple Silicon and the CoreML setup path. |
-| Qwen Image 2.1 Turbo | Yes, multi-file | `app/models/` plus the component folders below | Requires the latest stable-diffusion.cpp multi-file backend, the Qwen Image 2.1 VAE, and a Qwen3-VL text encoder. Add the optional vision projector for image editing/reference images. Model Manager lists the managed downloads. Turbo defaults to 8 steps, CFG 1, Euler, and the `qwen-image-2.1-turbo` sigma schedule. |
+| Qwen Image 2.1 Turbo | Yes, multi-file | `app/models/` plus the component folders below | Requires the latest stable-diffusion.cpp multi-file backend, the Qwen Image 2.1 VAE, and a Qwen3-VL text encoder. Add the optional vision projector for image editing/reference images. Model Manager lists the managed downloads. Turbo defaults to 8 steps, CFG 1, Euler, and its fixed Qwen Turbo sigma schedule, passed as explicit numeric sigma values for backend compatibility. |
 | Flux, HiDream, Hunyuan, Wan, Z-Image workflows | No | N/A | These need their own multi-file recipes and are not standalone checkpoints in this app. |
 | LoRA, ControlNet, VAE-only, text-encoder-only, or unsupported diffusion-only files | No | N/A | Companion files are not loaded as standalone image models. |
 

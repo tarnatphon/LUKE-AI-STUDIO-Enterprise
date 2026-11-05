@@ -1175,7 +1175,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v2";
+const SERVER_BUILD = "text-image-v3";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
@@ -7220,7 +7220,8 @@ async function startBackend(settings = {}) {
       "--threads",     String(runThreads),
     ];
     if (imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
-      args.push("--sigmas", "qwen-image-2.1-turbo");
+      // Use explicit values: older multi-file-capable backends parse --sigmas as floats and reject the named preset.
+      args.push("--sigmas", "1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0");
     }
 
     if (requestedBackend === "cpu") {
