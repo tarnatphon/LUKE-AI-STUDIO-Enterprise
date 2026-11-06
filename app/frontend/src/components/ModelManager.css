@@ -140,51 +140,73 @@
 }
 
 /* LUKE AI STUDIO — Video AI Manager */
-.video-ai-manager{display:flex;flex-direction:column;gap:18px;margin:18px 0 28px}
+.video-ai-manager,
+.code-ai-manager{display:flex;flex-direction:column;gap:18px;margin:18px 0 28px}
 
-.video-ai-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,.7fr);gap:20px;padding:24px;border:1px solid color-mix(in srgb,var(--md-sys-color-outline-variant) 72%,transparent);border-radius:24px;background:linear-gradient(145deg,color-mix(in srgb,var(--md-sys-color-primary-container) 28%,transparent),color-mix(in srgb,var(--md-sys-color-surface-container) 92%,transparent));box-shadow:0 18px 44px rgba(15,23,42,.08)}
+.video-ai-hero,
+.code-ai-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,.7fr);gap:20px;padding:24px;border:1px solid color-mix(in srgb,var(--md-sys-color-outline-variant) 72%,transparent);border-radius:24px;background:linear-gradient(145deg,color-mix(in srgb,var(--md-sys-color-primary-container) 28%,transparent),color-mix(in srgb,var(--md-sys-color-surface-container) 92%,transparent));box-shadow:0 18px 44px rgba(15,23,42,.08)}
 
-.video-ai-eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--md-sys-color-primary)}
+.video-ai-eyebrow,
+.code-ai-eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--md-sys-color-primary)}
 
-.video-ai-hero h3{font-size:28px;margin:7px 0 8px}
+.video-ai-hero h3,
+.code-ai-hero h3{font-size:28px;margin:7px 0 8px}
 
-.video-ai-hero p{margin:0;max-width:720px;line-height:1.6;color:var(--md-sys-color-on-surface-variant)}
+.video-ai-hero p,
+.code-ai-hero p{margin:0;max-width:720px;line-height:1.6;color:var(--md-sys-color-on-surface-variant)}
 
-.video-ai-status{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:18px;border-radius:18px;background:var(--md-sys-color-surface-container-high);border:1px solid var(--md-sys-color-outline-variant)}
+.video-ai-status,
+.code-ai-status{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:18px;border-radius:18px;background:var(--md-sys-color-surface-container-high);border:1px solid var(--md-sys-color-outline-variant)}
 
-.video-ai-status strong{font-size:18px}
+.video-ai-status strong,
+.code-ai-status strong{font-size:18px}
 
-.video-ai-status span{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
+.video-ai-status span,
+.code-ai-status span{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
 
-.video-ai-status.status-ready{border-color:rgba(34,197,94,.45)}
+.video-ai-status.status-ready,
+.code-ai-status.status-ready{border-color:rgba(34,197,94,.45)}
 
-.video-ai-status.status-error{border-color:rgba(239,68,68,.5)}
+.video-ai-status.status-error,
+.code-ai-status.status-error{border-color:rgba(239,68,68,.5)}
 
-.video-ai-actions{display:flex;gap:10px;flex-wrap:wrap}
+.video-ai-actions,
+.code-ai-actions{display:flex;gap:10px;flex-wrap:wrap}
 
-.video-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.video-model-grid,
+.code-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 
-.video-model-card{padding:18px;border-radius:20px;background:var(--md-sys-color-surface-container);border:1px solid var(--md-sys-color-outline-variant)}
+.video-model-card,
+.code-model-card{padding:18px;border-radius:20px;background:var(--md-sys-color-surface-container);border:1px solid var(--md-sys-color-outline-variant)}
 
-.video-model-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.video-model-card-head,
+.code-model-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 
-.video-model-card h4{margin:0 0 4px;font-size:16px}
+.video-model-card h4,
+.code-model-card h4{margin:0 0 4px;font-size:16px}
 
-.video-model-card-head span{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
+.video-model-card-head span,
+.code-model-card-head span{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
 
-.video-model-card p{font-size:13px;line-height:1.5;color:var(--md-sys-color-on-surface-variant)}
+.video-model-card p,
+.code-model-card p{font-size:13px;line-height:1.5;color:var(--md-sys-color-on-surface-variant)}
 
 .compatibility-pill{white-space:nowrap;padding:6px 9px;border-radius:999px;font-size:11px!important;font-weight:700}
 
-.video-model-specs{display:flex;gap:8px;flex-wrap:wrap}
+.video-model-specs,
+.code-model-specs{display:flex;gap:8px;flex-wrap:wrap}
 
-.video-model-specs span{font-size:11px;padding:5px 8px;border-radius:999px;background:var(--md-sys-color-surface-container-high)}
+.video-model-specs span,
+.code-model-specs span{font-size:11px;padding:5px 8px;border-radius:999px;background:var(--md-sys-color-surface-container-high)}
 
-.video-ai-note{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:18px;background:var(--md-sys-color-secondary-container)}
+.video-ai-note,
+.code-ai-note{display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:18px;background:var(--md-sys-color-secondary-container)}
 
-.video-ai-note div{display:flex;flex-direction:column;gap:3px}
+.video-ai-note div,
+.code-ai-note div{display:flex;flex-direction:column;gap:3px}
 
-.video-ai-note span{font-size:13px;color:var(--md-sys-color-on-secondary-container)}
+.video-ai-note span,
+.code-ai-note span{font-size:13px;color:var(--md-sys-color-on-secondary-container)}
 
 /* LUKE_AI_LIBRARY_LOADED_MODELS_UI_V1 */
 .library-loaded-models {
@@ -321,4 +343,23 @@
   color: #f0b429;
   font-size: 0.74rem;
   line-height: 1.4;
+}
+
+/* LUKE_AI_LIBRARY_CODE_MODELS_V1
+   Code AI: the coding-model catalog, ranked for this machine. The cards are
+   deliberately denser than the video ones — the decision is "does it fit, does
+   it call tools, which file", not a marketing panel. */
+.code-ai-manager { margin: 0 0 28px; }
+.code-model-card { display: flex; flex-direction: column; gap: 10px; }
+.code-model-card p { margin: 0; }
+.code-model-risk { font-size: 12px !important; opacity: .78; }
+.code-ai-meta { font-size: 12px; color: var(--md-sys-color-on-surface-variant); align-self: center; }
+.code-model-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.code-model-actions .m3-btn { height: 36px; }
+/* Fits / tight / too big: the three answers the arithmetic can give. */
+.compatibility-pill.ready { background: rgba(34, 197, 94, .16); color: #22c55e; }
+.compatibility-pill.warning { background: rgba(245, 158, 11, .18); color: #f59e0b; }
+.compatibility-pill.blocked { background: rgba(148, 163, 184, .2); color: var(--md-sys-color-on-surface-variant); }
+@media (max-width: 900px) {
+  .code-model-grid { grid-template-columns: minmax(0, 1fr); }
 }

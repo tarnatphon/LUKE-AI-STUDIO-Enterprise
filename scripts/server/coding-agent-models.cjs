@@ -224,6 +224,84 @@ function recommendFor(machine = {}, options = {}) {
   };
 }
 
+/**
+ * The catalog as the Model Library shows it: every model ranked for this
+ * machine, plus where to download it and whether it is already here.
+ *
+ * `recommendFor` answers "which model should I use"; a library tab also needs
+ * "what happens if I press the button", which is a URL, a file name, and the
+ * honest truth about whether that file is on disk. Building the URL from the
+ * catalog's own repo+file (rather than trusting a link from the browser) keeps
+ * the download and the recommendation pointing at the same bytes.
+ */
+function describeCodingModels(options = {}) {
+  const recommendation =
+    options.recommendation ||
+    recommendFor(
+      options.machine || { systemRamGb: options.systemRamGb },
+      options,
+    );
+
+  const llmModelsDir = options.llmModelsDir || "";
+
+  const installedFile = (source = {}) => {
+    if (!llmModelsDir) return "";
+    for (const candidate of [source.file, source.mirrorFile]) {
+      if (!candidate) continue;
+      const target = path.join(llmModelsDir, path.basename(String(candidate)));
+      if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+        return path.basename(String(candidate));
+      }
+    }
+    return "";
+  };
+
+  const decorate = (entry) => {
+    const model = getCatalog().models.find((candidate) => candidate.id === entry.id) || {};
+    const source = model.source || entry.source || {};
+    const installable = Boolean(source.repo && source.file);
+    const download = installable
+      ? {
+          url: `https://huggingface.co/${source.repo}/resolve/main/${source.file}`,
+          filename: path.basename(String(source.file)),
+          sizeGb: Number(model.weightGb || entry.weightGb),
+          mirrorUrl: source.mirror && source.mirrorFile
+            ? `https://huggingface.co/${source.mirror}/resolve/main/${source.mirrorFile}`
+            : "",
+          mirrorFilename: source.mirrorFile ? path.basename(String(source.mirrorFile)) : "",
+        }
+      : null;
+    const installed = installedFile(source);
+    return {
+      ...entry,
+      name: model.label || entry.label,
+      params: model.params || "",
+      maxContextTokens: Number(model.maxContextTokens) || 0,
+      bestFor: model.bestFor || entry.bestFor || "",
+      risk: model.risk || entry.risk || "",
+      evidence: model.evidence || "",
+      toolCalling: model.toolCalling === true,
+      installable,
+      download,
+      searchQuery: installable ? "" : (source.searchQuery || ""),
+      installed,
+      installedLabel: installed || "",
+    };
+  };
+
+  return {
+    ok: true,
+    machine: recommendation.machine,
+    catalogVersion: recommendation.catalogVersion,
+    verifiedAt: recommendation.verifiedAt,
+    backend: recommendation.backend,
+    agentNeeds: recommendation.agentNeeds,
+    rankingSource: getCatalog().rankingSource || "",
+    pick: recommendation.pick ? decorate(recommendation.pick) : null,
+    models: recommendation.models.map(decorate),
+  };
+}
+
 module.exports = {
   CATALOG_PATH,
   AGENT_MIN_CONTEXT,
@@ -235,5 +313,6 @@ module.exports = {
   resolveMachine,
   evaluateModel,
   recommendFor,
+  describeCodingModels,
   formatSource,
 };

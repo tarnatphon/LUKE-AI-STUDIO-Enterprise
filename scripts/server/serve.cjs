@@ -118,6 +118,7 @@ const {
 } = require("./llm-request-guard.cjs");
 const { toolCallingArgs } = require("./llm-tool-calling.cjs");
 const textProfiles = require("./text-profiles.cjs");
+const codingAgentModels = require("./coding-agent-models.cjs");
 
 // Which slot (chat | work) the resident text model is serving. Set on activate,
 // re-derived whenever a model is started by hand.
@@ -27078,6 +27079,32 @@ const handleRequest = async (req, res) => {
       settings: currentSettings,
       build: SERVER_BUILD,
     });
+  }
+
+  // ── Code AI: the best free coding models for *this* machine ───────────────
+  // The same catalog the CLI uses (app/config/coding-agent-models.json), ranked
+  // by what actually fits: weights + a KV cache big enough for an agent's own
+  // prompt, on the memory this machine can address. Every entry carries the
+  // download it would take, so the library can offer one click instead of a
+  // link the user has to match to a filename by eye.
+  if (/^\/api\/coding-models(\?|$)/.test(req.url || "") && req.method === "GET") {
+    try {
+      const requested = new URL(req.url, "http://127.0.0.1").searchParams.get("systemRamGb");
+      const requestedRam = Number(requested);
+      const measured = Number.isFinite(requestedRam) && requestedRam > 0;
+      const systemRamGb = measured ? requestedRam : os.totalmem() / (1024 ** 3);
+      const workingSetGb = measured ? 0 : memoryCalibration.workingSetGb();
+      return json(res, 200, codingAgentModels.describeCodingModels({
+        systemRamGb,
+        workingSetGb,
+        llmModelsDir: LLM_MODELS,
+      }));
+    } catch (error) {
+      return json(res, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // ── Chat and Work have their own model slots ──────────────────────────────

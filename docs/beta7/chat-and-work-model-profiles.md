@@ -136,6 +136,11 @@ node scripts/tools/luke-coding-models.cjs --profile mac-18   # which free model 
 scripts/tools/luke-agent-env.sh check                        # does it actually call a tool
 ```
 
+The quickest way to fill the Work slot is the library: **AI Library → Code AI**
+lists the coding models that fit this machine and its *Use for Work* button
+writes the model, window and temperature into the slot
+([code-ai-library-tab.md](code-ai-library-tab.md)).
+
 `GET /api/llm/status` → `settings.toolCalling` says whether the *backend* is
 capable; `check` says whether the *model* is. The Work slot's warning
 `no-tool-calling` appears when the former is false.

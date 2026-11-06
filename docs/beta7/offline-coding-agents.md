@@ -149,6 +149,11 @@ That single number disqualifies the model most lists recommend:
 Ask the project instead of a blog — the answer comes from the catalog plus LUKE's
 own planner:
 
+The same ranking is one click away in the app: **AI Library → Code AI** lists
+these models for the machine you are on, downloads the recommended file through
+the normal text-model pipeline, and can hand it straight to the Work slot
+([code-ai-library-tab.md](code-ai-library-tab.md)).
+
 ```bash
 node scripts/tools/luke-coding-models.cjs              # this machine
 node scripts/tools/luke-coding-models.cjs --profile mac-18

@@ -2,13 +2,16 @@ import { TEXT_MODEL_LIBRARY } from "../lib/text-model-library.mjs";
 import { getSliderStyle } from "../lib/slider-style.mjs";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
-import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
+import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X, Bot, Cpu, ShieldAlert } from "lucide-react";
 import { 
   listLocalModels, 
   startServer, 
   stopServer, 
   importModelFile, 
   deleteModel, 
+  getCodingModels,
+  saveTextProfile,
+  activateTextProfile,
   downloadModel, 
   downloadOpenVinoModel, 
   cancelModelDownload, 
@@ -52,6 +55,11 @@ import "./ModelManager.css";
 
 const TEXT_LIBRARY_SECTIONS = [
   { id: "text", label: "Text AI" },
+  // The coding models are a section of their own because they answer a
+  // different question than "what text model should I chat with": they have to
+  // call tools, at a low temperature, in a window an agent prompt fits in —
+  // and only some of them load on any given machine.
+  { id: "code", label: "Code AI" },
   { id: "vision", label: "Vision AI" },
   { id: "open", label: "Open Models" },
   { id: "video", label: "Video AI" },
@@ -277,6 +285,11 @@ function ModelManager({
 }) {
   const [activeModelType, setActiveModelType] = useState("image"); // "image", "text", "speech", or "tts"
   const [textLibraryMode, setTextLibraryMode] = useState("text");
+  // Code AI: the verified coding-model catalog, ranked for this machine.
+  const [codeCatalog, setCodeCatalog] = useState(null);
+  const [codeCatalogBusy, setCodeCatalogBusy] = useState(false);
+  const [codeCatalogError, setCodeCatalogError] = useState("");
+  const [codeWorkBusyId, setCodeWorkBusyId] = useState("");
   const [videoCapability, setVideoCapability] = useState({ state: "checking", installed: false });
   const [videoCompatibility, setVideoCompatibility] = useState({ models: [] });
   const [videoActionBusy, setVideoActionBusy] = useState(false);
@@ -510,6 +523,10 @@ function ModelManager({
         .filter((model) => model.tags?.includes("vision") || model.projectorUrl || /vision|llava|vl/i.test(`${model.name || ""} ${model.notes || ""}`));
       visibleModelLibrary = [{ group: "Vision AI Models", items: visionItems }];
     } else if (textLibraryMode === "installed") {
+      visibleModelLibrary = [];
+    } else if (textLibraryMode === "code") {
+      // Rendered by its own section below: the catalog is per-machine and comes
+      // from the server, not from Hugging Face search.
       visibleModelLibrary = [];
     } else {
       visibleModelLibrary = [{
@@ -825,6 +842,80 @@ function ModelManager({
 
     await downloadByUrl(downloadUrl.trim(), modelName);
     setDownloadUrl("");
+  };
+
+  /**
+   * Code AI. The catalog is computed by the server for this machine: weights
+   * plus a KV cache big enough for an agent's own prompt, against the memory
+   * that is really addressable. The tab downloads through the same pipeline as
+   * every other text model, and the model it installs can be handed straight to
+   * the Work slot instead of being hunted for again in the model picker.
+   */
+  const loadCodeCatalog = useCallback(async () => {
+    setCodeCatalogBusy(true);
+    setCodeCatalogError("");
+    try {
+      const data = await getCodingModels();
+      if (data?.ok === false) throw new Error(data.error || "The catalog could not be read.");
+      setCodeCatalog(data);
+    } catch (err) {
+      setCodeCatalogError(err.message || String(err));
+    } finally {
+      setCodeCatalogBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeModelType === "text" && textLibraryMode === "code" && !codeCatalog && !codeCatalogBusy) {
+      loadCodeCatalog();
+    }
+  }, [activeModelType, textLibraryMode, codeCatalog, codeCatalogBusy, loadCodeCatalog]);
+
+  const handleCodeModelDownload = async (model) => {
+    if (!model.download?.url) {
+      showAlert({
+        title: "Search instead",
+        message: `"${model.name}" has no verified download link in the catalog. Search Hugging Face for "${model.searchQuery || model.name}" in the Text AI tab and pick a GGUF quant.`,
+      });
+      return;
+    }
+    const quant = model.download.filename.split(/[-_.]/).find((part) => /^(i?q\d)/i.test(part)) || "";
+    const confirmed = await showConfirm({
+      title: "Download coding model?",
+      message: `Download "${model.name}"${quant ? ` (${quant.toUpperCase()})` : ""} — about ${model.weightGb} GB? It will be served by LUKE's own llama.cpp, so Work keeps working offline.`,
+      confirmLabel: "Download",
+    });
+    if (confirmed) {
+      await downloadByUrl(model.download.url, model.download.filename);
+    }
+  };
+
+  const handleUseCodeModelForWork = async (model) => {
+    const filename = model.installed || model.download?.filename;
+    if (!filename) return;
+    const contextSize = Number(model.contextTokens) > 0 ? Number(model.contextTokens) : 20000;
+    const confirmed = await showConfirm({
+      title: "Use this model for Work?",
+      message: `Work will run on "${model.name}" at a ${contextSize.toLocaleString()}-token window and temperature 0.2. Chat keeps its own model, and switching tabs reloads between them.`,
+      confirmLabel: "Use for Work",
+    });
+    if (!confirmed) return;
+    setCodeWorkBusyId(model.id);
+    try {
+      const saved = await saveTextProfile("work", { model: filename, contextSize, temperature: 0.2 });
+      if (saved?.ok === false) throw new Error(saved.error || "The Work slot could not be saved.");
+      const activated = await activateTextProfile("work");
+      if (activated?.ok === false) throw new Error(activated.error || "The model could not be loaded.");
+      showAlert({
+        title: "Work is ready",
+        message: `"${model.name}" is now the Work model at ${contextSize.toLocaleString()} tokens. Switch to the Work tab and it will be serving the agent.`,
+      });
+      loadCodeCatalog();
+    } catch (err) {
+      showAlert({ title: "Could not set the Work model", message: err.message || String(err), danger: true });
+    } finally {
+      setCodeWorkBusyId("");
+    }
   };
 
   const handleLibraryDownload = async (model) => {
@@ -1965,6 +2056,148 @@ function ModelManager({
       )}
 
 
+      {activeModelType === "text" && textLibraryMode === "code" && (() => {
+        const machine = codeCatalog?.machine || {};
+        const pick = codeCatalog?.pick || null;
+        const models = codeCatalog?.models || [];
+        const verdictMeta = (verdict) => verdict === "recommended"
+          ? { label: "Fits this machine", className: "ready" }
+          : verdict === "tight"
+            ? { label: "Tight — small window", className: "warning" }
+            : { label: "Needs more memory", className: "blocked" };
+        return (
+          <section className="code-ai-manager" aria-label="Code AI">
+            <div className="code-ai-hero">
+              <div>
+                <span className="code-ai-eyebrow">CODE AI</span>
+                <h3>Coding models for Work</h3>
+                <p>
+                  Free, local GGUF models that can drive a coding agent — they call tools instead of describing them.
+                  The list is ranked for <strong>{machine.label || "this machine"}</strong> by what actually fits:
+                  weights plus a KV cache big enough for an agent&apos;s own prompt. Work runs offline on whichever
+                  one you install, and Chat keeps its own model.
+                </p>
+              </div>
+              <div className={`code-ai-status status-${pick ? "ready" : codeCatalogError ? "error" : "unknown"}`}>
+                <strong>{codeCatalogBusy && !codeCatalog ? "Checking…" : pick ? `Recommended: ${pick.name}` : codeCatalogError ? "Catalog unavailable" : "Nothing fits"}</strong>
+                <span>
+                  {pick
+                    ? `${pick.weightGb} GB weights · ${Number(pick.contextTokens).toLocaleString()}-token window · quality ${pick.quality}/100`
+                    : codeCatalogError || "No model in the catalog fits this machine's usable memory. Free some memory or use a smaller quant."}
+                </span>
+              </div>
+            </div>
+
+            <div className="code-ai-actions">
+              <button className="m3-btn m3-btn-tonal" onClick={() => loadCodeCatalog()} disabled={codeCatalogBusy}>
+                <RefreshCw size={16} className={codeCatalogBusy ? "progress-spinner" : ""} />
+                {codeCatalogBusy ? "Checking…" : "Refresh catalog"}
+              </button>
+              {codeCatalog?.verifiedAt && (
+                <span className="code-ai-meta">Catalog {codeCatalog.catalogVersion} · verified {codeCatalog.verifiedAt} · llama.cpp {codeCatalog.backend?.pinnedRelease}</span>
+              )}
+            </div>
+
+            {codeCatalogError && !codeCatalog && (
+              <div className="code-ai-note">
+                <ShieldAlert size={18} />
+                <div><strong>Could not read the coding model catalog</strong><span>{codeCatalogError}</span></div>
+              </div>
+            )}
+
+            <div className="code-model-grid">
+              {models.map((model) => {
+                const meta = verdictMeta(model.verdict);
+                const downloadingJob = model.download ? getDownloadJob(model.download.filename, model.download.mirrorFilename) : null;
+                const downloading = Boolean(downloadingJob?.active);
+                const installed = Boolean(model.installed);
+                const busy = codeWorkBusyId === model.id;
+                return (
+                  <article key={model.id} className="code-model-card">
+                    <div className="code-model-card-head">
+                      <div>
+                        <h4>{model.name}</h4>
+                        <span>{[model.params, model.license, model.riskLevel === "medium" ? "higher-risk quant" : "safe quant"].filter(Boolean).join(" · ")}</span>
+                      </div>
+                      <span className={`compatibility-pill ${meta.className}`} title={`Quality ${model.quality}/100 for agent work`}>{meta.label}</span>
+                    </div>
+
+                    <p>{model.bestFor}</p>
+
+                    <div className="code-model-specs">
+                      <span>{model.weightGb} GB weights</span>
+                      <span>{Number(model.contextTokens) > 0 ? `${Number(model.contextTokens).toLocaleString()} ctx` : "no window"}</span>
+                      <span>KV {model.kvGbPer4096} GB / 4K</span>
+                      <span>Quality {model.quality}/100</span>
+                      {model.toolCalling && <span>Tool calling</span>}
+                      <span>{model.weightGb <= (machine.workingSetGb || 0) ? `${machine.workingSetGb} GB usable` : `${machine.systemRamGb} GB RAM`}</span>
+                    </div>
+
+                    {downloading && (
+                      <div className="model-progress-section" style={{ marginTop: "2px" }}>
+                        <div className="model-progress-label">
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                            <span className="loading-dot"></span>
+                            Downloading
+                          </span>
+                          <span>{Number(downloadingJob?.progress) > 0 ? `${downloadingJob.progress}%` : "Preparing"}</span>
+                        </div>
+                        <div className="model-progress-bar">
+                          <div className="model-progress-fill" style={{ width: `${Math.min(100, Math.max(0, Number(downloadingJob?.progress) || 0))}%`, transition: "width 0.2s ease" }}></div>
+                        </div>
+                        {downloadingJob?.speed && (
+                          <div style={{ fontSize: "0.7rem", color: "var(--md-sys-color-outline)", marginTop: "4px" }}>
+                            {downloadingJob.speed}{downloadingJob.eta > 0 ? ` • ETA ${downloadingJob.eta}s` : ""}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {model.risk && <p className="code-model-risk">{model.risk}</p>}
+
+                    <div className="code-model-actions">
+                      <button
+                        type="button"
+                        className={installed ? "m3-btn m3-btn-tonal" : "m3-btn m3-btn-filled"}
+                        onClick={() => handleCodeModelDownload(model)}
+                        disabled={installed || downloading || !model.installable}
+                        title={!model.installable ? `No verified file: search "${model.searchQuery}" instead` : undefined}
+                      >
+                        {installed ? <HardDrive size={14} /> : downloading ? <RefreshCw className="progress-spinner" size={14} /> : <DownloadCloud size={14} />}
+                        <span>{installed ? "Downloaded" : downloading ? "Downloading" : model.installable ? `Download ${model.weightGb} GB` : "Search Hugging Face"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="m3-btn m3-btn-text"
+                        onClick={() => handleUseCodeModelForWork(model)}
+                        disabled={!installed || busy}
+                        title={installed ? "Make this the Work model and load it" : "Download it first"}
+                      >
+                        {busy ? <RefreshCw className="progress-spinner" size={14} /> : <Bot size={14} />}
+                        <span>{busy ? "Loading…" : "Use for Work"}</span>
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="code-ai-note">
+              <Cpu size={18} />
+              <div>
+                <strong>Why these and not a leaderboard winner</strong>
+                <span>
+                  A coding agent needs a chat template that calls tools, a window of at least 16K for its own prompt and
+                  tool schemas, and weights that fit beside the KV cache. On an 18 GB Mac only 14.3 GB is addressable, so
+                  an 18 GB model is not a slower option — it does not load. Every entry here is free, offline, and checked
+                  against the pinned llama.cpp build.
+                </span>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
       {activeModelType === "text" && textLibraryMode === "video" && (
         <section className="video-ai-manager" aria-label="Video AI Manager">
           <div className="video-ai-hero">
@@ -2020,7 +2253,7 @@ function ModelManager({
         </section>
       )}
 
-      {activeModelType === "text" && textLibraryMode !== "video" && textLibraryMode !== "cloud" && textLibraryMode !== "open" && textLibraryMode !== "installed" && (
+      {activeModelType === "text" && textLibraryMode !== "video" && textLibraryMode !== "cloud" && textLibraryMode !== "open" && textLibraryMode !== "installed" && textLibraryMode !== "code" && (
         <div className="model-discovery-controls">
           <div className="model-search-box">
             <Search size={18} />

@@ -767,6 +767,16 @@ export async function saveTextProfile(profile, options = {}) {
   return await readJsonResponse(res, "The local server returned an invalid model-slot response.");
 }
 
+/**
+ * The Code AI tab: every free coding model in the verified catalog, ranked for
+ * this machine (weights + a KV cache big enough for an agent's prompt), with the
+ * download it would take and whether that file is already here.
+ */
+export async function getCodingModels() {
+  const res = await fetch("/api/coding-models");
+  return await readJsonResponse(res, "The local server returned an invalid coding model catalog.");
+}
+
 export async function activateTextProfile(profile) {
   const res = await fetch("/api/text-profiles/activate", {
     method: "POST",
