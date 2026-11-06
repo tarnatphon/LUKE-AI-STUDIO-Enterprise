@@ -285,6 +285,10 @@ function ModelManager({
 }) {
   const [activeModelType, setActiveModelType] = useState("image"); // "image", "text", "speech", or "tts"
   const [textLibraryMode, setTextLibraryMode] = useState("text");
+  // "I rebuilt it and the new tab is still not there" has four causes and they
+  // look identical on screen. /api/health can tell which one this is, so the
+  // library says it instead of leaving the user to reinstall the app.
+  const [buildHealth, setBuildHealth] = useState(null);
   // Code AI: the verified coding-model catalog, ranked for this machine.
   const [codeCatalog, setCodeCatalog] = useState(null);
   const [codeCatalogBusy, setCodeCatalogBusy] = useState(false);
@@ -842,6 +846,38 @@ function ModelManager({
 
     await downloadByUrl(downloadUrl.trim(), modelName);
     setDownloadUrl("");
+  };
+
+  // Why the new tab might not be on screen: /api/health compares the bundle the
+  // server hands out with the checkout it runs from, and says so.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/health")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (active && data) setBuildHealth(data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const bundleCommit = buildHealth?.frontend?.shortCommit || "";
+  const checkoutCommit = buildHealth?.source?.shortCommit || "";
+  const uiIsStale = Boolean(buildHealth?.frontend?.stale === true);
+  const backendNeedsRestart = Boolean(buildHealth?.restartRequired === true);
+
+  const reloadWithFreshServiceWorker = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+    } catch (_) {
+      // Reloading anyway is still better than nothing.
+    }
+    window.location.reload();
   };
 
   /**
@@ -1606,6 +1642,35 @@ function ModelManager({
       </div>
 
 
+
+      {(uiIsStale || backendNeedsRestart) && (
+        <div className="library-build-warning" role="status">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>{uiIsStale ? "This screen is older than the app on disk" : "The server is older than the app on disk"}</strong>
+            <span>
+              {uiIsStale
+                ? `The interface was built from ${bundleCommit || "an older commit"}, but this folder is at ${checkoutCommit || "a newer one"}. A tab added since then cannot appear until the frontend is rebuilt.`
+                : `The running server loaded ${buildHealth?.process?.shortCommit || "an older commit"}, but this folder is at ${checkoutCommit || "a newer one"}. New endpoints answer 404 until it restarts.`}
+            </span>
+            <code>
+              {uiIsStale
+                ? "npm --prefix app/frontend run build  →  restart the app  →  hard reload"
+                : "restart the app (the backend reloads from this folder)"}
+            </code>
+          </div>
+          <button
+            type="button"
+            className="m3-btn m3-btn-tonal"
+            style={{ height: "34px", padding: "0 14px" }}
+            onClick={reloadWithFreshServiceWorker}
+            title="Unregister the cached app shell and reload this page"
+          >
+            <RefreshCw size={14} />
+            <span>Reload UI</span>
+          </button>
+        </div>
+      )}
 
       {/* Loaded models overview — several runtimes can be resident at once */}
       {loadedModels.length > 0 && (

@@ -363,3 +363,31 @@
 @media (max-width: 900px) {
   .code-model-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* LUKE_AI_LIBRARY_BUILD_WARNING_V1
+   "I rebuilt it and the tab is still not there" — the library is where the
+   missing tab would be, so it is where the mismatch gets reported. */
+.library-build-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(245, 158, 11, .45);
+  border-radius: 14px;
+  background: rgba(245, 158, 11, .10);
+}
+
+.library-build-warning > svg { flex: 0 0 auto; color: #f59e0b; margin-top: 2px; }
+.library-build-warning div { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.library-build-warning strong { font-size: .92rem; }
+.library-build-warning span { font-size: .8rem; line-height: 1.45; color: var(--md-sys-color-on-surface-variant); }
+.library-build-warning code {
+  font-size: .74rem;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-high);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.library-build-warning .m3-btn { flex: 0 0 auto; }
