@@ -1,6 +1,6 @@
 # AI Library → Code AI
 
-**Status:** shipped in this branch · **Where:** AI Library → *Code AI* tab
+**Status:** shipped in this branch · **Where:** AI Library → top tab *Code Models (GGUF)*, or the *Code AI* section chip
 **Files:** `scripts/server/coding-agent-models.cjs` (ranking) · `app/config/coding-agent-models.json` (catalog) · `GET /api/coding-models` · `app/frontend/src/components/ModelManager.jsx`
 **Related:** [offline-coding-agents.md](offline-coding-agents.md) · [chat-and-work-model-profiles.md](chat-and-work-model-profiles.md)
 
@@ -26,6 +26,25 @@ A leaderboard cannot answer any of that. The Code AI tab can, because every
 entry is measured against *this* machine.
 
 ---
+
+### Where it is in the UI
+
+The library's top row is Image / Text / **Code** / Speech / TTS. Code models are
+GGUF models — the same llama.cpp runtime, the same `app/llm-models` folder, the
+same download, delete and load path — so the Code tab does not invent a fifth
+runtime. It puts that runtime in front of the coding catalog:
+
+```
+Image Models (SD) │ Text Models (GGUF) │ Code Models (GGUF) │ Speech │ TTS
+                                        └─ textLibraryMode = "code"
+```
+
+Clicking it selects the GGUF runtime *and* the Code AI section, which is also
+reachable as a chip inside Text Models (Text AI / **Code AI** / Vision AI / Open /
+Video / Cloud / Installed). The heading changes to **Code Model Library** while it
+is open, and every GGUF already in `app/llm-models` gets a **Use for Work** button
+next to Load and Delete — so an existing file does not have to be re-downloaded
+to become the agent's model.
 
 ## 2. What it shows
 
@@ -131,7 +150,10 @@ the filename the server will store.
 
 ## 6. Verification
 
-- [ ] AI Library → Code AI shows a hero naming the recommendation for this machine
+- [ ] AI Library → **Code Models (GGUF)** opens the coding catalog (heading: Code Model Library)
+- [ ] Text Models (GGUF) goes back to the general library, and the *Code AI* chip inside it opens the same view
+- [ ] an already-downloaded GGUF in the local list has a *Use for Work* button
+- [ ] the hero names the recommendation for this machine
 - [ ] an 18 GB Mac lists the 14B as *Fits this machine* and the 30B Q4 as *Needs more memory*
 - [ ] `GET /api/coding-models?systemRamGb=64` promotes the 30B Q4 to the pick
 - [ ] Download starts, shows the same progress bar as a text model, and ends with *Downloaded*

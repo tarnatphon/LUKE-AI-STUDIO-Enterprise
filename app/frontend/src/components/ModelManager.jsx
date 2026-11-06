@@ -890,8 +890,13 @@ function ModelManager({
     }
   };
 
+  /**
+   * Put a file into the Work slot and load it. `model` is either a catalog card
+   * (its file, or the mirror of it, already on disk) or a bare filename from the
+   * "local models" list — the Work slot only cares about the file and a window.
+   */
   const handleUseCodeModelForWork = async (model) => {
-    const filename = model.installed || model.download?.filename;
+    const filename = model.installed || model.filename || model.download?.filename;
     if (!filename) return;
     const contextSize = Number(model.contextTokens) > 0 ? Number(model.contextTokens) : 20000;
     const confirmed = await showConfirm({
@@ -1561,11 +1566,28 @@ function ModelManager({
           Image Models (SD)
         </button>
         <button
-          className={`m3-btn ${activeModelType === "text" ? "m3-btn-filled" : "m3-btn-outlined"}`}
-          onClick={() => setActiveModelType("text")}
+          className={`m3-btn ${activeModelType === "text" && textLibraryMode !== "code" ? "m3-btn-filled" : "m3-btn-outlined"}`}
+          onClick={() => {
+            setActiveModelType("text");
+            setTextLibraryMode("text");
+          }}
           style={{ height: "40px", padding: "0 20px" }}
         >
           Text Models (GGUF)
+        </button>
+        {/* Coding models are GGUF models too — the same llama.cpp runtime, the
+            same folder, the same download — so this tab is not a fifth runtime:
+            it is that runtime with the coding catalog selected, which is where
+            the models Work runs on live. */}
+        <button
+          className={`m3-btn ${activeModelType === "text" && textLibraryMode === "code" ? "m3-btn-filled" : "m3-btn-outlined"}`}
+          onClick={() => {
+            setActiveModelType("text");
+            setTextLibraryMode("code");
+          }}
+          style={{ height: "40px", padding: "0 20px" }}
+        >
+          Code Models (GGUF)
         </button>
         <button
           className={`m3-btn ${activeModelType === "speech" ? "m3-btn-filled" : "m3-btn-outlined"}`}
@@ -1989,6 +2011,18 @@ function ModelManager({
                   </div>
                   
                   <div style={{ display: "flex", gap: "8px" }}>
+                    {activeModelType === "text" && textLibraryMode === "code" && (
+                      <button
+                        className="m3-btn m3-btn-tonal"
+                        style={{ height: "36px", padding: "0 14px" }}
+                        onClick={() => handleUseCodeModelForWork({ id: filename, name: filename, filename })}
+                        disabled={codeWorkBusyId === filename}
+                        title="Make this the Work model and load it"
+                      >
+                        {codeWorkBusyId === filename ? <RefreshCw className="progress-spinner" size={14} /> : <Bot size={14} />}
+                        <span>{codeWorkBusyId === filename ? "Loading" : "Use for Work"}</span>
+                      </button>
+                    )}
                     {isActive ? (
                       <button className="m3-btn m3-btn-error" style={{ height: "36px", padding: "0 16px" }} onClick={() => handleUnloadModel()} disabled={isUnloading}>
                         {isUnloading ? <RefreshCw className="progress-spinner" size={14} /> : <Trash2 size={14} />}
@@ -2031,7 +2065,7 @@ function ModelManager({
       <div className="workspace-title-section" style={{ marginTop: "32px", marginBottom: "16px" }}>
         <h3 className="m3-card-title">
           <Library size={20} style={{ color: "var(--md-sys-color-primary)" }} />
-          {activeModelType === "text" ? "AI Library" : activeModelType === "speech" ? "Speech Model Library" : activeModelType === "tts" ? "TTS Model Library" : "Model Library"}
+          {textLibraryMode === "code" && activeModelType === "text" ? "Code Model Library" : activeModelType === "text" ? "AI Library" : activeModelType === "speech" ? "Speech Model Library" : activeModelType === "tts" ? "TTS Model Library" : "Model Library"}
         </h3>
       </div>
 

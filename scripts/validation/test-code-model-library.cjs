@@ -259,6 +259,27 @@ async function main() {
   // ── 5. the tab ────────────────────────────────────────────────────────────
   assert(/export async function getCodingModels\(/.test(apiSource), "api.js exposes getCodingModels");
   assert(/\{ id: "code", label: "Code AI" \}/.test(managerSource), "AI Library has a Code AI section");
+  // The top row of tabs is Image / Text / Code / Speech / TTS. Code models are
+  // GGUF models, so the tab selects the GGUF runtime *and* the coding catalog
+  // rather than inventing a fifth runtime that would have to reimplement
+  // download, delete and load.
+  assert(/Code Models \(GGUF\)/.test(managerSource), "the top tab row offers Code Models (GGUF)");
+  assert(
+    /setActiveModelType\("text"\);\s*setTextLibraryMode\("code"\)/.test(managerSource),
+    "which selects the GGUF runtime and the coding catalog together",
+  );
+  assert(
+    /setActiveModelType\("text"\);\s*setTextLibraryMode\("text"\)/.test(managerSource),
+    "and Text Models (GGUF) goes back to the general library",
+  );
+  assert(
+    /textLibraryMode === "code" && activeModelType === "text" \? "Code Model Library"/.test(managerSource),
+    "the heading says Code Model Library while that tab is open",
+  );
+  assert(
+    /handleUseCodeModelForWork\(\{ id: filename, name: filename, filename \}\)/.test(managerSource),
+    "a GGUF already on disk can be made the Work model from its row",
+  );
   assert(/className="code-ai-manager"/.test(managerSource), "and renders it");
   assert(
     /await downloadByUrl\(model\.download\.url, model\.download\.filename\)/.test(managerSource),
