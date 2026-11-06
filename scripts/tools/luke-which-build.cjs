@@ -195,7 +195,45 @@ async function readServerState(options = {}) {
  * The four causes, in the order they can be distinguished. Each answer names one
  * thing to do, because "something is stale" is not actionable at 1 a.m.
  */
-function classify(local, server = {}) {
+/**
+ * Is `a` the same folder as `b`?
+ *
+ * `path.resolve` alone is not enough: macOS volumes are case-insensitive by
+ * default, so `/Volumes/AI` and `/Volumes/ai` are one folder and a plain string
+ * compare reports the app as "running from a different folder" — a false alarm
+ * that sends people off to quit and relaunch a perfectly good app. Symlinked
+ * checkouts are the same story. Ask the filesystem (realpath, then the inode)
+ * instead of trusting the spelling of the path.
+ */
+function sameFolder(a, b, deps = {}) {
+  if (!a || !b) return false;
+  const resolve = deps.resolve || path.resolve;
+  const realpath = deps.realpath
+    || (typeof fs.realpathSync.native === "function" ? fs.realpathSync.native : fs.realpathSync);
+  const stat = deps.stat || fs.statSync;
+
+  const left = resolve(String(a));
+  const right = resolve(String(b));
+  if (left === right) return true;
+
+  try {
+    if (realpath(left) === realpath(right)) return true;
+  } catch {
+    // one of them does not exist here — nothing to learn from realpath
+  }
+
+  try {
+    const leftStat = stat(left);
+    const rightStat = stat(right);
+    if (leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino) return true;
+  } catch {
+    // same as above; fall through to "different" rather than guessing
+  }
+
+  return false;
+}
+
+function classify(local, server = {}, deps = {}) {
   const health = server.health || {};
   const serverRoot = health.root || "";
   const sourceCommit = health.source?.commit || health.source?.shortCommit || "";
@@ -244,7 +282,7 @@ function classify(local, server = {}) {
     };
   }
 
-  if (serverRoot && path.resolve(serverRoot) !== path.resolve(local.root)) {
+  if (serverRoot && !sameFolder(serverRoot, local.root, deps)) {
     return {
       cause: "other-checkout",
       headline: "The app on this port is running from a different folder.",
@@ -375,6 +413,7 @@ async function main() {
 }
 
 module.exports = {
+  sameFolder,
   DEFAULT_FEATURE,
   parseArgs,
   readLocalState,
