@@ -1,5 +1,12 @@
 # LUKE AI STUDIO — AI Library update
 
+## FLUX.1 Schnell quantized listing
+- Added **FLUX.1 Schnell Q4_0** under Model Library → FLUX.1 - Quantized / Compressed.
+- Links to the community `city96/FLUX.1-schnell-gguf` repository with a “View Quantized Model” action, not a misleading one-click install.
+- Describes the approximately 6.8 GB diffusion-only download, separate CLIP-L/T5-XXL/VAE requirements, and 1–4 step / CFG 1.0 settings.
+- This is a catalog entry, not runtime support: the current image loader rejects multi-file FLUX GGUF models. File size does not represent total memory requirements.
+- Regression check: `node scripts/validation/test-flux-model-library.cjs`.
+
 ## Added
 - Product-facing brand renamed to **LUKE AI STUDIO**.
 - Model Manager renamed to **AI Library**.

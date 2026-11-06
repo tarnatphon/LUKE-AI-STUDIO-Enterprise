@@ -96,6 +96,24 @@ const MODEL_FILTERS = [
 
 const MODEL_LIBRARY = [
   {
+    group: "FLUX.1 - Quantized / Compressed",
+    items: [
+      {
+        id: "city96/FLUX.1-schnell-gguf",
+        name: "FLUX.1 Schnell Q4_0",
+        filename: "flux1-schnell-Q4_0.gguf",
+        format: "GGUF · 4-bit quantized",
+        approxSize: "6.8 GB (diffusion weights only; encoders and VAE extra)",
+        resolution: "1024x1024",
+        notes: "Compressed FLUX.1 Schnell for fast 1–4 step image generation (CFG 1.0). Requires separate CLIP-L, T5-XXL text encoders and FLUX VAE. Catalog/source only: one-click download and generation are not supported by LUKE's current single-file image loader. Use a compatible multi-file FLUX runtime; quantized file size is not total RAM/VRAM usage.",
+        pageUrl: "https://huggingface.co/city96/FLUX.1-schnell-gguf",
+        actionType: "open-page",
+        actionLabel: "View Quantized Model",
+        recommendedFit: false,
+      },
+    ],
+  },
+  {
     group: "SDXL - Best Quality",
     items: [
       {
@@ -2170,7 +2188,7 @@ function ModelManager({
                       disabled={(installed || downloading) && !model.actionType}
                     >
                       {model.actionType === "connect-cloud" ? <Library size={14} /> : model.actionType === "open-page" ? <Library size={14} /> : installed ? <HardDrive size={14} /> : downloading ? <RefreshCw className="progress-spinner" size={14} /> : <DownloadCloud size={14} />}
-                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? "View Official Model" : installed ? "Downloaded" : downloading ? "Downloading" : needsProjector ? "Download Vision File" : "Download"}</span>
+                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? (model.actionLabel || "View Official Model") : installed ? "Downloaded" : downloading ? "Downloading" : needsProjector ? "Download Vision File" : "Download"}</span>
                     </button>
                     <a
                       href={safeExternalUrl(model.pageUrl) || safeExternalUrl(model.url) || undefined}
