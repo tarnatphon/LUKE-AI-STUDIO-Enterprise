@@ -41,7 +41,7 @@ const DEFAULT_ROOT = path.join(__dirname, "..", "..");
 const DEFAULT_FEATURE = "Code Models (GGUF)";
 
 function parseArgs(argv) {
-  const options = { url: "", port: 1420, json: false, help: false, feature: DEFAULT_FEATURE, root: "" };
+  const options = { url: "", port: 1420, json: false, help: false, feature: DEFAULT_FEATURE, root: "", timeoutMs: 8000 };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") options.json = true;
@@ -50,6 +50,7 @@ function parseArgs(argv) {
     else if (arg === "--url") options.url = String(argv[++i] || "");
     else if (arg === "--feature") options.feature = String(argv[++i] || DEFAULT_FEATURE);
     else if (arg === "--root") options.root = String(argv[++i] || "");
+    else if (arg === "--timeout") options.timeoutMs = Math.max(500, Number(argv[++i] || 8) * 1000);
   }
   if (!options.url) options.url = `http://127.0.0.1:${options.port}`;
   return options;
@@ -63,6 +64,7 @@ Which build is on screen?
   node scripts/tools/luke-which-build.cjs --port 1422
   node scripts/tools/luke-which-build.cjs --feature "AI Library"
   node scripts/tools/luke-which-build.cjs --root /Volumes/AI   # check another folder
+  node scripts/tools/luke-which-build.cjs --timeout 20         # a slow first boot
   node scripts/tools/luke-which-build.cjs --json
 
 It compares four things: the git checkout, app/dist (what the server sends), the
@@ -139,20 +141,46 @@ function readLocalState(options = {}) {
 
 async function readServerState(options = {}) {
   const url = options.url;
-  const result = { url, reachable: false, health: null, indexRef: "", error: "" };
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 8000;
+  const result = {
+    url,
+    reachable: false,
+    health: null,
+    indexRef: "",
+    error: "",
+    // "nothing is listening" and "something is listening but slow" need
+    // different advice; collapsing them into one string sends people to restart
+    // an app that is still booting.
+    kind: "",
+    timeoutMs,
+    elapsedMs: 0,
+  };
+  const startedAt = Date.now();
   try {
-    const health = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2500) });
+    const health = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(timeoutMs) });
     if (health.ok) {
       result.health = await health.json();
       result.reachable = true;
     } else {
       result.error = `HTTP ${health.status}`;
+      result.kind = "http-error";
     }
   } catch (error) {
-    result.error = error?.name === "TimeoutError" ? "timed out" : (error?.message || String(error));
+    const code = error?.cause?.code || error?.code || "";
+    if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+      result.kind = "timeout";
+      result.error = `no answer within ${(timeoutMs / 1000).toFixed(1)}s`;
+    } else if (code === "ECONNREFUSED") {
+      result.kind = "refused";
+      result.error = "connection refused (nothing is listening)";
+    } else {
+      result.kind = "unreachable";
+      result.error = error?.message || String(error);
+    }
   }
+  result.elapsedMs = Date.now() - startedAt;
   try {
-    const html = await fetch(`${url}/`, { signal: AbortSignal.timeout(2500) });
+    const html = await fetch(`${url}/`, { signal: AbortSignal.timeout(timeoutMs) });
     if (html.ok) {
       const body = await html.text();
       result.indexRef = (body.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [""])[0];
@@ -189,6 +217,21 @@ function classify(local, server = {}) {
           "Start the app, then read its root: curl -s http://localhost:1420/api/health | grep -o '\"root\":[^,]*'",
           "Or find the checkout: mdfind -name luke-which-build.cjs (macOS) / find ~ -name serve.cjs -maxdepth 6",
         ],
+    };
+  }
+
+  if (!server.reachable && server.kind === "timeout") {
+    return {
+      cause: "server-timeout",
+      headline: `Something is listening on ${server.url} but did not answer in time.`,
+      detail: "The port is open, so the app is probably still starting (a first boot scans models, "
+        + "repairs the bundle and warms the runtime). This is not the same as the app being closed.",
+      steps: [
+        "Wait for the window to finish loading, then run this again.",
+        "  node scripts/tools/luke-which-build.cjs --timeout 20",
+        "If it still times out: lsof -nP -iTCP:1420 -sTCP:LISTEN   # who owns the port?",
+        "and read the app's own log — a hung boot has a last line that says why.",
+      ],
     };
   }
 
@@ -284,7 +327,7 @@ function printHuman(local, server, verdict) {
     ? `built from ${local.dist.shortCommit || local.dist.commit?.slice(0, 7) || "?"}${local.dist.dirty ? " (dirty source)" : ""} · ${local.hasFeature ? `contains "${local.feature}"` : `does NOT contain "${local.feature}"`}`
     : `no build-info.json — ${local.hasFeature ? "but the bundle has the feature" : "and no feature marker found"}`);
   line("server", server.reachable
-    ? `${server.url} · root=${server.health?.root || "?"}`
+    ? `${server.url} · root=${server.health?.root || "?"} · answered in ${server.elapsedMs || 0} ms`
     : `${server.url} · ${server.error || "unreachable"}`);
   if (server.reachable) {
     line("", `source=${(server.health?.source?.shortCommit || "?").slice(0, 7)}`
