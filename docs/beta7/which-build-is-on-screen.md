@@ -24,12 +24,36 @@ fixes, which is why guessing costs an afternoon:
 
 ---
 
+### 2.0 `Cannot find module ... luke-which-build.cjs`
+
+That message means the command was run somewhere that is **not the checkout** —
+a models drive, a volume with only weights on it, or an older clone that predates
+the file. It says nothing about the app. Find the folder the app really runs
+from:
+
+```bash
+curl -s http://localhost:1420/api/health | python3 -c \
+  'import json,sys; d=json.load(sys.stdin); print(d["root"]); print(d["source"]["shortCommit"], "→", d["frontend"]["shortCommit"], "stale:", d["frontend"]["stale"])'
+```
+
+That prints the folder the server loaded from and whether its bundle matches the
+checkout. Then run the doctor from there — or from anywhere, with `--root`:
+
+```bash
+node /path/to/LUKE/scripts/tools/luke-which-build.cjs --root /Volumes/AI
+```
+
+If `/Volumes/AI` is only where models are stored, the verdict says
+*"is not a LUKE checkout"* and prints the app's real root instead of pretending
+to diagnose a bundle that is not there.
+
 ## 2. The doctor
 
 ```bash
 node scripts/tools/luke-which-build.cjs
 node scripts/tools/luke-which-build.cjs --port 1422
 node scripts/tools/luke-which-build.cjs --feature "AI Library"
+node scripts/tools/luke-which-build.cjs --root /Volumes/AI     # another folder
 node scripts/tools/luke-which-build.cjs --json
 ```
 

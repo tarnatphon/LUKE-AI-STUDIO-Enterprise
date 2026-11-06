@@ -15,6 +15,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..", "..");
@@ -111,6 +112,42 @@ function main() {
     fine.steps.join(" ").includes("Service Workers"),
     "and the remaining explanation is the service worker, with the button that clears it",
   );
+
+  // ── 7b. the folder is not a checkout at all ───────────────────────────────
+  // Running the command inside a models drive (an external SSD, /Volumes/AI)
+  // fails with MODULE_NOT_FOUND. The doctor names that instead of talking about
+  // stale bundles.
+  const notCheckout = doctor.classify(
+    { ...LOCAL, root: "/Volumes/AI", isCheckout: false, isGitRepo: false, hasFeature: false, dist: null },
+    server(),
+  );
+  assert(notCheckout.cause === "not-a-checkout", "a folder without a LUKE server is named as not a checkout");
+  assert(
+    notCheckout.steps.some((step) => step.includes("/repo/luke")),
+    "and it points at the folder the app really runs from",
+  );
+
+  const noGit = doctor.classify({ ...LOCAL, isGitRepo: false }, server());
+  assert(noGit.cause === "current-bundle", "a checkout without git still compares dist and feature markers");
+
+  // ── 7c. --root checks another folder without cd ───────────────────────────
+  const elsewhere = spawnSync(
+    process.execPath,
+    [path.join(root, "scripts", "tools", "luke-which-build.cjs"), "--root", path.join(root, "app"), "--json", "--port", "1"],
+    { cwd: os.tmpdir(), encoding: "utf8" },
+  );
+  const elsewhereJson = JSON.parse(elsewhere.stdout);
+  assert(elsewhereJson.local.root === path.join(root, "app"), "--root inspects the folder it is given, not just the cwd");
+  assert(elsewhereJson.verdict.cause === "not-a-checkout", "and reports that app/ is not a checkout on its own");
+
+  const sameRepo = spawnSync(
+    process.execPath,
+    [path.join(root, "scripts", "tools", "luke-which-build.cjs"), "--json", "--port", "1"],
+    { cwd: os.tmpdir(), encoding: "utf8" },
+  );
+  const sameRepoJson = JSON.parse(sameRepo.stdout);
+  assert(sameRepoJson.local.root === root, "and defaults to the checkout the script lives in, wherever it is run from");
+  assert(sameRepoJson.local.isCheckout === true, "which is a checkout");
 
   // ── 8. the CLI ────────────────────────────────────────────────────────────
   const cli = spawnSync(process.execPath, [path.join(root, "scripts", "tools", "luke-which-build.cjs"), "--json", "--port", "1"], {

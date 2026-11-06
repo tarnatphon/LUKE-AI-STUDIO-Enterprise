@@ -29,8 +29,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const ROOT = path.join(__dirname, "..", "..");
-const DIST = path.join(ROOT, "app", "dist");
+// Where this file lives is the default checkout to inspect, but it is not the
+// only one worth inspecting: the app is often started from another folder (an
+// external drive, a second clone), which is precisely how "I edited it and
+// nothing changed" happens. --root points the doctor at that folder instead.
+const DEFAULT_ROOT = path.join(__dirname, "..", "..");
 
 // What "the feature is here" means in a built bundle. Anything that ships in the
 // UI can be checked this way: if the string is not in the served JavaScript, no
@@ -38,7 +41,7 @@ const DIST = path.join(ROOT, "app", "dist");
 const DEFAULT_FEATURE = "Code Models (GGUF)";
 
 function parseArgs(argv) {
-  const options = { url: "", port: 1420, json: false, help: false, feature: DEFAULT_FEATURE };
+  const options = { url: "", port: 1420, json: false, help: false, feature: DEFAULT_FEATURE, root: "" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") options.json = true;
@@ -46,6 +49,7 @@ function parseArgs(argv) {
     else if (arg === "--port") options.port = Number(argv[++i] || options.port);
     else if (arg === "--url") options.url = String(argv[++i] || "");
     else if (arg === "--feature") options.feature = String(argv[++i] || DEFAULT_FEATURE);
+    else if (arg === "--root") options.root = String(argv[++i] || "");
   }
   if (!options.url) options.url = `http://127.0.0.1:${options.port}`;
   return options;
@@ -58,6 +62,7 @@ Which build is on screen?
   node scripts/tools/luke-which-build.cjs                 # checks :1420
   node scripts/tools/luke-which-build.cjs --port 1422
   node scripts/tools/luke-which-build.cjs --feature "AI Library"
+  node scripts/tools/luke-which-build.cjs --root /Volumes/AI   # check another folder
   node scripts/tools/luke-which-build.cjs --json
 
 It compares four things: the git checkout, app/dist (what the server sends), the
@@ -65,9 +70,9 @@ running server's /api/health, and the bundle the server actually hands out.
 `);
 }
 
-function git(args) {
+function git(root, args) {
   try {
-    return execFileSync("git", ["-C", ROOT, ...args], {
+    return execFileSync("git", ["-C", root, ...args], {
       encoding: "utf8",
       timeout: 4000,
       stdio: ["ignore", "pipe", "ignore"],
@@ -85,8 +90,8 @@ function readJson(filePath) {
   }
 }
 
-function bundleText() {
-  const assets = path.join(DIST, "assets");
+function bundleText(root) {
+  const assets = path.join(root, "app", "dist", "assets");
   let text = "";
   try {
     for (const file of fs.readdirSync(assets)) {
@@ -102,23 +107,29 @@ function bundleText() {
 /** Everything knowable without asking a server. */
 function readLocalState(options = {}) {
   const feature = options.feature || DEFAULT_FEATURE;
-  const distInfo = readJson(path.join(DIST, "build-info.json"));
+  const root = path.resolve(options.root || DEFAULT_ROOT);
+  const dist = path.join(root, "app", "dist");
+  const distInfo = readJson(path.join(dist, "build-info.json"));
   const distIndex = (() => {
     try {
-      return fs.readFileSync(path.join(DIST, "index.html"), "utf8");
+      return fs.readFileSync(path.join(dist, "index.html"), "utf8");
     } catch {
       return "";
     }
   })();
   const indexRef = (distIndex.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [""])[0];
-  const text = bundleText();
+  const text = bundleText(root);
   return {
-    root: ROOT,
-    commit: git(["rev-parse", "HEAD"]),
-    shortCommit: git(["rev-parse", "--short", "HEAD"]),
-    branch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
-    subject: git(["log", "-1", "--pretty=%s"]),
-    dirty: Boolean(git(["status", "--porcelain"])),
+    root,
+    // "Not a checkout" is its own answer: running this inside a models drive is
+    // the most common reason the command itself fails with MODULE_NOT_FOUND.
+    isCheckout: fs.existsSync(path.join(root, "scripts", "server", "serve.cjs")),
+    isGitRepo: fs.existsSync(path.join(root, ".git")),
+    commit: git(root, ["rev-parse", "HEAD"]),
+    shortCommit: git(root, ["rev-parse", "--short", "HEAD"]),
+    branch: git(root, ["rev-parse", "--abbrev-ref", "HEAD"]),
+    subject: git(root, ["log", "-1", "--pretty=%s"]),
+    dirty: Boolean(git(root, ["status", "--porcelain"])),
     dist: distInfo,
     distIndexRef: indexRef,
     hasFeature: text.includes(feature),
@@ -161,6 +172,25 @@ function classify(local, server = {}) {
   const serverRoot = health.root || "";
   const sourceCommit = health.source?.commit || health.source?.shortCommit || "";
   const frontendCommit = health.frontend?.commit || "";
+
+  if (local.isCheckout === false) {
+    return {
+      cause: "not-a-checkout",
+      headline: `${local.root} is not a LUKE checkout.`,
+      detail: "There is no scripts/server/serve.cjs there, so nothing in this folder is what the app runs — "
+        + "which also explains why a command like scripts/tools/luke-which-build.cjs was not found.",
+      steps: serverRoot
+        ? [
+          `The app says it runs from: ${serverRoot}`,
+          `cd "${serverRoot}" && git status -sb && git log --oneline -3`,
+          "Run this doctor again from that folder (or with --root pointing at it).",
+        ]
+        : [
+          "Start the app, then read its root: curl -s http://localhost:1420/api/health | grep -o '\"root\":[^,]*'",
+          "Or find the checkout: mdfind -name luke-which-build.cjs (macOS) / find ~ -name serve.cjs -maxdepth 6",
+        ],
+    };
+  }
 
   if (!server.reachable) {
     return {
@@ -246,8 +276,10 @@ function classify(local, server = {}) {
 function printHuman(local, server, verdict) {
   const line = (label, value) => console.log(`${label.padEnd(14)} ${value}`);
   console.log("");
-  line("checkout", `${local.root}`);
-  line("", `${local.branch || "detached"} @ ${local.shortCommit || "?"}${local.dirty ? " (uncommitted changes)" : ""} — ${local.subject || "no commit"}`);
+  line("checkout", `${local.root}${local.isGitRepo ? "" : " (not a git repository)"}`);
+  if (local.isGitRepo) {
+    line("", `${local.branch || "detached"} @ ${local.shortCommit || "?"}${local.dirty ? " (uncommitted changes)" : ""} — ${local.subject || "no commit"}`);
+  }
   line("app/dist", local.dist
     ? `built from ${local.dist.shortCommit || local.dist.commit?.slice(0, 7) || "?"}${local.dist.dirty ? " (dirty source)" : ""} · ${local.hasFeature ? `contains "${local.feature}"` : `does NOT contain "${local.feature}"`}`
     : `no build-info.json — ${local.hasFeature ? "but the bundle has the feature" : "and no feature marker found"}`);
