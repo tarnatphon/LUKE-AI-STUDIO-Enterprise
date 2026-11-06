@@ -96,7 +96,7 @@ async function readStreamChunkWithIdleTimeout(reader, idleTimeoutMs, signal) {
 // Cached hardware specs
 let cachedSpecs = null;
 let cachedBackendPort = null;
-export const EXPECTED_SERVER_BUILD = "text-image-v6-llm-recovery";
+export const EXPECTED_SERVER_BUILD = "text-image-v7-load-lifecycle";
 
 export const isLocalServerMode = () => {
   if (typeof window === "undefined") return false;
@@ -743,6 +743,7 @@ export async function startLlm(model, options = {}) {
       ubatchSize: options.ubatchSize,
       performanceProfile: options.performanceProfile,
       preferredBackend: options.preferredBackend,
+      retryGpu: options.retryGpu,
     }),
   });
   return await readJsonResponse(res, "The local server returned an invalid text backend response.");

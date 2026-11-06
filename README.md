@@ -670,3 +670,21 @@ than GPU inference. On restart, the server build is `text-image-v6-llm-recovery`
 
 Tests: `node scripts/validation/test-llm-load-policy.cjs`. Real Gemma/Metal
 recovery must still be confirmed on the affected Mac.
+
+Chat load lifecycle follow-up (`text-image-v7-load-lifecycle`): normal llama.cpp
+startup logs are no longer hidden with `-lv 1`. The governor treats both load
+attempts and unready child processes as busy, rechecks busy/model/use state inside
+the operation lock before releasing chat, and snapshots all effective cache,
+flash-attention and batch settings for restoration. A successful CPU fallback is
+remembered per model and reused on later loads; an explicit API `retryGpu: true`
+allows a GPU retry. CPU-only macOS startup skips warmup and 64-token batches are
+no longer silently raised to 128. Genuine post-load critical memory pressure can
+still unload an idle model: this change does not disable memory protection.
+
+Regression: `node scripts/validation/test-llm-load-lifecycle.cjs` exercises the
+lock race and persisted fallback selection. End-to-end Metal/Qwen loading still
+needs confirmation on the affected Mac.
+Automatic chat restoration after a governor release waits at least 30 seconds and
+will not reload while measured memory pressure is still critical. It reports the
+memory-pressure reason instead of cycling unload/reload. Arena restores are not
+subject to that governor-specific cooldown.

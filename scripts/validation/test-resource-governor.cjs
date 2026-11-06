@@ -293,7 +293,8 @@ check(
 check("arena rounds count as use of the pool", /noteEngineUsed\("arena"\);\s*\n\s*await streamArenaGeneration/.test(serveSource));
 check(
   "the release snapshots the model before killing it, which is what makes it reversible",
-  /if \(engineId === "text"\) \{\s*\n[\s\S]{0,600}releasedMainModel = \{[\s\S]{0,700}await runExclusiveLlmOperation\(\(\) => killLlm\(\)\);/.test(serveSource)
+  /releasedMainModel = \{[\s\S]{0,500}await killLlm\(\);/.test(serveSource) &&
+    /runExclusiveLlmOperation\(releaseText\)/.test(serveSource)
 );
 check(
   "the snapshot names the governor and its reason, so the restore can say why it is reloading",
@@ -395,7 +396,7 @@ check(
 check("a release for a load is recorded as one, with what it was for", /code: "MEMORY_MAKE_ROOM",[\s\S]{0,200}for: wanted,/.test(serveSource));
 check(
   "the LLM lock is a promise queue, so a text load making room stops the model directly instead of waiting for itself",
-  /if \(insideLlmLock\) await killLlm\(\);\s*\n\s*else await runExclusiveLlmOperation\(\(\) => killLlm\(\)\);/.test(serveSource) &&
+  /insideLlmLock \? releaseText\(\) : runExclusiveLlmOperation\(releaseText\)/.test(serveSource) &&
     /wanted: modelName\(filename\) \|\| filename,[\s\S]{0,220}insideLlmLock: true,/.test(serveSource)
 );
 check(

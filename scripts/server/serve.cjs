@@ -254,14 +254,21 @@ let releasedMainModel = null;
 async function restoreReleasedMainModel() {
   if (!releasedMainModel) return false;
   const snapshot = releasedMainModel;
-  releasedMainModel = null;
   if (llmReady || llmProc) return false;
+  if (snapshot.releasedBy === "governor") {
+    const policy = resourceGovernorPolicy();
+    const signals = await sampleMemorySignals();
+    const pressure = assessMemoryPressure({ platform: osPlatform, policy, ...signals });
+    if (llmLoadPolicy.delayGovernorRestore(snapshot, pressure)) {
+      llmError = `Chat remains unloaded to avoid a memory-pressure reload loop: ${pressure.reason}. Close other memory-heavy apps/models and retry after memory recovers.`;
+      return false;
+    }
+  }
+  releasedMainModel = null;
   try {
     await startLlm({
+      ...llmLoadPolicy.restoreSettings(snapshot),
       model: snapshot.model,
-      contextSize: snapshot.contextSize || undefined,
-      gpuLayers: snapshot.gpuLayers,
-      threads: snapshot.threads || undefined,
     });
     console.log(
       `  [llm] restored ${snapshot.model}, released by ${snapshot.releasedBy || "the arena"}` +
@@ -1178,7 +1185,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v6-llm-recovery";
+const SERVER_BUILD = "text-image-v7-load-lifecycle";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
@@ -3303,7 +3310,7 @@ function governedEngines() {
       makeRoom: ENGINE_RULES.text.makeRoom,
       // Never take a model away mid-answer, and never during an arena round,
       // which releases the chat model itself and restores it afterwards.
-      busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel),
+      busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel) || Boolean(llmLoadProgress) || Boolean(llmProc && !llmReady),
       sizeGb: roundGb(mainChatModelBytes()),
       lastUsedAt: engineLastUsedAt.text || null,
     },
@@ -3367,23 +3374,23 @@ function governedEngines() {
 
 async function releaseEngine(engineId, decision, { insideLlmLock = false } = {}) {
   if (engineId === "text") {
-    // Snapshot first: this is what makes the release reversible, and the chat
-    // route restores it before answering the next message.
-    releasedMainModel = {
-      model: modelName(llmSettings.model),
-      contextSize: Number(llmSettings.contextSize) || 0,
-      gpuLayers: Number.isFinite(Number(llmSettings.gpuLayers)) ? Number(llmSettings.gpuLayers) : -1,
-      threads: Number(llmSettings.threads) || 0,
-      releasedBy: "governor",
-      reason: decision.reason,
-      releasedAt: Date.now(),
+    const releaseText = async () => {
+      // Recheck *inside* the operation lock: pressure sampling and lock waiting
+      // can race a new model load or chat request.
+      const current = governedEngines().find(engine => engine.id === "text");
+      if (!current?.resident || current.busy) return false;
+      if (decision.engine && (current.label !== decision.engine.label || Number(current.lastUsedAt || 0) > Number(decision.engine.lastUsedAt || 0))) return false;
+      releasedMainModel = {
+        ...llmLoadPolicy.restoreSettings(llmSettings),
+        model: modelName(llmSettings.model),
+        releasedBy: "governor",
+        reason: decision.reason,
+        releasedAt: Date.now(),
+      };
+      await killLlm();
+      return true;
     };
-    // The sweep runs outside the LLM lock and must queue behind whatever the
-    // model is doing. A load that is making room is already inside that lock,
-    // and the lock is a promise queue: queueing there would wait for itself.
-    if (insideLlmLock) await killLlm();
-    else await runExclusiveLlmOperation(() => killLlm());
-    return true;
+    return insideLlmLock ? releaseText() : runExclusiveLlmOperation(releaseText);
   }
 
   if (engineId === "arena") {
@@ -5099,7 +5106,11 @@ async function waitForLlmReady(timeoutMs, expectedProc = llmProc, expectedModel 
     checkReady: () => pingLlmReady(expectedModel),
     getError: () => llmError,
     getTail: () => llmLoadProgress?.tail || "",
-    markReady: () => { llmReady = true; llmModelLoadingBytes = 0; noteEngineUsed("text"); },
+    markReady: () => {
+      llmReady = true;
+      llmModelLoadingBytes = 0;
+      noteEngineUsed("text");
+    },
   });
 }
 
@@ -6589,6 +6600,7 @@ function buildLlmLoadProfiles(settings = {}, backend = {}) {
     ? Math.max(512, Math.min(20000, requestedContext))
     : 4096;
   const isCpu = backend.key === "cpu" || backend.mode === "CPU";
+  if (settings.__recoveryProfile === "safe-cpu") return [llmLoadPolicy.safeProfile(Math.min(safeContext, Number(settings.__recoveryContext) || safeContext))];
   const profiles = [
     { name: "requested", gpuLayers: isCpu ? 0 : undefined },
     llmLoadPolicy.safeProfile(safeContext),
@@ -6617,6 +6629,9 @@ async function startLlm(settings = {}) {
     throw new Error("llama.cpp is not installed. Run the platform setup script to install the text backend.");
   }
   const persistedSettings = getLlmModelSettings(filename);
+  if (!settings.retryGpu && persistedSettings.recoveryProfile === "safe-cpu") {
+    settings = { ...settings, __recoveryProfile: "safe-cpu", __recoveryContext: persistedSettings.lastSettings?.contextSize };
+  }
   const preferredBackend = String(settings.preferredBackend || persistedSettings.preferredBackend || "").toLowerCase();
   const sortedCandidates = preferredBackend
     ? [...candidates].sort((a, b) => {
@@ -6652,6 +6667,7 @@ async function startLlm(settings = {}) {
         llmSettings.backendFallbacks = failures;
         updateLlmModelSettings(filename, {
           preferredBackend: backend.key,
+          recoveryProfile: profile.name === "safe-cpu" ? "safe-cpu" : null,
           lastBackendMode: llmSettings.backendMode,
           lastBackendBinary: llmSettings.backendBinary,
           lastSettings: {
@@ -6804,8 +6820,8 @@ async function startLlmWithBackend(settings = {}, backend) {
     mmap: settings.mmap !== false && llmSettings.mmap !== false,
     cachePrompt: settings.cachePrompt !== false && llmSettings.cachePrompt !== false,
     defragThold: Number(settings.defragThold) || llmSettings.defragThold || 0.1,
-    batchSize: Math.max(128, Math.min(2048, effectiveBatchSize)),
-    ubatchSize: Math.max(128, Math.min(2048, effectiveUbatchSize)),
+    batchSize: Math.max(32, Math.min(2048, effectiveBatchSize)),
+    ubatchSize: Math.max(32, Math.min(2048, effectiveUbatchSize)),
     performanceProfile: settings.performanceProfile || llmSettings.performanceProfile || "balanced",
   };
 
@@ -6873,7 +6889,6 @@ async function startLlmWithBackend(settings = {}, backend) {
     "--model", loadPath,
     "--host", "127.0.0.1",
     "--port", String(PORT_LLM),
-    "-lv", "1",
     "--ctx-size", String(llmSettings.contextSize),
     "--threads", String(llmSettings.threads),
     "--n-gpu-layers", String(llmSettings.gpuLayers),
@@ -6888,7 +6903,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     "--ubatch-size", String(llmSettings.ubatchSize),     // ✅ Micro-batch size
   ];
   args.push("--flash-attn", llmSettings.flashAttn ? "on" : "off");
-  if (isSyclBackend) {
+  if (isSyclBackend || isMacCpuOnly) {
     args.push("--no-warmup");
   }
   
@@ -28365,7 +28380,7 @@ async function routeWorkTurnToCloud(req, res, body, policy = {}) {
       // instead of making the user reload it by hand.
       const restored = await restoreReleasedMainModel();
       if (!llmReady) {
-        return json(res, 409, { ok: false, error: "Load a text model before sending a message." });
+        return json(res, 409, { ok: false, error: releasedMainModel?.releasedBy === "governor" ? llmError || "Chat was unloaded due to memory pressure. Close other apps/models and retry." : "Load a text model before sending a message." });
       }
       if (restored) {
         console.log("  [llm] restored the chat model that the arena released.");

@@ -31,4 +31,10 @@ async function waitForReady({ isAlive, checkReady, markReady, timeoutMs, deadlin
   const tail = String(getTail() || getError() || "").trim().slice(-1200);
   throw new Error(`llama.cpp readiness timed out after ${Math.round((now() - started) / 1000)} seconds.${tail ? ` Last backend output:\n${tail}` : " No backend output was captured."}`);
 }
-module.exports = { cpuIsolationArgs, safeProfile, waitForReady };
+function restoreSettings(settings = {}) {
+  return Object.fromEntries(["model", "contextSize", "gpuLayers", "threads", "flashAttn", "cacheTypeK", "cacheTypeV", "batchSize", "ubatchSize", "enableThinking", "mmap", "mlock", "cachePrompt", "preferredBackend"].filter(key => settings[key] !== undefined).map(key => [key, settings[key]]));
+}
+function delayGovernorRestore(snapshot, pressure, now = Date.now()) {
+  return snapshot?.releasedBy === "governor" && (now - Number(snapshot.releasedAt || 0) < 30000 || pressure?.level === "critical");
+}
+module.exports = { cpuIsolationArgs, safeProfile, waitForReady, restoreSettings, delayGovernorRestore };
