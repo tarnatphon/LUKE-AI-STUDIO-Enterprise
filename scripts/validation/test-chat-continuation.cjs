@@ -55,17 +55,17 @@ section("2. It carries on from the words already written");
 check("the model is given its own answer as a prefill",
   /\[\.\.\.requestMessages, \{ role: "assistant", content: prefix \}\]/.test(chat));
 check("the screen shows the whole answer, not just the new leg",
-  /\(text\) => handleStreamToken\(prefix \+ String\(text \|\| ""\)\)/.test(chat));
+  /\(token, fullText, reasoningToken, fullReasoning\) =>/.test(chat) && /handleStreamToken\(token, fullAnswer\.startsWith\(prefix\) \? fullAnswer : prefix \+ fullAnswer, reasoningToken, fullReasoning\)/.test(chat));
 check("a backend that echoes the prefix is not doubled",
   /answerText = extra\.startsWith\(prefix\) \? extra : prefix \+ extra;/.test(chat));
 
 section("3. It fails safely");
 check("a continuation that errors does not throw the answer away",
   /\} catch \(continuationError\) \{/.test(chat) && /Losing the answer so far would be worse than stopping here\./.test(chat));
-check("an error ends the loop instead of retrying", /finalFinishReason = null;\s*\n\s*break;/.test(chat));
+check("an error ends the loop instead of retrying", /finalFinishReason = "length";\s*\n\s*break;/.test(chat));
 check("the count the user sees covers every leg",
   /const exactTokens = continuations > 0\s*\n\s*\? streamedTokens/.test(chat));
-check("the stats say the answer was carried on", /finishReason: finalFinishReason,\s*\n\s*truncated: finalFinishReason === "length",\s*\n\s*continuations,/.test(chat));
+check("the stats say the answer was carried on", /finishReason: finalFinishReason,\s*\n\s*truncated: \["length", "stream_idle_partial", "stream_interrupted"\]\.includes\(finalFinishReason\),\s*\n\s*continuations,/.test(chat));
 
 section("4. The user can still ask for more, with one click");
 check("the old instruction to type it by hand is gone", !/Ask \\"continue\\"/.test(chat));
