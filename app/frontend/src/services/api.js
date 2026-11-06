@@ -748,6 +748,34 @@ export async function startLlm(model, options = {}) {
   return await readJsonResponse(res, "The local server returned an invalid text backend response.");
 }
 
+/**
+ * The two model slots. Chat answers conversation, Work drives a coding agent;
+ * each keeps its own GGUF, window and sampling so one job never degrades the
+ * other. Only one of them is resident at a time (see text-profiles.cjs).
+ */
+export async function getTextProfiles() {
+  const res = await fetch("/api/text-profiles");
+  return await readJsonResponse(res, "The local server returned an invalid model-slot response.");
+}
+
+export async function saveTextProfile(profile, options = {}) {
+  const res = await fetch("/api/text-profiles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...options, profile }),
+  });
+  return await readJsonResponse(res, "The local server returned an invalid model-slot response.");
+}
+
+export async function activateTextProfile(profile) {
+  const res = await fetch("/api/text-profiles/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  return await readJsonResponse(res, "The local server returned an invalid model-slot response.");
+}
+
 export async function stopLlm() {
   const res = await fetch("/api/llm/stop", { method: "POST" });
   return await readJsonResponse(res, "The local server returned an invalid text backend response.");

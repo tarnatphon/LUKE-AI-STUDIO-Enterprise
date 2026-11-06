@@ -277,6 +277,11 @@ async function main() {
       assert(env.stdout.includes("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"), "`env` turns off Claude Code's non-essential traffic");
       assert(env.stdout.includes("API_TIMEOUT_MS="), "`env` raises the request timeout for a local model");
       assert(env.stdout.includes(`export LUKE_CONTEXT_TOKENS="${16384}"`), "`env` reports the live context window");
+      assert(env.stdout.includes("export CLAUDE_CODE_ATTRIBUTION_HEADER=0"), "`env` turns off the header the local-Claude-Code guides blame for the slowdown");
+      assert(env.stdout.includes('export CLAUDE_CODE_MAX_CONTEXT_TOKENS="16384"'), "`env` tells Claude Code the window the server actually allocated");
+      assert(env.stdout.includes("export ANTHROPIC_MODEL="), "`env` names the model explicitly");
+      assert(env.stdout.includes("export CLAUDE_CODE_SUBAGENT_MODEL="), "`env` pins subagents to the same local model");
+      assert(!/CLAUDE_CODE_AUTO_COMPACT_WINDOW="/.test(env.stdout), "a 16K window does not get a 100k compaction window");
 
       const target = scratchDir();
       const opencode = await runScript(["opencode", target], { LUKE_URL: stand.lukeUrl });
@@ -322,6 +327,29 @@ async function main() {
       await new Promise((resolve) => server.close(resolve));
       return p;
     })();
+    // A wider window flips the auto-compaction branch: Claude Code must compact
+    // below what the server allocated, never above it.
+    const wideStatus = http.createServer((req, res) => {
+      if (req.url === "/api/llm/status") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          ready: true,
+          port: stand.enginePort,
+          settings: { model: "qwen2.5-coder-30b-a3b.gguf", contextSize: 65536, toolCalling: true },
+        }));
+        return;
+      }
+      res.writeHead(404); res.end("{}");
+    });
+    await new Promise((resolve) => wideStatus.listen(0, "127.0.0.1", resolve));
+    try {
+      const wide = await runScript(["env"], { LUKE_URL: `http://127.0.0.1:${wideStatus.address().port}` });
+      assert(wide.status === 0, "`env` works with a wide window");
+      assert(/CLAUDE_CODE_AUTO_COMPACT_WINDOW="49152"/.test(wide.stdout), "a 64K window compacts at 75% of it, not at 200k");
+    } finally {
+      await new Promise((resolve) => wideStatus.close(resolve));
+    }
+
     // Nothing on LUKE_URL and nothing on the default engine port: the helper has
     // to refuse rather than print an export block pointing at port 0.
     const dead = await runScript(["env"], { LUKE_URL: `http://127.0.0.1:${deadPort}` });

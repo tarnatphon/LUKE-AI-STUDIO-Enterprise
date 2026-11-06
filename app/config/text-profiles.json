@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "note": "Defaults for the two text-model slots. Chat is conversation; Work is a coding agent. A saved choice lives in app/runtime-state/text-profiles.json (gitignored) and overrides these values. See docs/beta7/chat-and-work-model-profiles.md.",
+  "profiles": {
+    "chat": {
+      "id": "chat",
+      "label": "Chat",
+      "model": "",
+      "contextSize": 8192,
+      "temperature": 0.8,
+      "topP": 0.95,
+      "requiresToolCalling": false,
+      "note": "Conversation, learning, creative writing. No tools, wider sampling."
+    },
+    "work": {
+      "id": "work",
+      "label": "Work",
+      "model": "",
+      "contextSize": 20000,
+      "temperature": 0.2,
+      "topP": 0.95,
+      "requiresToolCalling": true,
+      "minContextTokens": 16384,
+      "maxTemperature": 0.6,
+      "note": "A coding agent: tool calls, low temperature, the largest window the machine can hold."
+    }
+  }
+}

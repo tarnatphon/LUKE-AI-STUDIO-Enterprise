@@ -244,6 +244,14 @@ Behind it, these are the variables that matter:
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` | no telemetry, no update check, no phone home |
 | `API_TIMEOUT_MS` | `600000` | local generation is slower than the hosted API |
 | `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, `DISABLE_AUTOUPDATER` | `1` | belt and braces for the offline claim |
+| `CLAUDE_CODE_ATTRIBUTION_HEADER` | `0` | the header costs most of the throughput against a local endpoint (Unsloth's guide measured it as a large slowdown) |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | the live window | Claude Code otherwise assumes a hosted window and overruns the server |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 75% of the window, capped at 100000 | compact *below* what the server allocated; omitted under 32K where the window is the only honest number |
+| `ANTHROPIC_MODEL` / `CLAUDE_CODE_SUBAGENT_MODEL` | the id from `/v1/models` | the main loop and its subagents stay on the same local GGUF |
+
+> Work's model is chosen in the app, not here: Chat and Work keep separate model
+> slots (see [chat-and-work-model-profiles.md](chat-and-work-model-profiles.md)),
+> and the one that is resident at the moment is the one this helper reports.
 
 The model id is the file path llama-server reports, e.g.
 `/Volumes/AI/…/Qwen3-Coder-30B-A3B-Q4_K_M.gguf`. Any Claude tier name also works

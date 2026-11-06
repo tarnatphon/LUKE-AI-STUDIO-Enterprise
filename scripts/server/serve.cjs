@@ -117,6 +117,11 @@ const {
   withLlmSlot,
 } = require("./llm-request-guard.cjs");
 const { toolCallingArgs } = require("./llm-tool-calling.cjs");
+const textProfiles = require("./text-profiles.cjs");
+
+// Which slot (chat | work) the resident text model is serving. Set on activate,
+// re-derived whenever a model is started by hand.
+let activeTextProfileId = null;
 
 // LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
 let textModelPoolInstance = null;
@@ -5137,6 +5142,8 @@ function waitForChildExit(proc, timeoutMs) {
 async function killLlm() {
   llmReady = false;
   llmModelLoadingBytes = 0;
+  // Nothing is resident, so no slot is serving either.
+  activeTextProfileId = null;
   llmSettings.supportsVision = false;
   llmSettings.visionMode = "none";
   llmSettings.visionStatus = "Projector not loaded";
@@ -27073,6 +27080,93 @@ const handleRequest = async (req, res) => {
     });
   }
 
+  // ── Chat and Work have their own model slots ──────────────────────────────
+  // GET  /api/text-profiles            both slots, what is resident, warnings
+  // POST /api/text-profiles            save one slot {profile, model, contextSize, ...}
+  // POST /api/text-profiles/activate   make that slot resident (swaps the GGUF)
+  function describeResidentTextModel() {
+    return {
+      model: path.basename(String(llmSettings.model || "")),
+      port: PORT_LLM,
+      ready: Boolean(llmReady),
+      running: Boolean(llmProc),
+      toolCalling: llmSettings.toolCalling === true,
+      contextSize: llmSettings.contextSize || 0,
+      loading: llmProc ? describeLlmLoad() : null,
+      error: llmError || "",
+    };
+  }
+
+  if (req.url === "/api/text-profiles" && req.method === "GET") {
+    const described = textProfiles.describe({ resident: describeResidentTextModel() });
+    return json(res, 200, { ok: true, ...described, activeProfile: activeTextProfileId || described.activeProfile });
+  }
+
+  if (req.url === "/api/text-profiles" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const id = String(body.profile || "").toLowerCase();
+    try {
+      const saved = textProfiles.saveProfile(id, body);
+      const described = textProfiles.describe({ resident: describeResidentTextModel() });
+      // `warnings` is per slot ({chat, work}); what this save produced for the
+      // slot just written goes under its own key so the two never collide.
+      return json(res, 200, {
+        ok: true,
+        profile: saved.profile,
+        slotWarnings: saved.warnings,
+        ...described,
+        activeProfile: activeTextProfileId || described.activeProfile,
+      });
+    } catch (error) {
+      return json(res, error.statusCode || 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (req.url === "/api/text-profiles/activate" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const id = String(body.profile || "").toLowerCase();
+    if (!textProfiles.IDS.includes(id)) {
+      return json(res, 400, { ok: false, error: `Unknown profile "${id}". Use chat or work.` });
+    }
+    try {
+      const settings = textProfiles.settingsFor(id);
+      const residentModel = path.basename(String(llmSettings.model || ""));
+      if (llmReady && residentModel === settings.model) {
+        activeTextProfileId = id;
+        return json(res, 200, {
+          ok: true,
+          profile: id,
+          switched: false,
+          model: settings.model,
+          port: PORT_LLM,
+          settings: { ...llmSettings, temperature: settings.temperature },
+        });
+      }
+      await runExclusiveLlmOperation(() => startLlm(settings));
+      activeTextProfileId = id;
+      return json(res, 200, {
+        ok: true,
+        profile: id,
+        switched: true,
+        model: settings.model,
+        port: PORT_LLM,
+        settings: llmSettings,
+      });
+    } catch (error) {
+      llmError = error.message || String(error);
+      if (error.code !== "MODEL_ALREADY_ACTIVE") {
+        await runExclusiveLlmOperation(() => killLlm());
+      }
+      return json(res, error.statusCode || jsonErrorStatus(error), {
+        ok: false,
+        error: llmError,
+        code: error.code || "",
+      });
+    }
+  }
+
   if (req.url === "/api/llm/status" && req.method === "GET") {
     const backend = getLlmBackend();
     const probe = getLlmBackendProbe();
@@ -27179,6 +27273,7 @@ const handleRequest = async (req, res) => {
     if (!body) return;
     try {
       await runExclusiveLlmOperation(() => startLlm(body));
+      activeTextProfileId = textProfiles.classify(llmSettings.model) || activeTextProfileId;
       return json(res, 200, { ok: true, ready: llmReady, port: PORT_LLM, settings: llmSettings });
     } catch (err) {
       llmError = err.message || String(err);

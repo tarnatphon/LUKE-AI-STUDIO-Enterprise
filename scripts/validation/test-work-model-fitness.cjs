@@ -75,9 +75,14 @@ async function main() {
     && lib.isWorkReadyModel("") === false);
 
   section("3. Work says so out loud");
-  check("the chat watches the mode, the model, the machine and the cloud chain",
-    /\}, \[assistantMode, selectedModel, specs, cloudChain\]\);/.test(chat));
-  check("and only speaks in Work mode", /if \(assistantMode !== "work" \|\| !selectedModel \|\| isWorkReadyModel\(selectedModel\)\)/.test(chat));
+  check("the chat watches the mode, the model, the machine, the cloud chain and the Work slot",
+    /\}, \[assistantMode, selectedModel, specs, cloudChain, textProfileState\]\);/.test(chat));
+  check("and only speaks in Work mode", /if \(assistantMode !== "work" \|\| configuredWorkModel \|\| !selectedModel \|\| isWorkReadyModel\(selectedModel\)\)/.test(chat));
+  // A model the user chose for the Work slot is better evidence than a filename
+  // heuristic: once one is saved, the "too small for tools" warning is not ours
+  // to make any more (see docs/beta7/chat-and-work-model-profiles.md).
+  check("a model chosen for the Work slot outranks the filename heuristic",
+    /const configuredWorkModel = textProfileState\?\.profiles\?\.work\?\.model/.test(chat));
   check("it names the model that is loaded", /\$\{selectedModel\}/.test(chat));
   check("it names one that would work, and its size", /\$\{best\.name\} \(\$\{best\.approxSize\}/.test(chat));
   check("it says what memory that needs", /needs \$\{best\.minMemoryGb\} GB/.test(chat));

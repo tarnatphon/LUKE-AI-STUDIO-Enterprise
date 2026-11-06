@@ -116,11 +116,29 @@ cmd_env() {
   printf 'export ANTHROPIC_DEFAULT_OPUS_MODEL="%s"\n' "$model"
   printf 'export ANTHROPIC_DEFAULT_SONNET_MODEL="%s"\n' "$model"
   printf 'export ANTHROPIC_DEFAULT_HAIKU_MODEL="%s"\n' "$model"
+  printf 'export ANTHROPIC_MODEL="%s"\n' "$model"
+  printf 'export CLAUDE_CODE_SUBAGENT_MODEL="%s"\n' "$model"
   printf 'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n'
   printf 'export DISABLE_TELEMETRY=1\n'
   printf 'export DISABLE_ERROR_REPORTING=1\n'
   printf 'export DISABLE_AUTOUPDATER=1\n'
   printf 'export API_TIMEOUT_MS=600000\n'
+  # What the local-Claude-Code guides converge on: this header is reported to
+  # cost most of the throughput against a local endpoint, and Claude Code has to
+  # be told the real window or it assumes 200k and overruns the server.
+  printf 'export CLAUDE_CODE_ATTRIBUTION_HEADER=0\n'
+  printf 'export CLAUDE_CODE_MAX_CONTEXT_TOKENS="%s"\n' "$ctx"
+  # Compaction must happen below the window the server allocated. Below 32K the
+  # only honest setting is the window itself, so the variable is skipped rather
+  # than set to a value that would re-break the 4K trap in reverse.
+  if [ "$ctx" -ge 32768 ]; then
+    compact=$((ctx * 3 / 4))
+    if [ "$compact" -gt 100000 ]; then compact=100000; fi
+    printf 'export CLAUDE_CODE_AUTO_COMPACT_WINDOW="%s"\n' "$compact"
+  else
+    printf '# CLAUDE_CODE_AUTO_COMPACT_WINDOW omitted: this window (%s) is already\n' "$ctx"
+    printf '# small; Claude Code compacts at the limit instead of a round number.\n'
+  fi
   printf 'export LUKE_CONTEXT_TOKENS="%s"\n' "$ctx"
 }
 
