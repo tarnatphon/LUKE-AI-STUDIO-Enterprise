@@ -18,6 +18,11 @@
  * runs, so it is driven here against a stand-in LUKE and a stand-in engine over
  * real sockets — env, port, model, opencode, check, and the unreachable case.
  *
+ * Then the model picker (app/config/coding-agent-models.json +
+ * scripts/tools/luke-coding-models.cjs). The claim worth guarding is arithmetic,
+ * not taste: 18.6 GB of weights cannot load on a 14.3 GB Metal budget, and an
+ * 18 GB machine should be told to run the 14B, not the 30B a leaderboard likes.
+ *
  * Run: node scripts/validation/test-offline-coding-agents.cjs
  */
 
@@ -141,6 +146,20 @@ async function standUp() {
  * this process, so a spawnSync here would block the event loop and the script's
  * curl would find nothing listening — a failure that looks like a broken script.
  */
+function runNodeScript(args, env) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, args, {
+      env: { ...process.env, ...env },
+      cwd: root,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
 function runScript(args, env) {
   return new Promise((resolve) => {
     const child = spawn("bash", [scriptPath, ...args], {
@@ -321,7 +340,76 @@ async function main() {
     assert(scriptSource.includes("LUKE_LLM_PORT"), "the helper can skip port discovery when asked");
   }
 
-  // ── 5. the document says the things that are easy to get wrong ─────────────
+  // ── 5. the model catalog: does the arithmetic agree with the advice? ───────
+  const modelCatalog = require(path.join(root, "scripts", "server", "coding-agent-models.cjs"));
+  const catalog = modelCatalog.getCatalog();
+  const setupLlamaSource = fs.readFileSync(path.join(root, "scripts", "setup", "setup-llama.sh"), "utf8");
+
+  assert(
+    setupLlamaSource.includes(`\${LLAMA_RELEASE:-${catalog.backend.pinnedRelease}}`),
+    "the catalog's pinned llama.cpp release is the one setup-llama.sh installs",
+  );
+  assert(
+    catalog.models.every((model) => model.toolCalling === true),
+    "every catalog entry is tool-capable (a model without tools cannot drive an agent)",
+  );
+  assert(
+    catalog.models.every((model) => model.license && Number(model.weightGb) > 0),
+    "every catalog entry states its licence and its real file size",
+  );
+
+  // 18 GB Mac: 14.3 GB working set is the budget (Metal), not the 18 GB of RAM.
+  const small = modelCatalog.recommendFor({ profileId: "mac-18" });
+  assert(small.machine.workingSetGb === 14.3, "the mac-18 profile uses the 14.3 GB Metal working set");
+  assert(small.pick && small.pick.id === "qwen2.5-coder-14b-q4_k_m", "an 18 GB Mac is told to run the 14B, not a leaderboard 30B");
+  assert(
+    small.models.filter((model) => model.verdict === "recommended").length >= 3,
+    "the 18 GB machine has more than one workable option, not a single forced choice",
+  );
+
+  const heavy = small.models.find((model) => model.id === "qwen3-coder-30b-a3b-q4_k_m");
+  assert(heavy.verdict === "too-big", "the 30B at Q4 (18.6 GB) is refused on an 18 GB machine");
+  assert(heavy.contextTokens === 0, "a model that cannot load is not given a context budget");
+  assert(heavy.weightGb > small.machine.workingSetGb, "the refusal is arithmetic: weights exceed the working set");
+
+  // A bigger machine gets the bigger model instead of the same safe answer.
+  const big = modelCatalog.recommendFor({ systemRamGb: 64, workingSetGb: 48 });
+  assert(big.pick && big.pick.id === "qwen3-coder-30b-a3b-q4_k_m", "a 48 GB budget is told to run the 30B at Q4");
+
+  // KV cache is computed, not copied from a vendor table.
+  const kv = modelCatalog.kvGbPer4096({ layers: 48, kvHeads: 8, headDim: 128 });
+  assert(Math.abs(kv - 0.375) < 0.01, "GQA KV is layers x KV heads x head dim x 2 bytes per token");
+  assert(modelCatalog.kvGbPer4096({ mlaKvGbPer4096: 0.105 }) === 0.105, "an MLA model uses its own stated KV figure");
+
+  // No measured working set: fall back to ~80% of RAM, and say it is an estimate.
+  const detected = modelCatalog.recommendFor({ systemRamGb: 18 });
+  assert(Math.abs(detected.machine.workingSetGb - 14.4) < 0.01, "without a measurement the working set falls back to 80% of RAM");
+  assert(detected.machine.source === "estimated", "the fallback is labelled as an estimate, not a measurement");
+
+  // A broken catalog must fail loudly instead of recommending nothing.
+  let rejected = false;
+  try {
+    modelCatalog.validateCatalog({ models: [{ id: "no-fields" }], machineProfiles: [] });
+  } catch (_) {
+    rejected = true;
+  }
+  assert(rejected, "an incomplete catalog entry is rejected");
+
+  if (process.platform !== "win32") {
+    const cli = await runNodeScript(["scripts/tools/luke-coding-models.cjs", "--profile", "mac-18"]);
+    assert(cli.status === 0, "the model picker exits 0");
+    assert(/Qwen2\.5-Coder 14B/.test(cli.stdout), "the picker names the recommended model");
+    assert(/too big/.test(cli.stdout), "the picker shows what does not fit instead of hiding it");
+    assert(/Context = 20000/.test(cli.stdout), "the picker says which context to set explicitly");
+
+    const cliJson = await runNodeScript(["scripts/tools/luke-coding-models.cjs", "--profile", "mac-18", "--json"]);
+    assert(cliJson.status === 0, "the picker can answer in JSON");
+    const parsed = JSON.parse(cliJson.stdout);
+    assert(parsed.pick && parsed.pick.id === "qwen2.5-coder-14b-q4_k_m", "the JSON pick matches the catalog ranking");
+    assert(parsed.models.length === catalog.models.length, "the JSON lists every catalog model");
+  }
+
+  // ── 6. the document says the things that are easy to get wrong ─────────────
   assert(docSource.includes("no `/v1` suffix"), "the doc warns that ANTHROPIC_BASE_URL has no /v1 suffix");
   assert(docSource.includes("--jinja"), "the doc explains the one flag that makes tools work");
   assert(docSource.includes("LUKE_LLM_MAX_CONTEXT"), "the doc explains how to raise the context ceiling");
@@ -333,6 +421,10 @@ async function main() {
   );
   assert(docSource.includes("luke-agent-env.sh check"), "the doc points at the check command");
   assert(/Troubleshooting/.test(docSource), "the doc has a troubleshooting table");
+  assert(docSource.includes("luke-coding-models.cjs"), "the doc points at the model picker");
+  assert(docSource.includes("14.3 GB"), "the doc uses the real Metal working set, not total RAM");
+  assert(docSource.includes("18.6 GB"), "the doc names the size that disqualifies the 30B at Q4 on 18 GB");
+  assert(/Qwen2\.5-Coder-14B/.test(docSource), "the doc names the model it recommends for this machine");
 
   console.log(`\nPASS: ${checks} checks — offline coding agents are wired, documented and scripted.\n`);
 }

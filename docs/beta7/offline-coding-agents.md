@@ -121,23 +121,89 @@ prints the real cost at start-up
 window is a measurement rather than a guess — if the machine cannot afford it,
 the model fails to load instead of silently swapping.
 
-Rules of thumb for agent work: **≥32768** for Claude Code (its own prompt is a
-large slice of the budget), **≥16384** for OpenCode with a small model and
-`AGENTS.md` kept short.
+Rules of thumb for agent work: Claude Code *wants* **≥32768** (its own system
+prompt and tool schemas are a large slice of the budget) and OpenCode is usable
+from **16384** with a small model and a short `AGENTS.md`. An 18 GB machine
+cannot reach 32K next to a model worth using — see §3.2 — so on that hardware the
+honest limit is 20K and shorter sessions, not a bigger number in a settings file.
 
-### 3.2 Model
+### 3.2 Model — the one that fits *this* machine
 
-Tool calling needs a template that *has* tools, and an agent needs 10–50
-sequential requests per task, so tokens/second matters more than a benchmark
-score. In practice:
+Every "best local coding model" list answers a question that is not yours. The
+question here is narrower: **weights + KV cache + ~1.5 GB of compute buffers must
+fit inside the memory this machine can really address.** On an 18 GB Mac that
+budget is **14.3 GB**, not 18 — Metal only lets a device map that much
+(`memory-calibration.cjs` reads it from llama.cpp's own start-up line).
 
-| Model (GGUF) | Feel | Notes |
+That single number disqualifies the model most lists recommend:
+
+| Candidate | Weights | Verdict on 18 GB (14.3 GB budget) |
 | --- | --- | --- |
-| `Qwen3-Coder-30B-A3B` | fast even on CPU-heavy machines | MoE, ~3B active; the best default here |
-| `Qwen2.5-Coder-32B` | slower, steadier edits | dense, wants a real GPU |
-| `Devstral-Small-24B` | good multi-file edits | agent-trained, tool template included |
-| `Qwen2.5-Coder-7B` | usable for small diffs | falls apart past ~2 files |
-| anything non-coder | avoid | no tool template, or tool calls in prose |
+| Qwen3-Coder-30B-A3B **Q4_K_M** | 18.6 GB | does not load at all |
+| Devstral Small 2 24B Q4_K_M | 15.0 GB | does not load |
+| Qwen3-Coder-30B-A3B Q3_K_L | 14.6 GB | weights alone exceed the budget |
+| **Qwen2.5-Coder-14B Q4_K_M** | **9.0 GB** | **fits, with a 16–20K window** |
+| GLM-4.7-Flash 30B-A3B IQ2_M | 11.0 GB | fits; ~2.8 bits, tool calls must be verified |
+| Qwen2.5-Coder-7B Q6_K | 6.6 GB | fits easily; loses the thread on 2+ files |
+
+Ask the project instead of a blog — the answer comes from the catalog plus LUKE's
+own planner:
+
+```bash
+node scripts/tools/luke-coding-models.cjs              # this machine
+node scripts/tools/luke-coding-models.cjs --profile mac-18
+node scripts/tools/luke-coding-models.cjs --ram 32 --json
+```
+
+Output on an 18 GB Mac (`app/config/coding-agent-models.json`, verified 2026-11-06
+against the pinned `b9668` backend):
+
+```
+model                                     weights  KV/4K  auto   max ctx  verdict
+Qwen2.5-Coder 14B Instruct — Q4_K_M       9.0 GB   0.38   12288  32768    fits
+GLM-4.7-Flash 30B-A3B — IQ2_M             11.0 GB  0.10   4096   32768    fits
+Qwen2.5-Coder 7B Instruct — Q6_K          6.6 GB   0.11   16384  32768    fits
+Qwen3-Coder 30B-A3B — Q3_K_L              14.6 GB  0.19   2048   -        too big
+Devstral Small 2 24B — Q4_K_M             15.0 GB  0.31   2048   -        too big
+Qwen3-Coder 30B-A3B — Q4_K_M              18.6 GB  0.19   2048   -        too big
+```
+
+**Pick on 18 GB: `Qwen2.5-Coder-14B-Instruct Q4_K_M`.** 9 GB of weights leaves
+~3.8 GB for a 20K window (KV is ~0.38 GB per 4096 tokens at `q8_0`), it is
+Apache-2.0, and it is the mid-size model trained with an explicit function-call
+format that agent CLIs have used for a year. `GLM-4.7-Flash` is the interesting
+alternative — a 30B-A3B MoE with MIT weights and only ~3B active per token, so it
+is faster — but at ~2.8 bits per weight it is exactly the quant level where tool
+calls start arriving as prose. Keep it only if `check` says `ok`.
+
+Why `auto` differs from `max ctx`: LUKE's planner estimates the KV cache
+pessimistically until llama.cpp has reported the real `KV self size` once
+(1.05 GB/4096 for anything over 5.5 GB, about 2.7x the arithmetic for this
+model). So **set Context explicitly** — `16384` or `20000` — instead of leaving
+Auto on for the first start. After the first load LUKE remembers the measured
+number and Auto becomes trustworthy.
+
+Other tiers, same catalog:
+
+| Machine | Pick | Why |
+| --- | --- | --- |
+| 24 GB VRAM | Qwen3-Coder-30B-A3B **Q3_K_L** (14.6 GB) | strongest open agentic coder that still fully offloads |
+| 32 GB unified / 24 GB+ with headroom | Qwen3-Coder-30B-A3B **Q4_K_M** (18.6 GB) | the quality point where local agent work stops feeling like a compromise |
+| 24–32 GB, multi-file edits | Devstral Small 2 24B Q4_K_M (15 GB) | trained with All Hands AI for agent scaffolds, 68.0 SWE-bench Verified (Mistral) |
+| 16–18 GB, minimal friction | Qwen2.5-Coder-7B Q6_K | fast, always loads, one file at a time |
+
+Sizes are published file sizes from each quantizer's repo; the KV figures are
+arithmetic (layers × KV heads × head dim × 2 × 1 byte), not measurements — which
+is why the first load prints the real number and LUKE stores it per model.
+
+Loading it, in order:
+
+1. **Model Manager** → paste the repo URL printed by the command → choose the
+   file (e.g. `Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf`).
+2. **Model settings** → Context `20000` (KV cache stays `q8_0`).
+3. Load it, keep the **Text** workspace open.
+4. `scripts/tools/luke-agent-env.sh check` → `Tool calling … ok`. If that line is
+   not `ok`, the model is not the one for this job.
 
 `/api/llm/status` → `settings.toolCalling` is the honest signal from the backend
 side; `check` is the honest signal from the model side.
@@ -361,6 +427,8 @@ rather than a promise.
 
 - [ ] `curl -s http://127.0.0.1:1420/api/llm/status` → `ready: true`, a port
 - [ ] `curl -s http://127.0.0.1:<port>/v1/models` → your GGUF's id
+- [ ] `node scripts/tools/luke-coding-models.cjs --profile mac-18` → a pick, and the
+      30B at Q4 listed as `too big`
 - [ ] `scripts/tools/luke-agent-env.sh check` → five `ok` lines
 - [ ] `/api/llm/status` → `settings.toolCalling: true`
 - [ ] `eval "$(scripts/tools/luke-agent-env.sh env)"` then `claude` answers
@@ -388,4 +456,6 @@ rather than a promise.
   here, and nothing in this document requires one to be.
 - **Tests:** `node scripts/validation/test-offline-coding-agents.cjs` — the
   `--jinja` probe against real fake binaries, the context ceiling, the helper
-  script against a stand-in LUKE over a real socket, and this document's claims.
+  script against a stand-in LUKE over a real socket, the model catalog's
+  arithmetic (an 18 GB machine must not be handed an 18.6 GB model), and this
+  document's claims.
