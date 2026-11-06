@@ -425,22 +425,12 @@ function TextChat({
   setProjects = null,
   speechSettings = {},
 }) {
-  // Work is a coding agent: low temperature keeps tool calls in one shape.
-  // Chat is conversation: wider sampling. The slot decides, but only once a
-  // model is actually saved for it — otherwise Settings stays in charge.
-  const activeSlotProfile = activeSlot ? textProfileState?.profiles?.[activeSlot] : null;
-  // `??`, not `||`: a temperature of 0 is a valid choice and `||` silently
-  // turned it into 0.7.
-  const requestTemperature = Number.isFinite(Number(activeSlotProfile?.temperature))
-    ? Number(activeSlotProfile.temperature)
-    : (textSettings?.temperature ?? 0.7);
-
-  // What the banner says: which slot is serving this tab, and whether the other
-  // tab is pointed somewhere else (which is why switching tabs reloads).
-  const slotModelName = activeSlotProfile?.model || "";
-  const otherSlotKey = activeSlot === "work" ? "chat" : "work";
-  const otherSlotModelName = activeSlot ? (textProfileState?.profiles?.[otherSlotKey]?.model || "") : "";
-  const slotNeedsSwap = Boolean(slotModelName && otherSlotModelName && slotModelName !== otherSlotModelName);
+  // Refs the streaming and archive helpers reach for. Declaring them here,
+  // above every function that touches them, keeps them out of the temporal dead
+  // zone: a handler that runs before the declaration is a ReferenceError, and
+  // in a render pass it takes the whole panel down.
+  const followGenerationRef = useRef(false);
+  const freshContextRef = useRef(false);
 
   const formatGenerationTime = (seconds) => {
     const value = Number(seconds) || 0;
@@ -477,6 +467,24 @@ function TextChat({
   // the slots (scripts/server/text-profiles.cjs); this is only the view of them.
   const [textProfileState, setTextProfileState] = useState(null);
   const [activeSlot, setActiveSlot] = useState("");
+
+  // Work is a coding agent: low temperature keeps tool calls in one shape.
+  // Chat is conversation: wider sampling. The slot decides, but only once a
+  // model is actually saved for it — otherwise Settings stays in charge.
+  const activeSlotProfile = activeSlot ? textProfileState?.profiles?.[activeSlot] : null;
+  // `??`, not `||`: a temperature of 0 is a valid choice and `||` silently
+  // turned it into 0.7.
+  const requestTemperature = Number.isFinite(Number(activeSlotProfile?.temperature))
+    ? Number(activeSlotProfile.temperature)
+    : (textSettings?.temperature ?? 0.7);
+
+  // What the banner says: which slot is serving this tab, and whether the other
+  // tab is pointed somewhere else (which is why switching tabs reloads).
+  const slotModelName = activeSlotProfile?.model || "";
+  const otherSlotKey = activeSlot === "work" ? "chat" : "work";
+  const otherSlotModelName = activeSlot ? (textProfileState?.profiles?.[otherSlotKey]?.model || "") : "";
+  const slotNeedsSwap = Boolean(slotModelName && otherSlotModelName && slotModelName !== otherSlotModelName);
+
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -843,9 +851,7 @@ function TextChat({
     setShowJumpToLatest(false);
   }, []);
   const prevMessagesLengthRef = useRef(0);
-  const followGenerationRef = useRef(false);
   const abortControllerRef = useRef(null);
-  const freshContextRef = useRef(false);
 
   // rAF batching: accumulate token updates and flush once per frame
   const tokenBufferRef = useRef(null);
@@ -2742,6 +2748,12 @@ function TextChat({
         total_tokens: promptTokenEstimate,
       });
 
+      const thinkingEnabled = deepThinkEnabled;
+      const manualMaxTokens = textSettings?.maxTokens || 1024;
+      const effectiveMaxTokens = textSettings?.responseTokenMode === "manual"
+        ? (thinkingEnabled ? Math.max(manualMaxTokens, 1024) : manualMaxTokens)
+        : getAutoMaxResponseTokens(promptTokenEstimate, thinkingEnabled);
+
       // LUKE_AI_TEXT_MODEL_ARENA_SEND_V1
       // Multi-Model Arena: every selected model answers in parallel and the
       // best answer becomes the assistant reply.
@@ -2770,12 +2782,6 @@ function TextChat({
       let thinkingStartedAt = null;
       let thinkingEndedAt = null;
       let thinkingDuration = 0;
-
-      const thinkingEnabled = deepThinkEnabled;
-      const manualMaxTokens = textSettings?.maxTokens || 1024;
-      const effectiveMaxTokens = textSettings?.responseTokenMode === "manual"
-        ? (thinkingEnabled ? Math.max(manualMaxTokens, 1024) : manualMaxTokens)
-        : getAutoMaxResponseTokens(promptTokenEstimate, thinkingEnabled);
 
       const streamOptions = {
         assistantMode,
