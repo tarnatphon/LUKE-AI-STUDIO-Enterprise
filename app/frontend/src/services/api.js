@@ -96,7 +96,7 @@ async function readStreamChunkWithIdleTimeout(reader, idleTimeoutMs, signal) {
 // Cached hardware specs
 let cachedSpecs = null;
 let cachedBackendPort = null;
-export const EXPECTED_SERVER_BUILD = "text-image-v3";
+export const EXPECTED_SERVER_BUILD = "text-image-v4-flux";
 
 export const isLocalServerMode = () => {
   if (typeof window === "undefined") return false;
@@ -1330,7 +1330,10 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
   const startTime = Date.now();
   const isQwenImage21Turbo = /qwen[-_ ]?image.*2[._-]?1.*turbo/i.test(String(activeModelName || ""));
   const fitQwenDimension = (value) => Math.max(32, Math.round((Number(value) || 1024) / 32) * 32);
-  const generationConstraints = isQwenImage21Turbo
+  const isFluxSchnell = /flux1-schnell-Q(?:4_0|8_0)\.gguf$/i.test(String(activeModelName || ""));
+  const generationConstraints = isFluxSchnell
+    ? { ...constraints, steps: 4, cfgScale: 1, sampler: "euler" }
+    : isQwenImage21Turbo
     ? {
         ...constraints,
         steps: 8,
@@ -1739,6 +1742,16 @@ export async function downloadModel(url) {
   }
 }
 
+export async function getFluxSchnellStatus() {
+  const res = await fetch("/api/flux-schnell");
+  return await readJsonResponse(res, "Cannot assess FLUX hardware. Update and restart LUKE.");
+}
+export async function installFluxSchnell(variant) {
+  const res = await fetch("/api/flux-schnell/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ variant }) });
+  const data = await readJsonResponse(res, "FLUX install failed");
+  if (!res.ok || !data.ok) throw new Error(data.error || "FLUX install failed");
+  return data;
+}
 export async function listImageModelComponents() {
   const res = await fetch("/api/image-model-components");
   const data = await readJsonResponse(res, "The local server returned invalid image component data.");

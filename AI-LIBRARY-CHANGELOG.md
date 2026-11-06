@@ -1,11 +1,13 @@
 # LUKE AI STUDIO — AI Library update
 
-## FLUX.1 Schnell quantized listing
-- Added **FLUX.1 Schnell Q4_0** under Model Library → FLUX.1 - Quantized / Compressed.
-- Links to the community `city96/FLUX.1-schnell-gguf` repository with a “View Quantized Model” action, not a misleading one-click install.
-- Describes the approximately 6.8 GB diffusion-only download, separate CLIP-L/T5-XXL/VAE requirements, and 1–4 step / CFG 1.0 settings.
-- This is a catalog entry, not runtime support: the current image loader rejects multi-file FLUX GGUF models. File size does not represent total memory requirements.
-- Regression check: `node scripts/validation/test-flux-model-library.cjs`.
+## FLUX.1 Schnell hardware-aware installation
+- Integrated the existing Qwen Image 2.1 Turbo multi-file runtime and sigma compatibility fixes.
+- FLUX Schnell Q4_0 and Q8_0 now have bundle install and load actions, not just source links.
+- Installation checks the CPU/GPU backend flags, estimated RAM and free disk space before starting four managed downloads; existing complete files are skipped. Progress/cancel uses the existing download dashboard. Retry installs missing files.
+- Bundle includes CLIP-L, T5-XXL Q5_K_M and FLUX VAE. Component paths are kept separate from chat models.
+- Conservative heuristic: below 24 GB RAM recommends lighter models; Q4 at 24 GB+, Q8 at 48 GB+ with unified memory or at least 20 GB discrete VRAM. Unified RAM is not added to VRAM. These thresholds are estimates, not measured OOM guarantees.
+- FLUX loads through `--diffusion-model`, `--clip_l`, `--t5xxl`, `--vae` and CPU offload with 4 steps / CFG 1 / Euler. NPU modes are not supported.
+- Validation: frontend production build, FLUX recipe/hardware/component tests, Qwen regression tests and backend API checks. Actual multi-GB model download and GPU inference still require testing on the target machine.
 
 ## Added
 - Product-facing brand renamed to **LUKE AI STUDIO**.

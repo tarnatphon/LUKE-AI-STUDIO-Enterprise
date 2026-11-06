@@ -4,6 +4,8 @@ import { safeExternalUrl } from "../lib/safe-link.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
+  getFluxSchnellStatus,
+  installFluxSchnell,
   listLocalModels, 
   listImageModelComponents,
   startServer, 
@@ -99,21 +101,18 @@ const MODEL_FILTERS = [
 const MODEL_LIBRARY = [
   {
     group: "FLUX.1 - Quantized / Compressed",
-    items: [
-      {
-        id: "city96/FLUX.1-schnell-gguf",
-        name: "FLUX.1 Schnell Q4_0",
-        filename: "flux1-schnell-Q4_0.gguf",
-        format: "GGUF · 4-bit quantized",
-        approxSize: "6.8 GB (diffusion weights only; encoders and VAE extra)",
-        resolution: "1024x1024",
-        notes: "Compressed FLUX.1 Schnell for fast 1–4 step image generation (CFG 1.0). Requires separate CLIP-L, T5-XXL text encoders and FLUX VAE. Catalog/source only: one-click download and generation are not supported by LUKE's current single-file image loader. Use a compatible multi-file FLUX runtime; quantized file size is not total RAM/VRAM usage.",
-        pageUrl: "https://huggingface.co/city96/FLUX.1-schnell-gguf",
-        actionType: "open-page",
-        actionLabel: "View Quantized Model",
-        recommendedFit: false,
-      },
-    ],
+    items: ["q4", "q8"].map((variant) => ({
+      id: `flux-schnell-${variant}`,
+      name: `FLUX.1 Schnell ${variant === "q4" ? "Q4_0" : "Q8_0"}`,
+      filename: `flux1-schnell-${variant === "q4" ? "Q4_0" : "Q8_0"}.gguf`,
+      format: "GGUF · quantized bundle",
+      approxSize: variant === "q4" ? "12 GB bundle budget" : "18 GB bundle budget",
+      resolution: "1024x1024",
+      notes: "ติดตั้ง diffusion model พร้อม CLIP-L, T5-XXL Q5 และ VAE ในครั้งเดียว ใช้ CPU/GPU backend, 4 steps / CFG 1.0. RAM และดิสก์เป็นค่าประมาณ ไม่รับประกันความเร็วหรือ VRAM. ไม่รองรับ NPU.",
+      pageUrl: "https://huggingface.co/city96/FLUX.1-schnell-gguf",
+      fluxVariant: variant,
+      recommendedFit: false,
+    })),
   },
   {
     group: "SDXL - Best Quality",
@@ -343,6 +342,8 @@ function ModelManager({
   const [videoActionBusy, setVideoActionBusy] = useState(false);
   const [localModels, setLocalModels] = useState([]);
   const [imageComponentStatus, setImageComponentStatus] = useState({});
+  const [fluxStatus, setFluxStatus] = useState(null);
+  const [fluxInstalling, setFluxInstalling] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [downloadingModelId, setDownloadingModelId] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -670,12 +671,14 @@ function ModelManager({
     setIsLoadingModels(true);
     try {
       if (activeModelType === "image") {
-        const [list, components] = await Promise.all([
+        const [list, components, flux] = await Promise.all([
           listLocalModels(),
           listImageModelComponents().catch(() => ({})),
+          getFluxSchnellStatus().catch(error => ({ error: error.message })),
         ]);
         setLocalModels(list.map(normalizeModel).filter((model) => model.filename));
         setImageComponentStatus(components || {});
+        setFluxStatus(flux);
       } else if (activeModelType === "text") {
         const list = await listLlmModels();
         setLocalModels(list.map(normalizeModel).filter((model) => model.filename));
@@ -894,10 +897,22 @@ function ModelManager({
   };
 
   const handleLibraryDownload = async (model) => {
+    if (model.fluxVariant) {
+      const confirmed = await showConfirm({ title: "ติดตั้ง FLUX Schnell พร้อมไฟล์ประกอบ?", message: `${fluxStatus?.assessment?.reason || ""}\n${model.approxSize}; ดาวน์โหลด 4 ไฟล์และข้ามไฟล์ที่มีแล้ว หากล้มเหลวให้กดติดตั้งอีกครั้งเพื่อซ่อมไฟล์ที่ขาด`, confirmLabel: "ติดตั้ง / Install" });
+      if (!confirmed) return;
+      setFluxInstalling(true);
+      try {
+        const result = await installFluxSchnell(model.fluxVariant);
+        startProgressPolling(result.filename);
+        await fetchModels();
+      } catch (error) { showAlert({ title: "ติดตั้ง FLUX ไม่สำเร็จ", message: error.message, danger: true }); }
+      finally { setFluxInstalling(false); }
+      return;
+    }
     if (model.componentType) {
       const confirmed = await showConfirm({
         title: model.requiredComponent ? "Install Required Component?" : "Install Optional Component?",
-        message: `${model.requiredComponent ? "Required for Qwen Image 2.1 Turbo" : "Optional, for image editing"}: download "${model.name}" into LUKE's managed component folder?`,
+        message: `${model.requiredComponent ? "Required for this diffusion model" : "Optional, for image editing"}: download "${model.name}" into LUKE's managed component folder?`,
         confirmLabel: "Download component",
       });
       if (!confirmed) return;
@@ -1011,7 +1026,7 @@ function ModelManager({
       return;
     }
 
-    const isOpenVinoSelected = constraints.backendType === "openvino-npu";
+    const isOpenVinoSelected = constraints.backendType === "openvino-npu" || (constraints.backendType === "apple-npu" && /^flux1-schnell-/i.test(modelId));
     const isOpenVinoModel = modelInfo.backendType === "openvino-npu";
     const isCoreMLModel = modelInfo.format === "CoreML" || modelInfo.backendType === "apple-npu";
     const isStandardWeights = /\.(safetensors|ckpt|gguf)$/i.test(modelId) || (!isOpenVinoModel && !isCoreMLModel);
@@ -1025,7 +1040,7 @@ function ModelManager({
       if (!targetBackend) {
         await showAlert({
           title: "Switch Backend Required",
-          message: `"${modelId}" is a standard weights file. OpenVINO NPU can only load downloaded OpenVINO model folders, and no GPU or CPU backend is currently installed.`,
+          message: `"${modelId}" is a standard weights file. This model needs a GPU or CPU backend, but none is currently installed.`,
           danger: true,
         });
         return;
@@ -1033,7 +1048,7 @@ function ModelManager({
 
       const confirmed = await showConfirm({
         title: "Switch Accelerator?",
-        message: `"${modelId}" cannot load on OpenVINO NPU. Switch to ${targetBackend.label} and load it there?`,
+        message: `"${modelId}" needs a CPU/GPU backend. Switch to ${targetBackend.label} and load it there?`,
         confirmLabel: `Switch to ${targetBackend.label}`,
         cancelLabel: "Cancel",
       });
@@ -2193,11 +2208,13 @@ function ModelManager({
                   : modelNames.includes(model.filename);
                 const hasProjector = !model.projectorFilename || allModelNames.includes(model.projectorFilename);
                 const needsProjector = Boolean(hasMainModel && model.projectorFilename && !hasProjector);
-                const installed = model.componentType ? hasMainModel : hasMainModel && hasProjector;
+                const fluxReady = !model.fluxVariant || ["flux-clip-l", "flux-t5", "flux-vae"].every(id => imageComponentStatus[id]?.installed);
+                const installed = model.componentType ? hasMainModel : hasMainModel && hasProjector && fluxReady;
+                const fluxBlocked = model.fluxVariant && (fluxInstalling || activeDownloadJobs.length > 0 || isBusy || !fluxStatus?.backend?.ready || !fluxStatus?.assessment?.variant || (model.fluxVariant === "q8" && Number(specs?.ram_total_gb) < 48));
                 const downloadJob = getDownloadJob(model.filename, model.projectorFilename, `${model.filename}.zip`);
                 const downloading = Boolean(downloadJob?.active);
                 const systemTier = getHardwareTier(specs);
-                const isRecommended = typeof model.recommendedFit === "boolean"
+                const isRecommended = model.fluxVariant ? fluxStatus?.assessment?.variant === model.fluxVariant : typeof model.recommendedFit === "boolean"
                   ? model.recommendedFit
                   : model.recommendedTiers && model.recommendedTiers.includes(systemTier);
                 const fitLabel = model.fitLabel || "Recommended Fit";
@@ -2242,6 +2259,11 @@ function ModelManager({
                     <p style={{ fontSize: "0.78rem", color: "var(--md-sys-color-on-surface-variant)", lineHeight: 1.35, margin: 0 }}>
                       {model.notes}
                     </p>
+                    {model.fluxVariant && <p role="status" style={{ fontSize: "0.8rem", margin: 0 }}>
+                      {fluxStatus?.error || fluxStatus?.assessment?.reason || "กำลังประเมินฮาร์ดแวร์…"}
+                      {fluxStatus?.backend && !fluxStatus.backend.ready && ` ${fluxStatus.backend.reason}`}
+                      {hasMainModel && !fluxReady && " ยังขาดไฟล์ประกอบ — กดติดตั้งเพื่อซ่อม"}
+                    </p>}
                     {downloading && (
                       <div className="model-progress-section" style={{ marginTop: "2px" }}>
                         <div className="model-progress-label">
@@ -2277,12 +2299,16 @@ function ModelManager({
                           });
                           return;
                         }
+                        if (model.fluxVariant && installed) {
+                          handleLoadModel(model.filename);
+                          return;
+                        }
                         handleLibraryDownload(model);
                       }}
-                      disabled={(installed || downloading) && !model.actionType}
+                      disabled={Boolean(fluxBlocked) || ((installed || downloading) && !model.actionType && !model.fluxVariant)}
                     >
                       {model.actionType === "connect-cloud" ? <Library size={14} /> : model.actionType === "open-page" ? <Library size={14} /> : installed ? <HardDrive size={14} /> : downloading ? <RefreshCw className="progress-spinner" size={14} /> : <DownloadCloud size={14} />}
-                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? (model.actionLabel || "View Official Model") : installed ? (model.componentType ? "Installed" : "Downloaded") : downloading ? "Downloading" : needsProjector ? "Download Vision File" : model.componentType ? "Install component" : "Download"}</span>
+                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? (model.actionLabel || "View Official Model") : model.fluxVariant ? (installed ? "โหลดใช้งาน / Load" : "ติดตั้งครบชุด / Install bundle") : installed ? (model.componentType ? "Installed" : "Downloaded") : downloading ? "Downloading" : needsProjector ? "Download Vision File" : model.componentType ? "Install component" : "Download"}</span>
                     </button>
                     <a
                       href={safeExternalUrl(model.pageUrl) || safeExternalUrl(model.url) || undefined}

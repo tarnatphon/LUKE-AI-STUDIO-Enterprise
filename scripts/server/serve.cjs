@@ -1070,6 +1070,7 @@ const chatHistory = require("./chat-history-archive.cjs");
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
 const modelCache = require("./model-cache.cjs");
+const fluxSchnell = require("./flux-schnell.cjs");
 const imageDiffusionSupport = require("./image-diffusion-support.cjs");
 // Two heavy loads at once is what makes a small machine swap, and a model that is
 // still loading is not "resident" yet — so it is counted, and the second load waits.
@@ -1175,7 +1176,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v3";
+const SERVER_BUILD = "text-image-v4-flux";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
@@ -7018,6 +7019,16 @@ async function startLlmWithBackend(settings = {}, backend) {
   await waitForLlmReady(backend.key === "cpu" ? 720 : 360, proc, filename);
 }
 
+function getFluxBackendStatus() {
+  const binary = selectBackendPath(true, "auto", "flux1-schnell-Q4_0.gguf");
+  try {
+    const probe = binary && spawnSync(binary, ["--help"], { encoding: "utf8", timeout: 8000 });
+    const help = `${probe?.stdout || ""} ${probe?.stderr || ""}`;
+    const ready = ["--diffusion-model", "--vae", "--clip_l", "--t5xxl", "--offload-to-cpu"].every(flag => help.includes(flag));
+    return { ready, reason: ready ? "CPU/GPU backend supports FLUX" : "Update image backend first: scripts/setup/setup.sh (Windows: scripts/setup/setup.ps1), then restart LUKE." };
+  } catch { return { ready: false, reason: "FLUX backend unavailable. Run image backend setup and restart LUKE." }; }
+}
+
 async function startBackend(settings = {}) {
   const requestedSettings = { ...currentSettings, ...settings };
   if (!requestedSettings.model) requestedSettings.model = getDefaultModel();
@@ -7026,8 +7037,8 @@ async function startBackend(settings = {}) {
     modelsDir: MODELS,
     llmModelsDir: LLM_MODELS,
   });
-  if (requestedSettings.backendType === "openvino-npu" && imageModelPlan.kind === imageDiffusionSupport.QWEN_IMAGE_21_TURBO) {
-    throw new Error("Qwen Image 2.1 Turbo needs the stable-diffusion.cpp multi-file diffusion backend; OpenVINO image mode does not support this model.");
+  if (["openvino-npu", "apple-npu"].includes(requestedSettings.backendType) && [imageDiffusionSupport.QWEN_IMAGE_21_TURBO, imageDiffusionSupport.FLUX_SCHNELL].includes(imageModelPlan.kind)) {
+    throw new Error("Multi-file diffusion needs a CPU/GPU stable-diffusion.cpp backend, not an NPU backend.");
   }
   // Concurrency: any loaded text model stays resident while the image backend
   // starts. Loading one runtime never unloads another one.
@@ -7052,11 +7063,24 @@ async function startBackend(settings = {}) {
     if (!Number(currentSettings.width)) currentSettings.width = 1024;
     if (!Number(currentSettings.height)) currentSettings.height = 1024;
   }
+  if (imageModelPlan.kind === imageDiffusionSupport.FLUX_SCHNELL) {
+    currentSettings.steps = 4;
+    currentSettings.cfgScale = 1;
+    currentSettings.sampler = "euler";
+  }
   if (!currentSettings.model) {
     console.log("  [backend] No model found in app/models/ — backend not started");
     return;
   }
 
+  if (imageModelPlan.kind === imageDiffusionSupport.FLUX_SCHNELL) {
+    const binary = selectBackendPath(currentSettings.useGpu, currentSettings.backendType, currentSettings.model);
+    const probe = binary && spawnSync(binary, ["--help"], { encoding: "utf8", timeout: 8000 });
+    const help = `${probe?.stdout || ""} ${probe?.stderr || ""}`;
+    if (!["--diffusion-model", "--vae", "--clip_l", "--t5xxl", "--offload-to-cpu"].every(flag => help.includes(flag))) {
+      throw new Error("FLUX backend update required. Run scripts/setup/setup.sh (Windows: scripts/setup/setup.ps1) and select a CPU/GPU backend.");
+    }
+  }
   const modelLoadIssue = getModelLoadIssue(currentSettings.model, imageModelPlan);
   if (modelLoadIssue) {
     backendError = modelLoadIssue;
@@ -30401,6 +30425,34 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     } catch (_) { return json(res, 200, { models: [] }); }
   }
 
+  if (req.url === "/api/flux-schnell" && req.method === "GET") {
+    return json(res, 200, { assessment: fluxSchnell.assessHardware(getHardwareSpecs()), backend: getFluxBackendStatus(), variants: fluxSchnell.variants });
+  }
+  if (req.url === "/api/flux-schnell/install" && req.method === "POST") {
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    const backend = getFluxBackendStatus();
+    if (!backend.ready) return json(res, 409, { error: backend.reason });
+    const assessment = fluxSchnell.assessHardware(getHardwareSpecs());
+    const variant = body.variant || assessment.variant;
+    const recipe = fluxSchnell.recipe(variant);
+    if (!recipe || !assessment.variant) return json(res, 400, { error: assessment.reason || "Invalid FLUX variant" });
+    if (Number(getHardwareSpecs().ram_total_gb) < fluxSchnell.variants[variant].minRam) return json(res, 400, { error: "Insufficient RAM for selected FLUX variant" });
+    const items = recipe.map(item => ({ ...item, dir: item.target === "models" ? MODELS : item.target === "models-vae" ? path.join(MODELS, "vae") : path.join(LLM_MODELS, "diffusion-encoders") }));
+    const missing = items.filter(item => !fs.existsSync(path.join(item.dir, item.filename)) || fs.statSync(path.join(item.dir, item.filename)).size === 0);
+    if (Array.from(activeModelDownloads.values()).filter(job => job.active).length + missing.length > MAX_PARALLEL_MODEL_DOWNLOADS) return json(res, 409, { error: "Wait for current downloads to finish before installing FLUX" });
+    try {
+      // Check capacity on each destination filesystem before starting any jobs.
+      for (const dir of new Set(items.map(item => item.dir))) {
+        fs.mkdirSync(dir, { recursive: true });
+        const stat = fs.statfsSync(dir);
+        if (Number(stat.bavail) * Number(stat.bsize) < fluxSchnell.variants[variant].sizeGb * 1024 ** 3) throw new Error("Insufficient free disk space for FLUX bundle (12 GB Q4 / 18 GB Q8 plus headroom required)");
+      }
+      const downloads = missing.map(item => startModelDownload(item.url, item.filename, item.dir, item.target === "models" ? "image" : "image-component"));
+      return json(res, 200, { ok: true, filename: recipe[0].filename, downloads: downloads.map(job => ({ filename: job.filename, id: job.id })) });
+    } catch (err) { return json(res, 409, { error: err.message }); }
+  }
+
   if (req.url === "/api/image-model-components" && req.method === "GET") {
     return json(res, 200, {
       components: imageDiffusionSupport.getComponentStatus({ modelsDir: MODELS, llmModelsDir: LLM_MODELS }),
@@ -30573,7 +30625,7 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       return json(res, 400, { ok: false, error: `The selected component URL must point to ${definition.filename}.` });
     }
     const targetDir = imageDiffusionSupport.getComponentTarget(componentId, { modelsDir: MODELS, llmModelsDir: LLM_MODELS });
-    if (!targetDir || !pathInside(targetDir, componentId === "qwen-image-21-vae" ? MODELS : LLM_MODELS)) {
+    if (!targetDir || !pathInside(targetDir, definition.target === "models-vae" ? MODELS : LLM_MODELS)) {
       return json(res, 400, { ok: false, error: "Invalid image model component destination." });
     }
     try {

@@ -588,3 +588,25 @@ Updater state and logs are stored in `app/update-state/`. Run a local health che
 ```bash
 app/tools/node-mac/bin/node scripts/updater/update.cjs --health-check
 ```
+
+### FLUX.1 Schnell: hardware-aware local installation
+
+In **AI Library → Image Models (SD) → FLUX.1 – Quantized / Compressed**, LUKE
+assesses the machine and marks a suggested Q4_0 or Q8_0 variant. Press **Install
+bundle** to download diffusion weights, CLIP-L, quantized T5-XXL and the VAE;
+after completion the action becomes **Load**. The existing download dashboard
+shows progress and allows cancellation. Press Install again to fetch missing
+files after an interrupted install. Downloads require internet access to Hugging
+Face and enough disk space in both configured model locations.
+
+The current conservative RAM policy allows Q4 at 24 GB or more; Q8 requires 48 GB
+RAM, and is recommended only with Apple unified memory or at least 20 GB discrete
+VRAM. Smaller machines are directed to lighter SD models. These are estimates,
+not measured performance or OOM guarantees. Close other loaded models before use.
+CPU offload trades speed for memory. NPU/OpenVINO/CoreML models are not used for
+FLUX; select a CPU/GPU backend. If backend support is missing, update using
+`scripts/setup/setup.sh` (Windows: `scripts/setup/setup.ps1`) and restart LUKE.
+
+FLUX Schnell defaults to four steps, CFG 1 and Euler. The download recipes and
+CLI integration are regression-tested, but full model downloads and inference
+must still be verified on the target GPU/Metal machine.

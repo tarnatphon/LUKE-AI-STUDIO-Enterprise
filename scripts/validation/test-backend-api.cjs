@@ -179,6 +179,10 @@ function dependencyHealthIsHealthy(endpoint, result) {
 async function runNegativeTests(baseUrl) {
   const tests = [];
 
+  const flux = await requestEndpoint(`${baseUrl}/api/flux-schnell`);
+  tests.push({ name: "FLUX hardware and backend assessment", passed: flux.status === 200 && typeof flux.json?.backend?.ready === "boolean" && Boolean(flux.json?.assessment?.reason), expected: "HTTP 200 hardware assessment", actual: `HTTP ${flux.status}`, body: flux.body });
+  const invalidFlux = await requestEndpoint(`${baseUrl}/api/flux-schnell/install`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variant: "../../bad" }) });
+  tests.push({ name: "Invalid FLUX install cannot start downloads", passed: [400, 409].includes(invalidFlux.status), expected: "HTTP 400 or unavailable-backend 409", actual: `HTTP ${invalidFlux.status}`, body: invalidFlux.body });
   const imageComponents = await requestEndpoint(`${baseUrl}/api/image-model-components`);
   tests.push({
     name: "Qwen image component status endpoint",

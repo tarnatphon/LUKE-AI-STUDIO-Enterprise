@@ -4,8 +4,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync: defaultSpawnSync } = require("node:child_process");
 
+const flux = require("./flux-schnell.cjs");
+const FLUX_SCHNELL = "flux-schnell";
 const QWEN_IMAGE_21_TURBO = "qwen-image-21-turbo";
 const COMPONENT_DEFINITIONS = Object.freeze({
+  ...Object.fromEntries(flux.components.map(c => [c.id, { ...c, label: c.id, required: true }])),
   "qwen-image-21-vae": Object.freeze({
     id: "qwen-image-21-vae",
     kind: "vae",
@@ -38,6 +41,7 @@ function normalizedName(value) {
 
 function classifyImageModel(modelPath) {
   const name = normalizedName(modelPath);
+  if (/^flux1schnellq(?:40|80)gguf$/.test(name)) return FLUX_SCHNELL;
   if (name.includes("qwenimage21turbo")) return QWEN_IMAGE_21_TURBO;
 
   const lower = path.basename(String(modelPath || "")).toLowerCase();
@@ -163,6 +167,12 @@ function findQwenVisionProjector({ modelsDir, llmModelsDir } = {}) {
 
 function resolveImageModel({ modelPath, modelsDir, llmModelsDir } = {}) {
   const kind = classifyImageModel(modelPath);
+  if (kind === FLUX_SCHNELL) {
+    const files = [...modelFilesUnder(modelsDir), ...modelFilesUnder(llmModelsDir)];
+    const components = Object.fromEntries(flux.components.map(c => [c.kind, files.find(f => path.basename(f) === c.filename && fs.statSync(f).size > 0) || ""]));
+    const missing = flux.components.filter(c => !components[c.kind]).map(c => c.filename);
+    return { kind, modelPath, components, missing, ready: missing.length === 0 };
+  }
   if (kind !== QWEN_IMAGE_21_TURBO) return { kind, modelPath: String(modelPath || ""), components: null };
 
   const components = {
@@ -184,6 +194,9 @@ function resolveImageModel({ modelPath, modelsDir, llmModelsDir } = {}) {
 
 function loadIssue(plan, filename = path.basename(String(plan?.modelPath || ""))) {
   if (!plan) return null;
+  if (plan.kind === FLUX_SCHNELL) {
+    return plan.missing?.length ? `FLUX Schnell components missing: ${plan.missing.join(", ")}. Use Install recommended FLUX in AI Library.` : null;
+  }
   if (plan.kind === QWEN_IMAGE_21_TURBO) {
     if (plan.missing?.length) {
       const absent = plan.missing.join(" and ");
@@ -192,12 +205,16 @@ function loadIssue(plan, filename = path.basename(String(plan?.modelPath || ""))
     return null;
   }
   if (plan.kind === "multi-component-diffusion") {
-    return `${filename} looks like a multi-file diffusion component. LUKE can load Qwen Image 2.1 Turbo with its VAE and Qwen3-VL text encoder; other multi-file families such as Flux, Z-Image, HiDream, Hunyuan, and Wan still need their own model recipe and are not standalone checkpoints.`;
+    return `${filename} looks like a multi-file diffusion component. LUKE can load Qwen Image 2.1 Turbo with its VAE and Qwen3-VL text encoder; other multi-file families such as Flux Dev, Z-Image, HiDream, Hunyuan, and Wan still need their own model recipe and are not standalone checkpoints.`;
   }
   return null;
 }
 
 function buildModelComponentArgs(plan, loadPath = plan?.modelPath) {
+  if (plan?.kind === FLUX_SCHNELL) {
+    if (!plan.ready) throw new Error(loadIssue(plan));
+    return ["--diffusion-model", loadPath, "--vae", plan.components.vae, "--clip_l", plan.components.clip_l, "--t5xxl", plan.components.t5xxl, "--offload-to-cpu"];
+  }
   if (plan?.kind !== QWEN_IMAGE_21_TURBO) return ["--model", loadPath];
   if (!plan.ready || !plan.components?.vae || !plan.components?.llm) {
     throw new Error(loadIssue(plan) || "Qwen Image 2.1 model components are incomplete.");
@@ -249,7 +266,9 @@ function getComponentStatus({ modelsDir, llmModelsDir } = {}) {
     modelsDir,
     llmModelsDir,
   });
+  const fluxPlan = resolveImageModel({ modelPath: "flux1-schnell-Q4_0.gguf", modelsDir, llmModelsDir });
   return {
+    ...Object.fromEntries(flux.components.map(c => [c.id, { ...COMPONENT_DEFINITIONS[c.id], installed: Boolean(fluxPlan.components[c.kind]), path: fluxPlan.components[c.kind] || "" }])),
     "qwen-image-21-vae": {
       ...COMPONENT_DEFINITIONS["qwen-image-21-vae"],
       installed: Boolean(plan.components.vae),
@@ -269,6 +288,7 @@ function getComponentStatus({ modelsDir, llmModelsDir } = {}) {
 }
 
 module.exports = {
+  FLUX_SCHNELL,
   COMPONENT_DEFINITIONS,
   QWEN_IMAGE_21_TURBO,
   backendSupportsMultiFileDiffusion,
