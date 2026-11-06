@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "luke-coding-agent-models",
+  "catalogVersion": "1.0.0",
+  "verifiedAt": "2026-11-06",
+  "purpose": "Free, local GGUF models that can drive a coding agent (Claude Code, OpenCode, Aider) through LUKE's own llama-server. Every entry is filtered by three things an agent cannot work without: a chat template with tool calling, a file small enough to load next to its KV cache on the listed machine tier, and an architecture the pinned llama.cpp build already understands.",
+  "backend": {
+    "engine": "llama.cpp",
+    "pinnedRelease": "b9668",
+    "pinnedReleaseDate": "2026-06-16",
+    "requiresJinja": true,
+    "anthropicRoute": "POST /v1/messages",
+    "note": "A model released after the pinned build needs a newer backend: LLAMA_RELEASE=b<newer> ./scripts/setup/setup-llama.sh. Every model below predates b9668."
+  },
+  "agentNeeds": {
+    "minContextTokens": 16384,
+    "recommendedContextTokens": 20000,
+    "note": "Claude Code's own system prompt and tool schemas are a large slice of the window before a single file is read. Below ~16K the loop truncates; 20K is what LUKE allows by default (LUKE_LLM_MAX_CONTEXT raises the ceiling)."
+  },
+  "rankingSource": "quality is an editorial 0-100 for agent work on this class of machine (tool-call reliability first, then code quality); riskLevel marks quants low enough that tool calls may get mangled. A recommendation sorts fits by riskLevel, then quality.",
+  "sizeSource": "Published file sizes from the quantizer's own repository (bartowski, Qwen, lmstudio-community, unsloth), checked 2026-11-06. A different quantizer's file will differ by a few hundred MB.",
+  "kvSource": "KV cache is arithmetic, not a guess: layers x KV heads x head dim x 2 (K and V) x 1 byte (q8_0) per token, or the MLA latent for GLM. llama.cpp prints the real number at start-up as 'KV self size' and LUKE records it per model, which replaces this estimate after the first load.",
+  "machineProfiles": [
+    {
+      "id": "mac-18",
+      "label": "Mac 18 GB (M3 Pro class)",
+      "systemRamGb": 18,
+      "workingSetGb": 14.3,
+      "note": "Metal only lets a device address ~14.3 GB of the 18 GB; that is the budget models share (memory-calibration.cjs)."
+    },
+    {
+      "id": "mac-32",
+      "label": "Mac 32 GB",
+      "systemRamGb": 32,
+      "workingSetGb": 25.6
+    },
+    {
+      "id": "pc-24",
+      "label": "PC, 24 GB VRAM",
+      "systemRamGb": 64,
+      "workingSetGb": 24
+    },
+    {
+      "id": "pc-48",
+      "label": "PC 48 GB VRAM / Mac 64 GB",
+      "systemRamGb": 64,
+      "workingSetGb": 48
+    }
+  ],
+  "models": [
+    {
+      "id": "qwen2.5-coder-14b-q4_k_m",
+      "label": "Qwen2.5-Coder 14B Instruct — Q4_K_M",
+      "vendor": "Qwen",
+      "params": "14.7B dense",
+      "license": "Apache-2.0",
+      "weightGb": 9,
+      "layers": 48,
+      "kvHeads": 8,
+      "headDim": 128,
+      "maxContextTokens": 32768,
+      "toolCalling": true,
+      "quality": 62,
+      "riskLevel": "low",
+      "bestFor": "The 18 GB Mac default: real tool-call training, and enough headroom left for a 16–20K window.",
+      "evidence": "Trained with an explicit function-call format; the most widely deployed mid-size model in agent CLIs.",
+      "source": {
+        "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+        "file": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+        "mirror": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+        "mirrorFile": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf"
+      },
+      "risk": "Weaker than a 30B on multi-file refactors; keep one file per request."
+    },
+    {
+      "id": "glm-4.7-flash-iq2_m",
+      "label": "GLM-4.7-Flash 30B-A3B — IQ2_M",
+      "vendor": "Z.ai",
+      "params": "31.2B MoE, ~3B active",
+      "license": "MIT",
+      "weightGb": 11,
+      "layers": 48,
+      "kvHeads": 0,
+      "headDim": 0,
+      "mlaKvGbPer4096": 0.105,
+      "maxContextTokens": 32768,
+      "toolCalling": true,
+      "quality": 76,
+      "riskLevel": "medium",
+      "bestFor": "An 18 GB Mac that wants 30B-class breadth and MoE speed (only ~3B weights are read per token).",
+      "evidence": "MIT weights, 128K training context, a documented tool-call parser, and thinking mode that can be switched off for agents.",
+      "source": {
+        "repo": "bartowski/zai-org_GLM-4.7-Flash-GGUF",
+        "file": "zai-org_GLM-4.7-Flash-IQ2_M.gguf"
+      },
+      "risk": "About 2.8 bits per weight. It fits, but low-bit quants are where tool calls get mangled — keep it only if `luke-agent-env.sh check` reports tool_use and real edits land."
+    },
+    {
+      "id": "qwen2.5-coder-7b-q6_k",
+      "label": "Qwen2.5-Coder 7B Instruct — Q6_K",
+      "vendor": "Qwen",
+      "params": "7.6B dense",
+      "license": "Apache-2.0",
+      "weightGb": 6.6,
+      "layers": 28,
+      "kvHeads": 4,
+      "headDim": 128,
+      "maxContextTokens": 32768,
+      "toolCalling": true,
+      "quality": 40,
+      "riskLevel": "low",
+      "bestFor": "The floor that always loads: fast, leaves ~6 GB for context, good for one-file edits and explaining code.",
+      "evidence": "Same tool-use training as the 14B at half the memory.",
+      "source": {
+        "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+        "file": "qwen2.5-coder-7b-instruct-q6_k.gguf",
+        "mirror": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+        "mirrorFile": "Qwen2.5-Coder-7B-Instruct-Q6_K.gguf"
+      },
+      "risk": "Loses the thread after two or three dependent edits."
+    },
+    {
+      "id": "qwen3-coder-30b-a3b-q3_k_l",
+      "label": "Qwen3-Coder 30B-A3B — Q3_K_L",
+      "vendor": "Qwen",
+      "params": "30.5B MoE, 3.3B active",
+      "license": "Apache-2.0",
+      "weightGb": 14.6,
+      "layers": 48,
+      "kvHeads": 4,
+      "headDim": 128,
+      "maxContextTokens": 262144,
+      "toolCalling": true,
+      "quality": 85,
+      "riskLevel": "low",
+      "bestFor": "A 24 GB machine: the strongest open agentic coder that still offloads fully with room for a 20K window.",
+      "evidence": "Built for agentic coding; its card names Claude Code-style scaffolds. Small KV cache (4 KV heads) is why it fits sooner than its size suggests.",
+      "source": {
+        "repo": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+        "file": "Qwen3-Coder-30B-A3B-Instruct-Q3_K_L.gguf"
+      },
+      "risk": "Does not fit an 18 GB machine: 14.6 GB of weights against a 14.3 GB working set, before any KV cache."
+    },
+    {
+      "id": "devstral-small-2-q4_k_m",
+      "label": "Devstral Small 2 24B — Q4_K_M",
+      "vendor": "Mistral AI",
+      "params": "24B dense",
+      "license": "Apache-2.0",
+      "weightGb": 15,
+      "layers": 40,
+      "kvHeads": 8,
+      "headDim": 128,
+      "maxContextTokens": 262144,
+      "toolCalling": true,
+      "quality": 82,
+      "riskLevel": "low",
+      "bestFor": "A 24–32 GB machine doing multi-file edits: trained with All Hands AI for agent scaffolds, not for chat.",
+      "evidence": "Mistral's card reports SWE-bench Verified 68.0 and names Claude Code, Cline, OpenHands and SWE-Agent as targets.",
+      "source": {
+        "repo": "",
+        "file": "",
+        "searchQuery": "Devstral Small 2 GGUF"
+      },
+      "risk": "Dense, so it is slower per token than an A3B MoE at the same quality; too large for 18 GB."
+    },
+    {
+      "id": "qwen3-coder-30b-a3b-q4_k_m",
+      "label": "Qwen3-Coder 30B-A3B — Q4_K_M",
+      "vendor": "Qwen",
+      "params": "30.5B MoE, 3.3B active",
+      "license": "Apache-2.0",
+      "weightGb": 18.6,
+      "layers": 48,
+      "kvHeads": 4,
+      "headDim": 128,
+      "maxContextTokens": 262144,
+      "toolCalling": true,
+      "quality": 90,
+      "riskLevel": "low",
+      "bestFor": "A 32 GB+ machine: the quality point where local agent work stops feeling like a compromise.",
+      "evidence": "Same agentic training as the Q3 version, at the quant most people run.",
+      "source": {
+        "repo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+        "file": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+      },
+      "risk": "18.6 GB will not load on 18–24 GB machines without CPU offload and a much smaller window."
+    }
+  ]
+}

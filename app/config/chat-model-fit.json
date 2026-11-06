@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "luke-chat-model-fit",
+  "catalogVersion": "1.0.0",
+  "verifiedAt": "2026-11-06",
+  "purpose": "Which free, local GGUF should answer Chat on a machine of a given size. Work has its own catalog (app/config/coding-agent-models.json) because a coding agent needs tool calling and a 16K+ window; chat needs none of that, so the ranking here is about answer quality per gigabyte, risk of the quant, and whether the model is multilingual. It exists because 'chat = you pick' is not an answer when someone asks what to run.",
+  "budgetNote": "Chat has no tool schemas and no agent prompt, so the window it needs is small (8K is generous). The fit rule is: weights + 2 GB of compute buffers + 1 GB of KV for an 8K window must fit inside the memory the machine can really address. Work is stricter and is computed from the KV arithmetic in coding-agent-models.cjs.",
+  "sources": [
+    "app/frontend/src/lib/text-model-library.mjs (sizes and files LUKE already offers)",
+    "app/config/text-models/signed-catalog.json (curated Qwen entry, publisher allowlist)",
+    "app/config/coding-agent-models.json (the same models ranked for agent work)"
+  ],
+  "models": [
+    {
+      "id": "qwen3.6-27b-iq2_xxs",
+      "name": "Qwen3.6 27B (UD-IQ2_XXS)",
+      "filename": "Qwen3.6-27B-UD-IQ2_XXS.gguf",
+      "publisher": "unsloth",
+      "params": "27B dense",
+      "license": "Apache-2.0",
+      "sizeGb": 9.4,
+      "chatQuality": 78,
+      "quantRisk": "medium",
+      "multilingual": true,
+      "notes": "The most model that fits an 18 GB Mac at all: 27B of general reasoning in 9.4 GB. Quality at 2 bits is uneven sentence to sentence, so it is the pick for thinking, not for prose you would publish.",
+      "url": "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-UD-IQ2_XXS.gguf"
+    },
+    {
+      "id": "glm-4.7-flash-iq2_m",
+      "name": "GLM-4.7-Flash 30B-A3B (IQ2_M)",
+      "filename": "zai-org_GLM-4.7-Flash-IQ2_M.gguf",
+      "publisher": "bartowski",
+      "params": "30B MoE, ~3B active",
+      "license": "MIT",
+      "sizeGb": 11,
+      "chatQuality": 76,
+      "quantRisk": "medium",
+      "multilingual": true,
+      "notes": "A mixture-of-experts body: 3B active per token, so it answers far faster than an 11 GB dense model would. Also tool-capable, which is why it appears in the coding catalog too.",
+      "url": "https://huggingface.co/bartowski/zai-org_GLM-4.7-Flash-GGUF/resolve/main/zai-org_GLM-4.7-Flash-IQ2_M.gguf"
+    },
+    {
+      "id": "qwen3-4b-q4_k_m",
+      "name": "Qwen3 4B (Q4_K_M)",
+      "filename": "Qwen3-4B-Q4_K_M.gguf",
+      "publisher": "Qwen",
+      "params": "4B dense",
+      "license": "Apache-2.0",
+      "sizeGb": 2.5,
+      "chatQuality": 54,
+      "quantRisk": "low",
+      "multilingual": true,
+      "notes": "The safe everyday chat model: 2.5 GB, instant first token, multilingual including Thai, and it leaves the whole machine free for Work. Less depth than the 27B on hard questions.",
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
+    },
+    {
+      "id": "llama-3.1-8b-q4_k_m",
+      "name": "Llama 3.1 8B Instruct (Q4_K_M)",
+      "filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "publisher": "lmstudio-community",
+      "params": "8B dense",
+      "license": "Llama 3.1 Community",
+      "sizeGb": 4.9,
+      "chatQuality": 60,
+      "quantRisk": "low",
+      "multilingual": false,
+      "notes": "Steady English chat with the least repetition of anything this size; English-first, so it is the wrong pick for Thai conversation.",
+      "url": "https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+    },
+    {
+      "id": "qwen2.5-coder-7b-q4_k_m",
+      "name": "Qwen2.5-Coder 7B Instruct (Q4_K_M)",
+      "filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "publisher": "Qwen",
+      "params": "7B dense",
+      "license": "Apache-2.0",
+      "sizeGb": 4.7,
+      "chatQuality": 46,
+      "quantRisk": "low",
+      "multilingual": true,
+      "notes": "A code model: fine for 'explain this function', flat for conversation. Already offered in the library, so it costs nothing to reuse if it is on disk.",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    },
+    {
+      "id": "mistral-small-3.2-24b-q4_k_m",
+      "name": "Mistral Small 3.2 24B (Q4_K_M)",
+      "filename": "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+      "publisher": "unsloth",
+      "params": "24B dense",
+      "license": "Apache-2.0",
+      "sizeGb": 14.4,
+      "chatQuality": 84,
+      "quantRisk": "low",
+      "multilingual": true,
+      "notes": "The best chat quality in this list per gigabyte — and 14.4 GB of weights does not fit a 14.3 GB Metal budget. Listed so the boundary is visible: this is a 24 GB machine's chat model.",
+      "url": "https://huggingface.co/unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF/resolve/main/Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"
+    }
+  ]
+}

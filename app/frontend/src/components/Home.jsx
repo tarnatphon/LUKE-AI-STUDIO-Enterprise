@@ -8,7 +8,7 @@ const tasks = [
   { id: "ai-workflow", icon: Workflow, title: "Luke AI Workflow", description: "Chain chat, image, voice, and text steps into one automated pipeline." },
   { id: "speech", icon: Mic, title: "Transcribe audio", description: "Convert speech and recordings into editable text." },
   { id: "tts", icon: Volume2, title: "Create voice", description: "Turn text into natural speech using local voices." },
-  { id: "models", icon: Boxes, title: "AI Library", description: "Download and manage Text, Vision, Image, and Video models." },
+  { id: "models", icon: Boxes, title: "AI Library", description: "Download and manage Text, Code, Vision, Image, and Video models." },
 ];
 
 export default function Home({ setActiveTab, specs, health, activeModel, isLlmLoaded }) {

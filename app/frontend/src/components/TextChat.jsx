@@ -29,6 +29,9 @@ import {
   startLlm,
   startSpeech,
   stopLlm,
+  getTextProfiles,
+  saveTextProfile,
+  activateTextProfile,
   transcribeSpeech,
   getModelArenaPolicy,
   updateModelArenaPolicy,
@@ -422,6 +425,23 @@ function TextChat({
   setProjects = null,
   speechSettings = {},
 }) {
+  // Work is a coding agent: low temperature keeps tool calls in one shape.
+  // Chat is conversation: wider sampling. The slot decides, but only once a
+  // model is actually saved for it — otherwise Settings stays in charge.
+  const activeSlotProfile = activeSlot ? textProfileState?.profiles?.[activeSlot] : null;
+  // `??`, not `||`: a temperature of 0 is a valid choice and `||` silently
+  // turned it into 0.7.
+  const requestTemperature = Number.isFinite(Number(activeSlotProfile?.temperature))
+    ? Number(activeSlotProfile.temperature)
+    : (textSettings?.temperature ?? 0.7);
+
+  // What the banner says: which slot is serving this tab, and whether the other
+  // tab is pointed somewhere else (which is why switching tabs reloads).
+  const slotModelName = activeSlotProfile?.model || "";
+  const otherSlotKey = activeSlot === "work" ? "chat" : "work";
+  const otherSlotModelName = activeSlot ? (textProfileState?.profiles?.[otherSlotKey]?.model || "") : "";
+  const slotNeedsSwap = Boolean(slotModelName && otherSlotModelName && slotModelName !== otherSlotModelName);
+
   const formatGenerationTime = (seconds) => {
     const value = Number(seconds) || 0;
     if (value < 1) return `${Math.round(value * 1000)} ms`;
@@ -453,6 +473,10 @@ function TextChat({
   // connected the "this model is too small" warning is simply wrong — Work is
   // not going to use the local model for the turn.
   const [cloudChain, setCloudChain] = useState([]);
+  // Chat and Work each keep their own GGUF, window and sampling. The server owns
+  // the slots (scripts/server/text-profiles.cjs); this is only the view of them.
+  const [textProfileState, setTextProfileState] = useState(null);
+  const [activeSlot, setActiveSlot] = useState("");
   const [tokenUsage, setTokenUsage] = useState({
     prompt_tokens: 0,
     completion_tokens: 0,
@@ -1413,6 +1437,15 @@ function TextChat({
 
     setSelectedModel(filename);
     localStorage.setItem("selectedLlmModel", filename);
+    // A manual pick belongs to the slot the user is in: Chat keeps a chat model,
+    // Work keeps a coding model, and the next switch reloads the right one.
+    const pickedSlot = assistantMode === "work" ? "work" : "chat";
+    setActiveSlot(pickedSlot);
+    saveTextProfile(pickedSlot, { model: filename })
+      .then((data) => {
+        if (data?.ok) setTextProfileState(data);
+      })
+      .catch(() => {});
     setIsBusy(true);
     setLoadingModel(filename);
     try {
@@ -1507,7 +1540,48 @@ function TextChat({
   }, [assistantMode]);
 
   useEffect(() => {
-    if (assistantMode !== "work" || !selectedModel || isWorkReadyModel(selectedModel)) {
+    let active = true;
+    getTextProfiles()
+      .then((data) => {
+        if (active && data?.ok) setTextProfileState(data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Switching between Chat and Work makes that slot resident. When both slots
+  // name the same GGUF the server answers switched:false and nothing reloads;
+  // when a slot has no model saved the activation is refused and the existing
+  // picker stays in charge, so nobody's current setup changes under them.
+  useEffect(() => {
+    const slot = assistantMode === "work" ? "work" : "chat";
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await activateTextProfile(slot);
+        if (cancelled || !result?.ok) return;
+        setActiveSlot(slot);
+        if (result.model) {
+          setSelectedModel(result.model);
+          localStorage.setItem("selectedLlmModel", result.model);
+        }
+        if (result.profiles) {
+          setTextProfileState((prev) => (prev ? { ...prev, profiles: result.profiles, activeProfile: slot } : prev));
+        }
+      } catch (_) {
+        if (!cancelled) setActiveSlot("");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assistantMode]);
+
+  useEffect(() => {
+    const configuredWorkModel = textProfileState?.profiles?.work?.model || "";
+    if (assistantMode !== "work" || configuredWorkModel || !selectedModel || isWorkReadyModel(selectedModel)) {
       setWorkModelNotice("");
       return;
     }
@@ -1531,7 +1605,7 @@ function TextChat({
         ? `Work needs a model trained for tools, and the smallest one that does the job needs ${best.minMemoryGb} GB — this machine has ${ramGb} GB. ${selectedModel} will write the tools out as text instead of using them; Work mode is not going to work well until there is more memory or a cloud model.`
         : `Work needs a model trained for tools. ${selectedModel} is small enough that it writes the tools out as text instead of using them — install ${best.name} (${best.approxSize}, needs ${best.minMemoryGb} GB) for ${memory} and Work stops needing babysitting. Or connect a cloud provider in Settings and Work will use that model instead.`,
     );
-  }, [assistantMode, selectedModel, specs, cloudChain]);
+  }, [assistantMode, selectedModel, specs, cloudChain, textProfileState]);
 
   const handleCancelLlmLoad = async () => {
     try {
@@ -2677,7 +2751,7 @@ function TextChat({
           baseMessages: nextMessages,
           requestMessages,
           generationOptions: {
-            temperature: textSettings?.temperature ?? 0.7,
+            temperature: requestTemperature,
             maxTokens: effectiveMaxTokens,
             topP: textSettings?.topP,
             topK: textSettings?.topK,
@@ -2705,7 +2779,7 @@ function TextChat({
 
       const streamOptions = {
         assistantMode,
-        temperature: textSettings?.temperature ?? 0.7,
+        temperature: requestTemperature,
         maxTokens: effectiveMaxTokens,
         topP: textSettings?.topP,
         topK: textSettings?.topK,
@@ -3419,6 +3493,20 @@ function TextChat({
           </button>
         )}
         </div>
+
+        {slotModelName && (
+          <div className="text-slot-notice" role="status">
+            <Bot size={15} />
+            <span>
+              {assistantMode === "work" ? "Work" : "Chat"} model: <strong>{slotModelName}</strong>
+              {" · "}
+              <code>ctx {Number(activeSlotProfile?.contextSize) || "auto"} · temp {Number(activeSlotProfile?.temperature)}</code>
+              {slotNeedsSwap
+                ? " · the other tab keeps its own model, so it reloads when you switch"
+                : " · shared with the other tab, so switching never reloads"}
+            </span>
+          </div>
+        )}
 
         {workModelNotice && (
           <div className="work-model-notice" role="status">

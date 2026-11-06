@@ -1576,7 +1576,8 @@
 
 /* Work cannot be carried by a model that writes tools out as prose, and the
    user deserves to be told that rather than to watch it struggle. */
-.work-model-notice {
+.work-model-notice,
+.text-slot-notice {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1591,6 +1592,19 @@
 }
 
 .work-model-notice svg { flex: 0 0 auto; color: #9ec1ff; }
+
+/* Which model is serving this tab right now. Chat and Work keep separate slots,
+   so this is the one place the split is visible instead of inferred. */
+.text-slot-notice {
+  border-color: rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  font-size: .76rem;
+}
+
+.text-slot-notice svg { flex: 0 0 auto; color: var(--md-sys-color-on-surface-variant); }
+.text-slot-notice span { flex: 1; min-width: 0; }
+.text-slot-notice strong { font-weight: 600; }
+.text-slot-notice code { font-size: .72rem; opacity: .8; }
 
 .work-model-notice span { flex: 1; min-width: 0; }
 
