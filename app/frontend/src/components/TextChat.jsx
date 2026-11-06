@@ -872,8 +872,9 @@ function TextChat({
   }, [resizeComposerInput]);
 
   const flushStreamBuffer = useCallback(() => {
-    const buffer = tokenBufferRef.current;
-    if (buffer) {
+    const pending = tokenBufferRef.current;
+    if (pending) {
+      const buffer = pending.render();
       setMessages((prev) => {
         const updated = [...prev];
         if (updated.length > 0 && updated[updated.length - 1].role === "assistant") {
@@ -2600,7 +2601,7 @@ function TextChat({
               ? "The tools below work on the project's Source Folders. Anything outside them is refused by the server."
               : "",
           ].join("\n")
-        : "You are in Chat mode. Prioritize natural conversation, direct answers, learning, and exploration.";
+        : "You are in Chat mode. Respond naturally and directly in the user’s language unless they ask otherwise. Follow the conversation and adapt the level of detail to the request. For simple questions, keep answers concise; ask a clarifying question only when needed. Do not claim to know or have done things you cannot verify.";
       const approvalInstruction = assistantMode === "work"
         ? {
             ask: "Approval policy: ask before every action that changes files, runs commands, opens apps, or uses the network.",
@@ -2676,7 +2677,7 @@ function TextChat({
           baseMessages: nextMessages,
           requestMessages,
           generationOptions: {
-            temperature: textSettings?.temperature || 0.7,
+            temperature: textSettings?.temperature ?? 0.7,
             maxTokens: effectiveMaxTokens,
             topP: textSettings?.topP,
             topK: textSettings?.topK,
@@ -2704,7 +2705,7 @@ function TextChat({
 
       const streamOptions = {
         assistantMode,
-        temperature: textSettings?.temperature || 0.7,
+        temperature: textSettings?.temperature ?? 0.7,
         maxTokens: effectiveMaxTokens,
         topP: textSettings?.topP,
         topK: textSettings?.topK,
@@ -2727,37 +2728,30 @@ function TextChat({
           : Math.max(0.05, (now - requestStartedAt) / 1000);
         
         rawAssistantText = fullText;
-        const processed = processMessageContent(fullText, fullReasoning, deepThinkEnabled);
-        assistantText = processed.content;
-        assistantReasoning = processed.reasoning;
-
-        // Calculate thinking duration
-        if (processed.reasoning && !thinkingStartedAt) {
-          thinkingStartedAt = now;
-        }
-        if (processed.content && thinkingStartedAt && !thinkingEndedAt) {
-          thinkingEndedAt = now;
-          thinkingDuration = (thinkingEndedAt - thinkingStartedAt) / 1000;
-        }
-        const currentThinkingDuration = thinkingEndedAt 
-          ? thinkingDuration 
-          : (thinkingStartedAt ? (now - thinkingStartedAt) / 1000 : 0);
-
-        // Debounced stats update: only update stats every 250ms for smoother UI
-        // while text still updates per-frame via rAF batching
-        const currentStats = {
-          status: "streaming",
-          tokens: streamedTokens,
-          tokensPerSecond: streamedTokens / generationSeconds,
-          seconds: (now - requestStartedAt) / 1000,
-        };
-        // Adaptive paint batching keeps token intake fast while limiting expensive
-        // Markdown/chat renders to ~25 FPS when visible and ~6 FPS in background.
+        // Parsing the growing response for every token repeats work and can
+        // compete with typing. Only parse the newest snapshot at paint time.
         tokenBufferRef.current = {
-          content: processed.content,
-          reasoning: processed.reasoning,
-          thinkingDuration: currentThinkingDuration,
-          stats: currentStats,
+          render: () => {
+            const processed = processMessageContent(fullText, fullReasoning, deepThinkEnabled);
+            assistantText = processed.content;
+            assistantReasoning = processed.reasoning;
+            if (processed.reasoning && !thinkingStartedAt) thinkingStartedAt = now;
+            if (processed.content && thinkingStartedAt && !thinkingEndedAt) {
+              thinkingEndedAt = now;
+              thinkingDuration = (thinkingEndedAt - thinkingStartedAt) / 1000;
+            }
+            return {
+              content: processed.content,
+              reasoning: processed.reasoning,
+              thinkingDuration: thinkingEndedAt ? thinkingDuration : (thinkingStartedAt ? (now - thinkingStartedAt) / 1000 : 0),
+              stats: {
+                status: "streaming",
+                tokens: streamedTokens,
+                tokensPerSecond: streamedTokens / generationSeconds,
+                seconds: (now - requestStartedAt) / 1000,
+              },
+            };
+          },
         };
 
         scheduleStreamPaint();
@@ -2795,7 +2789,10 @@ function TextChat({
           const carried = await streamChatWithLlm(
             [...requestMessages, { role: "assistant", content: prefix }],
             streamOptions,
-            (text) => handleStreamToken(prefix + String(text || "")),
+            (token, fullText, reasoningToken, fullReasoning) => {
+              const fullAnswer = String(fullText || "");
+              handleStreamToken(token, fullAnswer.startsWith(prefix) ? fullAnswer : prefix + fullAnswer, reasoningToken, fullReasoning);
+            },
           );
           const extra = String(carried.content || "");
           answerText = extra.startsWith(prefix) ? extra : prefix + extra;
@@ -2804,11 +2801,13 @@ function TextChat({
         } catch (continuationError) {
           // Losing the answer so far would be worse than stopping here.
           if (controller.signal.aborted) break;
-          finalFinishReason = null;
+          finalFinishReason = "length";
           break;
         }
       }
 
+      // Include the final unpainted snapshot in thinking timing and fallbacks.
+      if (tokenBufferRef.current) tokenBufferRef.current.render();
       const completedAt = performance.now();
       let finalThinkingDuration = thinkingDuration;
       if (thinkingStartedAt && !thinkingEndedAt) {
@@ -2833,7 +2832,7 @@ function TextChat({
         tokensPerSecond: exactTokensPerSecond,
         seconds: exactSeconds,
         finishReason: finalFinishReason,
-        truncated: finalFinishReason === "length",
+        truncated: ["length", "stream_idle_partial", "stream_interrupted"].includes(finalFinishReason),
         continuations,
       };
       
@@ -2911,7 +2910,7 @@ function TextChat({
       );
       
     } catch (err) {
-      const interruptedBuffer = tokenBufferRef.current;
+      const interruptedBuffer = tokenBufferRef.current?.render();
       cancelPendingStreamPaint();
       if (err.name === "AbortError") {
         setMessages((prev) => {
@@ -3371,7 +3370,9 @@ function TextChat({
                           {message.generationStats.truncated && (
                             <div className="chat-generation-warning" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                               <span>
-                                {message.generationStats.continuations > 0
+                                {message.generationStats.finishReason !== "length"
+                                  ? "The response was interrupted and may be incomplete."
+                                  : message.generationStats.continuations > 0
                                   ? `The answer was carried on ${message.generationStats.continuations === 1 ? "once" : `${message.generationStats.continuations} times`} and still reached the token limit.`
                                   : "The answer reached the token limit."}
                               </span>
@@ -3572,7 +3573,7 @@ function TextChat({
                 onInput={(event) => { const value = event.currentTarget.value; updateComposerDraft(value); setComposerAssist(value.match(/(?:^|\s)([@/])[^\s]*$/)?.[1] || ""); }}
                 onPaste={(event) => { const files = Array.from(event.clipboardData?.files || []); if (files.length) { event.preventDefault(); addAttachmentFiles(files); } }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
                     event.preventDefault();
                     sendMessage();
                   }

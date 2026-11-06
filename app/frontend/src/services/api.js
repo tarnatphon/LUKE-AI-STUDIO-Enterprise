@@ -76,21 +76,24 @@ async function fetchWithTimeoutAndRetry(url, fetchOptions = {}, options = {}) {
 }
 
 async function readStreamChunkWithIdleTimeout(reader, idleTimeoutMs, signal) {
-  if (!idleTimeoutMs || idleTimeoutMs <= 0) return await reader.read();
-  return await Promise.race([
-    reader.read(),
-    new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error("The stream was idle for too long. Returning the completed partial response when available."));
-      }, idleTimeoutMs);
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          clearTimeout(timeoutId);
-          reject(new DOMException("The user aborted a request.", "AbortError"));
-        }, { once: true });
-      }
-    }),
-  ]);
+  if (signal?.aborted) throw new DOMException("The user aborted a request.", "AbortError");
+  let timeoutId;
+  let onAbort;
+  const interruption = new Promise((_, reject) => {
+    if (idleTimeoutMs > 0) {
+      timeoutId = setTimeout(() => reject(new Error("The stream was idle for too long.")), idleTimeoutMs);
+    }
+    if (signal) {
+      onAbort = () => reject(new DOMException("The user aborted a request.", "AbortError"));
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+  try {
+    return await Promise.race([reader.read(), interruption]);
+  } finally {
+    clearTimeout(timeoutId);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
 }
 
 // Cached hardware specs
@@ -793,9 +796,11 @@ function normalizeLlmJsonSchemaName(value) {
 export async function chatWithLlm(messages, options = {}) {
   const res = await fetchWithTimeoutAndRetry("/api/llm/chat", {
     method: "POST",
+    signal: options.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages,
+      assistantMode: options.assistantMode === "work" ? "work" : "chat",
       temperature: options.temperature,
       max_tokens: options.maxTokens,
       // New sampling parameters
@@ -860,7 +865,7 @@ export async function streamChatWithLlm(messages, options = {}, onToken = () => 
     });
   } catch (err) {
     if (options.allowNonStreamFallback !== false && !options.signal?.aborted) {
-      const fallback = await chatWithLlm(messages, { ...options, signal: undefined });
+      const fallback = await chatWithLlm(messages, options);
       if (fallback?.content) {
         onToken(fallback.content, fallback.content, "", "");
         return {
@@ -961,32 +966,48 @@ export async function streamChatWithLlm(messages, options = {}, onToken = () => 
   };
 
   let finished = false;
-  while (!finished) {
-    let chunk;
-    try {
-      chunk = await readStreamChunkWithIdleTimeout(reader, options.streamIdleTimeoutMs || STREAM_IDLE_TIMEOUT_MS, options.signal);
-    } catch (err) {
-      if ((content || reasoningContent) && err.name !== "AbortError") {
-        finishReason = "stream_idle_partial";
-        break;
+  let reachedEof = false;
+  try {
+    while (!finished) {
+      let chunk;
+      try {
+        chunk = await readStreamChunkWithIdleTimeout(reader, options.streamIdleTimeoutMs || STREAM_IDLE_TIMEOUT_MS, options.signal);
+      } catch (err) {
+        if ((content || reasoningContent) && err.name !== "AbortError") {
+          finishReason = "stream_idle_partial";
+          break;
+        }
+        throw err;
       }
-      throw err;
-    }
-    const { done, value } = chunk;
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const { done, value } = chunk;
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
 
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() || "";
-    for (const eventText of events) {
-      if (consumeEvent(eventText)) {
-        finished = true;
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || "";
+      for (const eventText of events) {
+        if (consumeEvent(eventText)) {
+          finished = true;
+          break;
+        }
+      }
+      if (done) {
+        reachedEof = true;
         break;
       }
     }
-    if (done) break;
+
+    if (!finished && reachedEof && buffer.trim()) finished = consumeEvent(buffer);
+    // A connection that ends without a completion marker or finish reason may
+    // have dropped mid-answer. Preserve the text but don't call it complete.
+    if (reachedEof && !finished && !finishReason && (content || reasoningContent)) {
+      finishReason = "stream_interrupted";
+    }
+  } finally {
+    // Stop the underlying network request when abandoning a pending read.
+    if (!reachedEof) reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 
-  if (!finished && buffer.trim()) consumeEvent(buffer);
   if (!content && !reasoningContent) throw new Error("The text model returned an empty streamed response.");
   return { content, reasoningContent, usage, timings, finishReason, webSources };
 }
