@@ -88,6 +88,20 @@ future features too, not just this one.
 
 ---
 
+### 2.1 "timed out" is not "not running"
+
+The probe waits 8 s by default. A port that accepts a connection but does not
+answer means the app **is** there and is still starting (a first boot after a pull
+scans models, repairs the bundle and warms the runtime) — restarting it mid-boot
+makes things worse. The doctor says so, and offers:
+
+```bash
+node scripts/tools/luke-which-build.cjs --timeout 20
+lsof -nP -iTCP:1420 -sTCP:LISTEN     # who owns the port
+```
+
+`connection refused` is the different case: nothing is listening at all.
+
 ## 3. In the app
 
 When `/api/health` says the bundle is older than the checkout, AI Library shows a

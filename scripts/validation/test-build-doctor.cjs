@@ -66,6 +66,26 @@ function main() {
   assert(down.cause === "server-down", "no server is reported as no server, not as a stale build");
   assert(down.steps.some((step) => /serve\.cjs/.test(step)), "and it says how to start one");
 
+  // ── 1b. a listening port that does not answer is not "no server" ──────────
+  const slow = doctor.classify(LOCAL, {
+    url: "http://127.0.0.1:1420", reachable: false, health: null, indexRef: "",
+    error: "no answer within 8.0s", kind: "timeout", timeoutMs: 8000, elapsedMs: 8000,
+  });
+  assert(slow.cause === "server-timeout", "a timeout is its own cause, not 'the app is closed'");
+  assert(slow.steps.some((step) => /--timeout 20/.test(step)), "and it offers a longer probe");
+  assert(slow.steps.some((step) => /lsof -nP -iTCP:1420/.test(step)), "and how to see who owns the port");
+  assert(slow.detail.includes("still starting"), "because a first boot after a pull really is slow");
+
+  const refused = doctor.classify(LOCAL, {
+    url: "http://127.0.0.1:1420", reachable: false, health: null, indexRef: "",
+    error: "connection refused (nothing is listening)", kind: "refused",
+  });
+  assert(refused.cause === "server-down", "connection refused is reported as no server");
+  assert(
+    refused.steps.some((step) => /serve\.cjs/.test(step)),
+    "with how to start one",
+  );
+
   // ── 2. the server is running from another folder ──────────────────────────
   const other = doctor.classify(LOCAL, server({ health: health({ root: "/repo/other-checkout" }) }));
   assert(other.cause === "other-checkout", "a server on a different folder is named as such");
@@ -165,6 +185,7 @@ function main() {
     encoding: "utf8",
   });
   assert(help.status === 0 && /--feature/.test(help.stdout), "--help documents the marker option");
+  assert(/--timeout/.test(help.stdout), "--help documents the timeout, because a first boot is slow");
 
   // ── 9. the in-app card ────────────────────────────────────────────────────
   assert(/library-build-warning/.test(managerSource), "AI Library shows the build warning");
