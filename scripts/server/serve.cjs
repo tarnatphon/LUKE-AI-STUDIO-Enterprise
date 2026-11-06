@@ -116,6 +116,7 @@ const {
   isConnectionLossError,
   withLlmSlot,
 } = require("./llm-request-guard.cjs");
+const { toolCallingArgs } = require("./llm-tool-calling.cjs");
 
 // LUKE_AI_TEXT_MODEL_ARENA_SINGLETON_V1
 let textModelPoolInstance = null;
@@ -1169,10 +1170,28 @@ const PREFERRED_BACKEND_PORT = readPort(process.env.BACKEND_PORT || process.env.
 const PREFERRED_LLM_PORT = readPort(process.env.LLM_PORT, 10086);
 const PREFERRED_SPEECH_PORT = readPort(process.env.SPEECH_PORT, 10088);
 const PREFERRED_TTS_PORT = readPort(process.env.TTS_PORT, 10089);
+
 let PORT_BACKEND = PREFERRED_BACKEND_PORT;
 let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
+
+// The largest context window LUKE will start llama.cpp with.
+//
+// 20000 is the default because that is what the memory planner can promise on a
+// laptop whose GPU is shared with everything else. An offline coding agent needs
+// more than that — its own system prompt and tool schemas are a large fraction
+// of 20000 before a single file is read — so the ceiling can be raised on
+// purpose: LUKE_LLM_MAX_CONTEXT=65536 ./mac.sh. It is a ceiling, not a request:
+// the saved or auto-planned window is still what gets loaded, and the KV cache
+// cost of the larger window is the user's to measure (llama.cpp prints it as
+// "KV self size" at start-up, and LUKE remembers that number).
+const LLM_CONTEXT_CEILING = (() => {
+  const requested = Number(process.env.LUKE_LLM_MAX_CONTEXT);
+  if (!Number.isFinite(requested) || requested < 512) return 20000;
+  return Math.min(262144, Math.floor(requested));
+})();
+
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
 const SERVER_BUILD = "text-image-v1";
 const ROOT    = path.join(__dirname, "..", "..");
@@ -2072,6 +2091,9 @@ let llmSettings = {
   batchSize: 512,
   ubatchSize: 512,
   performanceProfile: "balanced",
+  // Filled in at every model start: whether --jinja made it onto the command
+  // line, which is what decides if an agent can call a tool at all.
+  toolCalling: false,
 };
 
 function runExclusiveLlmOperation(operation) {
@@ -5119,6 +5141,9 @@ async function killLlm() {
   llmSettings.visionMode = "none";
   llmSettings.visionStatus = "Projector not loaded";
   llmSettings.mmproj = null;
+  // Nothing is serving any more, so no tool can be called: a stale `true` here
+  // would tell an offline coding agent the opposite of the truth.
+  llmSettings.toolCalling = false;
   if (!llmProc) {
     await waitForPortAvailable(PORT_LLM, 1500);
     return;
@@ -6546,7 +6571,7 @@ function isVisionModelFilename(filename = "") {
 function buildLlmLoadProfiles(settings = {}, backend = {}) {
   const requestedContext = Number(settings.contextSize);
   const safeContext = requestedContext && requestedContext > 0
-    ? Math.max(512, Math.min(20000, requestedContext))
+    ? Math.max(512, Math.min(LLM_CONTEXT_CEILING, requestedContext))
     : 4096;
   const isCpu = backend.key === "cpu" || backend.mode === "CPU";
   const profiles = [
@@ -6710,7 +6735,7 @@ async function startLlmWithBackend(settings = {}, backend) {
         );
       }
     } catch (_) {}
-    contextSize = Math.max(512, Math.min(20000, contextSize));
+    contextSize = Math.max(512, Math.min(LLM_CONTEXT_CEILING, contextSize));
   }
 
   const isSyclBackend = backend.mode.includes("SYCL") || path.basename(path.dirname(backend.path)).toLowerCase() === "sycl";
@@ -6849,6 +6874,17 @@ async function startLlmWithBackend(settings = {}, backend) {
   if (llmSettings.flashAttn) {
     args.push("--flash-attn", "on");
   }
+
+  // Tool calling. Without --jinja llama-server ignores the `tools` array, so an
+  // offline coding agent (Claude Code, OpenCode) answers in prose and never
+  // edits a file. Added only when this build advertises the flag, so an older
+  // backend still starts; LUKE_LLM_NO_JINJA=1 opts out per machine.
+  const toolArgs = toolCallingArgs({ binaryPath: backend.path });
+  for (const extra of toolArgs) {
+    if (!args.includes(extra)) args.push(extra);
+  }
+  llmSettings.toolCalling = toolArgs.length > 0;
+
   if (isSyclBackend) {
     args.push("--no-warmup");
   }

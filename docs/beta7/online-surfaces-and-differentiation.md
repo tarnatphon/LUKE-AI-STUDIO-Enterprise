@@ -150,10 +150,13 @@
 **ไฟล์**: `scripts/server/mcp-server.cjs`, `scripts/server/channel-relay.cjs`,
 route `/v1/chat/completions` ใน `serve.cjs`
 
-- **External gateway**: ตั้ง base URL ของ LM Studio / Ollama / Claude Code เป็น
-  `http://127.0.0.1:1420/v1` แล้วเรียก `/chat/completions` ได้เลย
+- **External gateway**: ตั้ง base URL ของ LM Studio / Ollama หรือแอปที่พูด OpenAI Chat
+  Completions เป็น `http://127.0.0.1:1420/v1` แล้วเรียก `/chat/completions` ได้เลย
   ตอบได้ทั้งแบบ JSON และ SSE; ถ้า free chain หมดและไม่มีโมเดล local → `503` พร้อมคำอธิบาย
   (ไม่ใช่ 500) ต้อง declare **ก่อน** `/v1/` proxy เดิม ไม่งั้นถูกส่งไป image backend
+  → ประตูนี้ยืม **cloud chain** ไม่ใช่โมเดลในเครื่อง (ออฟไลน์จึงได้ `503` เสมอ) และไม่ได้พูด
+  Anthropic Messages; Claude Code / OpenCode ที่ต้องการทำงานออฟไลน์ให้ชี้ไปที่
+  engine `127.0.0.1:10086` แทน ดู [offline-coding-agents.md](offline-coding-agents.md)
 - **MCP**: `POST /api/mcp` รองรับ `initialize`, `tools/list`, `tools/call`
   tools: `luke_status`, `luke_providers`, `luke_chat`, `luke_egress_report`
   ไม่มี tool แตะไฟล์ / terminal / key
