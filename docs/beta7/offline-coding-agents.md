@@ -149,6 +149,10 @@ That single number disqualifies the model most lists recommend:
 Ask the project instead of a blog — the answer comes from the catalog plus LUKE's
 own planner:
 
+Both slots at once — Work's model *and* the chat model that fits the same machine
+— is `node scripts/tools/luke-hardware-fit.cjs --profile mac-18`
+([hardware-fit.md](hardware-fit.md)).
+
 The same ranking is one click away in the app: **AI Library → Code AI** lists
 these models for the machine you are on, downloads the recommended file through
 the normal text-model pipeline, and can hand it straight to the Work slot

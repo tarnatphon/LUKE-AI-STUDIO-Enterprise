@@ -57,6 +57,10 @@ No default model is invented: a slot with no model is inert, and activation
 refuses with `NO_PROFILE_MODEL` rather than loading something the machine may not
 have. That also means this feature changes nothing until you use it.
 
+Which model to put in each slot is the other half of the question — and it has a
+command: `node scripts/tools/luke-hardware-fit.cjs` prints the best fit for both
+slots on this machine ([hardware-fit.md](hardware-fit.md)).
+
 `work` carries the two rules that make an agent work, as numbers rather than
 prose: `minContextTokens: 16384` and `maxTemperature: 0.6`. Configuring outside
 them is allowed and returns a warning explaining what will go wrong.
