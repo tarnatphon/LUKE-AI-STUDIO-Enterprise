@@ -277,6 +277,19 @@ async function main() {
     "the heading says Code Model Library while that tab is open",
   );
   assert(
+    /Local \{localModelTypeLabel\} Models/.test(managerSource)
+      && /const isCodeLibrary = activeModelType === "text" && textLibraryMode === "code"/.test(managerSource),
+    "the local-models heading says Code, not Text, while the code tab is open",
+  );
+  assert(
+    /isCodeLibrary \? "Code Model Context Window" : "Text Model Context Window"/.test(managerSource),
+    "and the context-window card it shares with Text is relabelled too",
+  );
+  assert(
+    /No code models detected in app\/llm-models\//.test(managerSource),
+    "an empty code library says so instead of talking about text models",
+  );
+  assert(
     /handleUseCodeModelForWork\(\{ id: filename, name: filename, filename \}\)/.test(managerSource),
     "a GGUF already on disk can be made the Work model from its row",
   );

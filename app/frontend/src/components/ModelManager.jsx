@@ -407,6 +407,19 @@ function ModelManager({
     ? displayedLocalModels.map((model) => model.filename)
     : normalizedLocalModels.map((model) => model.filename);
   const modelNames = displayedLocalModels.map((model) => model.filename);
+  // The Code tab reuses the text slot (same llama.cpp, same app/llm-models),
+  // so labels that only look at activeModelType would call it "Text" while the
+  // Code Models (GGUF) tab is the one selected.
+  const isCodeLibrary = activeModelType === "text" && textLibraryMode === "code";
+  const localModelTypeLabel = isCodeLibrary
+    ? "Code"
+    : activeModelType === "image"
+      ? "Image"
+      : activeModelType === "text"
+        ? "Text"
+        : activeModelType === "speech"
+          ? "Speech"
+          : "TTS";
   const isBusy = loadingModelId !== null || isUnloading;
   
   const openvinoSupported = Boolean(backendOptions?.openvinoNpu?.supported);
@@ -1956,7 +1969,7 @@ function ModelManager({
       {activeModelType === "text" && (
         <div className="m3-card" style={{ marginTop: "24px", marginBottom: "16px" }}>
           <div className="workspace-title-section" style={{ marginBottom: "14px" }}>
-            <h3 className="m3-card-title">Text Model Context Window</h3>
+            <h3 className="m3-card-title">{isCodeLibrary ? "Code Model Context Window" : "Text Model Context Window"}</h3>
             <span className="settings-value-badge">{contextWindow.toLocaleString()} / 20,000</span>
           </div>
 
@@ -2023,7 +2036,7 @@ function ModelManager({
       <div className="m3-card" style={{ marginTop: "24px" }}>
         <h3 className="m3-card-title">
           <Database size={18} style={{ color: "var(--md-sys-color-primary)" }} />
-          Local {activeModelType === "image" ? "Image" : activeModelType === "text" ? "Text" : activeModelType === "speech" ? "Speech" : "TTS"} Models ({displayedLocalModels.length})
+          Local {localModelTypeLabel} Models ({displayedLocalModels.length})
         </h3>
         
         {isLoadingModels ? (
@@ -2035,6 +2048,8 @@ function ModelManager({
           <p style={{ fontSize: "0.9rem", color: "var(--md-sys-color-outline)", textAlign: "center", padding: "16px 0" }}>
             {activeModelType === "image"
               ? "No image models detected in app/models/. Download from the library below or import a file."
+              : isCodeLibrary
+              ? "No code models detected in app/llm-models/. Download from the Code Model Library below or import a .gguf file."
               : activeModelType === "text"
               ? "No text models detected in app/llm-models/. Download from the library below or import a file."
               : activeModelType === "speech"

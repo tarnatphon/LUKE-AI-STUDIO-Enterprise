@@ -66,6 +66,40 @@ function main() {
   assert(down.cause === "server-down", "no server is reported as no server, not as a stale build");
   assert(down.steps.some((step) => /serve\.cjs/.test(step)), "and it says how to start one");
 
+  // ── 1a. /Volumes/AI and /Volumes/ai are one folder ────────────────────────
+  assert(doctor.sameFolder("/a/b", "/a/b") === true, "identical paths are the same folder");
+  assert(
+    doctor.sameFolder("/Volumes/AI", "/Volumes/ai", {
+      realpath: (p) => p.toLowerCase(),
+      stat: () => ({ dev: 1, ino: 7 }),
+    }) === true,
+    "a case-insensitive volume does not split one folder into two",
+  );
+  assert(
+    doctor.sameFolder("/Volumes/ai-a", "/Volumes/ai", {
+      realpath: (p) => p,
+      stat: (p) => ({ dev: 1, ino: p.length }),
+    }) === false,
+    "two real folders with different inodes stay different",
+  );
+  const ciLocal = { ...LOCAL, root: "/Volumes/AI" };
+  const ciServer = server({ health: { root: "/Volumes/ai" } });
+  const ciVerdict = doctor.classify(ciLocal, ciServer, {
+    realpath: (p) => p.toLowerCase(),
+    stat: () => ({ dev: 1, ino: 7 }),
+  });
+  assert(
+    ciVerdict.cause !== "other-checkout",
+    "so a case-only difference is not reported as 'running from a different folder'",
+  );
+  assert(
+    doctor.classify(LOCAL, server({ health: { root: "/Volumes/ai" } }), {
+      realpath: (p) => p,
+      stat: (p) => ({ dev: 1, ino: p === "/Volumes/ai" ? 1 : 2 }),
+    }).cause === "other-checkout",
+    "while a genuinely different folder still is",
+  );
+
   // ── 1b. a listening port that does not answer is not "no server" ──────────
   const slow = doctor.classify(LOCAL, {
     url: "http://127.0.0.1:1420", reachable: false, health: null, indexRef: "",
