@@ -1070,6 +1070,7 @@ const chatHistory = require("./chat-history-archive.cjs");
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
 const modelCache = require("./model-cache.cjs");
+const llmLoadPolicy = require("./llm-load-policy.cjs");
 const kimiK3 = require("./kimi-k3.cjs");
 const fluxSchnell = require("./flux-schnell.cjs");
 const imageDiffusionSupport = require("./image-diffusion-support.cjs");
@@ -1177,7 +1178,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v5-kimi";
+const SERVER_BUILD = "text-image-v6-llm-recovery";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
@@ -5090,18 +5091,16 @@ function pingLlmReady(expectedModel = "") {
   });
 }
 
-async function waitForLlmReady(maxAttempts = 240, expectedProc = llmProc, expectedModel = "") {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (!expectedProc || llmProc !== expectedProc) throw new Error(llmError || "llama.cpp exited during startup.");
-    if (await pingLlmReady(expectedModel)) {
-      llmReady = true;
-      llmModelLoadingBytes = 0;
-      noteEngineUsed("text");
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`llama.cpp did not become ready within ${Math.round(maxAttempts / 120)} minutes.`);
+async function waitForLlmReady(timeoutMs, expectedProc = llmProc, expectedModel = "") {
+  await llmLoadPolicy.waitForReady({
+    timeoutMs,
+    deadline: llmLoadProgress?.deadline || Date.now() + timeoutMs,
+    isAlive: () => Boolean(expectedProc && llmProc === expectedProc && expectedProc.exitCode === null && expectedProc.signalCode === null),
+    checkReady: () => pingLlmReady(expectedModel),
+    getError: () => llmError,
+    getTail: () => llmLoadProgress?.tail || "",
+    markReady: () => { llmReady = true; llmModelLoadingBytes = 0; noteEngineUsed("text"); },
+  });
 }
 
 function waitForChildExit(proc, timeoutMs) {
@@ -6592,17 +6591,7 @@ function buildLlmLoadProfiles(settings = {}, backend = {}) {
   const isCpu = backend.key === "cpu" || backend.mode === "CPU";
   const profiles = [
     { name: "requested", gpuLayers: isCpu ? 0 : undefined },
-    {
-      name: "safe",
-      contextSize: safeContext,
-      gpuLayers: isCpu ? 0 : 0,
-      flashAttn: false,
-      cacheTypeK: "q4_0",
-      cacheTypeV: "q4_0",
-      batchSize: 256,
-      ubatchSize: 256,
-      enableThinking: false,
-    },
+    llmLoadPolicy.safeProfile(safeContext),
   ];
   return profiles;
 }
@@ -6696,7 +6685,7 @@ async function startLlm(settings = {}) {
   }
   const last = failures[failures.length - 1];
   llmSettings.backendFallbacks = failures;
-  throw new Error(`Text model failed on all available llama.cpp backends. Last failure: ${last?.error || "unknown error"}`);
+  throw new Error(`Text model failed on all available llama.cpp backends. ${failures.map(f => `[${f.backend}/${f.profile}] ${f.error}`).join("\n") || last?.error || "unknown error"}`);
 }
 
 async function startLlmWithBackend(settings = {}, backend) {
@@ -6760,9 +6749,10 @@ async function startLlmWithBackend(settings = {}, backend) {
   const isSyclBackend = backend.mode.includes("SYCL") || path.basename(path.dirname(backend.path)).toLowerCase() === "sycl";
   const requestedGpuLayers = Number.isFinite(Number(loadProfile.gpuLayers ?? settings.gpuLayers)) ? Number(loadProfile.gpuLayers ?? settings.gpuLayers) : -1;
   const effectiveGpuLayers = isSyclBackend ? getStableSyclGpuLayers(filename, requestedGpuLayers) : requestedGpuLayers;
-  const effectiveFlashAttn = isSyclBackend ? false : (loadProfile.flashAttn ?? (settings.flashAttn !== false));
-  const effectiveCacheTypeK = isSyclBackend ? "q4_0" : loadProfile.cacheTypeK || settings.cacheTypeK || llmSettings.cacheTypeK || "q8_0";
-  const effectiveCacheTypeV = isSyclBackend ? "q4_0" : loadProfile.cacheTypeV || settings.cacheTypeV || llmSettings.cacheTypeV || "q8_0";
+  const isMacCpuOnly = osPlatform === "darwin" && effectiveGpuLayers === 0;
+  const effectiveFlashAttn = isSyclBackend || isMacCpuOnly ? false : (loadProfile.flashAttn ?? (settings.flashAttn !== false));
+  const effectiveCacheTypeK = isMacCpuOnly ? "f16" : isSyclBackend ? "q4_0" : loadProfile.cacheTypeK || settings.cacheTypeK || llmSettings.cacheTypeK || "q8_0";
+  const effectiveCacheTypeV = isMacCpuOnly ? "f16" : isSyclBackend ? "q4_0" : loadProfile.cacheTypeV || settings.cacheTypeV || llmSettings.cacheTypeV || "q8_0";
   const effectiveBatchSize = isSyclBackend ? Math.min(256, Number(loadProfile.batchSize ?? settings.batchSize) || llmSettings.batchSize || 512) : Number(loadProfile.batchSize ?? settings.batchSize) || llmSettings.batchSize || 512;
   const effectiveUbatchSize = isSyclBackend ? Math.min(256, Number(loadProfile.ubatchSize ?? settings.ubatchSize) || llmSettings.ubatchSize || 512) : Number(loadProfile.ubatchSize ?? settings.ubatchSize) || llmSettings.ubatchSize || 512;
   const effectiveEnableThinking = isSyclBackend && effectiveGpuLayers === 0 ? false : (loadProfile.enableThinking ?? (settings.enableThinking === true));
@@ -6801,7 +6791,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     contextSize: contextSize,
     gpuLayers: effectiveGpuLayers,
     requestedGpuLayers,
-    backendMode: backend.mode,
+    backendMode: isMacCpuOnly ? "CPU (Metal offload disabled)" : backend.mode,
     backendBinary: path.basename(backend.path),
     loadProfile: loadProfile.name || "requested",
     enableThinking: effectiveEnableThinking,
@@ -6872,7 +6862,14 @@ async function startLlmWithBackend(settings = {}, backend) {
     }
   }
 
+  let cpuIsolation = [];
+  if (osPlatform === "darwin" && effectiveGpuLayers === 0) {
+    const helpResult = spawnSync(backend.path, ["--help"], { encoding: "utf8", timeout: 8000, env: { ...process.env, DYLD_LIBRARY_PATH: path.dirname(backend.path) + (process.env.DYLD_LIBRARY_PATH ? `:${process.env.DYLD_LIBRARY_PATH}` : "") } });
+    cpuIsolation = llmLoadPolicy.cpuIsolationArgs({ platform: osPlatform, gpuLayers: effectiveGpuLayers, help: `${helpResult.stdout || ""} ${helpResult.stderr || ""}` });
+  }
   const args = [
+    ...cpuIsolation,
+    "--alias", filename,
     "--model", loadPath,
     "--host", "127.0.0.1",
     "--port", String(PORT_LLM),
@@ -6890,9 +6887,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     "--batch-size", String(llmSettings.batchSize),       // ✅ Prompt processing batch
     "--ubatch-size", String(llmSettings.ubatchSize),     // ✅ Micro-batch size
   ];
-  if (llmSettings.flashAttn) {
-    args.push("--flash-attn", "on");
-  }
+  args.push("--flash-attn", llmSettings.flashAttn ? "on" : "off");
   if (isSyclBackend) {
     args.push("--no-warmup");
   }
@@ -7003,7 +6998,8 @@ async function startLlmWithBackend(settings = {}, backend) {
         { contextSize: Number(llmSettings.contextSize), kvMib },
       );
     }
-    if (/Vulkan\d+\s*:/i.test(output)) llmSettings.backendMode = "Vulkan GPU";
+    if (isMacCpuOnly) llmSettings.backendMode = "CPU (Metal offload disabled)";
+    else if (/Vulkan\d+\s*:/i.test(output)) llmSettings.backendMode = "Vulkan GPU";
     else if (/CUDA\d+\s*:/i.test(output)) llmSettings.backendMode = "CUDA GPU";
     else if (/(HIP|ROCm)\d*\s*:/i.test(output)) llmSettings.backendMode = "ROCm GPU";
     else if (/SYCL\d+\s*:/i.test(output)) llmSettings.backendMode = "SYCL GPU";
@@ -7025,7 +7021,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     console.log("  [llm] exited with code", code, `(process ${procSeq})`);
   });
 
-  await waitForLlmReady(backend.key === "cpu" ? 720 : 360, proc, filename);
+  await waitForLlmReady(effectiveGpuLayers === 0 || backend.key === "cpu" ? 10 * 60 * 1000 : 5 * 60 * 1000, proc, filename);
 }
 
 function getFluxBackendStatus() {

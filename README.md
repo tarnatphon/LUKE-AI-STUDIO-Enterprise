@@ -649,3 +649,24 @@ Vision projector installation, native image/video input, distributed loading
 across machines, and million-token contexts are **not implemented** here. No Kimi
 weights or runtime binaries are bundled. End-to-end inference on a suitably large
 machine remains unverified; automated tests use small mock shard fixtures.
+
+### Chat load recovery on macOS
+
+If llama.cpp crashes with a `ggml-metal-device.m` assertion, the requested GPU
+load may have failed before the assertion (which can occur during cleanup).
+LUKE now retries with an isolated CPU profile: zero GPU layers, `--device none`,
+no KV/operation offload, explicit flash attention off, F16 KV caches and smaller
+batches. This requires those CPU-isolation flags in the installed llama.cpp;
+older backends receive an update-required error instead of silently reusing
+Metal. Explicit zero-layer requests on macOS also use this isolation.
+
+Readiness checks use a deterministic model alias and a wall-clock deadline:
+five minutes for GPU attempts, ten minutes for CPU attempts, both capped by the
+existing twenty-minute overall load budget. This is not an indefinite wait and
+cannot fix an incompatible architecture, corrupt model or native backend bug.
+Timeouts retain the last captured backend output, and final failures include
+all attempted backend/profile errors. Successful CPU recovery can be much slower
+than GPU inference. On restart, the server build is `text-image-v6-llm-recovery`.
+
+Tests: `node scripts/validation/test-llm-load-policy.cjs`. Real Gemma/Metal
+recovery must still be confirmed on the affected Mac.

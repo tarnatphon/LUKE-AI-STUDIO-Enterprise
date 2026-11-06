@@ -96,7 +96,7 @@ async function readStreamChunkWithIdleTimeout(reader, idleTimeoutMs, signal) {
 // Cached hardware specs
 let cachedSpecs = null;
 let cachedBackendPort = null;
-export const EXPECTED_SERVER_BUILD = "text-image-v5-kimi";
+export const EXPECTED_SERVER_BUILD = "text-image-v6-llm-recovery";
 
 export const isLocalServerMode = () => {
   if (typeof window === "undefined") return false;
