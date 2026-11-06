@@ -4,6 +4,9 @@ import { safeExternalUrl } from "../lib/safe-link.mjs";
 import React, { memo, useState, useEffect, useCallback } from "react";
 import { FolderOpen, DownloadCloud, RefreshCw, Database, Trash2, Square, HardDrive, Library, AlertTriangle, Search, X } from "lucide-react";
 import { 
+  getKimiK3Status,
+  installKimiK3,
+  cancelKimiK3,
   getFluxSchnellStatus,
   installFluxSchnell,
   listLocalModels, 
@@ -65,16 +68,16 @@ const TEXT_LIBRARY_SECTIONS = [
 
 const FEATURED_OPEN_MODELS = [
   {
-    id: "moonshotai/Kimi-K3",
-    name: "Kimi K3",
-    publisher: "Moonshot AI",
-    format: "Open-weight repository",
-    approxSize: "Very large; advanced hardware required",
-    notes: "Official native multimodal Kimi model. This repository is not a single GGUF file, so LUKE AI opens the official model page instead of pretending it can perform a one-click local install.",
-    pageUrl: "https://huggingface.co/moonshotai/Kimi-K3",
-    actionType: "open-page",
-    tags: ["text", "vision", "open", "multimodal"],
-    fitLabel: "Advanced hardware",
+    id: "unsloth/Kimi-K3-GGUF",
+    name: "Kimi K3 · UD-IQ1_S",
+    publisher: "Moonshot AI / Unsloth quantization",
+    filename: "Kimi-K3-UD-IQ1_S-00001-of-00015.gguf",
+    format: "Split GGUF · 15 shards · text-only integration",
+    approxSize: "594 GB download; 610 GB estimated memory floor",
+    notes: "ติดตั้ง GGUF ครบ 15 ไฟล์ พร้อมตรวจ RAM/VRAM, ดิสก์ และ llama.cpp ที่รู้จัก kimi-k3 ก่อนเปิดปุ่ม. โหลดผ่านไฟล์แรกเท่านั้น รุ่นนี้เป็น community quantization ไม่ใช่โมเดลขนาดเล็ก. LUKE เปิดใช้ข้อความเท่านั้น ยังไม่ติดตั้ง vision projector. ใช้ CPU-first / context 4096 เพื่อความระมัดระวัง อาจช้ามาก.",
+    pageUrl: "https://huggingface.co/unsloth/Kimi-K3-GGUF",
+    kimiBundle: true,
+    tags: ["text", "open"],
     recommendedFit: false,
   },
 ];
@@ -342,6 +345,8 @@ function ModelManager({
   const [videoActionBusy, setVideoActionBusy] = useState(false);
   const [localModels, setLocalModels] = useState([]);
   const [imageComponentStatus, setImageComponentStatus] = useState({});
+  const [kimiStatus, setKimiStatus] = useState(null);
+  const [kimiBusy, setKimiBusy] = useState(false);
   const [fluxStatus, setFluxStatus] = useState(null);
   const [fluxInstalling, setFluxInstalling] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -552,6 +557,18 @@ function ModelManager({
     setArenaInstances([]);
   };
   
+  useEffect(() => {
+    if (activeModelType !== "text" || textLibraryMode !== "open") return;
+    let disposed = false;
+    const refresh = async () => {
+      try { const status = await getKimiK3Status(); if (!disposed) setKimiStatus(status); }
+      catch(error) { if (!disposed) setKimiStatus({ error: error.message }); }
+    };
+    refresh();
+    const timer = setInterval(refresh, 3000);
+    return () => { disposed = true; clearInterval(timer); };
+  }, [activeModelType, textLibraryMode]);
+
   let visibleModelLibrary = [];
   if (activeModelType === "image") {
     visibleModelLibrary = [...MODEL_LIBRARY, ...QWEN_IMAGE_COMPONENT_LIBRARY];
@@ -897,6 +914,16 @@ function ModelManager({
   };
 
   const handleLibraryDownload = async (model) => {
+    if (model.kimiBundle) {
+      if (kimiStatus?.installed) { await handleLoadModel(model.filename); return; }
+      if (!(await showConfirm({ title: "ติดตั้ง Kimi K3 ประมาณ 594 GB?", message: `${kimiStatus?.hardware?.reason || ""}\nดาวน์โหลด 15 ไฟล์จาก Unsloth ตาม revision เดียวกัน ใช้ข้อความเท่านั้น; โปรดอ่าน Kimi K3 License ที่หน้าโมเดลก่อนยืนยัน ไม่ดาวน์โหลด vision projector`, confirmLabel: "ยืนยันติดตั้ง 594 GB" }))) return;
+      setKimiBusy(true);
+      try {
+        const status = await installKimiK3(); setKimiStatus(status); startProgressPolling(model.filename);
+      } catch(error) { showAlert({ title: "Kimi install failed", message: error.message, danger: true }); }
+      finally { setKimiBusy(false); }
+      return;
+    }
     if (model.fluxVariant) {
       const confirmed = await showConfirm({ title: "ติดตั้ง FLUX Schnell พร้อมไฟล์ประกอบ?", message: `${fluxStatus?.assessment?.reason || ""}\n${model.approxSize}; ดาวน์โหลด 4 ไฟล์และข้ามไฟล์ที่มีแล้ว หากล้มเหลวให้กดติดตั้งอีกครั้งเพื่อซ่อมไฟล์ที่ขาด`, confirmLabel: "ติดตั้ง / Install" });
       if (!confirmed) return;
@@ -2209,12 +2236,13 @@ function ModelManager({
                 const hasProjector = !model.projectorFilename || allModelNames.includes(model.projectorFilename);
                 const needsProjector = Boolean(hasMainModel && model.projectorFilename && !hasProjector);
                 const fluxReady = !model.fluxVariant || ["flux-clip-l", "flux-t5", "flux-vae"].every(id => imageComponentStatus[id]?.installed);
-                const installed = model.componentType ? hasMainModel : hasMainModel && hasProjector && fluxReady;
+                const installed = model.kimiBundle ? Boolean(kimiStatus?.installed) : model.componentType ? hasMainModel : hasMainModel && hasProjector && fluxReady;
+                const kimiBlocked = model.kimiBundle && (kimiBusy || kimiStatus?.active || isBusy || !kimiStatus?.hardware?.eligible || !kimiStatus?.backendReady);
                 const fluxBlocked = model.fluxVariant && (fluxInstalling || activeDownloadJobs.length > 0 || isBusy || !fluxStatus?.backend?.ready || !fluxStatus?.assessment?.variant || (model.fluxVariant === "q8" && Number(specs?.ram_total_gb) < 48));
                 const downloadJob = getDownloadJob(model.filename, model.projectorFilename, `${model.filename}.zip`);
                 const downloading = Boolean(downloadJob?.active);
                 const systemTier = getHardwareTier(specs);
-                const isRecommended = model.fluxVariant ? fluxStatus?.assessment?.variant === model.fluxVariant : typeof model.recommendedFit === "boolean"
+                const isRecommended = model.kimiBundle ? Boolean(kimiStatus?.hardware?.eligible && kimiStatus?.backendReady) : model.fluxVariant ? fluxStatus?.assessment?.variant === model.fluxVariant : typeof model.recommendedFit === "boolean"
                   ? model.recommendedFit
                   : model.recommendedTiers && model.recommendedTiers.includes(systemTier);
                 const fitLabel = model.fitLabel || "Recommended Fit";
@@ -2259,6 +2287,12 @@ function ModelManager({
                     <p style={{ fontSize: "0.78rem", color: "var(--md-sys-color-on-surface-variant)", lineHeight: 1.35, margin: 0 }}>
                       {model.notes}
                     </p>
+                    {model.kimiBundle && <div role="status" style={{ fontSize: "0.8rem" }}>
+                      <p>{kimiStatus?.hardware?.reason || kimiStatus?.error || "กำลังประเมิน Kimi K3…"}</p>
+                      <p>{kimiStatus?.backendReason}</p>
+                      {kimiStatus?.error && <p>{kimiStatus.error}</p>}
+                      {kimiStatus?.active && <><p>Shard {kimiStatus.current} / {kimiStatus.total}</p><button type="button" className="m3-btn m3-btn-error" onClick={async () => { try { await cancelKimiK3(); setKimiStatus(await getKimiK3Status()); } catch(error) { showAlert({ title: "Cancel failed", message: error.message }); } }}>ยกเลิกการติดตั้ง Kimi</button></>}
+                    </div>}
                     {model.fluxVariant && <p role="status" style={{ fontSize: "0.8rem", margin: 0 }}>
                       {fluxStatus?.error || fluxStatus?.assessment?.reason || "กำลังประเมินฮาร์ดแวร์…"}
                       {fluxStatus?.backend && !fluxStatus.backend.ready && ` ${fluxStatus.backend.reason}`}
@@ -2305,10 +2339,10 @@ function ModelManager({
                         }
                         handleLibraryDownload(model);
                       }}
-                      disabled={Boolean(fluxBlocked) || ((installed || downloading) && !model.actionType && !model.fluxVariant)}
+                      disabled={Boolean(kimiBlocked || fluxBlocked) || ((installed || downloading) && !model.actionType && !model.fluxVariant && !model.kimiBundle)}
                     >
                       {model.actionType === "connect-cloud" ? <Library size={14} /> : model.actionType === "open-page" ? <Library size={14} /> : installed ? <HardDrive size={14} /> : downloading ? <RefreshCw className="progress-spinner" size={14} /> : <DownloadCloud size={14} />}
-                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? (model.actionLabel || "View Official Model") : model.fluxVariant ? (installed ? "โหลดใช้งาน / Load" : "ติดตั้งครบชุด / Install bundle") : installed ? (model.componentType ? "Installed" : "Downloaded") : downloading ? "Downloading" : needsProjector ? "Download Vision File" : model.componentType ? "Install component" : "Download"}</span>
+                      <span>{model.actionType === "connect-cloud" ? "Connect" : model.actionType === "open-page" ? (model.actionLabel || "View Official Model") : model.kimiBundle ? (kimiStatus?.active ? "กำลังติดตั้ง…" : installed ? "โหลดใช้งาน / Load" : "ติดตั้งครบชุด / Install") : model.fluxVariant ? (installed ? "โหลดใช้งาน / Load" : "ติดตั้งครบชุด / Install bundle") : installed ? (model.componentType ? "Installed" : "Downloaded") : downloading ? "Downloading" : needsProjector ? "Download Vision File" : model.componentType ? "Install component" : "Download"}</span>
                     </button>
                     <a
                       href={safeExternalUrl(model.pageUrl) || safeExternalUrl(model.url) || undefined}

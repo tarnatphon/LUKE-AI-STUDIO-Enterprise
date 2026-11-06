@@ -1070,6 +1070,7 @@ const chatHistory = require("./chat-history-archive.cjs");
 // that loads from the internal disk instead of an external one.
 const { planRuntimeSettings, planDraftSettings, benchmarkRunningLlm, draftArgs } = require("./llm-performance.cjs");
 const modelCache = require("./model-cache.cjs");
+const kimiK3 = require("./kimi-k3.cjs");
 const fluxSchnell = require("./flux-schnell.cjs");
 const imageDiffusionSupport = require("./image-diffusion-support.cjs");
 // Two heavy loads at once is what makes a small machine swap, and a model that is
@@ -1176,7 +1177,7 @@ let PORT_LLM = PREFERRED_LLM_PORT;
 let PORT_SPEECH = PREFERRED_SPEECH_PORT;
 let PORT_TTS = PREFERRED_TTS_PORT;
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_BUILD = "text-image-v4-flux";
+const SERVER_BUILD = "text-image-v5-kimi";
 const ROOT    = path.join(__dirname, "..", "..");
 
 let socialAgencyRuntime = null;
@@ -1818,6 +1819,7 @@ function directorySizeBytes(dirPath, depth = 0) {
 
 function estimateModelBytes(modelPath) {
   if (!modelPath) return 0;
+  if (kimiK3.isKimi(modelPath)) return kimiK3.bundleBytes(path.dirname(modelPath));
   try {
     const stats = fs.statSync(modelPath);
     if (stats.isFile()) return stats.size;
@@ -2849,7 +2851,7 @@ function chooseAutoLayers(modelFilename, freeVramBytes, cacheTypeK = "q8_0", cac
     const modelPath = path.join(LLM_MODELS, modelFilename);
     if (fs.existsSync(modelPath)) {
       const stats = fs.statSync(modelPath);
-      modelSizeGb = stats.size / (1024 * 1024 * 1024);
+      modelSizeGb = estimateModelBytes(modelPath) / (1024 * 1024 * 1024);
     }
   } catch (_) {}
   
@@ -4219,14 +4221,15 @@ function getLlmModels() {
   try {
     return fs.readdirSync(LLM_MODELS)
       .filter((filename) => filename.toLowerCase().endsWith(".gguf"))
+      .filter(filename => !kimiK3.isKimi(filename) || (filename === kimiK3.FIRST && kimiK3.installed(LLM_MODELS)))
       .map((filename) => {
         const stats = fs.statSync(path.join(LLM_MODELS, filename));
         const lower = filename.toLowerCase();
         return {
           filename,
           name: filename,
-          sizeBytes: stats.size,
-          size: formatBytes(stats.size),
+          sizeBytes: kimiK3.isKimi(filename) ? kimiK3.bundleBytes(LLM_MODELS) : stats.size,
+          size: formatBytes(kimiK3.isKimi(filename) ? kimiK3.bundleBytes(LLM_MODELS) : stats.size),
           format: "GGUF",
           isProjector: lower.includes("mmproj"),
         };
@@ -6480,7 +6483,7 @@ function evaluateContextPlan(modelFilename, isGpu) {
     const modelPath = path.join(LLM_MODELS, modelFilename);
     if (fs.existsSync(modelPath)) {
       const stats = fs.statSync(modelPath);
-      modelSizeGb = stats.size / (1024 * 1024 * 1024);
+      modelSizeGb = estimateModelBytes(modelPath) / (1024 * 1024 * 1024);
     }
   } catch (_) {}
 
@@ -6581,6 +6584,7 @@ function isVisionModelFilename(filename = "") {
 }
 
 function buildLlmLoadProfiles(settings = {}, backend = {}) {
+  if (kimiK3.isKimi(settings.model)) return [{ name: "kimi-conservative", gpuLayers: 0, enableThinking: true, cacheTypeK: "f16", cacheTypeV: "f16", contextSize: 4096, batchSize: 64, ubatchSize: 64 }];
   const requestedContext = Number(settings.contextSize);
   const safeContext = requestedContext && requestedContext > 0
     ? Math.max(512, Math.min(20000, requestedContext))
@@ -6617,7 +6621,9 @@ async function startLlm(settings = {}) {
   // top of it is what turns a slow load into a swap storm.
   await waitForOtherModelLoad({ target: "text" });
 
-  const candidates = getLlmBackendCandidates();
+  kimiManager.assertLoad(filename);
+  if (kimiK3.isKimi(filename)) settings = { ...settings, contextSize: Math.min(4096, Number(settings.contextSize) || 4096), gpuLayers: 0, enableThinking: true, cacheTypeK: "f16", cacheTypeV: "f16", batchSize: 64, ubatchSize: 64 };
+  const candidates = kimiK3.isKimi(filename) ? kimiManager.compatible() : getLlmBackendCandidates();
   if (candidates.length === 0) {
     throw new Error("llama.cpp is not installed. Run the platform setup script to install the text backend.");
   }
@@ -6695,6 +6701,7 @@ async function startLlm(settings = {}) {
 
 async function startLlmWithBackend(settings = {}, backend) {
   const filename = path.basename(String(settings.model || ""));
+  kimiManager.assertLoad(filename, backend?.path);
   const modelPath = path.join(LLM_MODELS, filename);
   if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
     throw clientError("Select a downloaded GGUF text model first.");
@@ -6707,7 +6714,7 @@ async function startLlmWithBackend(settings = {}, backend) {
   // disk, so neither location is assumed here.
   let loadPath = modelPath;
   try {
-    const plan = await modelCache.cachedCopyFor(modelPath);
+    const plan = kimiK3.isKimi(filename) ? { cached: false, shouldCache: false } : await modelCache.cachedCopyFor(modelPath);
     if (plan.cached && pathInside(plan.cachedPath, plan.cacheDir)) {
       loadPath = plan.cachedPath;
       console.log(`  [llm] Loading ${filename} from the ${plan.onInternalDisk ? "internal disk" : "app"} cache (${plan.sizeGb} GB).`);
@@ -6904,12 +6911,14 @@ async function startLlmWithBackend(settings = {}, backend) {
     args.push("--mmap");                     // ✅ Faster model loading
   }
   
-  if (llmSettings.enableThinking === false) {
+  if (kimiK3.isKimi(filename)) {
+    args.push("--jinja", "--chat-template-kwargs", JSON.stringify({ preserve_thinking: true }));
+  } else if (llmSettings.enableThinking === false) {
     args.push("--reasoning", "off");           // ✅ Disable reasoning/thinking completely
   } else if (llmSettings.supportsThinking) {
     args.push("--reasoning", "on");            // ✅ Enable reasoning for supported models
   }
-  if (llmSettings.enableThinking === true && llmSettings.supportsThinking) {
+  if (!kimiK3.isKimi(filename) && llmSettings.enableThinking === true && llmSettings.supportsThinking) {
     args.push("--reasoning-format", "deepseek"); // ✅ Extract thoughts into reasoning_content
   }
   // Speculative decoding: a small draft model guesses ahead and the big model
@@ -7511,6 +7520,15 @@ let downloadState = {
 let activeDownload = null;
 const activeModelDownloads = new Map();
 const MAX_PARALLEL_MODEL_DOWNLOADS = 4;
+const kimiManager = kimiK3.createManager({
+  dir: LLM_MODELS,
+  getSpecs: getHardwareSpecs,
+  getBackends: getLlmBackendCandidates,
+  fetchDetail: () => requestHttpsJson("https://huggingface.co/api/models/unsloth/Kimi-K3-GGUF?blobs=true"),
+  startDownload: startModelDownload,
+  cancelDownload: cancelModelDownload,
+  getActiveCount: () => Array.from(activeModelDownloads.values()).filter(j => j.active).length,
+});
 
 function makeModelDownloadId(kind, filename) {
   return `${kind || "model"}:${filename || Date.now()}`;
@@ -27227,6 +27245,13 @@ const handleRequest = async (req, res) => {
     }
   }
 
+  if (req.url === "/api/kimi-k3" && req.method === "GET") return json(res, 200, kimiManager.status());
+  if (req.url === "/api/kimi-k3/install" && req.method === "POST") {
+    try { return json(res, 200, await kimiManager.install()); }
+    catch(e) { return json(res, 409, { ok:false, error:e.message }); }
+  }
+  if (req.url === "/api/kimi-k3/cancel" && req.method === "POST") return json(res, 200, kimiManager.cancel());
+
   if (req.url === "/api/llm/models" && req.method === "GET") {
     return json(res, 200, { models: getLlmModels() });
   }
@@ -30853,8 +30878,14 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     if (!filename || !pathInside(modelPath, LLM_MODELS)) {
       return json(res, 400, { ok: false, error: "Invalid filename" });
     }
+    if (kimiK3.isKimi(filename) && kimiManager.status().active) return json(res, 409, { error: "Cancel Kimi installation before deleting" });
     if (llmSettings.model === filename && llmProc) await killLlm();
     try {
+      if (kimiK3.isKimi(filename)) {
+        if (filename !== kimiK3.FIRST) return json(res, 400, { error: "Delete Kimi as a complete bundle using its first shard" });
+        kimiManager.remove();
+        return json(res, 200, { ok: true });
+      }
       fs.unlinkSync(modelPath);
       return json(res, 200, { ok: true });
     } catch (err) {

@@ -179,6 +179,12 @@ function dependencyHealthIsHealthy(endpoint, result) {
 async function runNegativeTests(baseUrl) {
   const tests = [];
 
+  const kimi = await requestEndpoint(`${baseUrl}/api/kimi-k3`);
+  tests.push({ name: "Kimi K3 hardware assessment", passed: kimi.status === 200 && typeof kimi.json?.hardware?.eligible === "boolean" && kimi.json?.filename?.endsWith("00001-of-00015.gguf"), expected: "HTTP 200 hardware-gated split model status", actual: `HTTP ${kimi.status}`, body: kimi.body });
+  if (!kimi.json?.hardware?.eligible) {
+    const blocked = await requestEndpoint(`${baseUrl}/api/kimi-k3/install`, { method: "POST" });
+    tests.push({ name: "Kimi installation blocked on insufficient hardware", passed: blocked.status === 409, expected: "HTTP 409 before downloading", actual: `HTTP ${blocked.status}`, body: blocked.body });
+  }
   const flux = await requestEndpoint(`${baseUrl}/api/flux-schnell`);
   tests.push({ name: "FLUX hardware and backend assessment", passed: flux.status === 200 && typeof flux.json?.backend?.ready === "boolean" && Boolean(flux.json?.assessment?.reason), expected: "HTTP 200 hardware assessment", actual: `HTTP ${flux.status}`, body: flux.body });
   const invalidFlux = await requestEndpoint(`${baseUrl}/api/flux-schnell/install`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variant: "../../bad" }) });

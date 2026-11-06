@@ -96,7 +96,7 @@ async function readStreamChunkWithIdleTimeout(reader, idleTimeoutMs, signal) {
 // Cached hardware specs
 let cachedSpecs = null;
 let cachedBackendPort = null;
-export const EXPECTED_SERVER_BUILD = "text-image-v4-flux";
+export const EXPECTED_SERVER_BUILD = "text-image-v5-kimi";
 
 export const isLocalServerMode = () => {
   if (typeof window === "undefined") return false;
@@ -1742,6 +1742,15 @@ export async function downloadModel(url) {
   }
 }
 
+export async function getKimiK3Status() {
+  return readJsonResponse(await fetch("/api/kimi-k3"), "Cannot assess Kimi K3. Restart LUKE.");
+}
+export async function installKimiK3() {
+  return readJsonResponse(await fetch("/api/kimi-k3/install", { method: "POST" }), "Kimi installation failed");
+}
+export async function cancelKimiK3() {
+  return readJsonResponse(await fetch("/api/kimi-k3/cancel", { method: "POST" }), "Kimi cancellation failed");
+}
 export async function getFluxSchnellStatus() {
   const res = await fetch("/api/flux-schnell");
   return await readJsonResponse(res, "Cannot assess FLUX hardware. Update and restart LUKE.");

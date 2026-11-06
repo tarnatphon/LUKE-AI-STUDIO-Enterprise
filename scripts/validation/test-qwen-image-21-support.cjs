@@ -62,7 +62,7 @@ try {
   const frontendApiSource = fs.readFileSync(path.join(__dirname, "..", "..", "app", "frontend", "src", "services", "api.js"), "utf8");
   const serverBuild = serveSource.match(/const SERVER_BUILD = "([^"]+)";/)?.[1];
   const expectedFrontendBuild = frontendApiSource.match(/EXPECTED_SERVER_BUILD = "([^"]+)";/)?.[1];
-  assert.equal(serverBuild, "text-image-v4-flux", "the Qwen Turbo sigma compatibility fix changes the API build contract");
+  assert.equal(serverBuild, "text-image-v5-kimi", "the Qwen Turbo sigma compatibility fix changes the API build contract");
   assert.equal(expectedFrontendBuild, serverBuild, "the frontend must detect a stale pre-Qwen server");
   assert.match(serveSource, /imageDiffusionSupport\.buildModelComponentArgs\(imageModelPlan, imageLoadPath\)/);
   assert.match(serveSource, /backendSupportsMultiFileDiffusion\(backendPath\)/);

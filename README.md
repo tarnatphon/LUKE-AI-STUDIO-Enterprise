@@ -610,3 +610,42 @@ FLUX; select a CPU/GPU backend. If backend support is missing, update using
 FLUX Schnell defaults to four steps, CFG 1 and Euler. The download recipes and
 CLI integration are regression-tested, but full model downloads and inference
 must still be verified on the target GPU/Metal machine.
+
+### Featured Open Models: Kimi K3
+
+**AI Library → Text Models (GGUF) → Open Models** now assesses and offers an
+install/load workflow for Unsloth's `Kimi-K3-GGUF` **UD-IQ1_S** quantization.
+This is an enterprise-scale model, not a small Kimi variant: the published
+quant is approximately **594 GB across 15 shards**, with a documented memory
+floor of about **610 GB**. See the [Unsloth run guide](https://unsloth.ai/docs/models/kimi-k3)
+and [GGUF model card / license](https://huggingface.co/unsloth/Kimi-K3-GGUF).
+
+Current LUKE integration is **text-only, CPU-first**, with a conservative 4096
+context, F16 caches and preserved-thinking template option. It requires at least
+610 GB RAM/unified memory; discrete VRAM is reported but is **not** accepted as
+RAM for this CPU-first path. Apple unified memory is not counted twice. Passing
+the estimate does not guarantee acceptable speed or absence of OOM.
+
+Installation requires a llama.cpp backend confirmed to recognize `kimi-k3` by a
+small metadata-only GGUF probe. Unknown or old runtimes are blocked rather than
+starting a 594 GB download. Backend probes recognize architecture only; actual
+model loading remains the final compatibility check. Update the text backend
+and restart LUKE when blocked; generic older llama.cpp installs may not suffice.
+
+After explicit confirmation, LUKE obtains the repository's shard size metadata,
+pins its exact revision, checks remaining disk capacity plus 20 GB headroom and
+downloads one shard at a time into the configured text-model directory. Existing
+files must match the manifest size and have a GGUF header to be skipped. These
+are structural/size checks, **not full-file checksum verification**. Cancel stops
+the queue; Install retries missing shards using the pinned manifest. A server
+restart stops the queue; press Install again to continue with completed shards.
+Within an incomplete shard the existing downloader restarts rather than resumes
+bytes. The installed list exposes only the first shard after all 15 pass checks,
+and reports the aggregate size. Load guards recheck completeness and hardware.
+Deleting the bundle through its first-shard entry removes its managed shards.
+The single-file SSD cache is bypassed so the first shard cannot be copied alone.
+
+Vision projector installation, native image/video input, distributed loading
+across machines, and million-token contexts are **not implemented** here. No Kimi
+weights or runtime binaries are bundled. End-to-end inference on a suitably large
+machine remains unverified; automated tests use small mock shard fixtures.

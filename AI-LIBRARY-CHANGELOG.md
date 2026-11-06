@@ -1,5 +1,13 @@
 # LUKE AI STUDIO — AI Library update
 
+## Kimi K3 hardware-gated installation
+- Featured Open Models now offers the Unsloth UD-IQ1_S split-GGUF installation and load workflow, replacing the source-only card.
+- Conservative CPU-first path: at least 610 GB RAM/unified memory, approximately 594 GB download, 15 shards; no vision/projector or distributed inference claims.
+- Requires a positive architecture-specific llama.cpp probe before downloading. Pins the model revision, checks disk headroom, downloads sequentially and supports cancel/retry.
+- Completeness uses exact manifest sizes and GGUF headers, not full-file checksums. Only the complete bundle's first shard is listed/loaded; memory estimates include all shards and first-shard-only caching is disabled.
+- Validation: `node scripts/validation/test-kimi-k3.cjs`, backend API smoke/negative tests, FLUX/Qwen tests, cache/step-scaling/load-guard regressions, production frontend build.
+- No full model download or Kimi inference performed in this environment. Real target-machine validation is still required.
+
 ## FLUX.1 Schnell hardware-aware installation
 - Integrated the existing Qwen Image 2.1 Turbo multi-file runtime and sigma compatibility fixes.
 - FLUX Schnell Q4_0 and Q8_0 now have bundle install and load actions, not just source links.
