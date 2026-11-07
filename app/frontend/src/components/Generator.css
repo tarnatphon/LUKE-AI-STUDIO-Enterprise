@@ -597,3 +597,136 @@
   gap: 6px;
   margin: 10px 0;
 }
+
+/* Reference panel status line. The class was rendered but never styled, so the
+   line that says which references are actually in play looked like body copy. */
+.reference-generation-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.04));
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.reference-generation-note strong {
+  color: var(--md-sys-color-primary);
+  font-weight: 800;
+}
+
+.reference-generation-note span {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.reference-generation-warning {
+  color: var(--md-sys-color-error, #ff8a80) !important;
+  font-weight: 700;
+}
+
+/* A reference whose stored file is gone keeps its card, so the panel can say
+   what happened instead of showing a broken image. */
+.reference-card-missing {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface-variant);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(255, 255, 255, 0.05) 8px,
+    rgba(255, 255, 255, 0.05) 16px
+  );
+}
+
+/* The one line that says what the references will actually do. The Reference
+   Manager offers roles, weights and lock toggles, but only the primary reference
+   reaches the sampler (as an img2img init image), so naming the route is the
+   difference between "I configured something" and "I know what happened". */
+.reference-route-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.12));
+}
+
+.reference-route-line svg {
+  flex-shrink: 0;
+  color: var(--md-sys-color-primary);
+}
+
+/* The Pro disclosure: the reference panel works with its defaults, and the
+   controls that only reach the prompt are one click away instead of in the face
+   of someone who just wants a likeness. Denoise Guidance is the exception the
+   note spells out, because it is the one value in there the sampler reads. */
+.appearance-pro-controls {
+  margin: 12px 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.appearance-pro-controls > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--md-sys-color-on-surface);
+  list-style: none;
+}
+
+.appearance-pro-controls > summary::-webkit-details-marker {
+  display: none;
+}
+
+.appearance-pro-controls > summary em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.74rem;
+  color: var(--md-sys-color-outline);
+}
+
+.appearance-pro-controls[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.appearance-pro-controls .appearance-master-controls {
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.appearance-pro-note {
+  margin: 0;
+  padding: 0 12px 12px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.appearance-pro-note code {
+  font-size: 0.72rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
