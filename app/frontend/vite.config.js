@@ -77,9 +77,51 @@ function writeBuildInfo() {
   };
 }
 
+/**
+ * pdf.js renders text with data files it does not bundle: the 14 standard fonts
+ * (so a PDF that never embedded Helvetica still draws) and the CJK/Thai cmaps
+ * (so a CID-keyed PDF from a Thai office suite still decodes). Without them it
+ * logs "Ensure that the `standardFontDataUrl` API parameter is provided" and
+ * quietly substitutes glyphs — which is what the chat attachments were doing.
+ *
+ * The app is offline-first, so the data has to come from our own origin: copied
+ * into the build next to index.html, and served from node_modules in dev so the
+ * dev server behaves like the shipped app.
+ */
+function pdfDataFiles() {
+  const pkg = path.join(REPO_ROOT, "app", "frontend", "node_modules", "pdfjs-dist");
+  const dirs = ["standard_fonts", "cmaps"];
+  let outDir = "";
+
+  return {
+    name: "luke-pdf-data",
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      if (!outDir) return;
+      for (const dir of dirs) {
+        const source = path.join(pkg, dir);
+        if (!fs.existsSync(source)) continue; // dependencies are not installed yet
+        fs.cpSync(source, path.join(outDir, "pdfjs", dir), { recursive: true });
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const match = /^\/pdfjs\/(standard_fonts|cmaps)\/([\w.+-]+)$/.exec((request.url || "").split("?")[0]);
+        if (!match) return next();
+        const file = path.join(pkg, match[1], match[2]);
+        if (!fs.existsSync(file)) return next();
+        response.setHeader("Content-Type", "application/octet-stream");
+        fs.createReadStream(file).pipe(response);
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), writeBuildInfo()],
+  plugins: [react(), writeBuildInfo(), pdfDataFiles()],
 
   // Vite inlines these into the bundle at build time. import.meta.env keeps it
   // out of the global namespace, so nothing has to be declared for the linter.

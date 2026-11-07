@@ -185,7 +185,20 @@ function selectRelevantDocumentChunks(attachments, query) {
 
 async function extractPdfText(file) {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true });
+  // A PDF that leans on the 14 standard fonts, or on a CJK/Thai encoding, sends
+  // pdf.js looking for glyph data it does not ship in the bundle. Without a URL
+  // it warns and substitutes glyphs, so the extracted text can come out wrong
+  // for exactly the documents people attach. vite copies pdfjs-dist's
+  // standard_fonts/ and cmaps/ to pdfjs/ beside index.html; everything stays on
+  // this origin, because the app has to work with no network.
+  const pdfData = new URL("pdfjs/", document.baseURI).href;
+  const task = getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+    disableWorker: true,
+    standardFontDataUrl: `${pdfData}standard_fonts/`,
+    cMapUrl: `${pdfData}cmaps/`,
+    cMapPacked: true,
+  });
   const pdf = await task.promise;
   const pages = [];
   try {

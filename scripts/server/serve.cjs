@@ -8117,6 +8117,9 @@ const MIME = {
   ".jpg":  "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml",
   ".ico":  "image/x-icon", ".json": "application/json", ".wav": "audio/wav", ".txt": "text/plain",
   ".woff2":"font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
+  // pdf.js glyph data copied into the build by vite (app/dist/pdfjs/…): the
+  // standard-font replacements and the packed CJK/Thai cmaps.
+  ".pfb": "application/octet-stream", ".bcmap": "application/octet-stream",
 };
 
 /**
@@ -30946,7 +30949,7 @@ function cacheControlForStaticFile(requestUrl) {
   // unrelated ways (no borders, no separators, half the page missing). Assets
   // must 404 loudly; only extensionless SPA routes get the index.html shell.
   const isStaticAsset = requestedPath.startsWith("/assets/")
-    || /\.(js|mjs|cjs|css|map|json|webmanifest|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|wasm|mp3|mp4)$/i.test(requestedPath);
+    || /\.(js|mjs|cjs|css|map|json|webmanifest|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|pfb|bcmap|wasm|mp3|mp4)$/i.test(requestedPath);
   const missingAsset = () => {
     res.writeHead(404, {
       "Content-Type": "text/plain; charset=utf-8",
