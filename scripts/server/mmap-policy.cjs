@@ -115,6 +115,26 @@ function filesystemTypeForPath(mountText, target) {
 
   return best ? best.type : "";
 }
+/**
+ * What `mount` says this machine has mounted, cached for a few seconds: the
+ * answer cannot change while a model is loading, and a start must not spawn a
+ * process per token. Tests may inject `readMountTable` to stay offline.
+ */
+let mountTableCache = { at: 0, text: "" };
+
+function mountTableText(readMountTable) {
+  if (typeof readMountTable === "function") return String(readMountTable() || "");
+  if (Date.now() - mountTableCache.at < 30_000) return mountTableCache.text;
+  let text = "";
+  try {
+    text = require("node:child_process").execSync("mount", { encoding: "utf8", timeout: 4000 });
+  } catch {
+    text = ""; // unknown filesystem: keep the requested behaviour
+  }
+  mountTableCache = { at: Date.now(), text };
+  return text;
+}
+
 function blocksMmap(filesystem) {
   const type = String(filesystem || "").toLowerCase();
   if (!type) return false;
@@ -153,6 +173,17 @@ function decideMmap(requestedMmap, filesystem) {
  */
 const PREFS_FILENAME = "llm-prefs.json";
 
+/**
+ * The decision for one model file, mount table included. Both the single-model
+ * runtime and the Arena pool spawn llama-server, and both have to ask this same
+ * question — the pool shipped with its own unconditional `--mmap` and kept the
+ * exFAT stall alive after the runtime had been fixed.
+ */
+function decideForPath(requestedMmap, modelPath, options = {}) {
+  const table = mountTableText(options.readMountTable);
+  return decideMmap(requestedMmap, filesystemTypeForPath(table, modelPath));
+}
+
 function readPrefs(directory) {
   try {
     const raw = fs.readFileSync(path.join(directory, PREFS_FILENAME), "utf8");
@@ -189,6 +220,8 @@ module.exports = {
   filesystemTypeForPath,
   blocksMmap,
   decideMmap,
+  decideForPath,
+  mountTableText,
   readPrefs,
   writePrefs,
 };

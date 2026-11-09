@@ -25,7 +25,9 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..", "..");
 const policy = require(path.join(root, "scripts", "server", "mmap-policy.cjs"));
+const poolModule = require(path.join(root, "scripts", "server", "text-model-pool.cjs"));
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
+const poolSource = fs.readFileSync(path.join(root, "scripts", "server", "text-model-pool.cjs"), "utf8");
 
 let checks = 0;
 function assert(condition, message) {
@@ -189,6 +191,37 @@ function main() {
   assert(
     /llmSettings\.mmap = mmapDecision\.mmap/.test(serveSource),
     "and the response reports the flag that was launched, not the preference asked for",
+  );
+
+  // ── the Arena pool spawns its own llama-server ───────────────────────────
+  // Two processes were seen alive at once, one with --mmap and one without: the
+  // runtime had been fixed and the pool had not. The pool owned an
+  // unconditional `if (settings.mmap !== false) args.push("--mmap")`.
+  assert(
+    !/if \(settings\.mmap !== false\) args\.push\("--mmap"\)/.test(poolSource),
+    "the arena pool no longer pushes --mmap unconditionally",
+  );
+  const poolExfat = poolModule.buildMmapFlags(true, "/Volumes/ai/app/llm-models/gemma.gguf", {
+    readMountTable: () => MAC_MOUNT,
+  });
+  assert(
+    poolExfat.args.join(" ") === "--no-mmap" && poolExfat.mmap === false,
+    "an arena model on the exFAT volume is started with --no-mmap",
+  );
+  assert(/exfat/.test(poolExfat.reason), "and the pool logs why");
+  const poolLocal = poolModule.buildMmapFlags(true, "/Users/ekky/models/x.gguf", { readMountTable: () => MAC_MOUNT });
+  assert(
+    poolLocal.args.join(" ") === "--mmap" && poolLocal.mmap === true,
+    "an arena model on the internal disk keeps --mmap",
+  );
+  const poolOff = poolModule.buildMmapFlags(false, "/Users/ekky/models/x.gguf", { readMountTable: () => MAC_MOUNT });
+  assert(
+    poolOff.args.join(" ") === "--no-mmap" && poolOff.reason === "",
+    "and a user who turned mmap off is obeyed without a lecture",
+  );
+  assert(
+    /buildMmapFlags\(settings\.mmap, modelPath/.test(poolSource),
+    "the pool decides from the model file, not from a default",
   );
 
   // ── arena/unload no longer lies ──────────────────────────────────────────

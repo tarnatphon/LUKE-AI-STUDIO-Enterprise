@@ -18,6 +18,7 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
+const mmapPolicy = require("./mmap-policy.cjs");
 
 const DEFAULT_POLICY = {
   runtime: {
@@ -98,6 +99,23 @@ function findProjector(modelsDir, filename) {
   }
 }
 
+/**
+ * Which memory-mapping flags one arena model gets.
+ *
+ * The pool spawns its own llama-server, so it needs the same filesystem rule the
+ * single-model runtime applies — without it an Arena model on an exFAT volume
+ * kept `--mmap` after the runtime had been fixed, and the stall looked like it
+ * had simply come back.
+ */
+function buildMmapFlags(requestedMmap, modelPath, options = {}) {
+  const decision = mmapPolicy.decideForPath(requestedMmap, modelPath, options);
+  return {
+    args: decision.mmap ? ["--mmap"] : ["--no-mmap"],
+    mmap: decision.mmap,
+    reason: decision.reason,
+  };
+}
+
 class TextModelPool {
   constructor(options = {}) {
     this.root = options.root || process.cwd();
@@ -129,6 +147,8 @@ class TextModelPool {
     // them on top of the shipped defaults.
     this.getPolicyOverrides =
       options.getPolicyOverrides || (() => null);
+    // Tests inject a mount table; production reads the real one.
+    this.readMountTable = options.readMountTable || null;
 
     /** @type {Map<string, object>} */
     this.instances = new Map();
@@ -498,7 +518,14 @@ class TextModelPool {
     if (settings.cachePrompt !== false) args.push("--cache-prompt");
     if (settings.flashAttn === true) args.push("--flash-attn", "on");
     if (settings.mlock === true) args.push("--mlock");
-    if (settings.mmap !== false) args.push("--mmap");
+    // llama.cpp has mmap on by default, so the flag has to be stated in both
+    // directions: an exFAT volume gets --no-mmap, APFS keeps --mmap.
+    const mmapFlags = buildMmapFlags(settings.mmap, modelPath, {
+      readMountTable: this.readMountTable || undefined,
+    });
+    settings.mmap = mmapFlags.mmap;
+    if (mmapFlags.reason) this.logger.info(`[arena] ${mmapFlags.reason}`);
+    args.push(...mmapFlags.args);
     if (projector) {
       args.push("--mmproj", path.join(this.modelsDir, projector));
     }
@@ -904,6 +931,7 @@ function createTextModelPool(options = {}) {
 module.exports = {
   TextModelPool,
   createTextModelPool,
+  buildMmapFlags,
   DEFAULT_POLICY,
   formatGb,
   findProjector,

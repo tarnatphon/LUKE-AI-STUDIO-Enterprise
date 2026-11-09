@@ -2116,26 +2116,12 @@ let llmSettings = {
 }
 
 /**
- * What `mount` says this machine has mounted, cached for a few seconds: the
- * answer cannot change while a model is loading, and a start must not spawn a
- * process per token.
+ * The rule lives in mmap-policy.cjs, mount table and all, because the Arena pool
+ * spawns its own llama-server and has to give the same answer. Keeping a second
+ * copy here is how the pool ended up with an unconditional --mmap.
  */
-let mountTableCache = { at: 0, text: "" };
-function currentMountTable() {
-  if (Date.now() - mountTableCache.at < 30_000) return mountTableCache.text;
-  let text = "";
-  try {
-    text = execSync("mount", { encoding: "utf8", timeout: 4000 });
-  } catch {
-    text = ""; // unknown filesystem: keep the requested behaviour
-  }
-  mountTableCache = { at: Date.now(), text };
-  return text;
-}
-
 function decideMmapForModel(requestedMmap, modelPath) {
-  const filesystem = mmapPolicy.filesystemTypeForPath(currentMountTable(), modelPath);
-  return mmapPolicy.decideMmap(requestedMmap, filesystem);
+  return mmapPolicy.decideForPath(requestedMmap, modelPath);
 }
 
 function runExclusiveLlmOperation(operation) {
