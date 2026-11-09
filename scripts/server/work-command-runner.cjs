@@ -179,7 +179,9 @@ async function detectProjectCommands(rootValue) {
   }
 
   if (hasAny(root, ["pyproject.toml", "setup.py", "requirements.txt", "Pipfile"])) {
-    const python = process.platform === "win32" ? "python" : "python3";
+    // The project's own interpreter when it has one: `python3 -m ruff` can only
+    // find ruff if that interpreter is the one ruff was installed into.
+    const python = projectPython(root) || (process.platform === "win32" ? "python" : "python3");
     if (hasAny(root, ["tests"]) || hasAny(root, ["test"]) || fs.existsSync(path.join(root, "pytest.ini")) || (readSmallFileSync(path.join(root, "pyproject.toml")) || "").includes("[tool.pytest")) {
       add("pytest", `${python} -m pytest -q`, python, ["-m", "pytest", "-q"], "Python test suite");
     }
@@ -371,6 +373,34 @@ const LOCAL_BIN_DIRECTORIES = process.platform === "win32"
   : ["node_modules/.bin", ".venv/bin", "venv/bin", ".env/bin"];
 
 const LOCAL_BIN_SUFFIXES = process.platform === "win32" ? ["", ".cmd", ".exe", ".bat"] : [""];
+
+const PROJECT_PYTHON_CANDIDATES = process.platform === "win32"
+  ? [".venv/Scripts/python.exe", "venv/Scripts/python.exe", ".env/Scripts/python.exe"]
+  : [".venv/bin/python", "venv/bin/python", ".env/bin/python"];
+
+/**
+ * The interpreter this project installed for itself, as a path relative to the
+ * granted folder, or null.
+ *
+ * `python3 -m ruff` resolves ruff through whichever interpreter `python3` means
+ * on PATH — the Homebrew one, almost always — so the check the agent loop runs
+ * after an edit would report "No module named ruff" for a project whose tools
+ * live in .venv. The project's own interpreter is the one a person would use,
+ * and the one where those modules exist.
+ */
+function projectPython(root) {
+  for (const candidate of PROJECT_PYTHON_CANDIDATES) {
+    try {
+      const full = path.join(root, candidate);
+      if (!fs.statSync(full).isFile()) continue;
+      if (process.platform !== "win32") fs.accessSync(full, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Not there, or not executable: try the next layout.
+    }
+  }
+  return null;
+}
 
 /**
  * The project's own copy of `name`, as a path relative to the granted folder,
@@ -611,4 +641,5 @@ module.exports = {
   sanitisedEnv,
   trimOutput,
   findProjectExecutable,
+  projectPython,
 };

@@ -273,6 +273,33 @@ async function main() {
     for (const name of ["eslint", "tsc", "pylint", "ruff", "pytest", "mypy"]) {
       check(`${name} is on the list`, Object.hasOwn(programs, name));
     }
+    section("9. A Python project's checks run through its own interpreter");
+    // `python3 -m ruff` finds ruff only in whichever interpreter PATH means.
+    // For a project with a venv that is the wrong one, so the loop's automatic
+    // verify step would report "No module named ruff" after the model had
+    // already made its edit.
+    const pyProject = path.join(sandbox, "pyproject-demo");
+    fs.mkdirSync(path.join(pyProject, "tests"), { recursive: true });
+    fs.writeFileSync(path.join(pyProject, "pyproject.toml"), "[tool.ruff]\nline-length = 100\n");
+    const runner9 = require(runnerFile);
+    const beforeVenv = await runner9.detectProjectCommands(pyProject);
+    const beforeCmd = beforeVenv.commands.find((command) => command.id === "ruff");
+    check("without a venv the system interpreter is used",
+      beforeCmd.file === "python3" || beforeCmd.file === "python", String(beforeCmd.file));
+    fs.mkdirSync(path.join(pyProject, ".venv", "bin"), { recursive: true });
+    fs.writeFileSync(path.join(pyProject, ".venv", "bin", "python"), "#!/bin/sh\necho \"venv python: $*\"\n");
+    fs.chmodSync(path.join(pyProject, ".venv", "bin", "python"), 0o755);
+    const afterVenv = await runner9.detectProjectCommands(pyProject);
+    const afterCmd = afterVenv.commands.find((command) => command.id === "ruff");
+    check("with a venv the project's own interpreter is chosen",
+      afterCmd.file === ".venv/bin/python", String(afterCmd.file));
+    check("and the suggested command shows it",
+      /^\.venv\/bin\/python -m ruff check \.$/.test(afterCmd.label), afterCmd.label);
+    const venvCheck = await runner9.runProjectCheck({ root: pyProject, commandId: "ruff" });
+    check("the check really runs through that interpreter",
+      /venv python: -m ruff check \./.test(String(venvCheck.output)), String(venvCheck.output).slice(0, 60));
+    check("and is reported as passed", venvCheck.passed === true, String(venvCheck.exitCode));
+
   } finally {
     child.kill("SIGKILL");
     fs.rmSync(sandbox, { recursive: true, force: true });
