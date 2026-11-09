@@ -2118,6 +2118,17 @@ let llmSettings = {
   if (typeof saved.mlock === "boolean") llmSettings.mlock = saved.mlock;
 }
 
+// The model this machine used last, remembered without loading anything. With
+// no name at boot, /api/llm/status had nothing to decide about and answered an
+// empty mmap block — so Settings could not warn about a volume until after the
+// user had already started the load that stalled.
+{
+  const savedModel = getPersistedLlmModelSettings().lastModel;
+  if (!llmSettings.model && typeof savedModel === "string" && savedModel.trim()) {
+    llmSettings.model = path.basename(savedModel.trim());
+  }
+}
+
 /**
  * The rule lives in mmap-policy.cjs, mount table and all, because the Arena pool
  * spawns its own llama-server and has to give the same answer. Keeping a second
@@ -3661,6 +3672,9 @@ function updateLlmModelSettings(filename, patch) {
     updatedAt: new Date().toISOString(),
   };
   allSettings.models[safeFilename] = next;
+  // Remember the selection itself, so the next boot knows which model the
+  // mmap preview is about before anybody presses Load.
+  allSettings.lastModel = safeFilename;
   savePersistedLlmModelSettings(allSettings);
   return next;
 }
