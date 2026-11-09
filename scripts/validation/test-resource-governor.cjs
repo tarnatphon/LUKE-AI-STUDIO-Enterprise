@@ -388,9 +388,15 @@ check(
     (serveSource.match(/imageBudget = evaluateModelMemoryBudget\(\{/g) || []).length === 2
 );
 check(
-  "and if it still does not fit, the load is refused exactly as before",
-  /if \(textBudget\.blocking\) throw new Error\(textBudget\.blocking\.message\);/.test(serveSource) &&
+  "and if it still does not fit, the load is still refused",
+  /if \(textBudget\.blocking\) \{[\s\S]{0,700}?throw error;/.test(serveSource) &&
     /if \(imageBudget\.blocking\) throw new Error\(imageBudget\.blocking\.message\);/.test(serveSource)
+);
+check(
+  "a text refusal says what the governor tried, and carries it as a field",
+  /resourceGovernorStatus\.lastRefusal = refusal/.test(serveSource) &&
+    /error\.governor = refusal/.test(serveSource) &&
+    /Nothing could be freed: \$\{governorReason\}/.test(serveSource)
 );
 check("a release for a load is recorded as one, with what it was for", /code: "MEMORY_MAKE_ROOM",[\s\S]{0,200}for: wanted,/.test(serveSource));
 check(

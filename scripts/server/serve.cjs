@@ -2127,6 +2127,32 @@ function decideMmapForModel(requestedMmap, modelPath) {
   return mmapPolicy.decideForPath(requestedMmap, modelPath);
 }
 
+/**
+ * The mmap story for the model that is selected now: what was asked for, what
+ * would run (or did run), why, and on which filesystem. /api/llm/status
+ * publishes it so Settings can say "the volume overruled this" instead of
+ * showing a toggle that no longer describes the process.
+ */
+function describeMmap() {
+  const model = llmSettings.model || "";
+  const requested = llmSettings.mmap !== false;
+  if (!model) {
+    return { model: "", requested, effective: requested, reason: "", filesystem: "", loaded: false };
+  }
+  if (llmReady && lastMmapDecision && lastMmapDecision.model === model) return lastMmapDecision;
+  const modelPath = path.join(LLM_MODELS, model);
+  const filesystem = mmapPolicy.filesystemTypeForPath(mmapPolicy.mountTableText(), modelPath);
+  const preview = mmapPolicy.decideMmap(requested, filesystem);
+  return {
+    model,
+    requested,
+    effective: preview.mmap,
+    reason: preview.reason,
+    filesystem,
+    loaded: false,
+  };
+}
+
 function runExclusiveLlmOperation(operation) {
   const run = llmOperationQueue.catch(() => {}).then(operation);
   llmOperationQueue = run.catch(() => {});
@@ -3236,7 +3262,16 @@ let resourceGovernorStatus = {
   decision: null,
   engines: [],
   lastRelease: null,
+  // Why the last load was refused. A refusal used to reach the user as "not
+  // enough memory" with no word about why nothing could be freed, which reads
+  // as the app giving up rather than the governor explaining itself.
+  lastRefusal: null,
 };
+
+// What the mmap preference actually became for the loaded model. The Settings
+// screen shows the preference; this is the outcome, which the filesystem can
+// override without the preference changing at all.
+let lastMmapDecision = null;
 
 function noteEngineUsed(engineId) {
   if (engineId in engineLastUsedAt) engineLastUsedAt[engineId] = Date.now();
@@ -6787,6 +6822,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     targetType: "text",
     gpuLayers: effectiveGpuLayers,
   });
+  let makeRoomAttempt = { released: [], code: "NOT_ATTEMPTED", reason: "" };
   if (textBudget.blocking) {
     // Before refusing: if an engine that reloads on demand holds the room, take
     // it and measure again.
@@ -6797,6 +6833,7 @@ async function startLlmWithBackend(settings = {}, backend) {
       // up here is stopped directly rather than queued behind this very load.
       insideLlmLock: true,
     });
+    makeRoomAttempt = madeRoom;
     if (madeRoom.released.length > 0) {
       textBudget = evaluateModelMemoryBudget({
         targetPaths: [modelPath],
@@ -6806,7 +6843,25 @@ async function startLlmWithBackend(settings = {}, backend) {
     }
   }
   for (const warning of textBudget.warnings) console.warn(`  [llm] ${warning.message}`);
-  if (textBudget.blocking) throw new Error(textBudget.blocking.message);
+  if (textBudget.blocking) {
+    const governorReason = String(makeRoomAttempt.reason || "").trim();
+    const refusal = {
+      at: Date.now(),
+      model: filename,
+      neededGb: textBudget.estimateGb,
+      availableGb: textBudget.availableGb,
+      released: makeRoomAttempt.released,
+      code: makeRoomAttempt.code,
+      reason: governorReason || textBudget.blocking.message,
+    };
+    resourceGovernorStatus.lastRefusal = refusal;
+    const message = governorReason
+      ? `${textBudget.blocking.message} Nothing could be freed: ${governorReason}`
+      : textBudget.blocking.message;
+    const error = new Error(message);
+    error.governor = refusal;
+    throw error;
+  }
 
   llmSettings = {
     ...llmSettings,
@@ -6944,7 +6999,8 @@ async function startLlmWithBackend(settings = {}, backend) {
   // three minutes in map faults (1 GB resident, 0.3% CPU) and timed out, then
   // the same file with --no-mmap loaded in 33 s. Silence is what made that bug
   // survive, so the override is always logged.
-  const mmapDecision = decideMmapForModel(llmSettings.mmap, loadPath);
+  const requestedMmap = llmSettings.mmap !== false;
+  const mmapDecision = decideMmapForModel(requestedMmap, loadPath);
   if (mmapDecision.mmap) {
     args.push("--mmap");                     // ✅ Faster model loading
   } else {
@@ -6958,6 +7014,15 @@ async function startLlmWithBackend(settings = {}, backend) {
   // asked for: /api/llm/start used to echo mmap:true for a process started with
   // --no-mmap, which made the override impossible to confirm from outside.
   llmSettings.mmap = mmapDecision.mmap;
+  lastMmapDecision = {
+    model: filename,
+    requested: requestedMmap,
+    effective: mmapDecision.mmap,
+    reason: mmapDecision.reason,
+    filesystem: mmapPolicy.filesystemTypeForPath(mmapPolicy.mountTableText(), loadPath),
+    loaded: true,
+    at: Date.now(),
+  };
   
   if (llmSettings.enableThinking === false) {
     args.push("--reasoning", "off");           // ✅ Disable reasoning/thinking completely
@@ -27255,6 +27320,7 @@ const handleRequest = async (req, res) => {
       preferredPort: PREFERRED_LLM_PORT,
       error: llmError,
       loading: describeLlmLoad(),
+      mmap: describeMmap(),
       settings: llmSettings,
       backendInstalled: Boolean(backend),
       backendMode: backend?.mode || "",
@@ -27358,7 +27424,13 @@ const handleRequest = async (req, res) => {
       if (err.code !== "MODEL_ALREADY_ACTIVE") {
         await runExclusiveLlmOperation(() => killLlm());
       }
-      return json(res, jsonErrorStatus(err), { ok: false, error: llmError, code: err.code || "", activeRuntime: err.activeRuntime || null });
+      return json(res, jsonErrorStatus(err), {
+        ok: false,
+        error: llmError,
+        code: err.code || "",
+        activeRuntime: err.activeRuntime || null,
+        ...(err.governor ? { governor: err.governor } : {}),
+      });
     }
   }
 
