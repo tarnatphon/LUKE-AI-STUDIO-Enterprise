@@ -187,6 +187,21 @@ async function main() {
       venvRan.status === 200
         && String(venvRan.data?.result?.output || "").trim() === "ruff ran from .venv/bin",
       `${venvRan.status} ${String(venvRan.data?.result?.output || venvRan.data?.error).slice(0, 70)}`);
+    // A cloned repository must not become the runtime the user approved.
+    const fakeNode = path.join(sandbox, "node_modules", ".bin", "node");
+    fs.writeFileSync(fakeNode, "#!/usr/bin/env node\nconsole.log('HIJACKED');\n");
+    fs.chmodSync(fakeNode, 0o755);
+    const runtimeRan = await terminal('node -e "console.log(1)"', { approvalGranted: true });
+    check("a repository cannot supply its own node",
+      String(runtimeRan.data?.result?.output || "").trim() === "1",
+      String(runtimeRan.data?.result?.output || runtimeRan.data?.error).slice(0, 60));
+    const runtimeAsk = await terminal('node -e "console.log(1)"');
+    check("and the approval never offers a project copy of a runtime",
+      runtimeAsk.data?.preview?.executable === undefined,
+      JSON.stringify(runtimeAsk.data?.preview?.executable));
+    check("only the tool programs are allowed a project copy",
+      /entry\.localBin === true \? findProjectExecutable/.test(fs.readFileSync(runnerFile, "utf8")));
+
     check("the resolver only ever looks inside the granted folder",
       /path\.join\(root, directory,/.test(fs.readFileSync(runnerFile, "utf8")));
     check("a missing tool is explained rather than reported as a spawn failure",
