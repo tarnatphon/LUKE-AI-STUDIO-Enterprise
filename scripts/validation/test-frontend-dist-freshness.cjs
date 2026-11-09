@@ -2,21 +2,26 @@
 "use strict";
 
 /**
- * The committed app/dist is what the user actually runs — and nothing checked
+ * The build on this machine is the thing that gets served, and nothing checked
  * that it matches the source.
  *
- * app/dist is tracked in git on purpose, so a machine that has never built the
- * frontend still gets a working UI. mac.sh self-heals it by restoring any
- * bundle index.html refers to but cannot find. That check passes perfectly for
- * a *stale* build: every referenced file is there, it is just last month's
- * code. Edit a component, forget the build, push, and the user pulls an app
- * whose interface does not match its server, with no warning anywhere.
+ * This header used to say app/dist was "tracked in git on purpose" and that the
+ * remedy for a stale bundle was to commit it. Neither is true: app/dist is
+ * ignored (twice, in .gitignore) and has never been in a commit, so the advice
+ * could not be followed and the comparison was not against a commit at all —
+ * it is against whatever this checkout last built. mac.sh owns the real rule:
+ * scripts/setup/check-frontend-build.sh compares the commit stamped into
+ * app/dist/build-info.json with HEAD and rebuilds when they differ.
  *
- * So this rebuilds the frontend into a throwaway directory and compares it
- * file by file with what is committed. Vite's output is content-hashed and
- * byte-reproducible — two builds of the same source were verified identical
- * before this check was written — so any difference means the source moved and
- * the build did not.
+ * What is left, and is still worth having, is the local question: is the folder
+ * this server serves current with the source beside it? Edit a component, forget
+ * to rebuild, and the browser shows last week's UI while the server answers with
+ * this week's API — with nothing anywhere saying so.
+ *
+ * So this rebuilds into a throwaway directory and compares file by file. Vite's
+ * output is content-hashed and byte-reproducible (verified again below: two
+ * builds of the same source are identical), so a difference means the source
+ * moved and the build did not.
  */
 
 const fs = require("node:fs");
@@ -53,15 +58,16 @@ function main() {
   console.log("\n=== Frontend dist freshness ===\n");
 
   if (!fs.existsSync(vite)) {
-    console.log("  SKIPPED — app/frontend/node_modules/vite is not installed here.");
-    console.log("  This check rebuilds the frontend to compare it with the committed");
-    console.log("  app/dist, so it needs vite. Run ./mac.sh once (or npm install in");
-    console.log("  app/frontend) and it will check on the next pass.");
-    console.log("");
-    return;
+    console.log("BLOCKED: vite is not installed under app/frontend/node_modules");
+    console.log("REMEDY: npm ci --prefix app/frontend");
+    process.exit(3);
   }
 
-  assert(fs.existsSync(dist), "The committed app/dist is there to compare against.");
+  if (!fs.existsSync(dist)) {
+    console.log("BLOCKED: there is no app/dist here to compare against");
+    console.log("REMEDY: npm --prefix app/frontend run build");
+    process.exit(3);
+  }
 
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-dist-check-"));
   const outDir = path.join(temp, "dist");
@@ -113,11 +119,10 @@ function main() {
       "index.html is among them, which is what mac.sh and serve.cjs both start from."
     );
 
-    console.log(
-      "\n  If this fails: cd app/frontend && node node_modules/vite/bin/vite.js build,"
-    );
-    console.log("  then commit app/dist. The user's machine runs the committed build,");
-    console.log("  not your source.\n");
+    console.log("\n  If this fails, the served UI is older than the source beside it:");
+    console.log("    npm --prefix app/frontend run build");
+    console.log("  app/dist is git-ignored, so there is nothing to commit — mac.sh rebuilds");
+    console.log("  it from the commit stamp on every launch.\n");
 
     console.log("  PASS: Frontend dist freshness completed.\n");
   } finally {
