@@ -1412,6 +1412,7 @@ const LLM_MODELS = path.join(ROOT, "app", "llm-models");
 // this machine made last time. Both live in their own module so the rule can be
 // tested without booting the server.
 const mmapPolicy = require("./mmap-policy.cjs");
+const backendInventory = require("./llm-backend-inventory.cjs");
 const LLM_PREFS_DIR = path.join(ROOT, "app", "runtime-state");
 if (!fs.existsSync(LLM_MODELS)) {
   fs.mkdirSync(LLM_MODELS, { recursive: true });
@@ -2162,6 +2163,88 @@ function describeMmap() {
     filesystem,
     loaded: false,
   };
+}
+
+/**
+ * Every llama-server alive on this machine: the two this process owns, plus any
+ * left behind by an earlier run. `ps | grep llama-server` was the only way to
+ * ask this, and it cannot tell "mine" from "stale".
+ */
+function listSystemLlamaBackends() {
+  try {
+    const output = execSync("ps -ax -o pid=,command=", { encoding: "utf8", timeout: 4000 });
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.includes("llama-server"))
+      .map((line) => {
+        const match = /^(\d+)\s+(.*)$/.exec(line);
+        return match ? { pid: Number(match[1]), command: match[2] } : null;
+      })
+      .filter(Boolean);
+  } catch {
+    return []; // no process list: the tracked half still answers
+  }
+}
+
+function trackedBackends() {
+  const tracked = [];
+  if (llmProc) {
+    let alive = false;
+    try {
+      process.kill(llmProc.pid, 0);
+      alive = true;
+    } catch {
+      alive = false;
+    }
+    tracked.push({
+      owner: "chat",
+      label: "Chat / Work model",
+      pid: llmProc.pid || null,
+      alive,
+      port: PORT_LLM,
+      model: path.basename(String(llmSettings.model || "")),
+      ready: llmReady,
+      startedAt: llmStartedAt ? new Date(llmStartedAt).toISOString() : null,
+      mmapFlag: lastMmapDecision ? (lastMmapDecision.effective ? "--mmap" : "--no-mmap") : llmSettings.mmap ? "--mmap" : "--no-mmap",
+      contextSize: llmSettings.contextSize,
+      gpuLayers: llmSettings.gpuLayers,
+      backendMode: llmSettings.backendMode,
+    });
+  }
+  if (textModelPoolInstance) {
+    for (const instance of textModelPoolInstance.instances.values()) {
+      let alive = false;
+      try {
+        process.kill(instance.child.pid, 0);
+        alive = true;
+      } catch {
+        alive = false;
+      }
+      tracked.push({
+        owner: "arena",
+        label: "Arena pool",
+        pid: instance.child.pid || null,
+        alive,
+        port: instance.port,
+        model: instance.modelId,
+        ready: instance.status === "ready",
+        startedAt: instance.startedAt || null,
+        mmapFlag: instance.mmap === false ? "--no-mmap" : "--mmap",
+        contextSize: instance.contextSize,
+        gpuLayers: instance.gpuLayers,
+        backendMode: instance.backendMode,
+      });
+    }
+  }
+  return tracked;
+}
+
+function describeBackends() {
+  return backendInventory.inventory({
+    tracked: trackedBackends(),
+    system: listSystemLlamaBackends(),
+  });
 }
 
 function runExclusiveLlmOperation(operation) {
@@ -3278,6 +3361,8 @@ let resourceGovernorStatus = {
   // as the app giving up rather than the governor explaining itself.
   lastRefusal: null,
 };
+
+let llmStartedAt = null;
 
 // What the mmap preference actually became for the loaded model. The Settings
 // screen shows the preference; this is the outcome, which the filesystem can
@@ -7104,6 +7189,7 @@ async function startLlmWithBackend(settings = {}, backend) {
   const proc = spawn(backend.path, args, { stdio: "pipe", env: spawnEnv });
   const procSeq = ++llmProcSeq;
   llmProc = proc;
+  llmStartedAt = Date.now();
   proc.stdout.on("data", (data) => {
     if (llmProc !== proc) return;
     noteLlmLoadOutput(data.toString());
@@ -27342,6 +27428,12 @@ const handleRequest = async (req, res) => {
       selectedBackend: probe.selected,
       availableBackends: probe.available,
     });
+  }
+
+  if (req.url === "/api/llm/processes" && req.method === "GET") {
+    // "Why are there two llama-server processes and which one is stale" answered
+    // without a terminal: the ones this server owns, and any orphans.
+    return json(res, 200, { ok: true, ...describeBackends() });
   }
 
   if (req.url.startsWith("/api/llm/backends") && req.method === "GET") {

@@ -54,6 +54,9 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // preference; a filesystem can overrule it without changing it, and until this
   // card existed nothing said so.
   const [mmapStatus, setMmapStatus] = useState(null);
+  // Every llama.cpp backend on the machine, including ones an earlier run left
+  // behind. "Why are there two, and which one is stale" was a `ps` question.
+  const [backends, setBackends] = useState(null);
   // Which model translates product names, so "no small model downloaded" is
   // visible here instead of only inside a translation that never happens.
   const [backgroundModel, setBackgroundModel] = useState(null);
@@ -95,6 +98,11 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const statusResponse = await fetch("/api/llm/status");
       const statusData = await statusResponse.json();
       if (statusResponse.ok) setMmapStatus(statusData.mmap || null);
+    } catch {}
+    try {
+      const processResponse = await fetch("/api/llm/processes");
+      const processData = await processResponse.json();
+      if (processResponse.ok) setBackends(processData || null);
     } catch {}
     try {
       const governorResponse = await fetch("/api/resource-governor");
@@ -338,6 +346,20 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         Everything this app keeps — models, chats, outputs — stays on the disk the app runs from. Nothing is moved to the machine's own
         disk unless you ask for it below.
       </span>
+      {backends?.processes?.length > 0 && (
+        <span style={descStyle}>
+          Running: {backends.processes
+            .map((process) => `${process.owner} · ${process.model || "?"} on port ${process.port ?? "?"} · ${process.mmapFlag || "mmap default"}`)
+            .join("  |  ")}
+        </span>
+      )}
+      {backends?.orphans?.length > 0 && (
+        <span style={{ ...descStyle, color: "var(--md-sys-color-error)" }}>
+          {backends.orphans.length} llama.cpp {backends.orphans.length === 1 ? "process" : "processes"} left behind by an earlier run
+          ({backends.orphans.map((orphan) => `pid ${orphan.pid}${orphan.model ? ` ${orphan.model}` : ""}${orphan.mmapFlag ? ` ${orphan.mmapFlag}` : ""}`).join(", ")}).
+          Stop the app and run <code>pkill -f llama-server</code> before loading again, or they will compete for memory.
+        </span>
+      )}
       {mmapNote && (
         <span style={{ ...descStyle, color: mmapOverridden ? "var(--md-sys-color-error)" : "var(--md-sys-color-outline)" }}>
           {mmapNote}
