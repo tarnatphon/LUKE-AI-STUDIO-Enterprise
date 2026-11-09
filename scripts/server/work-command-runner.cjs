@@ -342,12 +342,18 @@ const RUNNABLE_PROGRAMS = {
   // Linters and type checkers are the other half of the verify loop. The ones
   // that import the project to analyse it (pylint, mypy) run that code, which
   // is why their notes say so rather than calling them read-only.
-  eslint: { file: "eslint", note: "lints JavaScript and TypeScript; loads the project's config, which is code" },
-  tsc: { file: "tsc", note: "type-checks TypeScript; reads the project and its tsconfig" },
-  pylint: { file: "pylint", note: "lints Python by importing the project's modules, so that code runs" },
-  ruff: { file: "ruff", note: "lints and can rewrite Python files; writes only when asked to fix" },
-  pytest: { file: "pytest", note: "runs the project's Python tests — arbitrary project code with your access" },
-  mypy: { file: "mypy", note: "type-checks Python by importing the project's modules, so that code runs" },
+  //
+  // `localBin: true` is what lets these six be found in the project's own
+  // node_modules/.bin or .venv/bin. It is deliberately absent from every entry
+  // above: a repository must never be able to supply its own `node`, `npm`,
+  // `python3` or `make`, because those are the programs whose identity the
+  // user is actually trusting when they approve a command.
+  eslint: { file: "eslint", localBin: true, note: "lints JavaScript and TypeScript; loads the project's config, which is code" },
+  tsc: { file: "tsc", localBin: true, note: "type-checks TypeScript; reads the project and its tsconfig" },
+  pylint: { file: "pylint", localBin: true, note: "lints Python by importing the project's modules, so that code runs" },
+  ruff: { file: "ruff", localBin: true, note: "lints and can rewrite Python files; writes only when asked to fix" },
+  pytest: { file: "pytest", localBin: true, note: "runs the project's Python tests — arbitrary project code with your access" },
+  mypy: { file: "mypy", localBin: true, note: "type-checks Python by importing the project's modules, so that code runs" },
 };
 
 /**
@@ -368,7 +374,7 @@ const LOCAL_BIN_SUFFIXES = process.platform === "win32" ? ["", ".cmd", ".exe", "
 
 /**
  * The project's own copy of `name`, as a path relative to the granted folder,
- * or null. Relative so the approval shows something readable, and so the
+ * or null. Only consulted for entries marked `localBin`. Relative so the approval shows something readable, and so the
  * executable cannot point outside the folder the user granted.
  */
 function findProjectExecutable(root, name) {
@@ -494,10 +500,12 @@ async function runApprovedWorkCommand({ root: rootValue, command, approvalGrante
   }
   for (const arg of args) await assertArgInsideRoot(root, arg);
 
-  // The project's own installed copy, if it has one; otherwise the name, which
-  // execFile resolves through PATH. Resolved before the approval prompt so the
-  // prompt can say which binary would actually run.
-  const localExecutable = findProjectExecutable(root, entry.file);
+  // The project's own installed copy, if this program is allowed one; otherwise
+  // the name, which execFile resolves through PATH. Resolved before the approval
+  // prompt so the prompt can say which binary would actually run. Runtimes and
+  // package managers are intentionally excluded: a cloned repository that ships
+  // node_modules/.bin/node must not become the node the user approved.
+  const localExecutable = entry.localBin === true ? findProjectExecutable(root, entry.file) : null;
   const executable = localExecutable ? path.join(root, localExecutable) : entry.file;
 
   if (approvalGranted !== true) {
