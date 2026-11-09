@@ -30,6 +30,9 @@ const execFileAsync = promisify(execFile);
 
 const DEFAULT_TIMEOUT_MS = 180000;
 const MAX_TIMEOUT_MS = 600000;
+// Project checks may ask for longer than an interactive command: a test suite is
+// not a thing a person is waiting on keystroke by keystroke.
+const MAX_CHECK_TIMEOUT_MS = 1800000;
 const MAX_OUTPUT_CHARS = 12000;
 const HEAD_CHARS = 8000;
 const TAIL_CHARS = 4000;
@@ -155,6 +158,9 @@ async function detectProjectCommands(rootValue) {
   const seen = new Set();
   const add = (id, label, file, args, hint) => {
     if (seen.has(id)) return;
+    // A suggestion Work would refuse is noise, and worse: the loop would have
+    // run it. Only offer what the same rule allows.
+    if (!isRunnableProgram(file)) return;
     seen.add(id);
     found.push({ id, label, file, args: args.filter(Boolean), category: "check", hint });
   };
@@ -270,7 +276,18 @@ function extractFailureSignals(text) {
  */
 async function runProjectCheck({ root: rootValue, commandId, timeoutMs }) {
   const { root, command } = await findCommand(rootValue, commandId);
-  const timeout = Math.min(Math.max(Number(timeoutMs) || DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS);
+  // Detection already filters this, but the loop must not depend on that being
+  // true forever: one future detection branch is all it would take.
+  if (!isRunnableProgram(command.file)) {
+    throw reject(
+      `"${command.file}" is not one of the programs Work can run, so "${command.label}" was not executed.`,
+      400,
+    );
+  }
+  // A full suite on a real repo can run past ten minutes. The terminal keeps its
+  // ten-minute ceiling because a typed command is interactive; a check the loop
+  // asked for may have half an hour.
+  const timeout = Math.min(Math.max(Number(timeoutMs) || DEFAULT_TIMEOUT_MS, 1000), MAX_CHECK_TIMEOUT_MS);
   const startedAt = Date.now();
   let stdout = "";
   let stderr = "";
@@ -313,11 +330,24 @@ async function runProjectCheck({ root: rootValue, commandId, timeoutMs }) {
     exitCode,
     signal,
     timedOut,
+    ...(timedOut ? { hint: timeoutHint([command.file, ...command.args].join(" "), timeout) } : {}),
     durationMs: Date.now() - startedAt,
     output: trimmed.output,
     truncated: trimmed.truncated,
     failureSignals: exitCode === 0 ? [] : extractFailureSignals(combined),
   };
+}
+
+/**
+ * What to do about a check that ran out of time. The output above it is the
+ * part that matters: execFile keeps what the process printed before the kill,
+ * so a slow suite still reports where it was when the clock ran out.
+ */
+function timeoutHint(commandLine, timeoutMs) {
+  const seconds = Math.round(Number(timeoutMs) / 1000);
+  return `Stopped after ${seconds} s. The output above is everything it printed before it was killed — `
+    + `re-run with a longer timeout (up to ${Math.round(MAX_CHECK_TIMEOUT_MS / 60000)} minutes), `
+    + `or run "${commandLine}" yourself in the Work terminal.`;
 }
 
 
@@ -357,6 +387,23 @@ const RUNNABLE_PROGRAMS = {
   pytest: { file: "pytest", localBin: true, note: "runs the project's Python tests — arbitrary project code with your access" },
   mypy: { file: "mypy", localBin: true, note: "type-checks Python by importing the project's modules, so that code runs" },
 };
+
+/**
+ * Whether a program is one Work may run.
+ *
+ * Detection and the typed terminal used to answer this differently: detection
+ * emitted `composer test` from a composer.json and the loop ran it with
+ * execFile, while the same command typed at the prompt was refused. Two answers
+ * to one question is how the mmap rule, and the pool's copy of it, drifted too.
+ *
+ * A project-local path counts as the program it names — `.venv/bin/python` is
+ * python, and containment already guarantees it lives inside the granted
+ * folder. `composer` does not count, because it is not on the list.
+ */
+function isRunnableProgram(file) {
+  const name = path.basename(String(file || "")).toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "");
+  return Object.prototype.hasOwnProperty.call(RUNNABLE_PROGRAMS, name);
+}
 
 /**
  * Where a project keeps its own copy of a tool.
@@ -642,4 +689,7 @@ module.exports = {
   trimOutput,
   findProjectExecutable,
   projectPython,
+  isRunnableProgram,
+  MAX_CHECK_TIMEOUT_MS,
+  timeoutHint,
 };

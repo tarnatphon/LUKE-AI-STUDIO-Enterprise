@@ -300,6 +300,43 @@ async function main() {
       /venv python: -m ruff check \./.test(String(venvCheck.output)), String(venvCheck.output).slice(0, 60));
     check("and is reported as passed", venvCheck.passed === true, String(venvCheck.exitCode));
 
+    section("10. Detection offers only what the terminal would run");
+    // Detection used to emit `composer test` from a composer.json and the agent
+    // loop ran it, while the same command typed at the prompt was refused. One
+    // question, two answers — the same shape as every drift fixed this week.
+    const mixed = path.join(sandbox, "mixed-project");
+    fs.mkdirSync(path.join(mixed, "tests"), { recursive: true });
+    fs.writeFileSync(path.join(mixed, "pyproject.toml"), "[tool.ruff]\n");
+    fs.writeFileSync(path.join(mixed, "composer.json"), JSON.stringify({ scripts: { test: "phpunit" } }));
+    fs.writeFileSync(path.join(mixed, "Makefile"), "test:\n\tsleep 30\n");
+    fs.writeFileSync(path.join(mixed, "package.json"), JSON.stringify({ name: "mixed", scripts: { lint: "eslint .", test: "node t.js" } }));
+    const detected = await runner9.detectProjectCommands(mixed);
+    check("every command it offers is one the terminal would accept",
+      detected.commands.every((command) => runner9.isRunnableProgram(command.file)),
+      detected.commands.filter((command) => !runner9.isRunnableProgram(command.file)).map((command) => command.file).join(","));
+    check("a PHP test script is not offered, because composer is not a program Work runs",
+      !detected.commands.some((command) => /composer/i.test(command.file)),
+      detected.commands.map((command) => command.file).join(","));
+    check("the checks it can run are still offered",
+      detected.commands.some((command) => command.id === "make-test") &&
+        detected.commands.some((command) => command.id === "npm-lint"),
+      detected.commands.map((command) => command.id).join(","));
+    check("a project-local interpreter counts as the program it names",
+      runner9.isRunnableProgram(".venv/bin/python") && runner9.isRunnableProgram("bin/eslint"),
+      ".venv/bin/python");
+    check("and the runner refuses a command that somehow got past detection",
+      /is not one of the programs Work can run, so "\$\{command\.label\}"/.test(fs.readFileSync(runnerFile, "utf8")));
+
+    section("11. A check that runs out of time says what it captured");
+    const slowCheck = await runner9.runProjectCheck({ root: mixed, commandId: "make-test", timeoutMs: 1200 });
+    check("a slow check is stopped rather than hung", slowCheck.timedOut === true, String(slowCheck.timedOut));
+    check("the part it managed to print is kept", typeof slowCheck.output === "string", typeof slowCheck.output);
+    check("and the result says how long it had, and how to continue",
+      /Stopped after 1 s/.test(String(slowCheck.hint)) && /Work terminal/.test(String(slowCheck.hint)),
+      String(slowCheck.hint).slice(0, 90));
+    check("a project check may ask for longer than the terminal's ten minutes",
+      runner9.MAX_CHECK_TIMEOUT_MS > 600000, String(runner9.MAX_CHECK_TIMEOUT_MS));
+
   } finally {
     child.kill("SIGKILL");
     fs.rmSync(sandbox, { recursive: true, force: true });
