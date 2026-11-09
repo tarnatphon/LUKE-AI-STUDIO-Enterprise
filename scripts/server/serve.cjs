@@ -1405,6 +1405,11 @@ if (!fs.existsSync(MODELS)) {
   fs.mkdirSync(MODELS, { recursive: true });
 }
 const LLM_MODELS = path.join(ROOT, "app", "llm-models");
+// Which filesystems turn --mmap into a three-minute stall, and the mmap choice
+// this machine made last time. Both live in their own module so the rule can be
+// tested without booting the server.
+const mmapPolicy = require("./mmap-policy.cjs");
+const LLM_PREFS_DIR = path.join(ROOT, "app", "runtime-state");
 if (!fs.existsSync(LLM_MODELS)) {
   fs.mkdirSync(LLM_MODELS, { recursive: true });
 }
@@ -2101,6 +2106,37 @@ let llmSettings = {
   // line, which is what decides if an agent can call a tool at all.
   toolCalling: false,
 };
+
+// The preference used to die with the process: every boot reset mmap to true and
+// a user who had turned it off got the slow path back with nothing on screen.
+{
+  const saved = mmapPolicy.readPrefs(LLM_PREFS_DIR);
+  if (typeof saved.mmap === "boolean") llmSettings.mmap = saved.mmap;
+  if (typeof saved.mlock === "boolean") llmSettings.mlock = saved.mlock;
+}
+
+/**
+ * What `mount` says this machine has mounted, cached for a few seconds: the
+ * answer cannot change while a model is loading, and a start must not spawn a
+ * process per token.
+ */
+let mountTableCache = { at: 0, text: "" };
+function currentMountTable() {
+  if (Date.now() - mountTableCache.at < 30_000) return mountTableCache.text;
+  let text = "";
+  try {
+    text = execSync("mount", { encoding: "utf8", timeout: 4000 });
+  } catch {
+    text = ""; // unknown filesystem: keep the requested behaviour
+  }
+  mountTableCache = { at: Date.now(), text };
+  return text;
+}
+
+function decideMmapForModel(requestedMmap, modelPath) {
+  const filesystem = mmapPolicy.filesystemTypeForPath(currentMountTable(), modelPath);
+  return mmapPolicy.decideMmap(requestedMmap, filesystem);
+}
 
 function runExclusiveLlmOperation(operation) {
   const run = llmOperationQueue.catch(() => {}).then(operation);
@@ -6808,6 +6844,14 @@ async function startLlmWithBackend(settings = {}, backend) {
     performanceProfile: settings.performanceProfile || llmSettings.performanceProfile || "balanced",
   };
 
+  // Persist an explicit choice so the next boot starts where this one left off.
+  if (typeof settings.mmap === "boolean" || typeof settings.mlock === "boolean") {
+    mmapPolicy.writePrefs(LLM_PREFS_DIR, {
+      ...(typeof settings.mmap === "boolean" ? { mmap: settings.mmap } : {}),
+      ...(typeof settings.mlock === "boolean" ? { mlock: settings.mlock } : {}),
+    });
+  }
+
   let mmprojPath = null;
   const lowerFilename = filename.toLowerCase();
   const isMultimodal = isVisionModelFilename(lowerFilename);
@@ -6906,9 +6950,16 @@ async function startLlmWithBackend(settings = {}, backend) {
     args.push("--mlock");                    // ✅ Prevent OS swapping on CPU
   }
   
-  // All modes: memory-mapped loading for faster startup
-  if (llmSettings.mmap) {
+  // All modes: memory-mapped loading for faster startup — unless this model sits
+  // on a filesystem where mmap is pathological. Measured: 9 GB on exFAT spent
+  // three minutes in map faults (1 GB resident, 0.3% CPU) and timed out, then
+  // the same file with --no-mmap loaded in 33 s. Silence is what made that bug
+  // survive, so the override is always logged.
+  const mmapDecision = decideMmapForModel(llmSettings.mmap, loadPath);
+  if (mmapDecision.mmap) {
     args.push("--mmap");                     // ✅ Faster model loading
+  } else if (mmapDecision.reason) {
+    console.log(`  [llm] ${mmapDecision.reason}`);
   }
   
   if (llmSettings.enableThinking === false) {
@@ -27420,6 +27471,16 @@ const handleRequest = async (req, res) => {
   if (req.url === "/api/llm/arena/unload" && req.method === "POST") {
     const body = await readJsonBody(req, res);
     if (!body) return;
+    // A bare POST used to answer 200 {ok:true, unloaded:false} while freeing
+    // nothing, so a caller asking "unload the arena" was told it worked and then
+    // blamed the model fit for the memory it still held.
+    if (body.all !== true && !body.modelId) {
+      return json(res, 400, {
+        ok: false,
+        unloaded: false,
+        error: 'arena/unload needs {"all":true} or {"modelId":"<id>"}',
+      });
+    }
     const pool = getTextModelPool();
     if (body.all === true) {
       const result = await pool.unloadAll();
