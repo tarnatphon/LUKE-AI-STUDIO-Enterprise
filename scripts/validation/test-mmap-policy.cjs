@@ -81,6 +81,45 @@ function main() {
     "an unreadable mount table is unknown rather than assumed unsafe",
   );
 
+  // The real install: `mount` prints /Volumes/AI, the app builds paths from
+  // /Volumes/ai, and macOS treats them as the same directory. A case-sensitive
+  // prefix test fell through to the root volume, answered "apfs", and gave an
+  // exFAT model its --mmap back.
+  assert(
+    policy.filesystemTypeForPath(MAC_MOUNT, "/Volumes/ai/app/llm-models/x.gguf") === "exfat",
+    "the mount point's spelling does not decide which filesystem the model is on",
+  );
+  assert(
+    policy.filesystemTypeForPath(MAC_MOUNT, "/Volumes/ai/") === "exfat",
+    "including with a trailing slash",
+  );
+  assert(
+    policy.filesystemTypeForPath(MAC_MOUNT, "/volumes/ai/app/llm-models/x.gguf") === "exfat",
+    "and when every letter of the volume name differs in case",
+  );
+  assert(
+    policy.filesystemTypeForPath(
+      "/dev/nvme0n1p1 on / type ext4 (rw,relatime)\n/dev/sda1 on /mnt/models type exfat (rw,relatime)",
+      "/mnt/models/x.gguf",
+    ) === "exfat",
+    "a deeper volume still beats the root mount it is nested under",
+  );
+
+  // The line the failing machine actually printed, fskit and all.
+  const realLine = [
+    "/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)",
+    "/dev/disk6s2 on /Volumes/AI (exfat, local, nodev, nosuid, noowners, noatime, fskit)",
+    "//ekky@BoonNas/Mac%20Backup on /Volumes/.timemachine/BoonNas/X/Mac Backup (smbfs, nobrowse)",
+  ].join("\n");
+  assert(
+    policy.filesystemTypeForPath(realLine, "/Volumes/ai/app/llm-models/gemma-4-12b-it-uncensored-Q3_K_M.gguf") === "exfat",
+    "the reported machine's own mount line yields exfat for the path the app really uses",
+  );
+  assert(
+    policy.decideMmap(true, policy.filesystemTypeForPath(realLine, "/Volumes/ai/app/llm-models/gemma-4-12b-it-uncensored-Q3_K_M.gguf")).mmap === false,
+    "so that request is denied mmap, instead of silently falling back to the root volume",
+  );
+
   // ── which filesystems block mmap ─────────────────────────────────────────
   for (const type of ["exfat", "msdos", "vfat", "ntfs", "smbfs", "fuse.ntfs", "fuse.exfat"]) {
     assert(policy.blocksMmap(type), `${type} blocks mmap`);
@@ -142,6 +181,14 @@ function main() {
   assert(
     /mmapPolicy\.writePrefs\(LLM_PREFS_DIR, \{/.test(serveSource),
     "and an explicit choice is written back",
+  );
+  assert(
+    /args\.push\("--no-mmap"\)/.test(serveSource),
+    "the denied decision pushes --no-mmap, because llama.cpp defaults to mmap on",
+  );
+  assert(
+    /llmSettings\.mmap = mmapDecision\.mmap/.test(serveSource),
+    "and the response reports the flag that was launched, not the preference asked for",
   );
 
   // ── arena/unload no longer lies ──────────────────────────────────────────

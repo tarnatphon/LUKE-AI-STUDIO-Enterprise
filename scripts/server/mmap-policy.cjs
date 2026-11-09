@@ -69,20 +69,52 @@ function parseMountTable(text) {
  * "safe" — but also not as proof of exFAT.
  */
 function filesystemTypeForPath(mountText, target) {
-  const path_ = String(target || "").replace(/\/+$/, "");
-  if (!path_) return "";
+  // Resolve first, because a symlinked models directory should be judged by the
+  // volume it really lives on.
+  let target_ = String(target || "").replace(/\/+$/, "");
+  if (!target_) return "";
+  try { target_ = fs.realpathSync(target_).replace(/\/+$/, ""); } catch { /* keep as given */ }
+
+  const entries = parseMountTable(mountText);
+  const lowered = target_.toLowerCase();
   let best = null;
-  for (const entry of parseMountTable(mountText)) {
+
+  for (const entry of entries) {
     // "/" strips to an empty string; keep it, or the root volume never matches
     // and every path outside a mounted volume reads as unknown.
-    const mountPoint = entry.mountPoint.replace(/\/+$/, "") || "/";
-    const matches = mountPoint === "/" ? path_.startsWith("/") : (path_ === mountPoint || path_.startsWith(`${mountPoint}/`));
-    if (!matches) continue;
-    if (!best || mountPoint.length > best.mountPoint.replace(/\/+$/, "").length) best = entry;
+    const raw = entry.mountPoint.replace(/\/+$/, "") || "/";
+
+    // Two spellings of the same mount point are tried per entry: as written, and
+    // folded to lower case. macOS prints the mount point with the volume's own
+    // spelling — `mount` says /Volumes/AI while the app's path says /Volumes/ai
+    // for the very same directory — and on the fskit exFAT driver even
+    // realpath() echoes the spelling it was given. Before this, the mismatch
+    // fell through to the root volume, answered "apfs", and handed --mmap back
+    // to an exFAT model: the exact bug this file exists for.
+    for (const fold of [false, true]) {
+      const want = fold ? lowered : target_;
+      const mountPoint = fold ? raw.toLowerCase() : raw;
+      const matches = mountPoint === "/"
+        ? want.startsWith("/")
+        : (want === mountPoint || want.startsWith(`${mountPoint}/`));
+      if (!matches) continue;
+      // Deepest mount wins. At equal depth, the spelling that matched exactly
+      // wins, so a case-sensitive filesystem is never overruled by a folded
+      // match on the same string.
+      const candidate = { depth: mountPoint.length, type: entry.type, exact: !fold };
+      if (
+        !best
+        || candidate.depth > best.depth
+        || (candidate.depth === best.depth && candidate.exact && !best.exact)
+      ) {
+        best = candidate;
+      }
+      break; // this entry matched; try the next mount point
+    }
   }
+
   return best ? best.type : "";
 }
-
 function blocksMmap(filesystem) {
   const type = String(filesystem || "").toLowerCase();
   if (!type) return false;

@@ -6958,9 +6958,17 @@ async function startLlmWithBackend(settings = {}, backend) {
   const mmapDecision = decideMmapForModel(llmSettings.mmap, loadPath);
   if (mmapDecision.mmap) {
     args.push("--mmap");                     // ✅ Faster model loading
-  } else if (mmapDecision.reason) {
-    console.log(`  [llm] ${mmapDecision.reason}`);
+  } else {
+    // llama.cpp has mmap ON by default, so omitting --mmap does not turn it off.
+    // Saying nothing here is what let an exFAT model keep the pathological path
+    // while the app reported mmap:true in its own response.
+    args.push("--no-mmap");
+    if (mmapDecision.reason) console.log(`  [llm] ${mmapDecision.reason}`);
   }
+  // Report the flag that was actually launched, not the preference that was
+  // asked for: /api/llm/start used to echo mmap:true for a process started with
+  // --no-mmap, which made the override impossible to confirm from outside.
+  llmSettings.mmap = mmapDecision.mmap;
   
   if (llmSettings.enableThinking === false) {
     args.push("--reasoning", "off");           // ✅ Disable reasoning/thinking completely
