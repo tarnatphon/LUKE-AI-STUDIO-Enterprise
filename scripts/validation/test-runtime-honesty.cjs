@@ -19,6 +19,7 @@
  */
 
 const fs = require("node:fs");
+const os = require("node:os");
 const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -55,9 +56,9 @@ function freePort() {
   });
 }
 
-async function startServer(port) {
+async function startServer(port, extraEnv = {}) {
   const child = spawn(process.execPath, [serverFile], {
-    env: { ...process.env, PORT: String(port) },
+    env: { ...process.env, PORT: String(port), ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"],
   });
   for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -115,6 +116,29 @@ async function main() {
       "the governor card shows the last refusal with its reason");
   } finally {
     child.kill("SIGKILL");
+  }
+
+  // ── with no model named, the status has nothing to decide about ──────────
+  // A booted server that has never loaded anything answered an empty mmap
+  // block, so the volume could only be explained after the load that stalled.
+  // The selection is remembered instead of the model being loaded.
+  const settingsFile = path.join(os.tmpdir(), `luke-model-settings-${process.pid}.json`);
+  fs.writeFileSync(settingsFile, `${JSON.stringify({ models: {}, lastModel: "remembered-model.gguf" }, null, 2)}\n`);
+  const secondPort = await freePort();
+  const second = await startServer(secondPort, { LUKE_LLM_MODEL_SETTINGS_FILE: settingsFile });
+  try {
+    const remembered = await (await fetch(`http://127.0.0.1:${secondPort}/api/llm/status`)).json();
+    assert(remembered.settings?.model === "remembered-model.gguf",
+      "the model used last is remembered without being loaded", String(remembered.settings?.model));
+    assert(remembered.mmap?.model === "remembered-model.gguf",
+      "so the mmap preview has a model to talk about before the first load");
+    assert(remembered.mmap?.loaded === false,
+      "and says plainly that nothing is loaded yet");
+    assert(/allSettings\.lastModel = safeFilename/.test(serveSource),
+      "the selection is persisted when a model's settings are saved");
+  } finally {
+    second.kill("SIGKILL");
+    fs.rmSync(settingsFile, { force: true });
   }
 
   console.log(`\nPASS: ${checks} checks — the app reports what it did, and why.`);
