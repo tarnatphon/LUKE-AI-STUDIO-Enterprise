@@ -589,6 +589,10 @@ class TextModelPool {
       contextSize: settings.contextSize,
       threads: settings.threads,
       gpuLayers: settings.gpuLayers,
+      // What was actually launched, so the inventory can report it rather than
+      // re-deriving it from the policy later.
+      mmap: settings.mmap,
+      mlock: settings.mlock,
       startedAt: new Date().toISOString(),
       readyAt: null,
       lastUsedAt: new Date().toISOString(),
