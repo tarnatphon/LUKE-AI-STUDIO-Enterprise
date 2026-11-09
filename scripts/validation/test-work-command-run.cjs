@@ -156,6 +156,47 @@ async function main() {
     const real = await terminal("npm install lodash --dry-run", { approvalGranted: true });
     check("a real package name still runs", real.status === 200, `${real.status} ${String(real.data?.error).slice(0, 60)}`);
 
+    section("5c. A linter the project installed itself is found where it lives");
+    // `pylint src/` is refused for its name until it is allowed; once allowed it
+    // still has to be found, and by then it is usually in .venv/bin or
+    // node_modules/.bin rather than on PATH.
+    const localBins = [
+      ["node_modules/.bin/pylint", "pylint", "pylint ran from node_modules/.bin"],
+      [".venv/bin/ruff", "ruff", "ruff ran from .venv/bin"],
+    ];
+    for (const [relative, name, marker] of localBins) {
+      const target = path.join(sandbox, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, `#!/usr/bin/env node\nconsole.log(${JSON.stringify(marker)});\n`);
+      fs.chmodSync(target, 0o755);
+    }
+    const linterAsk = await terminal("pylint src/");
+    check("a linter asks for approval instead of being refused for its name",
+      linterAsk.status === 403 && linterAsk.data?.requiresApproval === true,
+      `${linterAsk.status} ${String(linterAsk.data?.error).slice(0, 70)}`);
+    check("the approval names the copy that would actually run",
+      linterAsk.data?.preview?.executable === "node_modules/.bin/pylint",
+      JSON.stringify(linterAsk.data?.preview?.executable));
+    const linterRan = await terminal("pylint src/", { approvalGranted: true });
+    check("and the project's own copy is what runs",
+      linterRan.status === 200
+        && String(linterRan.data?.result?.output || "").trim() === "pylint ran from node_modules/.bin",
+      `${linterRan.status} ${String(linterRan.data?.result?.output || linterRan.data?.error).slice(0, 70)}`);
+    const venvRan = await terminal("ruff check .", { approvalGranted: true });
+    check("a tool installed in the project's venv is found too",
+      venvRan.status === 200
+        && String(venvRan.data?.result?.output || "").trim() === "ruff ran from .venv/bin",
+      `${venvRan.status} ${String(venvRan.data?.result?.output || venvRan.data?.error).slice(0, 70)}`);
+    check("the resolver only ever looks inside the granted folder",
+      /path\.join\(root, directory,/.test(fs.readFileSync(runnerFile, "utf8")));
+    check("a missing tool is explained rather than reported as a spawn failure",
+      /not on PATH, and this project has no/.test(fs.readFileSync(runnerFile, "utf8")));
+    for (const forbidden of ["sudo", "rm", "bash", "sh"]) {
+      const refused = await terminal(`${forbidden} --version`);
+      check(`${forbidden} is still refused by name`, refused.status === 400 && /not one of the programs/.test(String(refused.data?.error)),
+        `${refused.status} ${String(refused.data?.error).slice(0, 50)}`);
+    }
+
     section("6. The granted folder still bounds every path it is given");
     const neighbourName = path.basename(neighbour);
     for (const [label, command] of [
@@ -192,7 +233,13 @@ async function main() {
     check("it hands over a scrubbed environment", /env:\s*sanitisedEnv\(\)/.test(runner));
     check("it kills a runaway rather than waiting", /killSignal:\s*"SIGKILL"/.test(runner));
     check("the programs it will run are listed in one place", /const RUNNABLE_PROGRAMS = \{/.test(runner));
-    check("the list is short enough to read", Object.keys(require(runnerFile).RUNNABLE_PROGRAMS).length <= 12);
+    const programs = require(runnerFile).RUNNABLE_PROGRAMS;
+    check("the list is short enough to read", Object.keys(programs).length <= 20, String(Object.keys(programs).length));
+    check("every program says what running it means",
+      Object.entries(programs).every(([, entry]) => String(entry.note || "").length > 15));
+    for (const name of ["eslint", "tsc", "pylint", "ruff", "pytest", "mypy"]) {
+      check(`${name} is on the list`, Object.hasOwn(programs, name));
+    }
   } finally {
     child.kill("SIGKILL");
     fs.rmSync(sandbox, { recursive: true, force: true });
