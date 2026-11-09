@@ -471,13 +471,41 @@ function parseCommandLine(line) {
  * before approval, so a command that reaches outside is refused outright
  * rather than politely offered to the user.
  */
+function looksLikePathValue(text) {
+  const value = String(text == null ? "" : text);
+  // `--registry=https://…` contains slashes and is not a path; judging it as one
+  // refused ordinary npm commands with a message about folders.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
+  return value.includes("/") || value.includes("\\") || value.startsWith(".");
+}
+
 async function assertArgInsideRoot(root, arg) {
-  const looksLikePath = arg.includes("/") || arg.includes("\\") || arg.startsWith(".");
-  if (!looksLikePath) return;
+  const text = String(arg == null ? "" : arg);
+
+  // `--rcfile=/etc/pylintrc` carries a path inside a flag. Judge the value, and
+  // quote the part that is actually wrong: the old message called the whole
+  // token a path, which reads as nonsense to anyone who typed a flag.
+  const assignment = /^(--?[A-Za-z0-9][\w.-]*)=(.*)$/.exec(text);
+  if (assignment) {
+    const value = assignment[2];
+    if (!looksLikePathValue(value)) return;
+    try {
+      await resolveInsideRoot({ root, targetPath: value, allowMissing: true });
+      return;
+    } catch {
+      throw reject(
+        `"${text}" was not run: the path it points at ("${value}") is outside the folder you granted, `
+        + `${root}. Pass a path inside that folder, or drop the flag.`,
+        400,
+      );
+    }
+  }
+
+  if (!looksLikePathValue(text)) return;
   try {
-    await resolveInsideRoot({ root, targetPath: arg, allowMissing: true });
+    await resolveInsideRoot({ root, targetPath: text, allowMissing: true });
   } catch {
-    throw reject(`"${arg}" points outside the granted folder, so the command was not run.`, 400);
+    throw reject(`"${text}" points outside the granted folder, so the command was not run.`, 400);
   }
 }
 

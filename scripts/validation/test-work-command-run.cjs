@@ -212,6 +212,24 @@ async function main() {
         `${refused.status} ${String(refused.data?.error).slice(0, 50)}`);
     }
 
+    section("5d. A flag that carries a path is judged by its path");
+    fs.writeFileSync(path.join(sandbox, ".pylintrc"), "[MASTER]\n");
+    const outsideFlag = await terminal("pylint --rcfile=/etc/pylintrc src", { approvalGranted: true });
+    check("an absolute config path outside the folder is refused",
+      outsideFlag.status === 400, `${outsideFlag.status} ${String(outsideFlag.data?.error).slice(0, 60)}`);
+    check("and the refusal quotes the path, not the whole flag",
+      /\/etc\/pylintrc/.test(String(outsideFlag.data?.error)) && /outside the folder you granted/.test(String(outsideFlag.data?.error)),
+      String(outsideFlag.data?.error).slice(0, 90));
+    const insideFlag = await terminal("pylint --rcfile=.pylintrc src", { approvalGranted: true });
+    check("a config inside the folder is accepted",
+      insideFlag.status === 200, `${insideFlag.status} ${String(insideFlag.data?.error).slice(0, 60)}`);
+    const numberFlag = await terminal("pylint --max-line-length=120 src", { approvalGranted: true });
+    check("a flag whose value is not a path is left alone",
+      numberFlag.status === 200, `${numberFlag.status} ${String(numberFlag.data?.error).slice(0, 60)}`);
+    const urlFlag = await terminal("npm install lodash --registry=https://registry.npmjs.org --dry-run", { approvalGranted: true });
+    check("a URL is not mistaken for a path",
+      urlFlag.status === 200, `${urlFlag.status} ${String(urlFlag.data?.error).slice(0, 60)}`);
+
     section("6. The granted folder still bounds every path it is given");
     const neighbourName = path.basename(neighbour);
     for (const [label, command] of [
