@@ -169,7 +169,7 @@ function main() {
     "serve.cjs loads the policy module",
   );
   assert(
-    /const mmapDecision = decideMmapForModel\(llmSettings\.mmap, loadPath\)/.test(serveSource),
+    /const requestedMmap = llmSettings\.mmap !== false;[\s\S]{0,80}decideMmapForModel\(requestedMmap, loadPath\)/.test(serveSource),
     "the --mmap flag is decided from the model's own path",
   );
   assert(

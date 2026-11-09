@@ -50,6 +50,10 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // existed, that only ever appeared as a line in the terminal.
   const [governor, setGovernor] = useState(null);
   const [governorNote, setGovernorNote] = useState("");
+  // What the mmap preference actually became. The Settings toggle holds the
+  // preference; a filesystem can overrule it without changing it, and until this
+  // card existed nothing said so.
+  const [mmapStatus, setMmapStatus] = useState(null);
   // Which model translates product names, so "no small model downloaded" is
   // visible here instead of only inside a translation that never happens.
   const [backgroundModel, setBackgroundModel] = useState(null);
@@ -88,12 +92,29 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       if (planResponse.ok) setPlan(planData);
     } catch {}
     try {
+      const statusResponse = await fetch("/api/llm/status");
+      const statusData = await statusResponse.json();
+      if (statusResponse.ok) setMmapStatus(statusData.mmap || null);
+    } catch {}
+    try {
       const governorResponse = await fetch("/api/resource-governor");
       const governorData = await governorResponse.json();
       if (governorResponse.ok) setGovernor(governorData.result || null);
     } catch {}
     await loadBackgroundModel();
   }, [loadBackgroundModel]);
+
+  const mmapOverridden = Boolean(mmapStatus?.model) && (mmapStatus?.requested !== false) !== (mmapStatus?.effective !== false);
+  const mmapNote = (() => {
+    if (!mmapStatus?.model) return "";
+    const effective = mmapStatus.effective !== false;
+    const when = mmapStatus.loaded ? "The running model" : "The next load";
+    const where = mmapStatus.filesystem ? ` on ${mmapStatus.filesystem}` : "";
+    if (!mmapOverridden) {
+      return `${when} ${effective ? "memory-maps the model file (--mmap)" : "reads the model file instead of mapping it (--no-mmap)"}${where}.`;
+    }
+    return `${when} uses ${effective ? "--mmap" : "--no-mmap"}, not what Settings asks for: ${mmapStatus.reason || "this volume decides it."}`;
+  })();
 
   const saveGovernor = async (overrides) => {
     setBusy("governor-save");
@@ -317,6 +338,11 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         Everything this app keeps — models, chats, outputs — stays on the disk the app runs from. Nothing is moved to the machine's own
         disk unless you ask for it below.
       </span>
+      {mmapNote && (
+        <span style={{ ...descStyle, color: mmapOverridden ? "var(--md-sys-color-error)" : "var(--md-sys-color-outline)" }}>
+          {mmapNote}
+        </span>
+      )}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: ".7rem", cursor: "pointer" }}>
         <input
           type="checkbox"

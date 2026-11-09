@@ -84,6 +84,7 @@ function describeStatus(status) {
     reason: pressure?.reason || "no sweep has run yet",
     decision: decision?.reason || null,
     released: status.lastRelease || null,
+    refusal: status.lastRefusal || null,
     lastSweepAt: status.lastSweepAt || null,
   };
 }
@@ -194,6 +195,12 @@ export default function GovernorSettingsCard({ data, busy = "", note = "", onSav
             <div style={{ color: "var(--md-sys-color-outline)" }}>
               <strong>Last decision:</strong> {status.decision}
             </div>
+          )}
+          {status.refusal && (
+            <p style={{ margin: "6px 0 0", fontSize: ".68rem", color: "var(--md-sys-color-error)", lineHeight: 1.5 }}>
+              <strong>Last refusal:</strong> {status.refusal.model || "a model"} needed {formatGb(status.refusal.neededGb)} with{" "}
+              {formatGb(status.refusal.availableGb)} free — {status.refusal.reason}
+            </p>
           )}
           {status.released && (
             <div data-testid="governor-release" style={{ color: "var(--md-sys-color-outline)" }}>
