@@ -111,11 +111,11 @@ async function main() {
   const jsPath = resolveFromFrontend("@eslint/js");
 
   if (!eslintPath || !globalsPath || !jsPath) {
-    console.log("  SKIPPED — eslint is not installed under app/frontend/node_modules.");
-    console.log("  This check needs it to read the code. Run ./mac.sh once,");
-    console.log("  or: cd app/frontend && npm install");
-    console.log("");
-    return;
+    // Not a pass: nothing was scanned. exit 3 says so to the sweep, which
+    // counts it as blocked rather than green (or worse, as a regression).
+    console.log("BLOCKED: eslint is not installed under app/frontend/node_modules");
+    console.log("REMEDY: npm ci --prefix app/frontend");
+    process.exit(3);
   }
 
   const { ESLint } = require(eslintPath);

@@ -28,6 +28,8 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const { missingPrerequisite, groupByRemedy, BLOCKED_EXIT } = require("./blocked-prerequisites.cjs");
+
 const HERE = __dirname;
 const ROOT = path.resolve(HERE, "..", "..");
 const REPORT_DIR = path.join(ROOT, "validation-reports");
@@ -176,14 +178,21 @@ for (const suite of suites) {
   const result = runSuite(suite);
   const known = baseline.get(suite.name);
   const applies = known && (!known.platforms || known.platforms.includes(process.platform));
+  // A suite that could not run has no opinion about the code, and saying
+  // "failed" about it is how 25 green suites got read as 25 regressions.
+  const blocked = result.ok ? null : missingPrerequisite(result.output);
   if (result.ok) {
     result.state = applies ? "xpass" : "pass";
+  } else if (blocked) {
+    result.state = "blocked";
+    result.blocked = blocked;
+    result.note = `could not run: ${blocked.reason}`;
   } else {
     result.state = applies && !strict ? "xfail" : "fail";
     result.knownReason = applies ? known.reason : undefined;
   }
   results.push(result);
-  const label = { pass: "PASS ", xfail: "XFAIL", xpass: "XPASS", fail: "FAIL ", skip: "SKIP " }[result.state];
+  const label = { pass: "PASS ", xfail: "XFAIL", xpass: "XPASS", fail: "FAIL ", skip: "SKIP ", blocked: "BLOCK" }[result.state];
   process.stdout.write(`${label}  ${result.name}  ${result.ms}ms  ${result.note}\n`);
   if (result.state === "fail" && bail) {
     process.stdout.write("\n--bail: stopping at the first failure\n");
@@ -196,12 +205,22 @@ const xpassed = results.filter((r) => r.state === "xpass");
 const failed = results.filter((r) => r.state === "fail");
 const xfailed = results.filter((r) => r.state === "xfail");
 const skipped = results.filter((r) => r.skipped);
+const blocked = results.filter((r) => r.state === "blocked");
 const totalMs = results.reduce((sum, r) => sum + r.ms, 0);
 
 process.stdout.write(`\n${"-".repeat(60)}\n`);
 process.stdout.write(
-  `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s\n`
+  `${passed.length} passed · ${failed.length} failed · ${blocked.length} blocked · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s\n`
 );
+
+if (blocked.length) {
+  process.stdout.write("\nBlocked — nothing was tested, so these say nothing about the code:\n");
+  for (const group of groupByRemedy(blocked)) {
+    process.stdout.write(`  ${group.names.length} suite(s) need: ${group.remedy}\n`);
+    for (const name of group.names) process.stdout.write(`    - ${name}\n`);
+  }
+  process.stdout.write("\n  A suite that cannot run exits 3 and prints BLOCKED: <reason>, or fails on a missing\n  module/build that is genuinely absent from disk. Fix the prerequisite and re-run.\n");
+}
 
 if (xfailed.length) {
   process.stdout.write("\nKnown-failing (tracked in ci-baseline.json, not blocking):\n");
@@ -236,7 +255,7 @@ if (writeReport) {
       `platform: ${process.platform} ${process.arch}`,
       `command: ${process.argv.slice(1).join(" ")}`,
       "",
-      `${passed.length} passed · ${failed.length} failed · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s`,
+      `${passed.length} passed · ${failed.length} failed · ${blocked.length} blocked · ${xfailed.length} known-failing · ${xpassed.length} xpassed · ${skipped.length} skipped · ${(totalMs / 1000).toFixed(1)}s`,
       "",
       ...results.map((r) => {
         const state = r.skipped ? "SKIP" : r.state.toUpperCase();
@@ -244,6 +263,7 @@ if (writeReport) {
       }),
       "",
       ...(failed.length ? ["Failures:", ...failed.map((f) => `\n### ${f.name} (exit ${f.status})\n${f.output}`)] : []),
+      ...(blocked.length ? ["", "Blocked (nothing tested):", ...blocked.map((f) => `  ${f.name} — ${f.blocked.reason}${f.blocked.remedy ? ` (${f.blocked.remedy})` : ""}`)] : []),
       ...(xfailed.length ? ["", "Known-failing:", ...xfailed.map((f) => `  ${f.name}${f.knownReason ? ` — ${f.knownReason}` : ""}`)] : []),
     ].join("\n");
     fs.writeFileSync(file, body);
@@ -253,4 +273,6 @@ if (writeReport) {
   }
 }
 
-process.exit(failed.length ? 1 : 0);
+// Blocked suites still fail the gate: they did not pass, they merely did not
+// have an opinion. --allow-blocked is for a machine that cannot install them.
+process.exit(failed.length || (blocked.length && !has("--allow-blocked")) ? 1 : 0);
