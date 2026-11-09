@@ -100,6 +100,25 @@ function findProjector(modelsDir, filename) {
 }
 
 /**
+ * Which mmap/mlock an arena model gets: the request first, then the choice this
+ * machine saved, then the arena policy's default.
+ *
+ * The middle step is the one that was missing. `llm-prefs.json` remembers what
+ * the user asked for, the single-model runtime reads it at boot, and the pool
+ * did not — so turning mmap off once held for Chat and Work and silently did
+ * not hold for Arena. The filesystem rule in buildMmapFlags still overrides all
+ * three, because that one is not a preference.
+ */
+function resolveRuntimeSettings(options = {}, policyRuntime = {}, preferences = {}) {
+  const pick = (key) => {
+    if (options[key] !== undefined && options[key] !== null) return options[key];
+    if (typeof preferences?.[key] === "boolean") return preferences[key];
+    return policyRuntime?.[key];
+  };
+  return { mmap: pick("mmap"), mlock: pick("mlock") };
+}
+
+/**
  * Which memory-mapping flags one arena model gets.
  *
  * The pool spawns its own llama-server, so it needs the same filesystem rule the
@@ -149,6 +168,8 @@ class TextModelPool {
       options.getPolicyOverrides || (() => null);
     // Tests inject a mount table; production reads the real one.
     this.readMountTable = options.readMountTable || null;
+    // The mmap/mlock choice saved outside git (app/runtime-state/llm-prefs.json).
+    this.getRuntimePreferences = options.getRuntimePreferences || (() => ({}));
 
     /** @type {Map<string, object>} */
     this.instances = new Map();
@@ -484,6 +505,13 @@ class TextModelPool {
     const port = await this.allocatePort();
     const stats = fs.statSync(modelPath);
     const projector = findProjector(this.modelsDir, filename);
+    let savedPreferences = {};
+    try {
+      savedPreferences = this.getRuntimePreferences() || {};
+    } catch {
+      savedPreferences = {}; // an unreadable preferences file must not stop a load
+    }
+    const runtime = resolveRuntimeSettings(options, policy.runtime, savedPreferences);
     const settings = {
       contextSize: Number(options.contextSize ?? policy.runtime.contextSize),
       threads: Number(options.threads ?? policy.runtime.threads),
@@ -491,8 +519,8 @@ class TextModelPool {
       parallelSlots: Number(options.parallelSlots ?? policy.runtime.parallelSlots),
       cachePrompt: options.cachePrompt ?? policy.runtime.cachePrompt,
       flashAttn: options.flashAttn ?? policy.runtime.flashAttn,
-      mlock: options.mlock ?? policy.runtime.mlock,
-      mmap: options.mmap ?? policy.runtime.mmap,
+      mlock: runtime.mlock,
+      mmap: runtime.mmap,
       batchSize: Number(options.batchSize ?? policy.runtime.batchSize ?? 256),
       ubatchSize: Number(options.ubatchSize ?? policy.runtime.ubatchSize ?? 128),
     };
@@ -932,6 +960,7 @@ module.exports = {
   TextModelPool,
   createTextModelPool,
   buildMmapFlags,
+  resolveRuntimeSettings,
   DEFAULT_POLICY,
   formatGb,
   findProjector,
