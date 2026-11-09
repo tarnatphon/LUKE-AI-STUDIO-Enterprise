@@ -224,6 +224,29 @@ function main() {
     "the pool decides from the model file, not from a default",
   );
 
+
+  // ── the saved choice reaches the pool too ───────────────────────────────
+  // llm-prefs.json was honoured at boot by the single-model runtime and
+  // ignored by the arena pool, so turning mmap off once did not hold for
+  // Arena rounds on a filesystem where mmap was otherwise fine.
+  const poolPolicy = { mmap: true, mlock: false };
+  const defaults = poolModule.resolveRuntimeSettings({}, poolPolicy, {});
+  assert(
+    defaults.mmap === true && defaults.mlock === false,
+    "without a saved choice the arena policy default stands",
+  );
+  const saved = poolModule.resolveRuntimeSettings({}, poolPolicy, { mmap: false });
+  assert(saved.mmap === false, "a saved mmap:false is honoured by the pool");
+  const explicit = poolModule.resolveRuntimeSettings({ mmap: true }, poolPolicy, { mmap: false });
+  assert(explicit.mmap === true, "and an explicit per-model request still wins over it");
+  assert(
+    /getRuntimePreferences: \(\) => mmapPolicy\.readPrefs\(LLM_PREFS_DIR\)/.test(serveSource),
+    "serve.cjs hands the saved preferences to the pool",
+  );
+  assert(
+    /savedPreferences = this\.getRuntimePreferences\(\) \|\| \{\}/.test(poolSource),
+    "and the pool asks for them before deciding",
+  );
   // ── arena/unload no longer lies ──────────────────────────────────────────
   const unloadBlock = serveSource.slice(
     serveSource.indexOf('"/api/llm/arena/unload"'),

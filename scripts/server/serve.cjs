@@ -212,6 +212,9 @@ function getTextModelPool() {
       memoryCalibration.scan(text);
     },
     getPolicyOverrides: () => readArenaPolicyOverrides(),
+    // The same saved mmap/mlock choice the single-model runtime honours, so a
+    // preference set once does not quietly stop applying to Arena rounds.
+    getRuntimePreferences: () => mmapPolicy.readPrefs(LLM_PREFS_DIR),
     getGpuInfo: () => {
       try {
         return getGpuInfo();
