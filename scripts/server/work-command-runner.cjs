@@ -339,7 +339,54 @@ const RUNNABLE_PROGRAMS = {
   python3: { file: "python3", note: "runs Python with the same access you have" },
   python: { file: "python", note: "runs Python with the same access you have" },
   make: { file: "make", note: "runs a target the project's own Makefile declares" },
+  // Linters and type checkers are the other half of the verify loop. The ones
+  // that import the project to analyse it (pylint, mypy) run that code, which
+  // is why their notes say so rather than calling them read-only.
+  eslint: { file: "eslint", note: "lints JavaScript and TypeScript; loads the project's config, which is code" },
+  tsc: { file: "tsc", note: "type-checks TypeScript; reads the project and its tsconfig" },
+  pylint: { file: "pylint", note: "lints Python by importing the project's modules, so that code runs" },
+  ruff: { file: "ruff", note: "lints and can rewrite Python files; writes only when asked to fix" },
+  pytest: { file: "pytest", note: "runs the project's Python tests — arbitrary project code with your access" },
+  mypy: { file: "mypy", note: "type-checks Python by importing the project's modules, so that code runs" },
 };
+
+/**
+ * Where a project keeps its own copy of a tool.
+ *
+ * `pylint src/` at a normal macOS prompt does not exist: the user installed it
+ * into .venv. Allowing the name without looking there would answer "not one of
+ * the programs Work can run" to a command that would work in a terminal, which
+ * is the kind of refusal that teaches people to stop using the tool. A Node
+ * project is the same story with node_modules/.bin. The project's own copy
+ * wins over PATH because that is what the project's scripts would use.
+ */
+const LOCAL_BIN_DIRECTORIES = process.platform === "win32"
+  ? ["node_modules/.bin", ".venv/Scripts", "venv/Scripts", ".env/Scripts"]
+  : ["node_modules/.bin", ".venv/bin", "venv/bin", ".env/bin"];
+
+const LOCAL_BIN_SUFFIXES = process.platform === "win32" ? ["", ".cmd", ".exe", ".bat"] : [""];
+
+/**
+ * The project's own copy of `name`, as a path relative to the granted folder,
+ * or null. Relative so the approval shows something readable, and so the
+ * executable cannot point outside the folder the user granted.
+ */
+function findProjectExecutable(root, name) {
+  for (const directory of LOCAL_BIN_DIRECTORIES) {
+    for (const suffix of LOCAL_BIN_SUFFIXES) {
+      const candidate = path.join(root, directory, `${name}${suffix}`);
+      try {
+        const stats = fs.statSync(candidate);
+        if (!stats.isFile()) continue;
+        if (process.platform !== "win32") fs.accessSync(candidate, fs.constants.X_OK);
+        return path.join(directory, `${name}${suffix}`);
+      } catch {
+        // Not there, or not executable: keep looking.
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * What cannot appear outside quotes. Shell operators only: with execFile there
@@ -447,10 +494,23 @@ async function runApprovedWorkCommand({ root: rootValue, command, approvalGrante
   }
   for (const arg of args) await assertArgInsideRoot(root, arg);
 
+  // The project's own installed copy, if it has one; otherwise the name, which
+  // execFile resolves through PATH. Resolved before the approval prompt so the
+  // prompt can say which binary would actually run.
+  const localExecutable = findProjectExecutable(root, entry.file);
+  const executable = localExecutable ? path.join(root, localExecutable) : entry.file;
+
   if (approvalGranted !== true) {
     const error = reject(`Running "${tokens.join(" ")}" in ${root} needs your approval first. Nothing was run.`, 403);
     error.requiresApproval = true;
-    error.preview = { tool: entry.file, args, cwd: root, note: entry.note, command: tokens.join(" ") };
+    error.preview = {
+      tool: entry.file,
+      ...(localExecutable ? { executable: localExecutable } : {}),
+      args,
+      cwd: root,
+      note: entry.note,
+      command: tokens.join(" "),
+    };
     throw error;
   }
 
@@ -462,7 +522,7 @@ async function runApprovedWorkCommand({ root: rootValue, command, approvalGrante
   let timedOut = false;
 
   try {
-    const result = await execFileAsync(entry.file, args, {
+    const result = await execFileAsync(executable, args, {
       cwd: root,
       timeout,
       maxBuffer: 8 * 1024 * 1024,
@@ -480,7 +540,13 @@ async function runApprovedWorkCommand({ root: rootValue, command, approvalGrante
     exitCode = typeof error?.code === "number" ? error.code : 1;
     timedOut = error?.killed === true || /ETIMEDOUT/.test(String(error?.code || ""));
     if (error?.code === "ENOENT") {
-      throw reject(`"${entry.file}" is not installed on this machine, so that command cannot run.`, 400);
+      const looked = LOCAL_BIN_DIRECTORIES.map((directory) => `${directory}/${entry.file}`).join(" or ");
+      throw reject(
+        `"${entry.file}" is not installed: not on PATH, and this project has no ${looked}. `
+        + `Install it for this project, or run it through a program that is installed — `
+        + `python3 -m ${entry.file} for Python tools, npx ${entry.file} for Node tools.`,
+        400,
+      );
     }
   }
 
@@ -508,4 +574,5 @@ module.exports = {
   parseCommandLine,
   sanitisedEnv,
   trimOutput,
+  findProjectExecutable,
 };
