@@ -26,6 +26,10 @@ function requireText(text, label) {
 }
 
 requireText("lazy, Suspense", "REACT_LAZY_IMPORT_MISSING");
+// lazyPanel is lazy() plus chunk recovery (lib/panel-recovery.mjs): a panel
+// whose file was replaced by a rebuild reloads the tab once instead of showing
+// "Failed to fetch dynamically imported module" forever.
+requireText("const lazyPanel = (load) => lazy(withChunkRecovery(load));", "LAZY_PANEL_WRAPPER_MISSING");
 requireText("<Suspense fallback={<WorkspaceFallback />}>", "SUSPENSE_BOUNDARY_MISSING");
 requireText("const [visitedTabs, setVisitedTabs]", "VISITED_TAB_STATE_MISSING");
 requireText("role=\"status\"", "ACCESSIBLE_LOADING_STATUS_MISSING");
@@ -37,8 +41,8 @@ for (const [tab, component] of workspaceModules) {
   );
   requireText(
     tab === "image-video"
-      ? `const ${component} = lazy(workspaceLoaders[\"${tab}\"]);`
-      : `const ${component} = lazy(workspaceLoaders.${tab});`,
+      ? `const ${component} = lazyPanel(workspaceLoaders[\"${tab}\"]);`
+      : `const ${component} = lazyPanel(workspaceLoaders.${tab});`,
     `LAZY_WORKSPACE_BINDING_MISSING_${component}`
   );
   if (app.includes(`import ${component} from \"./components/${component}\";`)) {
@@ -48,7 +52,7 @@ for (const [tab, component] of workspaceModules) {
 
 for (const component of settingsModules) {
   requireText(
-    `const ${component} = lazy(() => import(\"./components/${component}\"));`,
+    `const ${component} = lazyPanel(() => import(\"./components/${component}\"));`,
     `LAZY_SETTINGS_MODULE_MISSING_${component}`
   );
 }

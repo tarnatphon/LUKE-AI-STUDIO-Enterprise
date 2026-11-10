@@ -6,6 +6,8 @@ import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, g
 import "./App.css";
 import { canonicalThemeId } from "./themes";
 import { missingGrants, normaliseFailedFolders, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
+import { buildLabel } from "./lib/build-info.mjs";
+import { chunkFailureAdvice, isChunkLoadError, withChunkRecovery } from "./lib/panel-recovery.mjs";
 
 const workspaceLoaders = {
   generator: () => import("./components/Generator"),
@@ -20,6 +22,11 @@ const workspaceLoaders = {
   // LUKE_AI_WORKFLOW_BUILDER_V1
   "ai-workflow": () => import("./components/WorkflowBuilder"),
 };
+
+// Every lazy panel goes through withChunkRecovery: a panel whose file has been
+// replaced by a rebuild is a tab from an older build, not a broken panel, and it
+// reloads itself once instead of printing a URL in the middle of Settings.
+const lazyPanel = (load) => lazy(withChunkRecovery(load));
 
 const workspacePrefetches = new Map();
 
@@ -39,24 +46,24 @@ function preloadWorkspace(tab) {
   return request;
 }
 
-const Generator = lazy(workspaceLoaders.generator);
-const ModelManager = lazy(workspaceLoaders.models);
-const Settings = lazy(workspaceLoaders.settings);
-const TextChat = lazy(workspaceLoaders.chat);
-const SpeechTranscriber = lazy(workspaceLoaders.speech);
-const TextToSpeech = lazy(workspaceLoaders.tts);
-const ImageToVideo = lazy(workspaceLoaders["image-video"]);
+const Generator = lazyPanel(workspaceLoaders.generator);
+const ModelManager = lazyPanel(workspaceLoaders.models);
+const Settings = lazyPanel(workspaceLoaders.settings);
+const TextChat = lazyPanel(workspaceLoaders.chat);
+const SpeechTranscriber = lazyPanel(workspaceLoaders.speech);
+const TextToSpeech = lazyPanel(workspaceLoaders.tts);
+const ImageToVideo = lazyPanel(workspaceLoaders["image-video"]);
 // LUKE_AI_RUNTIME_DASHBOARD_V1
-const RuntimeDownloadDashboard = lazy(() => import("./components/RuntimeDownloadDashboard"));
+const RuntimeDownloadDashboard = lazyPanel(() => import("./components/RuntimeDownloadDashboard"));
 // LUKE_AI_TEXT_MODEL_MANAGER_UI_V1
-const TextModelManager = lazy(() => import("./components/TextModelManager"));
+const TextModelManager = lazyPanel(() => import("./components/TextModelManager"));
 // LUKE_AI_PERSISTENT_TEXT_CHAT_UI_V1
-const PersistentTextChat = lazy(() => import("./components/PersistentTextChat"));
+const PersistentTextChat = lazyPanel(() => import("./components/PersistentTextChat"));
 // LUKE_AI_ASSET_LIBRARY_UI_V1
-const AssetLibrary = lazy(workspaceLoaders.assets);
-const SocialAgency = lazy(workspaceLoaders["social-agency"]);
+const AssetLibrary = lazyPanel(workspaceLoaders.assets);
+const SocialAgency = lazyPanel(workspaceLoaders["social-agency"]);
 // LUKE_AI_WORKFLOW_BUILDER_V1
-const WorkflowBuilder = lazy(workspaceLoaders["ai-workflow"]);
+const WorkflowBuilder = lazyPanel(workspaceLoaders["ai-workflow"]);
 
 const WorkspaceFallback = () => (
   <div className="workspace-loading" role="status" aria-live="polite">
@@ -77,6 +84,26 @@ class SoftWorkspaceBoundary extends Component {
   }
   render() {
     if (!this.state.error) return this.props.children;
+
+    // A panel that could not be fetched is the one failure with an obvious
+    // repair, so it gets a sentence and the button instead of a bare URL.
+    if (isChunkLoadError(this.state.error)) {
+      return (
+        <div className="workspace-load-error" role="alert" style={{ padding: "16px", margin: "12px" }}>
+          <strong>This panel needs the current build of the app.</strong>
+          <span>{chunkFailureAdvice(buildLabel())}</span>
+          <span className="load-error-detail" style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap", display: "block", marginTop: 8 }}>
+            {String(this.state.error && this.state.error.message ? this.state.error.message : this.state.error)}
+          </span>
+          <div className="workspace-load-error-actions">
+            <button type="button" className="m3-btn m3-btn-filled" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="workspace-load-error" role="alert" style={{ padding: "16px", margin: "12px" }}>
         <strong>A settings panel failed to load.</strong>
