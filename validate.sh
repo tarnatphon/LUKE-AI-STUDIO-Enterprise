@@ -81,15 +81,29 @@ if [[ "$RUN_BUILD" == "1" ]]; then
 fi
 
 # ── the suites ──
+# The `${arr[@]+"${arr[@]}"}` form is not decoration: macOS ships bash 3.2, where
+# expanding an empty array under `set -u` is an unbound-variable error. Bash 4.4
+# made it legal, so this line worked on every Linux box that ever ran it and
+# died on the Mac it was written for. Nothing caught it because the shells
+# differ, which is why scripts/validation/test-shell-bash32.cjs checks the source.
 echo "  [tests] node scripts/validation/run-all.cjs ${PASSTHROUGH[*]:-}"
 echo ""
-node scripts/validation/run-all.cjs "${PASSTHROUGH[@]}"
+node scripts/validation/run-all.cjs ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 STATUS=$?
 
 echo ""
-if [[ "$STATUS" == "0" ]]; then
-  echo "[validate] ผ่านทั้งหมด — เริ่มใช้งานได้ด้วย ./start.sh"
-else
-  echo "[validate] มีชุดทดสอบที่ไม่ผ่าน (exit $STATUS) — ดูรายละเอียดด้านบนและใน validation-reports/" >&2
-fi
+case "$STATUS" in
+  0)
+    echo "[validate] ผ่านทั้งหมด — เริ่มใช้งานได้ด้วย ./start.sh"
+    ;;
+  2)
+    # Nothing failed; some suites could not run. Saying "did not pass" here would
+    # be the same lie the suites were fixed to stop telling.
+    echo "[validate] ทุกชุดที่รันได้ผ่านหมด — แต่มีบางชุดรันไม่ได้เพราะขาด dependency (exit 2)"
+    echo "[validate] ดูคำสั่งที่ต้องรันในหัวข้อ Blocked ด้านบน แล้วรัน ./validate.sh ใหม่"
+    ;;
+  *)
+    echo "[validate] มีชุดทดสอบที่ไม่ผ่าน (exit $STATUS) — ดูรายละเอียดด้านบนและใน validation-reports/" >&2
+    ;;
+esac
 exit "$STATUS"

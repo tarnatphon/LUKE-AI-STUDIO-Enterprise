@@ -50,7 +50,11 @@ check(barePackageName("node:fs") === null, "and neither is a builtin");
 // ── a dependency that is genuinely absent ───────────────────────────────────
 const absent = missingPrerequisite("Error: Cannot find module 'definitely-not-a-real-package-xyz'\n    at require (node:internal)");
 check(absent && /is not installed/.test(absent.reason), "an absent package blocks the suite", JSON.stringify(absent));
-check(/npm install/.test(absent.remedy), "with the command that installs it", absent.remedy);
+// Two honest answers: install the package itself, or install the tree that
+// would have contained it. Which one is right depends on whether that tree is
+// present, so the assertion is about the shape, not the words.
+check(/^npm (install \S|ci --prefix )/.test(absent.remedy),
+  "with a command that installs it — the package, or the tree that would hold it", absent.remedy);
 check(absent.declared === false, "and it is a finding, not a declaration from the suite");
 
 const absentEsm = missingPrerequisite("Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@not-installed-xyz/api' imported from /x/y.mjs");
@@ -109,6 +113,10 @@ check(!/then commit app\/dist/.test(distSuiteSource),
 const runAllSource = fs.readFileSync(runAll, "utf8");
 check(runAllSource.includes("blocked-prerequisites.cjs"), "the sweep asks the same module");
 check(runAllSource.includes("Blocked — nothing was tested"), "and says plainly that nothing was tested");
+check(/if \(blocked\.length && !has\("--allow-blocked"\)\) process\.exit\(2\)/.test(runAllSource),
+  "exit 2 means nothing failed and something could not run, so no caller can call it a failure");
+check(/มีชุดทดสอบที่ไม่ผ่าน/.test(fs.readFileSync(path.join(root, "validate.sh"), "utf8")),
+  "and validate.sh keeps that sentence for real failures only");
 
 try {
   fs.writeFileSync(demoSuite, [
@@ -125,7 +133,7 @@ try {
   });
   check(/BLOCK\s+test-zzz-blocked-demo/.test(blockedRun.stdout), "run-all labels it BLOCK, not FAIL", blockedRun.stdout.trim().split("\n").slice(-3).join(" | "));
   check(/0 passed · 0 failed · 1 blocked/.test(blockedRun.stdout), "the summary counts it apart from failures");
-  check(blockedRun.status === 1, "and the gate does not pass while a suite could not speak", `exit ${blockedRun.status}`);
+  check(blockedRun.status === 2, "and the gate exits 2 — nothing failed, something could not run", `exit ${blockedRun.status}`);
 
   const allowedRun = spawnSync(process.execPath, [runAll, "--filter", "test-zzz-blocked-demo", "--no-report", "--allow-blocked"], {
     cwd: root, encoding: "utf8", timeout: 60000,
