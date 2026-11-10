@@ -62,8 +62,37 @@ function appendErrorLines(existing, output, { limit = DEFAULT_LIMIT } = {}) {
   return kept;
 }
 
+/**
+ * What to do about the line llama.cpp printed.
+ *
+ * The cause alone still leaves the reader to translate it. The three failures
+ * seen on real machines each have one remedy, and none of them is "try again".
+ *
+ * @param {string} text  the error text as stored
+ * @returns {string} a sentence of advice, or "" when nothing is recognised
+ */
+function explainFailure(text) {
+  const lines = String(text ?? "");
+  const architecture = /unknown model architecture: *'?([A-Za-z0-9._-]+)'?/.exec(lines);
+  if (architecture) {
+    return `This build of llama.cpp does not know the '${architecture[1]}' architecture, so it is older than the model. ` +
+      "Update the text backend with scripts/setup/setup-llama.sh and LLAMA_RELEASE set to a newer build, then restart the app.";
+  }
+  if (/bad magic|invalid magic|not a GGUF|failed to read (?:the )?(?:model|file)|unexpected end of file/i.test(lines)) {
+    return "The file could not be read as a model: it is truncated or not a GGUF. Download it again.";
+  }
+  if (/failed to allocate|out of memory|cannot allocate|not enough memory/i.test(lines)) {
+    return "It does not fit in memory. Lower the context size or the GPU layers in Model settings, or unload another model first.";
+  }
+  if (/error loading model: .*projector|mmproj/i.test(lines) && /error/i.test(lines)) {
+    return "The vision projector does not match this model. Pick the model again so its own mmproj-*.gguf is used, or load it as text-only.";
+  }
+  return "";
+}
+
 module.exports = {
   DEFAULT_LIMIT,
   appendErrorLines,
   errorLinesFrom,
+  explainFailure,
 };
