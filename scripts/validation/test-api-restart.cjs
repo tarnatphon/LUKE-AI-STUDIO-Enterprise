@@ -116,6 +116,17 @@ async function main() {
     return { source, start, loop: start >= 0 && end > start ? source.slice(start, end + 5) : "" };
   }
 
+  /**
+   * Everything from `EXIT_STATUS=0` to the end of the launcher: the restart
+   * loop, the crash report and the final cleanup. Extracted rather than
+   * rewritten, so what runs in the harness is what runs for the user.
+   */
+  function tailFrom(launcher) {
+    const source = fs.readFileSync(path.join(root, launcher), "utf8");
+    const start = source.indexOf("EXIT_STATUS=0");
+    return start >= 0 ? source.slice(start) : "";
+  }
+
   for (const launcher of ["mac.sh", "linux.sh"]) {
     const { source, start, loop } = loopFrom(launcher);
     check(Boolean(loop), `${launcher} runs the backend in a restart loop`);
@@ -126,6 +137,10 @@ async function main() {
       `${launcher} captures the status of wait, not of a '|| true' after it`);
     check(start > 0 && source.indexOf("trap cleanup") < start,
       `${launcher} installs its Ctrl+C trap before entering the loop, so Ctrl+C still stops everything`);
+    const tail = tailFrom(launcher);
+    check(/-ne 0 \]\]/.test(tail) && /exited with status \$EXIT_STATUS/.test(tail),
+      `${launcher} reports a crash instead of saying goodbye`);
+    check(/exit "\$EXIT_STATUS"/.test(tail), `${launcher} exits with the backend's own status`);
   }
 
   // The loop, executed: a fake backend that asks for a restart once.
@@ -154,7 +169,7 @@ async function main() {
     '"$NODE_BIN" "$SERVE_SCRIPT" &',
     "SERVER_PID=$!",
     loopFrom("mac.sh").loop,
-    "cleanup", // mac.sh calls it after the loop, so a normal exit still says goodbye
+    tailFrom("mac.sh"), // loop + crash report + the final cleanup, as the launcher has it
     "",
   ].join("\n"));
   const ran = spawnSync("bash", [harness], { encoding: "utf8", timeout: 60000 });
@@ -162,6 +177,31 @@ async function main() {
     "the launcher's own loop starts the backend a second time after exit 75",
     fs.existsSync(counter) ? fs.readFileSync(counter, "utf8").trim() : "no runs");
   check(/CLEANUP/.test(ran.stdout || ""), "and shuts down normally when it finally exits 0");
+  check(!/\[error\]/.test(ran.stdout || ""), "a normal stop reports no error", (ran.stdout || "").trim().slice(-80));
+
+  // ── and a backend that crashes is not a backend that was stopped ──────────
+  const crashNode = path.join(temp, "crash-node.sh");
+  fs.writeFileSync(crashNode, "#!/usr/bin/env bash\nexit 3\n");
+  fs.chmodSync(crashNode, 0o755);
+  const crashHarness = path.join(temp, "crash-harness.sh");
+  fs.writeFileSync(crashHarness, [
+    "#!/usr/bin/env bash",
+    "set -uo pipefail",
+    `NODE_BIN="${crashNode}"`,
+    "SERVE_SCRIPT=unused",
+    "cleanup() { echo CLEANUP; exit 0; }",
+    '"$NODE_BIN" "$SERVE_SCRIPT" &',
+    "SERVER_PID=$!",
+    tailFrom("mac.sh"),
+    "",
+  ].join("\n"));
+  const crashed = spawnSync("bash", [crashHarness], { encoding: "utf8", timeout: 60000 });
+  const crashOut = `${crashed.stdout || ""}${crashed.stderr || ""}`;
+  check(/the backend exited with status 3 without being asked to stop/.test(crashOut),
+    "a crash is named as a crash", crashOut.trim().slice(-90));
+  check(/ps aux \| grep -c/.test(crashOut), "and points at a model backend that may have outlived it");
+  check(!/CLEANUP/.test(crashed.stdout || ""), "no goodbye is printed for a stop nobody asked for");
+  check(crashed.status === 3, "and the launcher exits with the backend's status, so a script can see it", `exit ${crashed.status}`);
 
   // ── one shutdown, two ways to leave ────────────────────────────────────────
   check(/const RESTART_EXIT_CODE = 75;/.test(serveSource), "the exit code is defined once, in the server");
