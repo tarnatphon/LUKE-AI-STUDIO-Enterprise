@@ -213,6 +213,58 @@ if [[ "$FRONTEND_DEPS_INCOMPLETE" == "1" && -z "$SETUP_REASON" ]]; then
   exit 1
 fi
 
+# ── Stopping an earlier copy, politely ──────────────────────────────────────
+# This used to be `lsof -t -i:1420 -i:8080 -i:10086 | xargs kill -9`. Two
+# launcher windows therefore killed each other: the second one SIGKILLed the
+# first one's server, which printed "Killed: 9" in a window that was running
+# perfectly well, was given no chance to shut anything down, and left its
+# llama-server holding port 10086. A second launch should replace the first
+# cleanly, and say that it is doing it.
+stop_existing_servers() {
+  local pids found port pid waited alive
+  pids=""
+  if command -v lsof >/dev/null 2>&1; then
+    for port in "$FRONTEND_PORT" 8080 "$LLM_PORT"; do
+      found="$(lsof -t -i:"$port" 2>/dev/null | tr '\n' ' ' || true)"
+      pids="$pids $found"
+    done
+  elif command -v fuser >/dev/null 2>&1; then
+    for port in "$FRONTEND_PORT" 8080 "$LLM_PORT"; do
+      fuser -k "$port/tcp" >/dev/null 2>&1 || true
+    done
+    return 0
+  else
+    return 0
+  fi
+  # One process can hold several of the ports; ask each PID only once.
+  pids="$(printf '%s\n' $pids 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+  pids="$(printf '%s' "$pids" | sed -e 's/^ *//' -e 's/ *$//')"
+  if [[ -z "$pids" ]]; then
+    return 0
+  fi
+  echo "  >>   An earlier copy is still holding port $FRONTEND_PORT — stopping it: $pids"
+  # Ask first. SIGTERM lets the server unload its model and stop llama-server.
+  kill $pids 2>/dev/null || true
+  waited=0
+  while [[ "$waited" -lt 10 ]]; do
+    alive=0
+    for pid in $pids; do
+      if kill -0 "$pid" 2>/dev/null; then alive=1; fi
+    done
+    if [[ "$alive" -eq 0 ]]; then break; fi
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+  # Only what refused to go.
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "  >>   PID $pid ignored the request to stop; killing it."
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
+  return 0
+}
+
 if [[ -n "$SETUP_REASON" ]]; then
   echo ""
   echo "  ============================================================"
@@ -229,14 +281,8 @@ if [[ -n "$SETUP_REASON" ]]; then
   echo ""
   read -rp "  Press Enter to continue, or Ctrl+C to cancel."
 
-  # Clear any existing frontend and backend server processes
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -t -i:"${FRONTEND_PORT}" -i:8080 -i:"${LLM_PORT}" | xargs kill -9 >/dev/null 2>&1 || true
-  elif command -v fuser >/dev/null 2>&1; then
-    fuser -k "${FRONTEND_PORT}/tcp" >/dev/null 2>&1 || true
-    fuser -k "8080/tcp" >/dev/null 2>&1 || true
-    fuser -k "${LLM_PORT}/tcp" >/dev/null 2>&1 || true
-  fi
+  # Stop an earlier copy politely — defined above, outside this branch.
+  stop_existing_servers
 
   if ! bash "$SETUP_SCRIPT" $MAX_PERF_FLAG; then
     echo ""
@@ -276,14 +322,7 @@ echo "   LUKE AI STUDIO      |  Launching..."
 echo "  ============================================================"
 echo ""
 
-# Clear frontend and backend ports
-if command -v lsof >/dev/null 2>&1; then
-  lsof -t -i:"${FRONTEND_PORT}" -i:8080 -i:"${LLM_PORT}" | xargs kill -9 >/dev/null 2>&1 || true
-elif command -v fuser >/dev/null 2>&1; then
-  fuser -k "${FRONTEND_PORT}/tcp" >/dev/null 2>&1 || true
-  fuser -k "8080/tcp" >/dev/null 2>&1 || true
-  fuser -k "${LLM_PORT}/tcp" >/dev/null 2>&1 || true
-fi
+stop_existing_servers
 
 # Start the server
 echo "  Starting LUKE AI STUDIO..."
