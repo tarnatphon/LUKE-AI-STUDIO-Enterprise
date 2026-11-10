@@ -290,11 +290,11 @@ section("The RAM chip says whose memory it is showing");
 check(
   "macOS 'used' excludes what can be reclaimed, so the chip is not counting file cache as an app",
   /const totalFreeBytes = \(freePages \+ inactivePages \+ speculativePages\) \* pageSize;/.test(serveSource) &&
-    /cachedMacRamUsedGb = roundGb\(os\.totalmem\(\) - totalFreeBytes\);/.test(serveSource)
+    /cachedMacRamUsedGb = bytesToGib\(os\.totalmem\(\) - totalFreeBytes\);/.test(serveSource)
 );
 check(
   "the server reports its own footprint next to the machine-wide figure",
-  /server_rss_gb: roundGb\(process\.memoryUsage\(\)\.rss\),/.test(serveSource)
+  /server_rss_gb: bytesToGib\(process\.memoryUsage\(\)\.rss\),/.test(serveSource)
 );
 check(
   "and the chip leads with LUKE's own share — server process plus loaded model processes — the machine-wide reading kept as a dimmed tail",
