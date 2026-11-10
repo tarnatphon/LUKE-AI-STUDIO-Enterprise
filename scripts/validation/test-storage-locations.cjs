@@ -130,6 +130,42 @@ function main() {
     try { locations.validate(folders, "llm-models", aFile); return false; }
     catch (e) { return e.statusCode === 400; }
   })());
+  // The folder picker in Settings goes through this module, and it used to
+  // accept the same directory for two folders. That is how a real machine ended
+  // up with `runtime-state=` and `dist=` on one path: the bash script refused
+  // it, the API did not.
+  const pickerRoot = makeRoot("picker");
+  process.env.LUKE_STORAGE_ROOT = pickerRoot;
+  process.env.LUKE_STORAGE_LAYOUT_FILE = path.join(pickerRoot, "storage-layout.conf");
+  const pickerShared = path.join(temp, "picker-shared");
+  fs.mkdirSync(pickerShared, { recursive: true });
+  locations.setTarget("runtime-state", pickerShared);
+  const duplicateRefused = (() => {
+    try { locations.setTarget("dist", pickerShared); return null; }
+    catch (e) { return e; }
+  })();
+  check("the folder picker refuses a directory another folder already uses",
+    duplicateRefused && duplicateRefused.statusCode === 400, String(duplicateRefused && duplicateRefused.message));
+  check("and the refusal names the folder and the directory",
+    duplicateRefused && /runtime-state is already configured to use /.test(duplicateRefused.message)
+    && duplicateRefused.message.includes(pickerShared), String(duplicateRefused && duplicateRefused.message));
+  check("the second choice was not written",
+    !locations.readLayout(locations.readFolders()).dist,
+    JSON.stringify(locations.readLayout(locations.readFolders())));
+
+  // A config that is already duplicated — hand-edited, or written before this
+  // check existed — must not claim it will apply on the next restart.
+  fs.writeFileSync(locations.layoutFile(), `runtime-state=${pickerShared}\ndist=${pickerShared}\n`);
+  const conflicted = locations.list().filter((f) => f.conflictWith && f.conflictWith.length);
+  check("a duplicated config is reported as a conflict, not as pending",
+    conflicted.length === 2 && conflicted.every((f) => f.state === "conflict"),
+    conflicted.map((f) => `${f.id}:${f.state}`).join(","));
+  check("each one names the folder it collides with",
+    conflicted.some((f) => f.id === "dist" && f.conflictWith.includes("runtime-state"))
+    && conflicted.some((f) => f.id === "runtime-state" && f.conflictWith.includes("dist")));
+
+  process.env.LUKE_STORAGE_ROOT = apiRoot;
+  process.env.LUKE_STORAGE_LAYOUT_FILE = path.join(apiRoot, "storage-layout.conf");
   check("resetTarget removes the choice", (() => {
     locations.resetTarget("llm-models");
     return !locations.readLayout(folders)["llm-models"];
@@ -233,11 +269,37 @@ function main() {
     `runtime-state=${shared}\ndist=${shared}\n`,
   );
   const handApplied = bash(handRoot, ["--apply"]);
-  check("a hand-written config with one shared target is refused for both folders",
-    (combined(handApplied).match(/already configured to use/g) || []).length === 2, combined(handApplied).slice(0, 160));
+  const handText = combined(handApplied);
+  const quotedShared = shared.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // One mistake gets one report. Before this, a launch printed four lines: an
+  // ERROR naming the *other* folder, then a WARNING calling an ordinary
+  // directory "unsafe" — so the same path was both the error and the excuse.
+  check("a hand-written config with one shared target is reported once, not once per folder",
+    (handText.match(/pointing at/g) || []).length === 1, handText.slice(0, 200));
+  check("the report names both folders and the directory",
+    /(runtime-state and dist|dist and runtime-state) are both pointing at /.test(handText), handText);
+  check("it says nothing was moved", /nothing was moved/.test(handText), handText);
+  check("it gives the repair for one folder, copy-pasteable",
+    handText.includes("bash scripts/setup/storage-layout.sh --reset dist"), handText);
+  check("and the alternative of giving it its own folder under that path",
+    new RegExp(`--set dist \"${quotedShared}/dist\"`).test(handText), handText);
+  check("it no longer calls an ordinary directory 'unsafe'", !/unsafe/.test(handText), handText);
+  check("a storage problem still cannot stop the launch", handApplied.status === 0, `exit ${handApplied.status}`);
   check("and neither folder was replaced by a symlink",
     fs.lstatSync(path.join(handRoot, "app", "runtime-state")).isDirectory()
     && !fs.existsSync(path.join(handRoot, "app", "dist", "index.html")));
+
+  const handListed = bash(handRoot, ["--list"]);
+  check("--list names the same problem, so it can be found without launching",
+    /both pointing at/.test(combined(handListed)), combined(handListed).slice(0, 160));
+
+  // And it must stay quiet when the configuration is sane: a warning that
+  // appears on every launch is a warning nobody reads.
+  const cleanRoot = makeRoot("clean");
+  fs.writeFileSync(path.join(cleanRoot, "storage-layout.conf"), `runtime-state=${path.join(temp, "clean-state")}\n`);
+  check("a sane configuration says nothing at all about sharing",
+    !/pointing at/.test(combined(bash(cleanRoot, ["--apply"]))));
 
   section("7. Wiring: launchers, routes, UI, machine-local config");
   for (const name of ["mac.sh", "linux.sh"]) {

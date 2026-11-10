@@ -24,6 +24,9 @@ const STATE_LABEL = {
   "pending-restart": "Pending restart",
   "pending-reset": "Pending reset",
   "pending-move": "Pending move",
+  // Two ids on one directory: the launcher will refuse both, so "Pending
+  // restart" would be a promise it cannot keep.
+  conflict: "Shares a folder",
 };
 
 function Badge({ tone, children }) {
@@ -170,9 +173,14 @@ function StorageLocationsPanel({ showAlert, onFoldersChange }) {
                       <Badge tone={folder.recommended}>{folder.recommended === "external" ? "External" : "Internal"}</Badge>
                     </td>
                     <td style={{ padding: "8px", verticalAlign: "top" }}>
-                      <span style={{ color: folder.requiresRestart ? "#fcd34d" : "#86efac" }}>
+                      <span style={{ color: folder.state === "conflict" ? "#fca5a5" : folder.requiresRestart ? "#fcd34d" : "#86efac" }}>
                         {STATE_LABEL[folder.state] || folder.state}
                       </span>
+                      {folder.conflictWith && folder.conflictWith.length > 0 && (
+                        <div className="settings-option-desc" style={{ fontSize: 10, marginTop: 4 }}>
+                          also used by {folder.conflictWith.join(", ")} — give each folder its own directory
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "8px", verticalAlign: "top", whiteSpace: "nowrap" }}>
                       <button
