@@ -339,5 +339,24 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Keep script alive
-wait "$SERVER_PID" || true
+# The backend can ask to be restarted by exiting with 75 (POST /api/restart).
+# This loop is what makes that request mean "start again" instead of "the app
+# stopped": the launcher owns the process tree and the Ctrl+C trap, so nobody
+# else may spawn a replacement without escaping both.
+while :; do
+  # Capture the status of the *wait*, not of a `|| true` after it — that would
+  # always be 0 and the loop would never restart.
+  wait "$SERVER_PID"
+  RESTART_STATUS=$?
+  if [[ "$RESTART_STATUS" -eq 75 ]]; then
+    echo ""
+    echo "  [restart] the backend asked for a restart — starting it again from this folder"
+    echo ""
+    "$NODE_BIN" "$SERVE_SCRIPT" &
+    SERVER_PID=$!
+    sleep 2
+    continue
+  fi
+  break
+done
 cleanup

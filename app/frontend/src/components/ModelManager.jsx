@@ -881,6 +881,45 @@ function ModelManager({
   const uiIsStale = Boolean(buildHealth?.frontend?.stale === true);
   const backendNeedsRestart = Boolean(buildHealth?.restartRequired === true);
 
+  const [restartingBackend, setRestartingBackend] = useState(false);
+
+  /**
+   * Ask the backend to restart, then reload this page against the new process.
+   *
+   * The server registers its routes at boot, so a `git pull` cannot reach a
+   * process that is already running — this is the one request that can. It
+   * replies before it exits, so the poll below starts while the new process is
+   * still binding its port.
+   */
+  const restartBackend = async () => {
+    if (restartingBackend) return;
+    setRestartingBackend(true);
+    try {
+      await fetch("/api/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Luke-Restart": "1" },
+        body: JSON.stringify({ reason: "settings" }),
+      });
+    } catch (_) {
+      // The connection dies when the process exits — that is the restart working.
+    }
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const response = await fetch("/api/health");
+        if (!response.ok) continue;
+        const payload = await response.json();
+        if (payload?.restartRequired !== true) {
+          window.location.reload();
+          return;
+        }
+      } catch (_) {
+        // still coming back up
+      }
+    }
+    setRestartingBackend(false);
+  };
+
   const reloadWithFreshServiceWorker = async () => {
     try {
       if (typeof navigator !== "undefined" && navigator.serviceWorker) {
@@ -1672,6 +1711,19 @@ function ModelManager({
                 : "restart the app (the backend reloads from this folder)"}
             </code>
           </div>
+          {backendNeedsRestart && !uiIsStale && (
+            <button
+              type="button"
+              className="m3-btn m3-btn-filled"
+              style={{ height: "34px", padding: "0 14px" }}
+              onClick={restartBackend}
+              disabled={restartingBackend}
+              title="Stop the backend and let the launcher start it again from this folder"
+            >
+              <RefreshCw size={14} />
+              <span>{restartingBackend ? "Restarting…" : "Restart backend"}</span>
+            </button>
+          )}
           <button
             type="button"
             className="m3-btn m3-btn-tonal"
