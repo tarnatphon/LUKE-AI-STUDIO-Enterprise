@@ -92,8 +92,32 @@ const renamed = writeGguf(path.join(tmp, "renamed.gguf"), {
 });
 // The control: everything the metadata promises is there.
 const intact = writeGguf(path.join(tmp, "intact.gguf"), { blockCount: 32, layers: 32, layerTensors: normalLayer });
+// A tokenizer large enough to push the metadata block past the first window the
+// tool reads: a real DeepSeek vocab does this, and the first version of the tool
+// died on exactly that file with `The value of "offset" is out of range`.
+const bigVocab = path.join(tmp, "big-vocab.gguf");
+{
+  const tokens = [];
+  for (let index = 0; index < 160000; index += 1) tokens.push(`tok${index}_äö`);
+  const names = ["token_embd.weight", "output_norm.weight", "output.weight"];
+  for (let index = 0; index < 33; index += 1) names.push(`blk.${index}.attn_norm.weight`);
+  const parts = [
+    Buffer.from("GGUF", "latin1"), u32(3), u64(names.length), u64(3),
+    str("general.architecture"), u32(8), str("qwen35"),
+    str("qwen35.block_count"), u32(4), u32(34),
+    str("tokenizer.ggml.tokens"), u32(9), Buffer.concat([u32(8), u64(tokens.length), ...tokens.map(str)]),
+  ];
+  for (const name of names) parts.push(Buffer.concat([str(name), u32(1), u64(4096), u32(12), u64(0)]));
+  fs.writeFileSync(bigVocab, Buffer.concat(parts));
+}
+// A file that ends in the middle of its header.
+const truncated = path.join(tmp, "truncated.gguf");
+fs.writeFileSync(truncated, fs.readFileSync(intact).subarray(0, 200));
+
 const notGguf = path.join(tmp, "not-a-model.gguf");
 fs.writeFileSync(notGguf, Buffer.from("this is not a model, it is a text file\n"));
+
+const run = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: "utf8", timeout: 60000 });
 
 // ── the header, read back ───────────────────────────────────────────────────
 const brokenHeader = loadHeader(broken);
@@ -123,8 +147,24 @@ const intactReport = summarise(loadHeader(intact), null, "blk.31.attn_norm.weigh
 check("a complete file has nothing missing", intactReport.missingLayers.length === 0);
 check("and the tool does not cry wolf", /Every block the metadata names/.test(verdict(intactReport)), verdict(intactReport));
 
+// ── a header bigger than the first window ───────────────────────────────────
+check("a metadata block past 2 MB still reads", fs.statSync(bigVocab).size > 2 * 1024 * 1024, `${(fs.statSync(bigVocab).size / 1048576).toFixed(1)} MB`);
+const bigHeader = loadHeader(bigVocab);
+// The tool shows the first few tokens and a count, not 160 000 strings; the
+// proof that it stepped over the rest correctly is the tensor table after it.
+const tokens = bigHeader.metadata["tokenizer.ggml.tokens"];
+check("the array is summarised rather than dumped", tokens.length === 17 && /more/.test(tokens[16]), tokens[tokens.length - 1]);
+check("and the tensor table after it still parses", bigHeader.tensors.length === 36, String(bigHeader.tensors.length));
+const bigReport = summarise(bigHeader, null, "blk.32.attn_norm.weight");
+check("the tensor that is present is reported present", bigReport.want.present === true);
+check("and the verdict names the layer that is missing, not the one that was asked about",
+  /blk\.33 is missing from the file itself/.test(verdict(bigReport, 32)), verdict(bigReport, 32));
+
+// A file cut short says so, instead of printing a stack trace.
+const truncatedRun = run(truncated);
+check("a file that ends inside its header is called truncated", truncatedRun.status === 2 && /truncated/.test(truncatedRun.stderr), truncatedRun.stderr);
+
 // ── from the command line, where the user meets it ──────────────────────────
-const run = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: "utf8", timeout: 60000 });
 const brokenRun = run(broken, "--want", WANT);
 check("a broken file exits 1, so a script can act on it", brokenRun.status === 1, `exit ${brokenRun.status}`);
 check("and says which tensor the backend wanted", /asked for:\s+blk\.32\.attn_norm\.weight — NOT present/.test(brokenRun.stdout), brokenRun.stdout.split("\n").slice(-3).join(" | "));
