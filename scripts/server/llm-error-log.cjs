@@ -81,6 +81,14 @@ function explainFailure(text) {
   if (/bad magic|invalid magic|not a GGUF|failed to read (?:the )?(?:model|file)|unexpected end of file/i.test(lines)) {
     return "The file could not be read as a model: it is truncated or not a GGUF. Download it again.";
   }
+  const missingTensor = /missing tensor '([^']+)'/.exec(lines);
+  if (missingTensor) {
+    const layer = /^blk\.(\d+)\./.exec(missingTensor[1]);
+    return `The model file does not contain ${missingTensor[1]}, which its own metadata says it should. ` +
+      "That is a bad conversion or a truncated download rather than a memory problem: download the model again or pick another quant. " +
+      "To see which tensors the file really holds, run: node scripts/tools/gguf-tensors.cjs " +
+      `<model.gguf> --want ${missingTensor[1]}` + (layer ? ` (layer ${layer[1]})` : "");
+  }
   if (/failed to allocate|out of memory|cannot allocate|not enough memory/i.test(lines)) {
     return "It does not fit in memory. Lower the context size or the GPU layers in Model settings, or unload another model first.";
   }

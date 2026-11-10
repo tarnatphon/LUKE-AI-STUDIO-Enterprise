@@ -92,6 +92,11 @@ check("an unknown architecture is explained", /older than the model/.test(arch) 
 check("and names the architecture it choked on", /'qwen3vl'/.test(arch), arch);
 check("a truncated file is told to download again",
   /truncated or not a GGUF/.test(explainFailure("llama_model_loader: bad magic")));
+const tensor = explainFailure("0.00.290.802 E llama_model_load: error loading model: missing tensor 'blk.32.attn_norm.weight'");
+check("a missing tensor is called a broken file, not a memory problem",
+  /bad conversion or a truncated download/.test(tensor) && /rather than a memory problem/.test(tensor), tensor);
+check("and it hands over the tool that settles it",
+  /gguf-tensors\.cjs/.test(tensor) && /--want blk\.32\.attn_norm\.weight/.test(tensor), tensor);
 check("a memory failure is told which two settings to lower",
   /context size or the GPU layers/.test(explainFailure("ggml_backend_cuda_buffer_type_alloc_buffer: failed to allocate 4096.00 MiB")));
 check("a projector mismatch is not blamed on the model",
