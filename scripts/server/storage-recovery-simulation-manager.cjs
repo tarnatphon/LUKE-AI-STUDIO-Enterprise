@@ -16,33 +16,7 @@ const {
   "./storage-recovery-runbook-manager.cjs"
 );
 
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(filePath, "utf8")
-  );
-}
-
-function writeJsonAtomic(filePath, value) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    { recursive: true }
-  );
-
-  const temporaryPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temporaryPath,
-    JSON.stringify(value, null, 2) + "\n",
-    "utf8"
-  );
-
-  fs.renameSync(
-    temporaryPath,
-    filePath
-  );
-}
-
+const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 function defaultState() {
   return {
     schemaVersion: 1,

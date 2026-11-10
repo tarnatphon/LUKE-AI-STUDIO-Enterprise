@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 
 const MODEL_EXTENSIONS =
   new Set([
@@ -56,46 +57,6 @@ const BACKUP_EXTENSIONS =
     ".bak",
     ".backup",
   ]);
-
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(
-      filePath,
-      "utf8"
-    )
-  );
-}
-
-function writeJsonAtomic(
-  filePath,
-  value
-) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    {
-      recursive: true,
-    }
-  );
-
-  const temporaryPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temporaryPath,
-    JSON.stringify(
-      value,
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-
-  fs.renameSync(
-    temporaryPath,
-    filePath
-  );
-}
-
 function normalizePath(
   value
 ) {

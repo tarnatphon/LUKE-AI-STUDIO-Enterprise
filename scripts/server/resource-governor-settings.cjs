@@ -1,5 +1,7 @@
 "use strict";
 
+const { readJsonOr } = require("./json-store.cjs");
+
 /**
  * The numbers the resource governor acts on, and one place that validates them.
  *
@@ -148,22 +150,13 @@ const ORDERED_PAIRS = [
   ["criticalCompressorGb", "tightCompressorGb"],
 ];
 
-function readJson(file, fallback) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function defaultFile(root) {
   return path.join(root, "app", "runtime-state", "resource-governor.json");
 }
 
 /** The overrides as they sit on disk — only keys the governor understands. */
 function readOverrides(file) {
-  const stored = readJson(file, {});
+  const stored = readJsonOr(file, {}, { rejectArrays: true });
   const overrides = {};
   for (const [key, value] of Object.entries(stored)) {
     if (!FIELD_BY_KEY.has(key)) continue;

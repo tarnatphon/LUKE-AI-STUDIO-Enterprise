@@ -3,6 +3,14 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const {
+  writeJsonAtomic: writeJsonAtomically,
+  readJson,
+} = require("./json-store.cjs");
+
+// Upserting a provider unchanged never rewrites the config and never dirties the checkout.
+const writeJsonAtomic = (filePath, value) =>
+  writeJsonAtomically(filePath, value, { skipIfUnchanged: true });
 
 const PROVIDER_CATEGORIES =
   new Set([
@@ -46,61 +54,6 @@ const SECRET_FIELD_NAMES =
     "clientSecret",
     "privateKey",
   ]);
-
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(
-      filePath,
-      "utf8"
-    )
-  );
-}
-
-function writeJsonAtomic(
-  filePath,
-  value
-) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    {
-      recursive: true,
-    }
-  );
-
-  const serialized =
-    JSON.stringify(
-      value,
-      null,
-      2
-    ) + "\n";
-
-  // Identical content is a no-op, so upserting a provider unchanged never
-  // rewrites the config and never dirties the checkout.
-  try {
-    if (
-      fs.existsSync(filePath) &&
-      fs.readFileSync(filePath, "utf8") ===
-        serialized
-    ) {
-      return;
-    }
-  } catch (_) {}
-
-  const temporaryPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temporaryPath,
-    serialized,
-    "utf8"
-  );
-
-  fs.renameSync(
-    temporaryPath,
-    filePath
-  );
-}
-
 function expandHome(value) {
   const text =
     String(value || "");

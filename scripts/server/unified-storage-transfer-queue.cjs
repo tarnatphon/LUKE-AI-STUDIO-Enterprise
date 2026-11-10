@@ -1,5 +1,7 @@
 "use strict";
 
+const { writeJsonAtomic, readJson } = require("./json-store.cjs");
+
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -29,45 +31,6 @@ function createId(prefix) {
     crypto
       .randomBytes(6)
       .toString("hex")
-  );
-}
-
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(
-      filePath,
-      "utf8"
-    )
-  );
-}
-
-function writeJsonAtomic(
-  filePath,
-  value
-) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    {
-      recursive: true,
-    }
-  );
-
-  const temporaryPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temporaryPath,
-    JSON.stringify(
-      value,
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-
-  fs.renameSync(
-    temporaryPath,
-    filePath
   );
 }
 
