@@ -18,8 +18,11 @@
  * - The suites are run one at a time. Several of them bind ports and boot the
  *   server, so running them in parallel produces flaky failures.
  * - Server dependencies (jszip, @aws-sdk/*, ...) live in scripts/server and must
- *   be installed first: `npm ci --prefix scripts/server`. Without them the
- *   suites that require serve.cjs fail with MODULE_NOT_FOUND.
+ *   be installed first: `npm ci --prefix scripts/server`. A suite that cannot
+ *   run for that reason is reported BLOCKED, not FAILED, with the command that
+ *   frees it — see blocked-prerequisites.cjs.
+ * - Exit codes: 0 all good, 1 something failed, 2 nothing failed but some
+ *   suites could not run (--allow-blocked turns 2 into 0).
  * - The Python suite is opt-in because it needs third-party packages that are
  *   not part of the repo install (imageio_ffmpeg, ...).
  */
@@ -273,6 +276,13 @@ if (writeReport) {
   }
 }
 
-// Blocked suites still fail the gate: they did not pass, they merely did not
-// have an opinion. --allow-blocked is for a machine that cannot install them.
-process.exit(failed.length || (blocked.length && !has("--allow-blocked")) ? 1 : 0);
+// Three exits, three meanings, so the caller can say the right sentence:
+//   0  everything that ran passed
+//   1  something failed — the code said no
+//   2  nothing failed, but some suites could not run at all
+// A blocked suite is not a failure, and a caller that prints "some tests did not
+// pass" for exit 2 is repeating the confusion this whole distinction exists to
+// remove. --allow-blocked is for a machine that cannot install them.
+if (failed.length) process.exit(1);
+if (blocked.length && !has("--allow-blocked")) process.exit(2);
+process.exit(0);
