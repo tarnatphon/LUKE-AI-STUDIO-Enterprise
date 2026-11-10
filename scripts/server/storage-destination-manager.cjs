@@ -2,8 +2,9 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
+const { isPathInside } = require("./path-safety.cjs");
+const { expandHome } = require("./path-safety.cjs");
 const {
   writeJsonAtomic: writeJsonAtomically,
   readJson,
@@ -12,50 +13,12 @@ const {
 // Saving the policy unchanged never rewrites a tracked file and never dirties the checkout.
 const writeJsonAtomic = (filePath, value) =>
   writeJsonAtomically(filePath, value, { skipIfUnchanged: true });
-function expandHome(value) {
-  const text =
-    String(value || "");
-
-  if (text === "~") {
-    return os.homedir();
-  }
-
-  if (text.startsWith("~/")) {
-    return path.join(
-      os.homedir(),
-      text.slice(2)
-    );
-  }
-
-  return path.resolve(text);
-}
-
 function createId(prefix) {
   return (
     `${prefix}-${Date.now()}-` +
     crypto
       .randomBytes(6)
       .toString("hex")
-  );
-}
-
-function isPathInside(
-  candidate,
-  root
-) {
-  const resolvedCandidate =
-    path.resolve(candidate);
-
-  const resolvedRoot =
-    path.resolve(root);
-
-  return (
-    resolvedCandidate ===
-      resolvedRoot ||
-    resolvedCandidate.startsWith(
-      resolvedRoot +
-      path.sep
-    )
   );
 }
 
@@ -647,8 +610,8 @@ class StorageDestinationManager {
       approvedRoots.some(
         (approvedRoot) =>
           isPathInside(
-            filePath,
-            approvedRoot
+            approvedRoot,
+            filePath
           )
       );
 
@@ -778,8 +741,8 @@ class StorageDestinationManager {
 
     if (
       !isPathInside(
-        resolvedSource,
-        localRoot
+        localRoot,
+        resolvedSource
       )
     ) {
       const error =
@@ -839,8 +802,8 @@ class StorageDestinationManager {
 
     if (
       !isPathInside(
-        destinationPath,
-        externalRoot
+        externalRoot,
+        destinationPath
       )
     ) {
       const error =
@@ -1068,8 +1031,8 @@ class StorageDestinationManager {
 
     if (
       !isPathInside(
-        confirmation.sourcePath,
-        localRoot
+        localRoot,
+        confirmation.sourcePath
       )
     ) {
       const error =

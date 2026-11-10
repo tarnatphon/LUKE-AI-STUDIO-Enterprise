@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { isPathInside } = require("./path-safety.cjs");
 const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 
 // The AWS SDK is required on first use, not at boot.
@@ -102,24 +103,6 @@ function normalizeEndpoint(value) {
   }
 
   return endpoint;
-}
-
-function isPathInside(
-  candidate,
-  root
-) {
-  const resolvedCandidate =
-    path.resolve(candidate);
-
-  const resolvedRoot =
-    path.resolve(root);
-
-  return (
-    resolvedCandidate === resolvedRoot ||
-    resolvedCandidate.startsWith(
-      resolvedRoot + path.sep
-    )
-  );
 }
 
 async function hashFile(filePath) {
@@ -793,8 +776,8 @@ class S3CompatibleStorageAdapter {
     if (
       approvedRoot &&
       !isPathInside(
-        destination,
-        approvedRoot
+        approvedRoot,
+        destination
       )
     ) {
       const error =
