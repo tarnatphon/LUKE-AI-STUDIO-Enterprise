@@ -124,13 +124,28 @@ function readHeader(buffer) {
 function loadHeader(file) {
   const fd = fs.openSync(file, "r");
   try {
-    for (const size of [2 * 1024 * 1024, 32 * 1024 * 1024, 256 * 1024 * 1024]) {
-      const buffer = Buffer.alloc(size);
-      const read = fs.readSync(fd, buffer, 0, size, 0);
+    const total = fs.fstatSync(fd).size;
+    for (const size of [4 * 1024 * 1024, 32 * 1024 * 1024, 256 * 1024 * 1024]) {
+      const wanted = Math.min(size, total);
+      const buffer = Buffer.alloc(wanted);
+      const read = fs.readSync(fd, buffer, 0, wanted, 0);
       try {
         return readHeader(buffer.subarray(0, read));
       } catch (error) {
-        if (!/ran past/.test(error.message)) throw error;
+        // "Not enough bytes" arrives two ways and both mean "grow the window":
+        // this module's own message, and Node's RangeError from a read that
+        // starts near the end of the buffer. Only the first was caught before,
+        // so the first real file this tool saw — whose DeepSeek tokenizer alone
+        // puts the metadata past 2 MB — died with `offset is out of range`.
+        const outOfBuffer = /ran past/.test(error.message) || error.code === "ERR_OUT_OF_RANGE";
+        if (!outOfBuffer) throw error;
+        // Running out when the window already covered the whole file is not a
+        // window problem: the header runs past the end of the file.
+        if (read < size) {
+          throw new Error(
+            `the header runs past the end of the file (${read} of ${total} bytes read) — the file is truncated`,
+          );
+        }
       }
     }
     throw new Error("the header is larger than 256 MB");
@@ -216,8 +231,10 @@ function verdict(report, block = null) {
   if (report.missingLayers.length === 0) {
     return `Every block the metadata names (0…${report.blockCount - 1}) is present, so a missing-tensor error would come from the backend's naming, not from this file.`;
   }
-  const layer = block === null ? report.missingLayers[0] : block;
-  if (block !== null && report.blockTensors.length > 0) {
+  // The layer that is actually absent, which is not necessarily the one asked
+  // about. And a block that is present and complete is not a near-miss.
+  const layer = report.missingLayers[0];
+  if (block !== null && report.missingLayers.includes(block) && report.blockTensors.length > 0) {
     return `blk.${block} exists under ${report.blockTensors.length} other name(s), so the backend expects different names: this is an architecture the installed backend is too old to read.`;
   }
   return `The metadata says ${report.blockCount} blocks (0…${report.blockCount - 1}) but the file holds ${report.layersInFile} ` +
