@@ -343,6 +343,7 @@ trap cleanup SIGINT SIGTERM
 # This loop is what makes that request mean "start again" instead of "the app
 # stopped": the launcher owns the process tree and the Ctrl+C trap, so nobody
 # else may spawn a replacement without escaping both.
+EXIT_STATUS=0
 while :; do
   # Capture the status of the *wait*, not of a `|| true` after it — that would
   # always be 0 and the loop would never restart.
@@ -357,6 +358,20 @@ while :; do
     sleep 2
     continue
   fi
+  EXIT_STATUS=$RESTART_STATUS
   break
 done
+
+# A backend that exits while nobody asked it to has crashed — and saying
+# "Shutting down... Done. Goodbye!" for that reads as a normal stop, which is
+# how a failed start gets mistaken for a clean one.
+if [[ "$EXIT_STATUS" -ne 0 ]]; then
+  echo "" >&2
+  echo "  [error] the backend exited with status $EXIT_STATUS without being asked to stop." >&2
+  echo "  [error] That is a crash or a failed start, not a shutdown — the log above has the reason." >&2
+  echo "  [error] If a model was loaded, its llama-server may still be running:" >&2
+  echo "  [error]   ps aux | grep -c '[l]lama-server'" >&2
+  exit "$EXIT_STATUS"
+fi
+
 cleanup
