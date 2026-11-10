@@ -28,131 +28,7 @@
 
 const fs = require("fs");
 
-const FIXED_VALUE_SIZE = { 0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8 };
-const GGML_TYPE_NAMES = {
-  0: "F32", 1: "F16", 2: "Q4_0", 3: "Q4_1", 6: "Q5_0", 7: "Q5_1", 8: "Q8_0", 9: "Q8_1",
-  10: "Q2_K", 11: "Q3_K", 12: "Q4_K", 13: "Q5_K", 14: "Q6_K", 15: "Q8_K", 16: "IQ2_XXS",
-  17: "IQ2_XS", 18: "IQ3_XXS", 19: "IQ1_S", 20: "IQ4_NL", 21: "IQ3_S", 22: "IQ2_S",
-  23: "IQ4_XS", 24: "I8", 25: "I16", 26: "I32", 27: "I64", 28: "F64", 29: "IQ1_M", 30: "BF16",
-};
-
-function readString(buffer, offset) {
-  const length = Number(buffer.readBigUInt64LE(offset));
-  const start = offset + 8;
-  if (start + length > buffer.length) throw new Error("ran past the part of the file that was read");
-  return [buffer.toString("utf8", start, start + length), start + length];
-}
-
-function readValue(buffer, offset, type) {
-  if (type === 8) return readString(buffer, offset);
-  if (type === 9) {
-    const itemType = buffer.readUInt32LE(offset);
-    const count = Number(buffer.readBigUInt64LE(offset + 4));
-    let cursor = offset + 12;
-    if (itemType === 8) {
-      const items = [];
-      for (let index = 0; index < count; index += 1) {
-        const [text, next] = readString(buffer, cursor);
-        cursor = next;
-        if (items.length < 16) items.push(text);
-      }
-      return [items.length === count ? items : [...items, `…${count - items.length} more`], cursor];
-    }
-    const size = FIXED_VALUE_SIZE[itemType];
-    if (!size) throw new Error(`array of unsupported type ${itemType}`);
-    return [`[${count} values of type ${itemType}]`, cursor + size * count];
-  }
-  const size = FIXED_VALUE_SIZE[type];
-  if (!size) throw new Error(`unsupported value type ${type}`);
-  let value;
-  switch (type) {
-    case 0: value = buffer.readUInt8(offset); break;
-    case 1: value = buffer.readInt8(offset); break;
-    case 2: value = buffer.readUInt16LE(offset); break;
-    case 3: value = buffer.readInt16LE(offset); break;
-    case 4: value = buffer.readUInt32LE(offset); break;
-    case 5: value = buffer.readInt32LE(offset); break;
-    case 6: value = buffer.readFloatLE(offset); break;
-    case 7: value = buffer.readUInt8(offset) !== 0; break;
-    case 10: value = buffer.readBigUInt64LE(offset).toString(); break;
-    case 11: value = buffer.readBigInt64LE(offset).toString(); break;
-    case 12: value = buffer.readDoubleLE(offset); break;
-    default: value = "?";
-  }
-  return [value, offset + size];
-}
-
-/** The header of a GGUF file: metadata entries and the tensor table. */
-function readHeader(buffer) {
-  const magic = buffer.toString("latin1", 0, 4);
-  if (magic !== "GGUF") throw new Error(`not a GGUF file (magic ${JSON.stringify(magic)})`);
-  const version = buffer.readUInt32LE(4);
-  const tensorCount = Number(buffer.readBigUInt64LE(8));
-  const metadataCount = Number(buffer.readBigUInt64LE(16));
-  let offset = 24;
-
-  const metadata = {};
-  for (let index = 0; index < metadataCount; index += 1) {
-    const [key, afterKey] = readString(buffer, offset);
-    const type = buffer.readUInt32LE(afterKey);
-    const [value, afterValue] = readValue(buffer, afterKey + 4, type);
-    metadata[key] = value;
-    offset = afterValue;
-  }
-
-  const tensors = [];
-  for (let index = 0; index < tensorCount; index += 1) {
-    const [name, afterName] = readString(buffer, offset);
-    const dimensions = buffer.readUInt32LE(afterName);
-    let cursor = afterName + 4;
-    const shape = [];
-    for (let axis = 0; axis < dimensions; axis += 1) {
-      shape.push(Number(buffer.readBigUInt64LE(cursor)));
-      cursor += 8;
-    }
-    const type = buffer.readUInt32LE(cursor);
-    cursor += 4;
-    cursor += 8; // the byte offset of the weights, which this tool never follows
-    tensors.push({ name, shape, type: GGML_TYPE_NAMES[type] || `type ${type}` });
-    offset = cursor;
-  }
-
-  return { magic, version, tensorCount, metadataCount, metadata, tensors };
-}
-
-/** Read enough of the file for its header, growing the window if it is large. */
-function loadHeader(file) {
-  const fd = fs.openSync(file, "r");
-  try {
-    const total = fs.fstatSync(fd).size;
-    for (const size of [4 * 1024 * 1024, 32 * 1024 * 1024, 256 * 1024 * 1024]) {
-      const wanted = Math.min(size, total);
-      const buffer = Buffer.alloc(wanted);
-      const read = fs.readSync(fd, buffer, 0, wanted, 0);
-      try {
-        return readHeader(buffer.subarray(0, read));
-      } catch (error) {
-        // "Not enough bytes" arrives two ways and both mean "grow the window":
-        // this module's own message, and Node's RangeError from a read that
-        // starts near the end of the buffer. Only the first was caught before,
-        // so the first real file this tool saw — whose DeepSeek tokenizer alone
-        // puts the metadata past 2 MB — died with `offset is out of range`.
-        const outOfBuffer = /ran past/.test(error.message) || error.code === "ERR_OUT_OF_RANGE";
-        if (!outOfBuffer) throw error;
-        // Running out when the window already covered the whole file is not a
-        // window problem: the header runs past the end of the file.
-        if (read < size) {
-          throw new Error(
-            `the header runs past the end of the file (${read} of ${total} bytes read) — the file is truncated`,
-          );
-        }
-      }
-    }
-    throw new Error("the header is larger than 256 MB");
-  } finally {
-    fs.closeSync(fd);
-  }
-}
+const { loadHeader, readHeader } = require("../server/gguf-header.cjs");
 
 /**
  * The blocks of one layer, and whether the file's metadata agrees with them.
@@ -266,11 +142,11 @@ function main(argv) {
     console.log(`missing:      blk.${report.missingLayers.slice(0, 12).join(", blk.")}${report.missingLayers.length > 12 ? " …" : ""}`);
   }
   if (report.blockTensors) {
-    console.log(`blk.${report.block}:       ${report.blockTensors.length === 0 ? "no tensors" : report.blockTensors.map((tensor) => `${tensor.name} ${tensor.type} [${tensor.shape.join("×")}]`).join(", ")}`);
+    console.log(`blk.${report.block}:       ${report.blockTensors.length === 0 ? "no tensors" : report.blockTensors.map((tensor) => `${tensor.name} ${tensor.typeName} [${tensor.shape.join("×")}]`).join(", ")}`);
     console.log(`neighbours:   ${report.neighbouringBlocks.length ? `blk.${report.neighbouringBlocks.join(", blk.")}` : "none"}`);
   }
   if (args.includes("--list")) {
-    for (const tensor of header.tensors) console.log(`  ${tensor.name}  ${tensor.type} [${tensor.shape.join("×")}]`);
+    for (const tensor of header.tensors) console.log(`  ${tensor.name}  ${tensor.typeName} [${tensor.shape.join("×")}]`);
   }
   if (report.want) console.log(`asked for:    ${report.want.name} — ${report.want.present ? "present" : "NOT present"}`);
   console.log("");

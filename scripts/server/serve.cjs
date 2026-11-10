@@ -89,6 +89,7 @@ const {
 } = require("./gpu-memory-telemetry.cjs");
 const { bytesToGib, gbShortfall } = require("./size-units.cjs");
 const { appendErrorLines, explainFailure, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
+const { checkModel: checkModelIntegrity } = require("./model-integrity.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -4414,15 +4415,24 @@ function getLlmModels() {
     return fs.readdirSync(LLM_MODELS)
       .filter((filename) => filename.toLowerCase().endsWith(".gguf"))
       .map((filename) => {
-        const stats = fs.statSync(path.join(LLM_MODELS, filename));
+        const fullPath = path.join(LLM_MODELS, filename);
+        const stats = fs.statSync(fullPath);
         const lower = filename.toLowerCase();
+        const isProjector = lower.includes("mmproj");
         return {
           filename,
           name: filename,
           sizeBytes: stats.size,
           size: formatBytes(stats.size),
           format: "GGUF",
-          isProjector: lower.includes("mmproj"),
+          isProjector,
+          // A projector is not a model on its own, so it is not judged here;
+          // everything else is checked for the two faults that make a file
+          // impossible to load — blocks its metadata promises and does not
+          // have, and weights that run past the end of the file.
+          integrity: isProjector
+            ? { ok: true, checked: false, code: "skipped", reason: "a projector is loaded with its model" }
+            : checkModelIntegrity(fullPath),
         };
       });
   } catch (_) {
@@ -6779,6 +6789,18 @@ async function startLlm(settings = {}) {
   const modelPath = path.join(LLM_MODELS, filename);
   if (!filename || !pathInside(modelPath, LLM_MODELS) || !fs.existsSync(modelPath)) {
     throw clientError("Select a downloaded GGUF text model first.");
+  }
+  // Ask the file whether it can load at all before starting anything. The two
+  // faults checked here (blocks its metadata promises and does not hold, weights
+  // that run past the end of the file) are decided in the header, in
+  // milliseconds — far better than spending a load attempt to be told
+  // "missing tensor" 0.3 s later, or blaming the backend for a bad download.
+  const integrity = checkModelIntegrity(modelPath);
+  if (integrity.checked && !integrity.ok) {
+    const broken = new Error(`${filename} cannot be loaded: ${integrity.reason}`);
+    broken.statusCode = 400;
+    broken.integrity = integrity;
+    throw broken;
   }
   if (!filename.toLowerCase().endsWith(".gguf")) {
     throw clientError("Text generation requires a .gguf model.");
@@ -30735,7 +30757,13 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
   // GET /api/models — list available model files
   if (req.url === "/api/models" && req.method === "GET") {
     try {
-      let files = fs.readdirSync(MODELS).filter(isModelFile).map(getModelInfo);
+      let files = fs.readdirSync(MODELS).filter(isModelFile).map((filename) => {
+        const info = getModelInfo(filename);
+        if (String(filename).toLowerCase().endsWith(".gguf")) {
+          info.integrity = checkModelIntegrity(path.join(MODELS, filename));
+        }
+        return info;
+      });
       if (downloadState.active && downloadState.filename) {
         files = files.filter(model => model.filename !== downloadState.filename);
       }

@@ -2113,6 +2113,11 @@ function ModelManager({
             {displayedLocalModels.map((model) => {
               const filename = model.filename;
               const isActive = activeModelType === "image" ? activeModel === filename : activeModelType === "text" ? activeLlmModel === filename : activeModelType === "speech" ? activeSpeechModel === filename : activeTtsModel === filename;
+              // A file the server has already found unloadable: the header says
+              // so, so the button does not pretend otherwise.
+              const integrityIssue = model.integrity && model.integrity.checked && model.integrity.ok === false
+                ? model.integrity
+                : null;
               
               return (
                 <div 
@@ -2130,6 +2135,11 @@ function ModelManager({
                 >
                   <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                     <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>{filename}</span>
+                    {integrityIssue ? (
+                      <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-error)" }}>
+                        ⚠ This file cannot load — {integrityIssue.reason}
+                      </span>
+                    ) : null}
                     <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>
                       {activeModelType === "image"
                         ? (model.backendType === "openvino-npu" ? "OpenVINO NPU Model" : model.format || "Local Weights File")
@@ -2166,7 +2176,8 @@ function ModelManager({
                           className="m3-btn m3-btn-filled" 
                           style={{ height: "36px", padding: "0 16px" }} 
                           onClick={() => handleLoadModel(filename)}
-                          disabled={isBusy}
+                          disabled={isBusy || Boolean(integrityIssue)}
+                          title={integrityIssue ? integrityIssue.reason : "Load this model"}
                         >
                           {loadingModelId === filename ? (
                             <RefreshCw className="progress-spinner" size={14} />

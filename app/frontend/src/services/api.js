@@ -149,6 +149,10 @@ export function normalizeModel(model) {
     backendType: model?.backendType || "",
     resolution: model?.resolution || "",
     isProjector: Boolean(model?.isProjector),
+    // The server checks every GGUF's header: a file whose metadata promises
+    // blocks it does not hold cannot load, and saying so in the list is better
+    // than saying it 0.3 s into a load.
+    integrity: model?.integrity && typeof model.integrity === "object" ? model.integrity : null,
   };
 }
 

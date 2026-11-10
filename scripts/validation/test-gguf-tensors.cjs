@@ -124,7 +124,7 @@ const brokenHeader = loadHeader(broken);
 check("the magic and version are read", brokenHeader.magic === "GGUF" && brokenHeader.version === 3, `${brokenHeader.magic} v${brokenHeader.version}`);
 check("the architecture is read", brokenHeader.metadata["general.architecture"] === "qwen35", brokenHeader.metadata["general.architecture"]);
 check("the tensor table is read", brokenHeader.tensors.length === 67, String(brokenHeader.tensors.length));
-check("a quantisation type is named", brokenHeader.tensors[0].type === "Q4_K", brokenHeader.tensors[0].type);
+check("a quantisation type is named", brokenHeader.tensors[0].typeName === "Q4_K", brokenHeader.tensors[0].typeName);
 check("shapes come with it", brokenHeader.tensors[0].shape.join("×") === "4096", brokenHeader.tensors[0].shape.join("×"));
 
 const brokenReport = summarise(brokenHeader);
