@@ -138,7 +138,7 @@ volume_available() {
 }
 
 validate_target() {
-  local id="$1" target="$2" other
+  local id="$1" target="$2" other other_target
   is_known_folder "$id" || die "unknown folder id '$id' (see --list)"
   target="${target%/}"
   [[ -n "$target" && "$target" == /* ]] || die "path must be absolute, e.g. /Volumes/SSD/LUKE/$id"
@@ -153,6 +153,15 @@ validate_target() {
     [[ "$other" == "$id" ]] && continue
     [[ "$target" != "$APP_DIR/$other" && "$target" != "$APP_DIR/$other"/* ]] \
       || die "refusing a path inside another managed folder '$other'"
+    # Two folders cannot share one directory: whichever is copied first would be
+    # mixed into the same place and both symlinked there. This was allowed —
+    # `runtime-state=` and `dist=` with the same path passed validation, and only
+    # the "target is not empty" check downstream stopped the copy, which reads
+    # like a warning rather than the misconfiguration it is.
+    other_target="$(get_target "$other")"
+    other_target="${other_target%/}"
+    [[ -z "$other_target" || "$other_target" != "$target" ]] \
+      || die "$other is already configured to use $target — each folder needs its own directory"
   done < <(folder_ids)
   [[ ! -f "$target" ]] || die "$target is a file, not a folder"
   return 0

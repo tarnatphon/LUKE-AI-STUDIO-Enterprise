@@ -204,6 +204,41 @@ function main() {
     fs.lstatSync(path.join(guardRoot, "app", "llm-models")).isDirectory()
     && fs.readFileSync(path.join(guardRoot, "app", "llm-models", "tiny.gguf"), "utf8") === "GGUF-BYTES-42");
 
+  section("6b. Two folders cannot share one directory");
+  // This is the config that produced two warnings on a real machine:
+  //   runtime-state=/Users/…/Local AI
+  //   dist=/Users/…/Local AI
+  // Only the "target is not empty" check downstream stopped the copy — which
+  // reads as a warning rather than the misconfiguration it is, and on an empty
+  // folder it would have mixed both datasets into one directory.
+  const dupRoot = makeRoot("duplicate");
+  const shared = path.join(temp, "shared-folder");
+  fs.mkdirSync(shared, { recursive: true });
+  fs.writeFileSync(path.join(shared, "keep.txt"), "someone else's data");
+  const first = bash(dupRoot, ["--set", "runtime-state", shared]);
+  check("the first folder may point there", first.status === 0, combined(first).slice(0, 100));
+  const second = bash(dupRoot, ["--set", "dist", shared]);
+  check("the second folder pointing at the same directory is refused",
+    second.status !== 0 && /already configured to use/.test(combined(second)), combined(second).slice(0, 140));
+  check("and the refusal names the folder it collides with", /runtime-state/.test(combined(second)));
+  check("nothing in the shared directory was touched", fs.readdirSync(shared).join(",") === "keep.txt", fs.readdirSync(shared).join(","));
+  check("and the config still holds only the first choice",
+    fs.readFileSync(path.join(dupRoot, "storage-layout.conf"), "utf8").trim().split("\n").filter((line) => /=/.test(line)).length === 1,
+    fs.readFileSync(path.join(dupRoot, "storage-layout.conf"), "utf8"));
+
+  // The same shape written by hand, which is how it reached a real machine.
+  const handRoot = makeRoot("handwritten");
+  fs.writeFileSync(
+    path.join(handRoot, "storage-layout.conf"),
+    `runtime-state=${shared}\ndist=${shared}\n`,
+  );
+  const handApplied = bash(handRoot, ["--apply"]);
+  check("a hand-written config with one shared target is refused for both folders",
+    (combined(handApplied).match(/already configured to use/g) || []).length === 2, combined(handApplied).slice(0, 160));
+  check("and neither folder was replaced by a symlink",
+    fs.lstatSync(path.join(handRoot, "app", "runtime-state")).isDirectory()
+    && !fs.existsSync(path.join(handRoot, "app", "dist", "index.html")));
+
   section("7. Wiring: launchers, routes, UI, machine-local config");
   for (const name of ["mac.sh", "linux.sh"]) {
     const launcher = fs.readFileSync(path.join(root, name), "utf8");
