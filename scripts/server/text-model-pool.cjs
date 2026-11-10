@@ -13,6 +13,7 @@
  */
 
 const fs = require("node:fs");
+const { chooseProjector: chooseVisionProjector } = require("./vision-projector.cjs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
@@ -83,17 +84,19 @@ function formatGb(bytes) {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }
 
-function findProjector(modelsDir, filename) {
-  const lower = String(filename || "").toLowerCase();
-  if (!/vision|llava|vl\b/.test(lower)) return null;
+/**
+ * The arena's projector for a model.
+ *
+ * This used to take whichever file in the folder had "mmproj" in its name — the
+ * same borrow that attached a Qwen3VL encoder to gemma-4 weights in the chat
+ * runtime. Two spawners, one wrong idea, so both now ask the same module.
+ */
+function findProjector(modelsDir, filename, logger) {
   try {
     const files = fs.readdirSync(modelsDir);
-    return (
-      files.find((file) => {
-        const fileLower = file.toLowerCase();
-        return fileLower.endsWith(".gguf") && fileLower.includes("mmproj");
-      }) || null
-    );
+    const choice = chooseVisionProjector({ modelFilename: filename, files });
+    if (!choice.filename && choice.reason && logger) logger.info(`[arena] ${choice.reason}`);
+    return choice.filename;
   } catch (_) {
     return null;
   }
@@ -504,7 +507,7 @@ class TextModelPool {
 
     const port = await this.allocatePort();
     const stats = fs.statSync(modelPath);
-    const projector = findProjector(this.modelsDir, filename);
+    const projector = findProjector(this.modelsDir, filename, this.logger);
     let savedPreferences = {};
     try {
       savedPreferences = this.getRuntimePreferences() || {};

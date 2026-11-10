@@ -1413,6 +1413,7 @@ const LLM_MODELS = path.join(ROOT, "app", "llm-models");
 // tested without booting the server.
 const mmapPolicy = require("./mmap-policy.cjs");
 const backendInventory = require("./llm-backend-inventory.cjs");
+const { chooseProjector: chooseVisionProjector } = require("./vision-projector.cjs");
 const LLM_PREFS_DIR = path.join(ROOT, "app", "runtime-state");
 if (!fs.existsSync(LLM_MODELS)) {
   fs.mkdirSync(LLM_MODELS, { recursive: true });
@@ -6999,53 +7000,31 @@ async function startLlmWithBackend(settings = {}, backend) {
   const lowerFilename = filename.toLowerCase();
   const isMultimodal = isVisionModelFilename(lowerFilename);
 
+  let visionReason = "";
+  let visionWarning = "";
   if (isMultimodal) {
-    if (settings.mmproj) {
-      const customProjPath = path.join(LLM_MODELS, path.basename(settings.mmproj));
-      if (fs.existsSync(customProjPath)) {
-        mmprojPath = customProjPath;
-      }
+    let folderFiles = [];
+    try {
+      folderFiles = fs.readdirSync(LLM_MODELS);
+    } catch (_) {
+      // No folder, no projector — the message below says so.
     }
-    if (!mmprojPath) {
-      try {
-        const files = fs.readdirSync(LLM_MODELS);
-        let bestMatch = null;
-        
-        // 1. Match by Hugging Face repository prefix (e.g., "unsloth--gemma-4-E2B-it-qat-GGUF--")
-        if (filename.includes("--")) {
-          const lastIndex = filename.lastIndexOf("--");
-          const repoPrefix = filename.substring(0, lastIndex + 2);
-          bestMatch = files.find(file => {
-            const lower = file.toLowerCase();
-            return file.startsWith(repoPrefix) && lower.includes("mmproj") && lower.endsWith(".gguf");
-          });
-        }
-        
-        // 2. Match by model family keyword (e.g. matching model containing "gemma-4" with projector containing "gemma-4")
-        if (!bestMatch) {
-          const keywords = ["gemma-4", "gemma4", "llava", "qwen2vl", "qwen2-vl", "paligemma", "minicpm", "internvl", "phi-3", "phi3", "smolvlm", "moondream"];
-          const matchedKeyword = keywords.find(kw => lowerFilename.includes(kw));
-          if (matchedKeyword) {
-            bestMatch = files.find(file => {
-              const lower = file.toLowerCase();
-              return lower.endsWith(".gguf") && lower.includes("mmproj") && lower.includes(matchedKeyword);
-            });
-          }
-        }
-        
-        // 3. General fallback
-        if (!bestMatch) {
-          bestMatch = files.find(file => {
-            const lower = file.toLowerCase();
-            return lower.endsWith(".gguf") && (lower === "mmproj-model-f16.gguf" || lower.includes("mmproj"));
-          });
-        }
-        
-        if (bestMatch) {
-          mmprojPath = path.join(LLM_MODELS, bestMatch);
-        }
-      } catch (_) {}
+    // The projector has to belong to this model. Borrowing whichever mmproj
+    // happens to be in the folder attached a Qwen3VL encoder to gemma-4
+    // weights, and the UI then offered vision that could only be wrong.
+    const choice = chooseVisionProjector({
+      modelFilename: filename,
+      files: folderFiles,
+      explicit: settings.mmproj || "",
+    });
+    visionReason = choice.reason;
+    visionWarning = choice.warning;
+    if (choice.filename) {
+      mmprojPath = path.join(LLM_MODELS, choice.filename);
     }
+    if (visionWarning) console.log(`  [llm] ${visionWarning}`);
+    else if (!choice.filename) console.log(`  [llm] ${choice.reason} — loading as text-only.`);
+    else console.log(`  [llm] Vision projector ${choice.filename} (${choice.reason}).`);
   }
 
   const args = [
@@ -7154,8 +7133,8 @@ async function startLlmWithBackend(settings = {}, backend) {
   llmSettings.mmproj = mmprojPath ? path.basename(mmprojPath) : null;
   llmSettings.visionMode = mmprojPath ? "mmproj" : "none";
   llmSettings.visionStatus = mmprojPath
-    ? `Using projector ${path.basename(mmprojPath)}`
-    : (isMultimodal ? "Matching mmproj projector not found" : "Model is text-only");
+    ? `Using projector ${path.basename(mmprojPath)}${visionWarning ? ` — ${visionWarning}` : ""}`
+    : (isMultimodal ? (visionReason || "Matching mmproj projector not found") : "Model is text-only");
   const spawnEnv = { ...process.env };
   const backendDir = path.dirname(backend.path);
   
