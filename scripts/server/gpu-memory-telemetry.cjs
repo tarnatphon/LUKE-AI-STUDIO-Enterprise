@@ -42,6 +42,8 @@
  * where no Mac hardware exists to ask.
  */
 
+const { gibRounded } = require("./size-units.cjs");
+
 const GIB = 1024 ** 3;
 
 /**
@@ -55,11 +57,6 @@ const DEFAULT_GPU_NAME = "Apple Metal GPU";
 
 /** `ps -axo pid=,rss=` — rss is in KiB on both BSD and Linux ps. */
 const PS_ARGS = ["-axo", "pid=,rss="];
-
-function roundGb(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
-}
 
 /**
  * Sums the resident set of the pids we own, out of a whole `ps` listing.
@@ -128,8 +125,8 @@ function gpuMemorySummary({
   const resident = Number(residentBytes);
   return {
     gpu_name: String(gpuName || "").trim() || DEFAULT_GPU_NAME,
-    vram_used_gb: roundGb(Number.isFinite(resident) && resident > 0 ? resident / GIB : 0),
-    vram_total_gb: roundGb(totalGb),
+    vram_used_gb: gibRounded(Number.isFinite(resident) && resident > 0 ? resident / GIB : 0),
+    vram_total_gb: gibRounded(totalGb),
     unified: true,
     source: measured ? "metal-working-set" : "unified-ratio-fallback",
   };
@@ -142,5 +139,5 @@ module.exports = {
   PS_ARGS,
   gpuMemorySummary,
   residentBytesFromPs,
-  roundGb,
+  gibRounded,
 };

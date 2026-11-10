@@ -371,8 +371,13 @@ section("6. Making room for a load that would otherwise be refused");
 section("7. What the server gives up for a load, and what it never gives up");
 check("serve.cjs asks the module to plan the trade", serveSource.includes("planMakeRoom,") && /const plan = planMakeRoom\(\{ shortfallGb, engines: governedEngines\(\)/.test(serveSource));
 check(
-  "the shortfall is the gap the budget measured, not a guess",
-  /Math\.max\(0, \(Number\(budget\?\.estimateGb\) \|\| 0\) - \(Number\(budget\?\.availableGb\) \|\| 0\)\)/.test(serveSource)
+  "the shortfall is the gap the budget measured, in the unit the budget measured it in",
+  /const shortfallGb = gbShortfall\(budget\?\.estimateGb, budget\?\.availableGb\);/.test(serveSource)
+);
+// It used to be this, and a gibibyte is 1073741824: a 4 GB gap arrived as 0.00.
+check(
+  "and not that gap divided by a gibibyte again",
+  !/shortfallGb = bytesToGib\(/.test(serveSource) && /function gbShortfall/.test(fs.readFileSync(path.resolve(__dirname, "..", "..", "scripts", "server", "size-units.cjs"), "utf8"))
 );
 check(
   "a text load that would be refused tries to make room first",

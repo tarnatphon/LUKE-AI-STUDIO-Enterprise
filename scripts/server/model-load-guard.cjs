@@ -30,13 +30,10 @@
  * arguments, so a machine that swaps can be tested without one.
  */
 
+const { bytesToGib } = require("./size-units.cjs");
+
 const DEFAULT_WAIT_MS = 5 * 60 * 1000;
 const GIB = 1024 ** 3;
-
-function roundGb(bytes) {
-  const value = Number(bytes);
-  return Number.isFinite(value) && value > 0 ? Math.round((value / GIB) * 10) / 10 : 0;
-}
 
 function roundMinutes(ms) {
   const value = Number(ms);
@@ -159,7 +156,7 @@ async function waitForOtherLoad({
       target,
       otherLoading: loading,
       otherLabel,
-      otherGb: roundGb(bytes),
+      otherGb: bytesToGib(bytes, 1),
       waitedMs: now() - startedAt,
       waitMs,
     });
@@ -179,6 +176,6 @@ module.exports = {
   DEFAULT_WAIT_MS,
   inFlightBytes,
   planLoadStart,
-  roundGb,
+  bytesToGib,
   waitForOtherLoad,
 };

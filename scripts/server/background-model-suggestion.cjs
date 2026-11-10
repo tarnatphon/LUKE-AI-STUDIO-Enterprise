@@ -18,15 +18,10 @@
  * choice can be tested without a catalog file, a model folder or a network.
  */
 
-const GIB = 1024 ** 3;
+const { bytesToGib } = require("./size-units.cjs");
 
 function basename(value) {
   return String(value || "").split(/[\\/]/).pop().trim().toLowerCase();
-}
-
-function roundGb(bytes) {
-  const value = Number(bytes);
-  return Number.isFinite(value) && value > 0 ? Math.round((value / GIB) * 100) / 100 : 0;
 }
 
 /**
@@ -61,9 +56,9 @@ function chooseSuggestion({
       const filename = String(variant?.filename || "").trim();
       if (!filename || !/\.gguf$/i.test(filename)) continue;
       if (have.has(basename(filename))) continue; // already downloaded
-      const sizeGb = roundGb(variant?.sizeBytes);
+      const sizeGb = bytesToGib(variant?.sizeBytes);
       if (!sizeGb || sizeGb < floor || sizeGb > cap) continue;
-      const minRamGb = roundGb(variant?.minimumRamBytes);
+      const minRamGb = bytesToGib(variant?.minimumRamBytes);
       // A suggestion that cannot run on this machine is not a suggestion.
       if (ram > 0 && minRamGb > 0 && minRamGb > ram - reserve) continue;
       candidates.push({
@@ -142,5 +137,5 @@ function describeDownload(items = [], suggestion = null) {
 module.exports = {
   chooseSuggestion,
   describeDownload,
-  roundGb,
+  bytesToGib,
 };

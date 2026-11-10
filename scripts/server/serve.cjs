@@ -87,6 +87,7 @@ const {
   gpuMemorySummary,
   residentBytesFromPs,
 } = require("./gpu-memory-telemetry.cjs");
+const { bytesToGib, gbShortfall } = require("./size-units.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -2380,10 +2381,6 @@ let cachedGpuInfo = null;
 let cachedBackendOptions = null;
 let cachedVramInfo = null;
 
-function roundGb(bytes) {
-  return Math.round((bytes / (1024 ** 3)) * 100) / 100;
-}
-
 // Detect physical CPU cores (not logical/hyperthreaded cores)
 // llama.cpp docs: "Do NOT set threads too high — major cause of oversaturation"
 function getPhysicalCores() {
@@ -2825,7 +2822,7 @@ function getGpuInfo() {
               if (!isNaN(vramBytes)) {
                 cachedGpuInfo = {
                   name: "AMD Radeon GPU",
-                  vram_gb: Math.round((vramBytes / (1024 ** 3)) * 100) / 100
+                  vram_gb: bytesToGib(vramBytes)
                 };
                 return cachedGpuInfo;
               }
@@ -3477,7 +3474,7 @@ function governedEngines() {
       // Never take a model away mid-answer, and never during an arena round,
       // which releases the chat model itself and restores it afterwards.
       busy: llmRequestsInFlight > 0 || activeArenaRuns.size > 0 || Boolean(releasedMainModel),
-      sizeGb: roundGb(mainChatModelBytes()),
+      sizeGb: bytesToGib(mainChatModelBytes()),
       lastUsedAt: engineLastUsedAt.text || null,
     },
     {
@@ -3487,7 +3484,7 @@ function governedEngines() {
       restorable: ENGINE_RULES.arena.restorable,
       makeRoom: ENGINE_RULES.arena.makeRoom,
       busy: activeArenaRuns.size > 0,
-      sizeGb: roundGb(arenaBytes),
+      sizeGb: bytesToGib(arenaBytes),
       lastUsedAt: engineLastUsedAt.arena || null,
     },
     {
@@ -3508,7 +3505,7 @@ function governedEngines() {
         Boolean(generationState.active) ||
         Date.now() - Number(engineLastUsedAt.image || 0) < IMAGE_POLL_GRACE_MS ||
         imageWantedByScheduler(),
-      sizeGb: roundGb(Number(imageModelResidentBytes) || 0),
+      sizeGb: bytesToGib(Number(imageModelResidentBytes) || 0),
       lastUsedAt: engineLastUsedAt.image || null,
     },
     // Speech and TTS hold no process between requests — transcription spawns
@@ -3607,9 +3604,9 @@ function imageWantedByScheduler() {
  * runs browser-to-backend and the server cannot tell how long it has been idle.
  */
 async function makeRoomForLoad({ budget = null, wanted = "this model", insideLlmLock = false } = {}) {
-  const shortfallGb = roundGb(
-    Math.max(0, (Number(budget?.estimateGb) || 0) - (Number(budget?.availableGb) || 0))
-  );
+  // Both figures are already GB, so this subtraction stays in GB: dividing
+  // them by 1024³ again is what made every shortfall 0.00 GB.
+  const shortfallGb = gbShortfall(budget?.estimateGb, budget?.availableGb);
   const plan = planMakeRoom({ shortfallGb, engines: governedEngines(), policy: resourceGovernorPolicy() });
 
   if (plan.code !== "MAKE_ROOM") {
@@ -3823,7 +3820,7 @@ function pollMacRam() {
       const speculativePages = getVal("Pages speculative");
       
       const totalFreeBytes = (freePages + inactivePages + speculativePages) * pageSize;
-      cachedMacRamUsedGb = roundGb(os.totalmem() - totalFreeBytes);
+      cachedMacRamUsedGb = bytesToGib(os.totalmem() - totalFreeBytes);
     } catch (e) {
       // Ignore parsing errors
     }
@@ -3842,7 +3839,7 @@ if (osPlatform === "darwin") {
 function getHardwareSpecs() {
   const cpus = os.cpus();
   const gpu = getGpuInfo();
-  const ramTotalGb = roundGb(os.totalmem());
+  const ramTotalGb = bytesToGib(os.totalmem());
   const gpuVramGb = gpu.vram_gb || 0;
   const physicalCores = getPhysicalCores();
   const logicalCores = cpus.length;
@@ -4006,7 +4003,7 @@ function getTelemetry() {
   // (nvidia-smi), then — on macOS only, where no such number exists — the
   // unified-memory reading, then llama.cpp's device list (CUDA/Vulkan/SYCL).
   const deviceVram = vram || (osPlatform === "darwin" ? getMetalVram() : null) || getLlamaVram();
-  let ram_used_gb = roundGb(os.totalmem() - os.freemem());
+  let ram_used_gb = bytesToGib(os.totalmem() - os.freemem());
   if (osPlatform === "darwin" && cachedMacRamUsedGb !== null) {
     ram_used_gb = cachedMacRamUsedGb;
   }
@@ -4017,9 +4014,9 @@ function getTelemetry() {
     // open most of it is other people's work. The share this app is actually
     // responsible for — this server process — travels with it, so the chip can
     // show both instead of inviting the reader to blame the app for macOS.
-    server_rss_gb: roundGb(process.memoryUsage().rss),
+    server_rss_gb: bytesToGib(process.memoryUsage().rss),
     ram_used_gb,
-    ram_total_gb: roundGb(os.totalmem()),
+    ram_total_gb: bytesToGib(os.totalmem()),
     gpu_name: deviceVram?.gpu_name || gpu.name,
     vram_used_gb: Number.isFinite(Number(deviceVram?.vram_used_gb)) ? deviceVram.vram_used_gb : 0,
     vram_total_gb: deviceVram?.vram_total_gb || gpu.vram_gb || 0,
