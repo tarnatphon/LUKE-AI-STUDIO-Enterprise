@@ -1,30 +1,12 @@
 "use strict";
 
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
+const { expandHome } = require("./path-safety.cjs");
 const {
   spawn,
 } = require("node:child_process");
 const { writeJsonAtomic, readJson } = require("./json-store.cjs");
-function expandHome(value) {
-  const text =
-    String(value || "");
-
-  if (text === "~") {
-    return os.homedir();
-  }
-
-  if (text.startsWith("~/")) {
-    return path.join(
-      os.homedir(),
-      text.slice(2)
-    );
-  }
-
-  return text;
-}
-
 function createJobId() {
   return (
     `runtime-install-${Date.now()}-` +

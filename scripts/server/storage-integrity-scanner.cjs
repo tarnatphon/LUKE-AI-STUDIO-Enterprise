@@ -3,26 +3,13 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { sha256File } = require("./hash-file.cjs");
 const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 function createId(prefix) {
   return (
     `${prefix}-${Date.now()}-` +
     crypto.randomBytes(5).toString("hex")
   );
-}
-
-async function sha256File(filePath) {
-  const hash =
-    crypto.createHash("sha256");
-
-  const stream =
-    fs.createReadStream(filePath);
-
-  for await (const chunk of stream) {
-    hash.update(chunk);
-  }
-
-  return hash.digest("hex");
 }
 
 function classifyResult({

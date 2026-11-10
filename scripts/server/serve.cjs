@@ -1130,6 +1130,8 @@ const fs       = require("fs");
 const net      = require("net");
 const os       = require("os");
 const path     = require("path");
+// One containment rule for the whole server — see path-safety.cjs.
+const { isPathInside } = require("./path-safety.cjs");
 const { spawn, spawnSync, execSync, exec, execFile } = require("child_process");
 const { comprehensiveWebSearch } = require("../search/core");
 
@@ -10770,20 +10772,6 @@ function resolveRuntimeCleanupCategoryPath(
   }
 
   return category.path || null;
-}
-
-function isPathInside(parentPath, childPath) {
-  if (!parentPath || !childPath) {
-    return false;
-  }
-
-  const parent = path.resolve(parentPath);
-  const child = path.resolve(childPath);
-
-  return (
-    child === parent ||
-    child.startsWith(`${parent}${path.sep}`)
-  );
 }
 
 function collectRuntimeProtectedPaths() {

@@ -4,26 +4,8 @@ const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
-
-function expandHome(value) {
-  const text =
-    String(value || "");
-
-  if (text === "~") {
-    return os.homedir();
-  }
-
-  if (text.startsWith("~/")) {
-    return path.join(
-      os.homedir(),
-      text.slice(2)
-    );
-  }
-
-  return path.resolve(text);
-}
+const { expandHome } = require("./path-safety.cjs");
 
 function createId(prefix) {
   return (
