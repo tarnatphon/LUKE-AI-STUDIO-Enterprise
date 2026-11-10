@@ -88,6 +88,7 @@ const {
   residentBytesFromPs,
 } = require("./gpu-memory-telemetry.cjs");
 const { bytesToGib, gbShortfall } = require("./size-units.cjs");
+const { appendErrorLines, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -1600,6 +1601,10 @@ let llmProc = null;
 let llmProcSeq = 0;
 let llmReady = false;
 let llmError = null;
+// The lines llama.cpp complained about, earliest first, and a fallback tail for
+// when it failed without ever saying "error" on its own line.
+let llmErrorLines = [];
+let llmErrorTail = "";
 /**
  * What the model load is doing right now, so the screen is not a spinner that
  * says nothing for a quarter of an hour.
@@ -1640,6 +1645,19 @@ function noteLlmLoadAttempt({ backend, binary, profile }) {
   llmLoadProgress.stage = "starting";
   llmLoadProgress.lastOutputAt = now;
   llmLoadProgress.tail = "";
+}
+
+/**
+ * Remember what llama.cpp said when it could not load.
+ *
+ * The first complaints are the ones worth keeping: its last line is always the
+ * sign-off ("exiting due to model loading error"), and that was all the user
+ * used to see because each matching chunk overwrote the one before it.
+ */
+function rememberLlmError(output) {
+  llmErrorTail = `${llmErrorTail}${output}`.slice(-1200);
+  llmErrorLines = appendErrorLines(llmErrorLines, output, { limit: LLM_ERROR_LIMIT });
+  llmError = llmErrorLines.length > 0 ? llmErrorLines.join("\n") : llmErrorTail.trim();
 }
 
 function noteLlmLoadOutput(output) {
@@ -6830,7 +6848,9 @@ async function startLlm(settings = {}) {
           backend: backend.mode,
           binary: path.basename(backend.path),
           profile: profile.name,
-          error: message.slice(-500),
+          // The head of the message is the cause; keeping the tail kept the
+          // sign-off and threw the cause away.
+          error: message.slice(0, 900),
         });
         console.warn(`  [llm] Load failed on ${backend.mode} (${profile.name}): ${message}`);
         await killLlm();
@@ -6843,7 +6863,10 @@ async function startLlm(settings = {}) {
   }
   const last = failures[failures.length - 1];
   llmSettings.backendFallbacks = failures;
-  throw new Error(`Text model failed on all available llama.cpp backends. Last failure: ${last?.error || "unknown error"}`);
+  const where = last ? ` on ${last.backend} (${last.profile})` : "";
+  throw new Error(
+    `Text model failed on all available llama.cpp backends. Last failure${where}: ${last?.error || "unknown error"}`,
+  );
 }
 
 async function startLlmWithBackend(settings = {}, backend) {
@@ -6882,6 +6905,8 @@ async function startLlmWithBackend(settings = {}, backend) {
   await killLlm();
   PORT_LLM = await findAvailableLlmPort();
   llmError = null;
+  llmErrorLines = [];
+  llmErrorTail = "";
 
   const loadProfile = settings.__loadProfile || {};
   let contextSize = Number(loadProfile.contextSize ?? settings.contextSize);
@@ -7196,9 +7221,7 @@ async function startLlmWithBackend(settings = {}, backend) {
     else if (/SYCL\d+\s*:/i.test(output)) llmSettings.backendMode = "SYCL GPU";
     else if (/Metal/i.test(output) && /GPU|device/i.test(output)) llmSettings.backendMode = "Metal GPU";
     else if (/\-\s+CPU\s+:/i.test(output) && llmSettings.backendMode.startsWith("Auto")) llmSettings.backendMode = "CPU";
-    if (/error|failed/i.test(output) && !/no error/i.test(output)) {
-      llmError = output.trim().slice(-1200);
-    }
+    rememberLlmError(output);
   });
   proc.on("exit", (code) => {
     if (llmProc !== proc) {
