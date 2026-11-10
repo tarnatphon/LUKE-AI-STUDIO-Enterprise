@@ -229,14 +229,57 @@ async function main() {
     try {
       fs.writeFileSync(path.join(mirrorDir, mirrorModel.download.mirrorFilename), "mirror");
       const withMirror = catalog.describeCodingModels({ systemRamGb: 18, workingSetGb: 14.3, llmModelsDir: mirrorDir });
+      const mirrored = withMirror.models.find((model) => model.id === mirrorModel.id);
       assert(
-        withMirror.models.find((model) => model.id === mirrorModel.id).installed === mirrorModel.download.mirrorFilename,
+        mirrored.installed === mirrorModel.download.mirrorFilename,
         "the mirror file counts as the same model",
+      );
+      // The reported name has to be one that exists. The catalog prefers the
+      // primary spelling and the mirror differs from it only in case, so asking
+      // "does the primary name exist?" answered yes on APFS and exFAT — where
+      // the two spellings are one file — and the app then named a file that was
+      // not in the directory. That is how this failed on the Mac and passed
+      // here: the volume decides, not the shell.
+      assert(
+        fs.readdirSync(mirrorDir).includes(mirrored.installed),
+        "and the name it reports is the name on disk, not the one the catalog hoped for",
       );
       assert(
         withMirror.models.filter((model) => model.installed).length === 1,
         "and does not mark anything else installed",
       );
+
+      // A download that saved the file in some third spelling: still the model,
+      // and reported exactly as it was saved.
+      const oddDir = fs.mkdtempSync(path.join(os.tmpdir(), "luke-code-oddcase-"));
+      try {
+        const oddName = mirrorModel.download.mirrorFilename.toUpperCase();
+        fs.writeFileSync(path.join(oddDir, oddName), "mirror");
+        const withOdd = catalog.describeCodingModels({ systemRamGb: 18, workingSetGb: 14.3, llmModelsDir: oddDir });
+        assert(
+          withOdd.models.find((model) => model.id === mirrorModel.id).installed === oddName,
+          "a file saved in another case is the same model, reported as it was saved",
+        );
+      } finally {
+        fs.rmSync(oddDir, { recursive: true, force: true });
+      }
+
+      // Models are often symlinked in from another volume, which is the point
+      // of supporting a models directory at all.
+      const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), "luke-code-symlink-"));
+      const realFile = path.join(os.tmpdir(), `luke-code-real-${process.pid}.gguf`);
+      try {
+        fs.writeFileSync(realFile, "weights");
+        fs.symlinkSync(realFile, path.join(linkDir, mirrorModel.download.mirrorFilename));
+        const withLink = catalog.describeCodingModels({ systemRamGb: 18, workingSetGb: 14.3, llmModelsDir: linkDir });
+        assert(
+          withLink.models.find((model) => model.id === mirrorModel.id).installed === mirrorModel.download.mirrorFilename,
+          "a symlinked model file still counts as installed",
+        );
+      } finally {
+        fs.rmSync(linkDir, { recursive: true, force: true });
+        fs.rmSync(realFile, { force: true });
+      }
     } finally {
       fs.rmSync(mirrorDir, { recursive: true, force: true });
     }

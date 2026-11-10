@@ -244,14 +244,45 @@ function describeCodingModels(options = {}) {
 
   const llmModelsDir = options.llmModelsDir || "";
 
+  // What is actually on disk, read once.
+  //
+  // The old check asked `existsSync(dir/primaryName)` and, if that answered yes,
+  // reported the primary name — the name the catalog hoped for. On a
+  // case-insensitive volume (APFS, and the exFAT volume this app recommends for
+  // models) `Qwen2.5-Coder-7B-Instruct-Q6_K.gguf` and
+  // `qwen2.5-coder-7b-instruct-q6_k.gguf` are the same file, so a mirror
+  // download was reported as the primary: a filename that is not in the
+  // directory. On a case-sensitive volume that name then does not open at all.
+  // The directory is the only authority on how a file is spelled.
+  const filesOnDisk = (() => {
+    if (!llmModelsDir) return [];
+    try {
+      return fs.readdirSync(llmModelsDir).filter((name) => {
+        try {
+          return fs.statSync(path.join(llmModelsDir, name)).isFile();
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return [];
+    }
+  })();
+
   const installedFile = (source = {}) => {
     if (!llmModelsDir) return "";
-    for (const candidate of [source.file, source.mirrorFile]) {
-      if (!candidate) continue;
-      const target = path.join(llmModelsDir, path.basename(String(candidate)));
-      if (fs.existsSync(target) && fs.statSync(target).isFile()) {
-        return path.basename(String(candidate));
-      }
+    const candidates = [source.file, source.mirrorFile]
+      .filter(Boolean)
+      .map((candidate) => path.basename(String(candidate)));
+    // Exact spelling first, so the primary still wins when it is really there.
+    for (const candidate of candidates) {
+      if (filesOnDisk.includes(candidate)) return candidate;
+    }
+    // Then the same name in another case: one file on APFS/exFAT, and on a
+    // case-sensitive volume the file the user actually downloaded.
+    for (const candidate of candidates) {
+      const found = filesOnDisk.find((name) => name.toLowerCase() === candidate.toLowerCase());
+      if (found) return found;
     }
     return "";
   };
