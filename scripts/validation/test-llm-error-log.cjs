@@ -19,7 +19,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..", "..");
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
-const { appendErrorLines, errorLinesFrom, DEFAULT_LIMIT } = require("../../scripts/server/llm-error-log.cjs");
+const { appendErrorLines, errorLinesFrom, explainFailure, DEFAULT_LIMIT } = require("../../scripts/server/llm-error-log.cjs");
 
 let passed = 0;
 const failures = [];
@@ -86,11 +86,24 @@ check("and keeps the earliest ones", flood[0] === "error number 0 happened", flo
 const huge = appendErrorLines([], `error loading model: ${"x".repeat(9000)}`);
 check("one monstrous line is cut, not dropped", huge.length === 1 && huge[0].length <= DEFAULT_LIMIT, String(huge[0]?.length));
 
+// ── the cause carries a remedy ──────────────────────────────────────────────
+const arch = explainFailure(message);
+check("an unknown architecture is explained", /older than the model/.test(arch) && /setup-llama\.sh/.test(arch), arch);
+check("and names the architecture it choked on", /'qwen3vl'/.test(arch), arch);
+check("a truncated file is told to download again",
+  /truncated or not a GGUF/.test(explainFailure("llama_model_loader: bad magic")));
+check("a memory failure is told which two settings to lower",
+  /context size or the GPU layers/.test(explainFailure("ggml_backend_cuda_buffer_type_alloc_buffer: failed to allocate 4096.00 MiB")));
+check("a projector mismatch is not blamed on the model",
+  /projector does not match/.test(explainFailure("srv load_model: error loading model: failed to load mmproj projector")));
+check("something unrecognised gets no invented advice", explainFailure("srv llama_server: exiting due to model loading error") === "");
+
 // ── and the server uses it ──────────────────────────────────────────────────
 check("serve.cjs records errors through the module", /llmErrorLines = appendErrorLines\(llmErrorLines, output/.test(serveSource));
 check("it no longer overwrites the message with the last chunk", !/llmError = output\.trim\(\)\.slice\(-1200\)/.test(serveSource));
 check("the failure keeps its beginning", /error: message\.slice\(0, 900\),/.test(serveSource));
 check("and names the backend and profile that failed", /Last failure\$\{where\}/.test(serveSource) && /on \$\{last\.backend\} \(\$\{last\.profile\}\)/.test(serveSource));
+check("the message carries the remedy too", /const hint = explainFailure\(last\?\.error \|\| ""\);/.test(serveSource) && /hint \? `\\n\\n\$\{hint\}` : ""/.test(serveSource));
 check("the recorder is reset for the next load", /llmError = null;\s*\n\s*llmErrorLines = \[\];\s*\n\s*llmErrorTail = "";/.test(serveSource));
 check("a load that never says 'error' still has a tail to show", /llmError = llmErrorLines\.length > 0 \? llmErrorLines\.join\("\\n"\) : llmErrorTail\.trim\(\);/.test(serveSource));
 

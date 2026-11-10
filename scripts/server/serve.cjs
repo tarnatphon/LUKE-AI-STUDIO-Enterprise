@@ -88,7 +88,7 @@ const {
   residentBytesFromPs,
 } = require("./gpu-memory-telemetry.cjs");
 const { bytesToGib, gbShortfall } = require("./size-units.cjs");
-const { appendErrorLines, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
+const { appendErrorLines, explainFailure, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -6864,8 +6864,12 @@ async function startLlm(settings = {}) {
   const last = failures[failures.length - 1];
   llmSettings.backendFallbacks = failures;
   const where = last ? ` on ${last.backend} (${last.profile})` : "";
+  // A cause without a remedy still leaves the reader guessing, and the three
+  // failures seen on real machines each have exactly one answer.
+  const hint = explainFailure(last?.error || "");
   throw new Error(
-    `Text model failed on all available llama.cpp backends. Last failure${where}: ${last?.error || "unknown error"}`,
+    `Text model failed on all available llama.cpp backends. Last failure${where}: ${last?.error || "unknown error"}` +
+      (hint ? `\n\n${hint}` : ""),
   );
 }
 
