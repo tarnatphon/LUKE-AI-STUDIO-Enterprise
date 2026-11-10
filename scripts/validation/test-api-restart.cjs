@@ -203,6 +203,33 @@ async function main() {
   check(!/CLEANUP/.test(crashed.stdout || ""), "no goodbye is printed for a stop nobody asked for");
   check(crashed.status === 3, "and the launcher exits with the backend's status, so a script can see it", `exit ${crashed.status}`);
 
+  // ── a process the system killed is not a process that failed ─────────────
+  // `Killed: 9` in a launcher window is how a Jetsam kill looks: no exit code,
+  // no handler, no chance to log anything. It reaches the launcher as 137.
+  const killedNode = path.join(temp, "killed-node.sh");
+  fs.writeFileSync(killedNode, "#!/usr/bin/env bash\nkill -KILL $$\n");
+  fs.chmodSync(killedNode, 0o755);
+  const killedHarness = path.join(temp, "killed-harness.sh");
+  fs.writeFileSync(killedHarness, [
+    "#!/usr/bin/env bash",
+    "set -uo pipefail",
+    `NODE_BIN="${killedNode}"`,
+    "SERVE_SCRIPT=unused",
+    "cleanup() { echo CLEANUP; exit 0; }",
+    '"$NODE_BIN" "$SERVE_SCRIPT" &',
+    "SERVER_PID=$!",
+    tailFrom("mac.sh"),
+    "",
+  ].join("\n"));
+  const killed = spawnSync("bash", [killedHarness], { encoding: "utf8", timeout: 60000 });
+  const killedOut = `${killed.stdout || ""}${killed.stderr || ""}`;
+  check(/killed by SIGKILL/.test(killedOut), "a SIGKILL is named as a kill, not as an exit code", killedOut.trim().slice(-120));
+  check(/exit code above 128/.test(killedOut), "and explained: above 128 means a signal from outside");
+  check(/jetsam/.test(killedOut), "and points at the system log that names the killer");
+  check(/ps aux -m/.test(killedOut), "and at what was resident");
+  check(!/without being asked to stop/.test(killedOut), "it is not also reported as an ordinary crash");
+  check(killed.status === 137, "the launcher still exits with the shell's own status", `exit ${killed.status}`);
+
   // ── one shutdown, two ways to leave ────────────────────────────────────────
   check(/const RESTART_EXIT_CODE = 75;/.test(serveSource), "the exit code is defined once, in the server");
   check(/async function shutdownAll\(code = 0\)/.test(serveSource), "and there is one shutdown path");
