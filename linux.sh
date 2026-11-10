@@ -361,8 +361,30 @@ done
 # how a failed start gets mistaken for a clean one.
 if [[ "$EXIT_STATUS" -ne 0 ]]; then
   echo "" >&2
-  echo "  [error] the backend exited with status $EXIT_STATUS without being asked to stop." >&2
-  echo "  [error] That is a crash or a failed start, not a shutdown — the log above has the reason." >&2
+  # A shell reports a killed child as 128+signal, and the difference matters:
+  # nothing in this app exits by signal, so a number above 128 means something
+  # outside it — the system, or a kill from another window — took the process.
+  if [[ "$EXIT_STATUS" -gt 128 ]]; then
+    SIGNAL_NUMBER=$((EXIT_STATUS - 128))
+    case "$SIGNAL_NUMBER" in
+      9)  SIGNAL_NAME="SIGKILL (kill -9, or the system under memory pressure)" ;;
+      15) SIGNAL_NAME="SIGTERM (something asked it to stop)" ;;
+      11) SIGNAL_NAME="SIGSEGV (it crashed in native code)" ;;
+      6)  SIGNAL_NAME="SIGABRT (it aborted)" ;;
+      *)  SIGNAL_NAME="signal $SIGNAL_NUMBER" ;;
+    esac
+    echo "  [error] the backend was killed by $SIGNAL_NAME." >&2
+    echo "  [error] It did not exit on its own, so this is not a shutdown: an exit code above 128" >&2
+    echo "  [error] means a signal, sent from outside the app." >&2
+    if [[ "$SIGNAL_NUMBER" -eq 9 || "$SIGNAL_NUMBER" -eq 15 ]]; then
+      echo "  [error] On macOS that is usually memory pressure (the system's own out-of-memory kill)." >&2
+      echo "  [error] To see what was resident:   ps aux -m | head -5" >&2
+      echo "  [error] To see who was killed:     log show --last 15m | grep -i jetsam | tail -5" >&2
+    fi
+  else
+    echo "  [error] the backend exited with status $EXIT_STATUS without being asked to stop." >&2
+    echo "  [error] That is a crash or a failed start, not a shutdown — the log above has the reason." >&2
+  fi
   echo "  [error] If a model was loaded, its llama-server may still be running:" >&2
   echo "  [error]   ps aux | grep -c '[l]lama-server'" >&2
   exit "$EXIT_STATUS"
