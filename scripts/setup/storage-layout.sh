@@ -88,6 +88,69 @@ get_target() {
   return 0
 }
 
+target_of() {
+  local target
+  target="$(get_target "$1")"
+  printf '%s' "${target%/}"
+}
+
+# The other folders configured to use the same directory as `$1`, space
+# separated. Empty in every sane configuration.
+shared_with() {
+  local id="$1" target other other_target
+  target="$(target_of "$id")"
+  [[ -n "$target" ]] || return 0
+  while IFS= read -r other; do
+    [[ -n "$other" && "$other" != "$id" ]] || continue
+    other_target="$(target_of "$other")"
+    [[ -n "$other_target" && "$other_target" == "$target" ]] && printf '%s ' "$other"
+  done < <(folder_ids)
+  return 0
+}
+
+# The first folder (registry order) configured to use `$1`'s directory, so a
+# shared target is reported once instead of once per folder.
+first_sharing() {
+  local target other
+  target="$(target_of "$1")"
+  while IFS= read -r other; do
+    [[ -n "$other" ]] || continue
+    [[ "$(target_of "$other")" == "$target" ]] && { printf '%s' "$other"; return 0; }
+  done < <(folder_ids)
+  printf '%s' "$1"
+}
+
+# `runtime-state=` and `dist=` with the same path is one mistake, and it used to
+# be reported as four interleaved lines — an ERROR naming the *other* folder,
+# then a WARNING calling a perfectly ordinary directory "unsafe". Neither folder
+# is applied either way, so say it once, name everyone involved, and print the
+# two commands that fix it. Called before the apply loop and by --list.
+report_shared_targets() {
+  local id target others first extra
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    target="$(target_of "$id")"
+    [[ -n "$target" ]] || continue
+    others="$(shared_with "$id")"
+    others="${others% }"
+    [[ -n "$others" ]] || continue
+    [[ "$(first_sharing "$id")" == "$id" ]] || continue
+    extra="${others%% *}"
+    if [[ "$others" == *" "* ]]; then
+      warn "$id, $others are all pointing at $target — one directory cannot hold two folders"
+    else
+      warn "$id and $others are both pointing at $target — one directory cannot hold two folders"
+    fi
+    printf '            nothing was moved: each stays where it is (app/%s, app/%s).\n' "$id" "${others// /, app/}" >&2
+    printf '            keep %s in the checkout — the simplest repair:\n' "$extra" >&2
+    printf '                bash scripts/setup/storage-layout.sh --reset %s\n' "$extra" >&2
+    printf '            or give it its own folder under that path:\n' >&2
+    printf '                bash scripts/setup/storage-layout.sh --set %s "%s/%s"\n' "$extra" "$target" "$extra" >&2
+    printf '            then restart LUKE.\n' >&2
+  done < <(folder_ids)
+  return 0
+}
+
 is_known_folder() {
   local id="$1" candidate
   while IFS= read -r candidate; do
@@ -161,7 +224,7 @@ validate_target() {
     other_target="$(get_target "$other")"
     other_target="${other_target%/}"
     [[ -z "$other_target" || "$other_target" != "$target" ]] \
-      || die "$other is already configured to use $target — each folder needs its own directory"
+      || die "$other is already configured to use $target — each folder needs its own directory (try: --set $id \"$target/$id\")"
   done < <(folder_ids)
   [[ ! -f "$target" ]] || die "$target is a file, not a folder"
   return 0
@@ -247,6 +310,12 @@ apply_one() {
     return 0
   fi
 
+  # Reported once for the whole group before the loop; do not repeat it per
+  # folder, and do not call the shared directory "unsafe".
+  if [[ -n "$(shared_with "$id")" ]]; then
+    return 0
+  fi
+
   # validate_target calls die() on a bad path. Run it in a subshell so a
   # hand-edited config can only skip ONE folder, never abort ./mac.sh.
   if ! ( validate_target "$id" "$target" ); then
@@ -292,6 +361,7 @@ apply_one() {
 
 cmd_apply() {
   local id
+  report_shared_targets
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
     apply_one "$id"
@@ -328,7 +398,7 @@ cmd_choose() {
 }
 
 case "${1:-}" in
-  --list)   cmd_list ;;
+  --list)   cmd_list; report_shared_targets ;;
   --set)
     [[ $# -eq 3 ]] || die "usage: --set <folder-id> <absolute-path>"
     validate_target "$2" "$3"

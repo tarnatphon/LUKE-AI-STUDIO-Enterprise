@@ -125,6 +125,20 @@ function validate(folders, id, rawTarget) {
       throw httpError(`Refusing a path inside another managed folder '${folder.id}'.`);
     }
   }
+  // Two folders cannot share one directory: whichever is copied first would be
+  // mixed into the same place, and the launcher refuses to apply it anyway.
+  // scripts/setup/storage-layout.sh has always refused this, but this route did
+  // not — so the folder picker could write `runtime-state=` and `dist=` on the
+  // same path, and the next launch printed four contradictory lines about it
+  // while happily starting with neither applied.
+  const entries = readLayout(folders);
+  for (const folder of folders) {
+    if (folder.id === id) continue;
+    const otherTarget = String(entries[folder.id] || "").replace(/\/+$/, "");
+    if (otherTarget && otherTarget === target) {
+      throw httpError(`${folder.id} is already configured to use ${target} — each folder needs its own directory.`);
+    }
+  }
   if (fs.existsSync(target) && !fs.statSync(target).isDirectory()) {
     throw httpError(`${target} is a file, not a folder.`);
   }
@@ -170,8 +184,12 @@ function describe(folder, entries) {
   const applied = target
     ? isSymlink && link === target
     : !isSymlink;
+  const conflictWith = target
+    ? Object.keys(entries).filter((other) => other !== folder.id && entries[other] === target)
+    : [];
   let state;
   if (applied) state = target ? "applied" : "in-checkout";
+  else if (conflictWith.length) state = "conflict";
   else if (!target) state = "pending-reset";
   else if (isSymlink) state = "pending-move";
   else state = "pending-restart";
@@ -187,6 +205,7 @@ function describe(folder, entries) {
     isSymlink,
     exists,
     state,
+    conflictWith,
     requiresRestart: !applied,
     volume: volumeOf(currentPath),
   };
