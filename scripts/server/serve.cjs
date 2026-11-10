@@ -27210,6 +27210,43 @@ const handleRequest = async (req, res) => {
     return json(res, 200, await getHealth());
   }
 
+  // POST /api/restart — the button behind "the server is older than the app"
+  //
+  // Registering routes happens at boot, so a `git pull` cannot reach a process
+  // that is already running. This is the one request that can.
+  if (req.url === "/api/restart" && req.method === "POST") {
+    // The server listens on 0.0.0.0, so "it is local" is not assumed.
+    const remote = String(req.socket.remoteAddress || "");
+    const loopback = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+    if (!loopback) {
+      return json(res, 403, { ok: false, error: "Only this machine can restart the backend." });
+    }
+    // A form, an <img>, or a link cannot send either of these: the custom header
+    // forces a preflight, and the preflight does not allow it.
+    if (String(req.headers["x-luke-restart"] || "") !== "1") {
+      return json(res, 400, { ok: false, error: 'Send "X-Luke-Restart: 1" to confirm a restart.' });
+    }
+    if (!/^application\/json/i.test(String(req.headers["content-type"] || ""))) {
+      return json(res, 415, { ok: false, error: "Content-Type must be application/json." });
+    }
+    if (restartPending) {
+      return json(res, 202, { ok: true, restarting: true, already: true, exitCode: RESTART_EXIT_CODE });
+    }
+    restartPending = true;
+    const restartSource = readRuntimeSource();
+    console.log(`  [restart] requested — exiting ${RESTART_EXIT_CODE} so the launcher starts a fresh backend`);
+    json(res, 200, {
+      ok: true,
+      restarting: true,
+      exitCode: RESTART_EXIT_CODE,
+      pid: process.pid,
+      commit: restartSource.available ? restartSource.shortCommit : "",
+    });
+    // Let the response reach the browser before the sockets close.
+    setTimeout(() => { shutdownAll(RESTART_EXIT_CODE); }, 300);
+    return;
+  }
+
   // GET /api/diagnostics
   if (req.url === "/api/diagnostics" && req.method === "GET") {
     return json(res, 200, {
@@ -31269,14 +31306,48 @@ server.listen(PORT_FRONTEND, "0.0.0.0", () => {
   console.log("  [backend] Ready. Waiting for model load request from the webapp...");
 });
 
+/**
+ * The code this process exits with when it wants the launcher to start it again.
+ *
+ * 75 is EX_TEMPFAIL: "temporary failure, the operation may succeed if retried".
+ * The launcher owns the process tree — it started llama-server's parent and it
+ * kills everything on Ctrl+C — so the restart has to be *its* decision. A
+ * backend that spawned its own replacement would outlive that trap and become
+ * exactly the orphan /api/llm/processes was written to find.
+ */
+const RESTART_EXIT_CODE = 75;
+let restartPending = false;
+
 // Graceful shutdown
 function stopSocialAgencyScheduler() {
   try {
     if (socialAgencyRuntime) socialAgencyRuntime.stopScheduler();
   } catch {}
 }
-process.on("SIGINT",  async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); await unloadArenaPool(); process.exit(0); });
-process.on("SIGTERM", async () => { stopSocialAgencyScheduler(); await killBackend(); await killOpenVinoWorker(); await killLlm(); await stopSpeech(); await stopTts(); await unloadArenaPool(); process.exit(0); });
+/**
+ * Stop everything this process owns, then exit.
+ *
+ * One list, because there are now two ways to leave: a signal, and a restart
+ * asked for over HTTP. A restart that skipped this would leave llama-server
+ * holding port 10086 and the arena pool holding VRAM — an orphan, which is what
+ * /api/llm/processes exists to make visible in the first place.
+ */
+let shutdownStarted = false;
+async function shutdownAll(code = 0) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  stopSocialAgencyScheduler();
+  await killBackend();
+  await killOpenVinoWorker();
+  await killLlm();
+  await stopSpeech();
+  await stopTts();
+  await unloadArenaPool();
+  await shutdownRuntimeSupervisor();
+  process.exit(code);
+}
+process.on("SIGINT", () => shutdownAll(0));
+process.on("SIGTERM", () => shutdownAll(0));
 
 
 // LUKE_AI_RUNTIME_SUPERVISOR_SHUTDOWN_V3
