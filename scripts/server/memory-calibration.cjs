@@ -24,6 +24,14 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  writeJsonAtomic: writeJsonAtomically,
+  readJsonOr: safeReadJson,
+} = require("./json-store.cjs");
+
+// Calibration is best effort: a failed write must never break a model load.
+const writeJsonAtomic = (filePath, value) =>
+  writeJsonAtomically(filePath, value, { bestEffort: true });
 
 const WORKING_SET_RE = /recommendedMaxWorkingSetSize\s*=\s*([\d.,]+)\s*MB/i;
 const OOM_RE =
@@ -32,27 +40,6 @@ const OOM_RE =
 const DEFAULT_INCIDENT_TTL_MINUTES = 24 * 60;
 
 function delay() {}
-
-function safeReadJson(filePath, fallback) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
-
-function writeJsonAtomic(filePath, value) {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const temp = `${filePath}.tmp-${process.pid}`;
-    fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
-    fs.renameSync(temp, filePath);
-  } catch (_) {
-    /* calibration is best effort: never break a model load because of it */
-  }
-}
-
 function parseNumber(raw) {
   const normalized = String(raw || "").replace(/,/g, "");
   const value = Number(normalized);

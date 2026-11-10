@@ -3,31 +3,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(filePath, "utf8")
-  );
-}
-
-function writeJsonAtomic(filePath, value) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    { recursive: true }
-  );
-
-  const temp =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temp,
-    JSON.stringify(value, null, 2) + "\n",
-    "utf8"
-  );
-
-  fs.renameSync(temp, filePath);
-}
-
+const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 function createId(prefix) {
   return (
     `${prefix}-${Date.now()}-` +

@@ -6,46 +6,7 @@ const path = require("node:path");
 const {
   spawn,
 } = require("node:child_process");
-
-function readJson(filePath) {
-  return JSON.parse(
-    fs.readFileSync(
-      filePath,
-      "utf8"
-    )
-  );
-}
-
-function writeJsonAtomic(
-  filePath,
-  value
-) {
-  fs.mkdirSync(
-    path.dirname(filePath),
-    {
-      recursive: true,
-    }
-  );
-
-  const temporaryPath =
-    `${filePath}.tmp-${process.pid}-${Date.now()}`;
-
-  fs.writeFileSync(
-    temporaryPath,
-    JSON.stringify(
-      value,
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-
-  fs.renameSync(
-    temporaryPath,
-    filePath
-  );
-}
-
+const { writeJsonAtomic, readJson } = require("./json-store.cjs");
 function expandHome(value) {
   const text =
     String(value || "");

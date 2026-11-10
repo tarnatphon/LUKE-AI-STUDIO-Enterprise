@@ -20,6 +20,12 @@ const path = require("node:path");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 const mmapPolicy = require("./mmap-policy.cjs");
+const { writeJsonAtomic, readJsonOr } = require("./json-store.cjs");
+
+// The pool keeps its own readable state files: whatever parses is the answer,
+// so no object check — an empty file is the fallback, a valid one is returned.
+const safeReadJson = (filePath, fallback) =>
+  readJsonOr(filePath, fallback, { requireObject: false });
 
 const DEFAULT_POLICY = {
   runtime: {
@@ -63,23 +69,6 @@ const DEFAULT_POLICY = {
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-function safeReadJson(filePath, fallback) {
-  try {
-    if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (_) {
-    return fallback;
-  }
-}
-
-function writeJsonAtomic(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  fs.renameSync(temporary, filePath);
-}
-
 function formatGb(bytes) {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }

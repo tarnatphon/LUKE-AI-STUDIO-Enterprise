@@ -24,6 +24,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { readJsonOr: safeReadJson } = require("./json-store.cjs");
 
 const ROOT = path.join(__dirname, "..", "..");
 const DEFAULTS_PATH = path.join(ROOT, "app", "config", "text-profiles.json");
@@ -33,16 +34,6 @@ function statePath() {
   return process.env.LUKE_TEXT_PROFILES_FILE
     || path.join(ROOT, "app", "runtime-state", "text-profiles.json");
 }
-
-function safeReadJson(filePath, fallback) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
-
 function readDefaults() {
   const parsed = safeReadJson(DEFAULTS_PATH, null);
   const profiles = parsed && parsed.profiles ? parsed.profiles : {};
