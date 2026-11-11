@@ -221,12 +221,26 @@ fi
 # llama-server holding port 10086. A second launch should replace the first
 # cleanly, and say that it is doing it.
 stop_existing_servers() {
-  local pids found port pid waited alive
+  local pids found port pid waited alive listed cmd
   pids=""
+  listed=""
   if command -v lsof >/dev/null 2>&1; then
     for port in "$FRONTEND_PORT" 8080 "$LLM_PORT"; do
-      found="$(lsof -t -i:"$port" 2>/dev/null | tr '\n' ' ' || true)"
-      pids="$pids $found"
+      # -sTCP:LISTEN asks for the process *holding* the port. Without it lsof
+      # also returns every client connected to it — the browser tab showing the
+      # app, a curl tailing the log — and this function used to SIGTERM those
+      # too, under a message that said only "an earlier copy".
+      found="$(lsof -nP -t -sTCP:LISTEN -i:"$port" 2>/dev/null | tr '\n' ' ' || true)"
+      for pid in $found; do
+        # One process can hold several of the ports; ask each PID only once.
+        case " $pids " in
+          *" $pid "*) continue ;;
+        esac
+        pids="$pids $pid"
+        cmd="$(ps -o command= -p "$pid" 2>/dev/null | head -1 | tr -s ' ' | cut -c1-96 || true)"
+        listed="$listed
+         $pid   port $port   ${cmd:-a process this shell cannot inspect}"
+      done
     done
   elif command -v fuser >/dev/null 2>&1; then
     for port in "$FRONTEND_PORT" 8080 "$LLM_PORT"; do
@@ -236,13 +250,16 @@ stop_existing_servers() {
   else
     return 0
   fi
-  # One process can hold several of the ports; ask each PID only once.
-  pids="$(printf '%s\n' $pids 2>/dev/null | sort -u | tr '\n' ' ' || true)"
   pids="$(printf '%s' "$pids" | sed -e 's/^ *//' -e 's/ *$//')"
   if [[ -z "$pids" ]]; then
     return 0
   fi
-  echo "  >>   An earlier copy is still holding port $FRONTEND_PORT — stopping it: $pids"
+  # Which port each PID holds, and what it is. Three PIDs listed under one
+  # "holding port 1420" line read as three copies of the app, when it is
+  # usually the frontend server, the image backend and a llama-server — or, if
+  # one of them is not LUKE at all, a line the user can act on.
+  echo "  >>   An earlier copy is still running — stopping it:"
+  printf '%s\n' "$listed"
   # Ask first. SIGTERM lets the server unload its model and stop llama-server.
   kill $pids 2>/dev/null || true
   waited=0
