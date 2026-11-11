@@ -1511,7 +1511,12 @@ function TextChat({
     const tick = async () => {
       try {
         const status = await getLlmStatus();
-        if (active) setLoadProgress(status?.loading || null);
+        // The measured duration rides along with the progress: what the disk
+        // said this read would cost, so the spinner has a number instead of
+        // "depending on model size and hardware speed".
+        if (active) {
+          setLoadProgress(status?.loading ? { ...status.loading, outlook: status.loadOutlook || null } : null);
+        }
       } catch {
         if (active) setLoadProgress(null);
       }
@@ -3295,8 +3300,18 @@ function TextChat({
               <p style={{ fontSize: "0.9rem", color: "var(--md-sys-color-outline)", lineHeight: 1.5, marginBottom: "12px" }}>
                 {loadProgress
                   ? `Trying ${loadProgress.backend || "backend"} (${loadProgress.profile}) — attempt ${loadProgress.attempt} of ${loadProgress.attempts} · ${formatLoadDuration(loadProgress.elapsedMs)}`
-                  : "Initializing llama.cpp server and loading the model weights into memory. This can take up to 30 seconds depending on model size and hardware speed."}
+                  : "Initializing llama.cpp server and loading the model weights into memory. A large model is a disk read first, so the wait depends on the disk it is on."}
               </p>
+              {loadProgress?.outlook?.message && (
+                <p style={{
+                  fontSize: "0.85rem", lineHeight: 1.5, marginBottom: "12px",
+                  padding: "10px 12px", borderRadius: "6px",
+                  background: "var(--md-sys-color-surface-variant)",
+                  color: loadProgress.outlook.level === "warn" ? "var(--md-sys-color-error)" : "var(--md-sys-color-on-surface-variant)",
+                }}>
+                  {loadProgress.outlook.message}
+                </p>
+              )}
               {loadProgress?.lastLine && (
                 <code style={{
                   display: "block", marginBottom: "12px", padding: "6px 10px",
@@ -3311,7 +3326,11 @@ function TextChat({
               {loadProgress && loadProgress.silentForMs > 60000 && (
                 <p style={{ fontSize: "0.82rem", color: "var(--md-sys-color-outline)", lineHeight: 1.5, marginBottom: "12px" }}>
                   llama.cpp has printed nothing for {formatLoadDuration(loadProgress.silentForMs)}. Reading a model from an
-                  external disk is slow the first time — cache it in Settings, then Performance, and later loads start in seconds.
+                  external disk is slow the first time
+                  {loadProgress.outlook?.bytesPerSecond
+                    ? ` — this volume measured ${Math.round(loadProgress.outlook.bytesPerSecond / (1024 * 1024))} MB/s, so the copy is a one-time read of the same size as the load`
+                    : ""}
+                  — cache it in Settings, then Performance, and later loads start in seconds.
                 </p>
               )}
               <button className="m3-btn m3-btn-error" onClick={handleCancelLlmLoad}

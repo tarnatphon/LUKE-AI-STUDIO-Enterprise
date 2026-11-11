@@ -496,6 +496,18 @@ export async function getLlmStatus() {
   }
 }
 
+// "How long will loading this take?" answered while the user is still deciding.
+// The backend measures the volume the model will be read from, so the number is
+// the same one the load prints — not an estimate of an estimate.
+export async function getLlmLoadOutlook(model) {
+  try {
+    const res = await fetch(`/api/llm/load-outlook?model=${encodeURIComponent(model || "")}`);
+    return await readJsonResponse(res, "The local server returned invalid model load timing.");
+  } catch (err) {
+    return { ok: false, error: err.message, outlook: null };
+  }
+}
+
 export async function getLlmBackends(refresh = false) {
   const res = await fetch(`/api/llm/backends${refresh ? "?refresh=1" : ""}`);
   return await readJsonResponse(res, "The local server returned invalid text backend data.");

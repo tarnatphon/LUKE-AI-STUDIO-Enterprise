@@ -126,6 +126,8 @@ function outlook({ filename = "", sizeBytes = 0, volume = "", bytesPerSecond = 0
     return {
       level: "info",
       estimatedSeconds: 0,
+      bytesPerSecond: 0,
+      sizeBytes: size,
       message: `${filename || "This model"} is loaded from a copy on the internal disk.`,
     };
   }
@@ -141,6 +143,10 @@ function outlook({ filename = "", sizeBytes = 0, volume = "", bytesPerSecond = 0
   return {
     level: estimatedSeconds >= 45 ? "warn" : "info",
     estimatedSeconds,
+    // Carried so a caller does not have to re-measure to say "this volume gave
+    // 78 MB/s" — the sentence and the number come from the same measurement.
+    bytesPerSecond: rate,
+    sizeBytes: size,
     message:
       `Reading ${gb(size)}${where} at about ${mbPerSecond(rate)} MB/s — ${why}, so roughly ` +
       `${secondsText(estimatedSeconds)} before the model answers. Cache it once (Settings > Performance) ` +

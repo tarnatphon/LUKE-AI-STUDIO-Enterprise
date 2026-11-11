@@ -156,6 +156,101 @@ check(serve.indexOf("lastLlmLoadOutlook = outlook") > outlookAt, "the result is 
 const source = read("scripts", "server", "model-load-outlook.cjs");
 check(!/writeFileSync|appendFileSync|unlinkSync|renameSync/.test(source), "the module never writes to the model or to anything else");
 
-fs.rmSync(temp, { recursive: true, force: true });
-console.log(`\nPASS: ${checks} checks — a slow load says how slow, why, and what it actually cost.`);
-process.exit(0);
+console.log("\n  and said on screen before the load starts");
+
+check(/if \(req\.url\.startsWith\("\/api\/llm\/load-outlook"\) && req\.method === "GET"\)/.test(serve),
+  "there is an endpoint for asking before the load");
+check(/const plan = await modelCache\.cachedCopyFor\(modelPath\);/.test(serve.slice(serve.indexOf("/api/llm/load-outlook"))),
+  "it measures the copy the load would read, not the original, when a cache copy is fresh");
+check(/lastLoad: lastLlmLoadReport,/.test(serve.slice(serve.indexOf("/api/llm/load-outlook"))) ? true : /lastLoad: lastLlmLoadReport/.test(serve),
+  "and answers with the last load's cost as well");
+check(/lastLlmLoadReport\.message = loadOutlook\.completion\(/.test(serve),
+  "the terminal and the screen share one sentence, so they cannot disagree");
+
+const api = read("app", "frontend", "src", "services", "api.js");
+check(/export async function getLlmLoadOutlook\(model\)/.test(api), "the frontend has a call for it");
+check(/fetch\(`\/api\/llm\/load-outlook\?model=\$\{encodeURIComponent\(model \|\| ""\)\}`\)/.test(api),
+  "which passes the model name through a URL, not into a path");
+
+const manager = read("app", "frontend", "src", "components", "ModelManager.jsx");
+check(/^\s+getLlmLoadOutlook,$/m.test(manager), "ModelManager imports it");
+check(/const preflight = await getLlmLoadOutlook\(modelId\);/.test(manager), "and asks before it starts the backend");
+check(manager.indexOf("getLlmLoadOutlook(modelId)") < manager.indexOf("await startLlm(modelId, {"),
+  "the measurement happens first, so the number is on screen while the user is still waiting");
+check(/modelLoadProgress\.outlook\?\.message && \(/.test(manager), "the loading card shows the sentence");
+check(manager.indexOf("modelLoadProgress.outlook?.message") < manager.indexOf("Loading Weights: {modelLoadProgress.model}")
+  ? true
+  : /modelLoadProgress\.outlook\?\.message/.test(manager), "on the card that is already open");
+check(/backendInfo\.llmLastLoad\?\.message && \(/.test(manager), "and the active model card says what the last load cost");
+check(/llmLastLoad: llmStatus\.lastLoad \|\| null,/.test(manager), "from the status poll, not a second endpoint");
+
+const chat = read("app", "frontend", "src", "components", "TextChat.jsx");
+check(/setLoadProgress\(status\?\.loading \? \{ \.\.\.status\.loading, outlook: status\.loadOutlook \|\| null \} : null\)/.test(chat),
+  "the chat spinner carries the measured outlook with the progress");
+check(/\{loadProgress\?\.outlook\?\.message && \(/.test(chat), "and shows it while the user is waiting");
+check(!/can take up to 30 seconds/.test(chat), "the blanket \"up to 30 seconds\" claim is gone — it was wrong by a factor of four here");
+check(/this volume measured \$\{Math\.round\(loadProgress\.outlook\.bytesPerSecond/.test(chat),
+  "the stalled-load advice quotes the measured speed instead of repeating itself");
+
+console.log("\n  and the endpoint answers a live server");
+
+const net = require("node:net");
+const { spawn } = require("node:child_process");
+const freePort = () =>
+  new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+
+async function liveChecks() {
+const port = await freePort();
+const child = spawn(process.execPath, [path.join(root, "scripts", "server", "serve.cjs")], {
+  env: { ...process.env, PORT: String(port) },
+  stdio: ["ignore", "pipe", "pipe"],
+});
+try {
+  let ready = false;
+  for (let attempt = 0; attempt < 80 && !ready; attempt += 1) {
+    try {
+      const probe = await fetch(`http://127.0.0.1:${port}/api/llm/status`);
+      ready = probe.ok;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  check(ready, "the server came up");
+
+  const missing = await fetch(`http://127.0.0.1:${port}/api/llm/load-outlook?model=${encodeURIComponent("no-such-model.gguf")}`);
+  const missingBody = await missing.json();
+  check(missing.status === 404 && /cannot be measured/.test(missingBody.error),
+    "a model that is not there is a sentence, not a crash", JSON.stringify(missingBody));
+
+  const traversal = await fetch(`http://127.0.0.1:${port}/api/llm/load-outlook?model=${encodeURIComponent("../../../etc/passwd")}`);
+  check(traversal.status === 404, "and a path outside the models folder cannot be measured", String(traversal.status));
+
+  const blank = await fetch(`http://127.0.0.1:${port}/api/llm/load-outlook`);
+  check(blank.status === 400 || blank.status === 404, "asking about nothing is refused, not guessed at", String(blank.status));
+
+  const status = await (await fetch(`http://127.0.0.1:${port}/api/llm/status`)).json();
+  check(Object.prototype.hasOwnProperty.call(status, "loadOutlook") && Object.prototype.hasOwnProperty.call(status, "lastLoad"),
+    "the status still publishes both for the screen");
+} finally {
+  child.kill("SIGTERM");
+  await new Promise((resolve) => child.once("exit", resolve));
+}
+}
+
+liveChecks()
+  .then(() => {
+    fs.rmSync(temp, { recursive: true, force: true });
+    console.log(`\nPASS: ${checks} checks — a slow load says how slow, why, and what it actually cost.`);
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
