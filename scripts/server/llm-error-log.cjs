@@ -63,6 +63,18 @@ function appendErrorLines(existing, output, { limit = DEFAULT_LIMIT } = {}) {
 }
 
 /**
+ * The architecture llama.cpp said it does not know, if that is what it said.
+ *
+ * Extracted in one place because two readers need it: the advice below, and the
+ * ledger in backend-architecture-limits.cjs that warns about the same model
+ * before the next load instead of after it.
+ */
+function unknownArchitecture(text) {
+  const match = /unknown model architecture: *["']?([A-Za-z0-9._-]+)["']?/.exec(String(text ?? ""));
+  return match ? match[1] : null;
+}
+
+/**
  * What to do about the line llama.cpp printed.
  *
  * The cause alone still leaves the reader to translate it. The three failures
@@ -73,9 +85,9 @@ function appendErrorLines(existing, output, { limit = DEFAULT_LIMIT } = {}) {
  */
 function explainFailure(text) {
   const lines = String(text ?? "");
-  const architecture = /unknown model architecture: *'?([A-Za-z0-9._-]+)'?/.exec(lines);
+  const architecture = unknownArchitecture(lines);
   if (architecture) {
-    return `This build of llama.cpp does not know the '${architecture[1]}' architecture, so it is older than the model. ` +
+    return `This build of llama.cpp does not know the '${architecture}' architecture, so it is older than the model. ` +
       "Update the text backend with scripts/setup/setup-llama.sh and LLAMA_RELEASE set to a newer build, then restart the app.";
   }
   if (/bad magic|invalid magic|not a GGUF|failed to read (?:the )?(?:model|file)|unexpected end of file/i.test(lines)) {
@@ -103,4 +115,5 @@ module.exports = {
   appendErrorLines,
   errorLinesFrom,
   explainFailure,
+  unknownArchitecture,
 };

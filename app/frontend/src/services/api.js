@@ -153,6 +153,10 @@ export function normalizeModel(model) {
     // blocks it does not hold cannot load, and saying so in the list is better
     // than saying it 0.3 s into a load.
     integrity: model?.integrity && typeof model.integrity === "object" ? model.integrity : null,
+    // What this machine's backend has already proved it cannot load. A warning,
+    // not a veto: the record is retired the moment the binary changes or the
+    // model loads, so the row must not refuse the attempt.
+    backendLimit: model?.backendLimit && typeof model.backendLimit === "object" ? model.backendLimit : null,
   };
 }
 
