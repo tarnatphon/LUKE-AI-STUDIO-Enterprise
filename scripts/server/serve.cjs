@@ -6922,7 +6922,15 @@ async function startLlm(settings = {}) {
             predictedSeconds: lastLlmLoadOutlook ? lastLlmLoadOutlook.estimatedSeconds : null,
             at: Date.now(),
           };
-          console.log(`  [llm] ${loadOutlook.completion({ filename, sizeBytes: stats.size, elapsedMs, bytesPerSecond: lastLlmLoadReport.bytesPerSecond })}`);
+          // One sentence, used by the terminal and by the screen, so the two
+          // cannot disagree about how long the wait was.
+          lastLlmLoadReport.message = loadOutlook.completion({
+            filename,
+            sizeBytes: stats.size,
+            elapsedMs,
+            bytesPerSecond: lastLlmLoadReport.bytesPerSecond,
+          });
+          console.log(`  [llm] ${lastLlmLoadReport.message}`);
         } catch (_) {}
         // It loaded, so whatever the ledger said about this architecture is out
         // of date — success is the strongest evidence there is.
@@ -27600,6 +27608,48 @@ const handleRequest = async (req, res) => {
       selectedBackend: probe.selected,
       availableBackends: probe.available,
     });
+  }
+
+  // "How long will this take?" asked before the button is pressed, rather than
+  // after the spinner has been spinning for a minute. The volume measured is the
+  // one the load will actually read (the cache copy when it is fresh, exactly as
+  // startLlm decides), and the answer is in the same words the load prints.
+  if (req.url.startsWith("/api/llm/load-outlook") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const filename = path.basename(String(parsed.searchParams.get("model") || llmSettings.model || "").trim());
+    if (!filename) return json(res, 400, { ok: false, error: "model is required" });
+    const modelPath = path.join(LLM_MODELS, filename);
+    try {
+      if (!pathInside(modelPath, LLM_MODELS)) throw new Error("that path is outside the models folder");
+      const stats = fs.statSync(modelPath);
+      if (!stats.isFile()) throw new Error("that is a folder, not a model file");
+      let loadPath = modelPath;
+      try {
+        const plan = await modelCache.cachedCopyFor(modelPath);
+        if (plan.cached && pathInside(plan.cachedPath, plan.cacheDir)) loadPath = plan.cachedPath;
+      } catch (_) {}
+      const loadStats = loadPath === modelPath ? stats : fs.statSync(loadPath);
+      const speed = loadOutlook.volumeSpeed(loadPath);
+      const decision = decideMmapForModel(llmSettings.mmap !== false, loadPath);
+      const outlook = loadOutlook.outlook({
+        filename,
+        sizeBytes: loadStats.size,
+        volume: describeVolumeLabel(loadPath),
+        bytesPerSecond: speed ? speed.bytesPerSecond : 0,
+        cached: loadPath !== modelPath,
+        mmapDisabled: !decision.mmap,
+      });
+      return json(res, 200, {
+        ok: true,
+        model: filename,
+        sizeBytes: loadStats.size,
+        cached: loadPath !== modelPath,
+        outlook,
+        lastLoad: lastLlmLoadReport,
+      });
+    } catch (error) {
+      return json(res, 404, { ok: false, error: `That model cannot be measured: ${error.message}` });
+    }
   }
 
   if (req.url === "/api/llm/processes" && req.method === "GET") {

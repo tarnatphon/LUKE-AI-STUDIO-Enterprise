@@ -27,6 +27,7 @@ import {
   deleteLlmModel,
   importLlmModel,
   getLlmStatus,
+  getLlmLoadOutlook,
   searchHuggingFaceModels,
   listSpeechModels,
   startSpeech,
@@ -698,6 +699,10 @@ function ModelManager({
           backendBinary: sdStatus.settings?.backendBinary || sdStatus.loading?.backendBinary || "",
           backendDevice: sdStatus.settings?.backendDevice || sdStatus.loading?.device || "",
           llmBackendMode: llmStatus.settings?.backendMode || llmStatus.settings?.backendBinary || "",
+          // What the last text model load cost, and what the next one is expected
+          // to cost. Both numbers come from the backend, which measured the disk.
+          llmLastLoad: llmStatus.lastLoad || null,
+          llmLoadOutlook: llmStatus.loadOutlook || null,
           speechBackendMode: speechStatus.settings?.backendMode || speechStatus.backendMode || "",
           ttsBackendMode: ttsStatus.settings?.backendMode || ttsStatus.backendMode || "",
         });
@@ -1175,7 +1180,7 @@ function ModelManager({
     setLoadingModelId(modelId);
     setModelLoadProgress({
       progress: 40,
-      phase: "Starting llama.cpp server...",
+      phase: "Reading the model from disk...",
       speed: "",
       current: 0,
       total: 0,
@@ -1183,8 +1188,20 @@ function ModelManager({
       backendMode: "",
       backendBinary: "",
       device: "",
+      outlook: null,
     });
     try {
+      // Asked before the load starts, not a minute into the spinner: the backend
+      // measures the volume this file will be read from and answers with a
+      // duration. The measurement is cached per file, so the load itself pays
+      // nothing to ask again.
+      try {
+        const preflight = await getLlmLoadOutlook(modelId);
+        if (preflight?.outlook) {
+          setModelLoadProgress((prev) => (prev ? { ...prev, outlook: preflight.outlook } : prev));
+        }
+      } catch (_) {}
+      setModelLoadProgress((prev) => (prev ? { ...prev, phase: "Starting llama.cpp server..." } : prev));
       const cores = textSettings?.threads || specs?.cpu_cores_physical || 4;
       const context = textSettings?.contextSize ?? 0;
       await startLlm(modelId, {
@@ -1898,6 +1915,11 @@ function ModelManager({
               <p style={{ fontSize: "0.85rem", marginTop: "2px", opacity: 0.9 }}>
                 The local C++ llama.cpp server is running. Chat requests can be sent via the Text Chat interface.
               </p>
+              {backendInfo.llmLastLoad?.message && (
+                <p style={{ fontSize: "0.8rem", marginTop: "4px", opacity: 0.85 }}>
+                  {backendInfo.llmLastLoad.message}
+                </p>
+              )}
               {backendInfo.llmBackendMode && (
                 <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
                   <span className="status-chip" style={{ cursor: "default", background: "rgba(255,255,255,0.15)", color: "inherit", border: "1px solid rgba(255,255,255,0.2)" }}>
@@ -1989,6 +2011,14 @@ function ModelManager({
             <div className="model-progress-bar">
               <div className="model-progress-fill" style={{ width: `${Math.min(100, Math.max(0, modelLoadProgress.progress))}%`, transition: "width 0.2s ease" }}></div>
             </div>
+            {modelLoadProgress.outlook?.message && (
+              <div style={{
+                marginTop: "10px", fontSize: "0.78rem", lineHeight: 1.5,
+                color: modelLoadProgress.outlook.level === "warn" ? "var(--md-sys-color-error)" : "var(--md-sys-color-outline)",
+              }}>
+                {modelLoadProgress.outlook.message}
+              </div>
+            )}
             {(modelLoadProgress.backendMode || modelLoadProgress.device) && (
               <div style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)", marginTop: "6px", lineHeight: "1.4" }}>
                 <div>
