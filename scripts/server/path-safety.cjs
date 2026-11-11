@@ -34,12 +34,27 @@ const path = require("node:path");
  * only thing it expands is a policy value or the `~/…` default beside it, so
  * resolving cannot change its answer.
  *
- * An empty or missing value resolves to the working directory, exactly as all
- * four copies did. Callers are expected to supply a default (`|| "~/…"`), and
- * every one of them does.
+ * Nothing — undefined, null, an empty string — stays nothing. The four copies
+ * this replaces ended in `path.resolve(text)`, and `path.resolve("")` is the
+ * working directory: a provider with no root configured came back as the
+ * checkout and passed every "is this a usable folder" test built on it. Two
+ * callers already test `if (!rootPath)`, and until this change those tests could
+ * never fire:
+ *
+ *   unified-storage-provider-core.checkMountedFolder  → reported a provider with
+ *     no path as reachable and writable, rooted at the server's cwd
+ *   unified-storage-transfer-queue                    → threw ENOTFOUND only if
+ *     this returned something falsy, so it wrote under the cwd instead
+ *
+ * Returning "" lets the guards that were already written do their job. The
+ * callers that supply a default (`|| "~/…"`) never see it.
  */
 function expandHome(value) {
   const text = String(value || "");
+
+  if (!text) {
+    return "";
+  }
 
   if (text === "~") {
     return os.homedir();

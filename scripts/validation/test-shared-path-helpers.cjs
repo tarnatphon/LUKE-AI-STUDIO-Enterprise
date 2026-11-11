@@ -107,9 +107,10 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-path-safety-"));
   check(expandHome("relative/path") === path.resolve("relative/path"), "a relative path is made absolute, as the storage stack needs");
   check(expandHome("/tmp/~foo") === "/tmp/~foo", "a ~ in the middle of a path is not a home directory");
   check(expandHome("~other") === path.resolve("~other"), "nor is ~user, which this never supported");
-  check(expandHome(undefined) === process.cwd() && expandHome(null) === process.cwd(),
-    "nothing resolves to the working directory, exactly as before — callers pass a default");
-  check(expandHome("") === process.cwd(), "and so does an empty string");
+  // path.resolve("") is the working directory, so a provider with no root
+  // configured used to arrive as the checkout and pass "is this usable?".
+  check(expandHome(undefined) === "" && expandHome(null) === "", "nothing stays nothing, instead of becoming the working directory");
+  check(expandHome("") === "", "and an empty string stays empty");
 
   console.log("\n  sha256File");
 
@@ -139,6 +140,18 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-path-safety-"));
   const hashSource = read("scripts", "server", "hash-file.cjs");
   check(!/readFile(Sync)?\(/.test(hashSource), "the hash never reads the whole file into memory");
   check(/for await/.test(hashSource), "it streams");
+
+  console.log("\n  the guards that depend on it");
+
+  // Both of these were already written to refuse a provider with no root. They
+  // could never fire while expandHome turned "" into the cwd, so the provider
+  // was reported reachable and the transfer wrote under the server's directory.
+  const providerCore = read("scripts", "server", "unified-storage-provider-core.cjs");
+  const transferQueue = read("scripts", "server", "unified-storage-transfer-queue.cjs");
+  check(/if \(\s*!rootPath \|\|\s*!fs\.existsSync\(rootPath\)\s*\)/.test(providerCore.replace(/\s+/g, " ").replace(/if \( /g, "if (")),
+    "a storage provider without a root is reported offline, not as the checkout");
+  check(/if \(!rootPath\)/.test(transferQueue.replace(/\s+/g, " ")), "and a transfer without a destination root throws instead of writing");
+  check(/ENOTFOUND/.test(transferQueue), "with a code the UI can show");
 
   console.log("\n  every caller uses the shared copy");
 
@@ -177,6 +190,33 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), "luke-path-safety-"));
   const serve = read("scripts", "server", "serve.cjs");
   check(/isPathInside\(candidate, protectedPath\)/.test(serve) && /isPathInside\(protectedPath, candidate\)/.test(serve),
     "serve.cjs still asks both directions, unchanged");
+
+  console.log("\n  inline copies that remain (recorded, not rewritten)");
+
+  // The survey that followed the consolidation. These are equivalent to
+  // isPathInside() and are deliberately left alone — each is inside a larger
+  // routine that is being changed for other reasons. The list is a ratchet: a
+  // NEW file that hand-rolls containment fails here, so the sixth copy cannot
+  // appear quietly the way the first five did.
+  const knownInline = [
+    "chat-history-archive.cjs", // history file inside HISTORY_DIR
+    "serve.cjs",                // storagePathViolation, resolveInsideRoot, dist containment
+    "storage-locations.cjs",    // the storage-path refusals
+    "text-model-pool.cjs",      // a resolved model path under modelsDir
+    "work-path-guard.cjs",      // realpath containment, plus a ".." check that is not containment
+  ];
+  const inline = serverFiles()
+    .filter((file) => file.name !== "path-safety.cjs")
+    .filter((file) => /startsWith\([^\n]*path\.sep/.test(file.text))
+    .map((file) => file.name);
+  check(
+    inline.every((name) => knownInline.includes(name)),
+    "no new hand-rolled containment check appeared",
+    inline.filter((name) => !knownInline.includes(name)).join(", ")
+  );
+  for (const name of knownInline) {
+    check(inline.includes(name), `${name} still contains its known inline check (update the list when it moves to isPathInside)`);
+  }
 
   fs.rmSync(temp, { recursive: true, force: true });
   console.log(`\nPASS: ${checks} checks — one containment rule, one home expansion, one streaming hash.`);
