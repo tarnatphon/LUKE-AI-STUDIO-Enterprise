@@ -92,6 +92,7 @@ const { appendErrorLines, explainFailure, unknownArchitecture, DEFAULT_LIMIT: LL
 const { checkModel: checkModelIntegrity } = require("./model-integrity.cjs");
 const backendArchLimits = require("./backend-architecture-limits.cjs");
 const { findBackendLeftovers } = require("./backend-leftovers.cjs");
+const loadOutlook = require("./model-load-outlook.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -1691,6 +1692,11 @@ function describeLlmLoad() {
     lastLine: lines[lines.length - 1] || "",
   };
 }
+// What the last model load cost, and whether this attempt already said what the
+// next one will cost. See model-load-outlook.cjs.
+let lastLlmLoadOutlook = null;
+let lastLlmLoadReport = null;
+let llmLoadOutlookPrinted = false;
 let llmOperationQueue = Promise.resolve();
 let speechReady = false;
 let speechError = null;
@@ -4415,6 +4421,17 @@ function getLlmBackendCandidates() {
 }
 
 /**
+ * How to name the disk a model is read from: the volume name on macOS, the mount
+ * point elsewhere. Used only in sentences.
+ */
+function describeVolumeLabel(targetPath) {
+  const resolved = path.resolve(String(targetPath || ""));
+  const match = /^\/Volumes\/([^/]+)/.exec(resolved);
+  if (match) return `the ${match[1]} volume`;
+  return "the internal disk";
+}
+
+/**
  * The recorded architecture limit for the model at `modelPath`, as the row can
  * print it. "" when nothing is known, which is almost always.
  */
@@ -6867,6 +6884,8 @@ async function startLlm(settings = {}) {
       })
     : candidates;
 
+  const loadStartedAt = Date.now();
+  llmLoadOutlookPrinted = false;
   const failures = [];
   const totalAttempts = sortedCandidates.reduce(
     (sum, candidate) => sum + buildLlmLoadProfiles(settings, candidate).length,
@@ -6891,6 +6910,20 @@ async function startLlm(settings = {}) {
       try {
         await startLlmWithBackend({ ...settings, __loadProfile: profile }, backend);
         llmSettings.backendFallbacks = failures;
+        // What it actually cost, next to what was predicted before it started.
+        try {
+          const stats = fs.statSync(modelPath);
+          const elapsedMs = Date.now() - loadStartedAt;
+          lastLlmLoadReport = {
+            filename,
+            sizeBytes: stats.size,
+            elapsedMs,
+            bytesPerSecond: lastLlmLoadOutlook ? lastLlmLoadOutlook.bytesPerSecond : 0,
+            predictedSeconds: lastLlmLoadOutlook ? lastLlmLoadOutlook.estimatedSeconds : null,
+            at: Date.now(),
+          };
+          console.log(`  [llm] ${loadOutlook.completion({ filename, sizeBytes: stats.size, elapsedMs, bytesPerSecond: lastLlmLoadReport.bytesPerSecond })}`);
+        } catch (_) {}
         // It loaded, so whatever the ledger said about this architecture is out
         // of date — success is the strongest evidence there is.
         try {
@@ -7200,6 +7233,29 @@ async function startLlmWithBackend(settings = {}, backend) {
     args.push("--no-mmap");
     if (mmapDecision.reason) console.log(`  [llm] ${mmapDecision.reason}`);
   }
+  // Say how long the read itself will take, measured on the model's own volume.
+  // A 9 GB checkpoint on a slow external disk is disk-bound end to end, and
+  // "cache it in Settings" without a number is advice nobody acts on.
+  if (!llmLoadOutlookPrinted) {
+    llmLoadOutlookPrinted = true;
+    try {
+      const stats = fs.statSync(loadPath);
+      const speed = loadOutlook.volumeSpeed(loadPath);
+      const outlook = loadOutlook.outlook({
+        filename,
+        sizeBytes: stats.size,
+        volume: describeVolumeLabel(loadPath),
+        bytesPerSecond: speed ? speed.bytesPerSecond : 0,
+        cached: loadPath !== modelPath,
+        mmapDisabled: !mmapDecision.mmap,
+      });
+      if (outlook && outlook.message) console.log(`  [llm] ${outlook.message}`);
+      lastLlmLoadOutlook = outlook
+        ? { ...outlook, filename, sizeBytes: stats.size, bytesPerSecond: speed ? speed.bytesPerSecond : 0, filesystem: mmapPolicy.filesystemTypeForPath(mmapPolicy.mountTableText(), loadPath) }
+        : null;
+    } catch (_) {}
+  }
+
   // Report the flag that was actually launched, not the preference that was
   // asked for: /api/llm/start used to echo mmap:true for a process started with
   // --no-mmap, which made the override impossible to confirm from outside.
@@ -27532,6 +27588,10 @@ const handleRequest = async (req, res) => {
       preferredPort: PREFERRED_LLM_PORT,
       error: llmError,
       loading: describeLlmLoad(),
+      // What the last load cost and what the next one should cost, so a slow
+      // load can be explained without reading the terminal.
+      lastLoad: lastLlmLoadReport,
+      loadOutlook: lastLlmLoadOutlook,
       mmap: describeMmap(),
       settings: llmSettings,
       backendInstalled: Boolean(backend),
