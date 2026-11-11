@@ -1848,11 +1848,24 @@ function ModelManager({
             {(memoryBudget.poolGb || 0) > 0 && (
               <div className="library-memory-note">
                 งบรวมสำหรับโมเดล {memoryBudget.poolGb} GB{" "}
-                {memoryBudget.measuredWorkingSetGb
+                {memoryBudget.poolDetail?.source === "measured"
                   ? "(อ่านค่าจริงจาก Metal)"
-                  : "(ประมาณการ)"}
+                  : memoryBudget.poolDetail?.unified && memoryBudget.poolDetail?.ratio
+                    ? `(ประมาณการ: RAM ${memoryBudget.poolDetail.totalRamGb} GB × ${Math.round(memoryBudget.poolDetail.ratio * 100)}% ที่ Metal ยอมให้จอง − ${memoryBudget.poolDetail.reserveGb} GB สำรอง)`
+                    : memoryBudget.poolDetail
+                      ? `(RAM รวม ${memoryBudget.poolDetail.totalRamGb} GB − ${memoryBudget.poolDetail.reserveGb} GB สำรอง)`
+                      : "(ประมาณการ)"}
                 {memoryBudget.calibration?.recentIncidents > 0
                   ? ` · หักเพิ่ม ${Math.min(2, memoryBudget.calibration.recentIncidents * 0.5)} GB หลังเครื่องเคยหน่วยความจำไม่พอ ${memoryBudget.calibration.recentIncidents} ครั้ง`
+                  : ""}
+              </div>
+            )}
+
+            {(memoryBudget.resident || []).length > 0 && (
+              <div className="library-memory-note">
+                ที่ใช้อยู่ตอนนี้: {(memoryBudget.resident || []).map((entry) => `${entry.label} ${entry.gb} GB`).join(" · ")}
+                {(memoryBudget.poolDetail?.overBudgetGb || 0) > 0
+                  ? ` — เกินงบไป ${memoryBudget.poolDetail.overBudgetGb} GB แล้ว macOS จึงบีบอัดหน่วยความจำให้ ยังใช้งานได้ แต่จะโหลดโมเดลใหม่เพิ่มไม่ได้จนกว่าจะปล่อยตัวใดตัวหนึ่ง`
                   : ""}
               </div>
             )}
