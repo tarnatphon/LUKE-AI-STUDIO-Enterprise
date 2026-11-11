@@ -88,8 +88,10 @@ const {
   residentBytesFromPs,
 } = require("./gpu-memory-telemetry.cjs");
 const { bytesToGib, gbShortfall } = require("./size-units.cjs");
-const { appendErrorLines, explainFailure, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
+const { appendErrorLines, explainFailure, unknownArchitecture, DEFAULT_LIMIT: LLM_ERROR_LIMIT } = require("./llm-error-log.cjs");
 const { checkModel: checkModelIntegrity } = require("./model-integrity.cjs");
+const backendArchLimits = require("./backend-architecture-limits.cjs");
+const { findBackendLeftovers } = require("./backend-leftovers.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -4412,6 +4414,27 @@ function getLlmBackendCandidates() {
   return probe.available;
 }
 
+/**
+ * The recorded architecture limit for the model at `modelPath`, as the row can
+ * print it. "" when nothing is known, which is almost always.
+ */
+function describeBackendLimit(integrity) {
+  try {
+    const architecture = integrity && integrity.architecture ? integrity.architecture : "";
+    if (!architecture) return null;
+    const entry = backendArchLimits.forArchitecture(architecture);
+    if (!entry) return null;
+    return {
+      architecture,
+      seenAt: entry.seenAt,
+      model: entry.model,
+      message: backendArchLimits.describe(entry),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 function getLlmModels() {
   try {
     return fs.readdirSync(LLM_MODELS)
@@ -4421,6 +4444,13 @@ function getLlmModels() {
         const stats = fs.statSync(fullPath);
         const lower = filename.toLowerCase();
         const isProjector = lower.includes("mmproj");
+        // A projector is not a model on its own, so it is not judged here;
+        // everything else is checked for the two faults that make a file
+        // impossible to load — blocks its metadata promises and does not
+        // have, and weights that run past the end of the file.
+        const integrity = isProjector
+          ? { ok: true, checked: false, code: "skipped", reason: "a projector is loaded with its model" }
+          : checkModelIntegrity(fullPath);
         return {
           filename,
           name: filename,
@@ -4428,13 +4458,11 @@ function getLlmModels() {
           size: formatBytes(stats.size),
           format: "GGUF",
           isProjector,
-          // A projector is not a model on its own, so it is not judged here;
-          // everything else is checked for the two faults that make a file
-          // impossible to load — blocks its metadata promises and does not
-          // have, and weights that run past the end of the file.
-          integrity: isProjector
-            ? { ok: true, checked: false, code: "skipped", reason: "a projector is loaded with its model" }
-            : checkModelIntegrity(fullPath),
+          integrity,
+          // What this machine's backend has already proved it cannot load. A
+          // warning next to the row, never a refusal: an upgraded binary, a
+          // second backend or another quant can all make the attempt work.
+          backendLimit: describeBackendLimit(isProjector ? null : integrity),
         };
       });
   } catch (_) {
@@ -5567,6 +5595,19 @@ function getCleanupCandidates() {
         addCleanupCandidate(candidates, `setup-temp-${item}`, itemPath, "Temporary backend extraction folder.");
       }
     }
+  }
+
+  // A backend upgrade leaves the previous build behind — see
+  // backend-leftovers.cjs. Nobody looks in app/llm-backend, and on macOS each
+  // one carries the Metal shaders, so they are offered here by name and size
+  // rather than deleted on the user's behalf.
+  for (const leftover of findBackendLeftovers(path.join(ROOT, "app", "llm-backend"))) {
+    addCleanupCandidate(
+      candidates,
+      `backend-leftover-${path.relative(ROOT, leftover).replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+$/, "")}`,
+      leftover,
+      "A previous llama.cpp backend left behind by an upgrade; it can be downloaded again.",
+    );
   }
 
   if (fs.existsSync(MODELS)) {
@@ -6850,6 +6891,11 @@ async function startLlm(settings = {}) {
       try {
         await startLlmWithBackend({ ...settings, __loadProfile: profile }, backend);
         llmSettings.backendFallbacks = failures;
+        // It loaded, so whatever the ledger said about this architecture is out
+        // of date — success is the strongest evidence there is.
+        try {
+          if (integrity && integrity.architecture) backendArchLimits.clear(integrity.architecture);
+        } catch (_) {}
         updateLlmModelSettings(filename, {
           preferredBackend: backend.key,
           lastBackendMode: llmSettings.backendMode,
@@ -6891,6 +6937,22 @@ async function startLlm(settings = {}) {
   // A cause without a remedy still leaves the reader guessing, and the three
   // failures seen on real machines each have exactly one answer.
   const hint = explainFailure(last?.error || "");
+  // Every backend refused this architecture. Keep that fact against the exact
+  // binaries that refused it, so the next attempt is warned before it starts
+  // instead of after it dies.
+  const refusedArchitecture = unknownArchitecture(last?.error || "");
+  if (refusedArchitecture) {
+    try {
+      backendArchLimits.record({
+        architecture: refusedArchitecture,
+        backends: sortedCandidates.map((candidate) => candidate.path),
+        model: filename,
+      });
+    } catch (_) {
+      // A read-only runtime-state must not turn a load failure into a different
+      // load failure.
+    }
+  }
   throw new Error(
     `Text model failed on all available llama.cpp backends. Last failure${where}: ${last?.error || "unknown error"}` +
       (hint ? `\n\n${hint}` : ""),

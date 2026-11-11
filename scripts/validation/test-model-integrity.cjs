@@ -152,7 +152,12 @@ check("a whole folder can be checked at once", Object.keys(many).length === 3 &&
 
 // ── the server and the panel use it ─────────────────────────────────────────
 const serveSource = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
-check("the text model list carries the verdict", /integrity: isProjector\s*\n?\s*\? \{ ok: true, checked: false/.test(serveSource) && /checkModelIntegrity\(fullPath\)/.test(serveSource));
+// The row keeps the verdict under `integrity`; the projector branch is decided
+// first, and the same object is what the backend-limit warning reads.
+check("the text model list carries the verdict",
+  /const integrity = isProjector\s*\n?\s*\? \{ ok: true, checked: false/.test(serveSource)
+  && /checkModelIntegrity\(fullPath\)/.test(serveSource)
+  && /^\s+integrity,$/m.test(serveSource));
 check("the file list does too", /info\.integrity = checkModelIntegrity\(path\.join\(MODELS, filename\)\)/.test(serveSource));
 
 const startLlm = serveSource.slice(serveSource.indexOf("async function startLlm(settings = {})"), serveSource.indexOf("async function startLlmWithBackend"));

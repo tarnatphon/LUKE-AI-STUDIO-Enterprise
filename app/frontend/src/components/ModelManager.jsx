@@ -2118,6 +2118,11 @@ function ModelManager({
               const integrityIssue = model.integrity && model.integrity.checked && model.integrity.ok === false
                 ? model.integrity
                 : null;
+              // The backend said it does not know this architecture, the last
+              // time this same binary was asked. Said here, before the click —
+              // not to refuse it, because an upgraded backend answers
+              // differently and the ledger retires itself.
+              const backendLimit = model.backendLimit || null;
               
               return (
                 <div 
@@ -2138,6 +2143,14 @@ function ModelManager({
                     {integrityIssue ? (
                       <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-error)" }}>
                         ⚠ This file cannot load — {integrityIssue.reason}
+                      </span>
+                    ) : null}
+                    {!integrityIssue && backendLimit ? (
+                      <span
+                        style={{ fontSize: "0.75rem", color: "var(--md-sys-color-tertiary)" }}
+                        title={backendLimit.message}
+                      >
+                        ⚠ This backend may not load it — it reported it does not know the "{backendLimit.architecture}" architecture. Update the text backend, or pick another model.
                       </span>
                     ) : null}
                     <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>
@@ -2177,7 +2190,7 @@ function ModelManager({
                           style={{ height: "36px", padding: "0 16px" }} 
                           onClick={() => handleLoadModel(filename)}
                           disabled={isBusy || Boolean(integrityIssue)}
-                          title={integrityIssue ? integrityIssue.reason : "Load this model"}
+                          title={integrityIssue ? integrityIssue.reason : backendLimit ? backendLimit.message : "Load this model"}
                         >
                           {loadingModelId === filename ? (
                             <RefreshCw className="progress-spinner" size={14} />
