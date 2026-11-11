@@ -160,10 +160,17 @@ async function main() {
   });
 
   test("serve.cjs: โมเดลที่กำลังโหลดถูกนับใน residentHeavyModelBytes", () => {
-    const start = serveSource.indexOf("function residentHeavyModelBytes()");
+    // The counting moved into residentModelBreakdown() so the card can name the
+    // models it is charging for; the total must still be the sum of it.
+    const start = serveSource.indexOf("function residentModelBreakdown()");
     const body = serveSource.slice(start, serveSource.indexOf("function evaluateModelMemoryBudget"));
     assert.match(body, /imageModelLoadingBytes/, "the image load in flight");
     assert.match(body, /llmModelLoadingBytes/, "the text load in flight");
+    assert.match(
+      serveSource,
+      /function residentHeavyModelBytes\(\) \{\n\s*return residentModelBreakdown\(\)\.reduce/,
+      "และยอดรวมต้องมาจากผลรวมของรายการเดียว ไม่ใช่นับซ้ำอีกชุด",
+    );
   });
 
   test("serve.cjs: ตั้งค่า in-flight ตอนสั่งโหลด และเคลียร์เมื่อพร้อม/ถูกปิด", () => {

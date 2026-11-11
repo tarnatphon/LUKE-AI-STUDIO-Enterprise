@@ -140,7 +140,7 @@ section("5. Remembering what llama.cpp reported");
 }
 
 section("6. An idling image backend is no longer counted as resident");
-check("the resident size comes from what the backend really loaded", serveSource.includes("bytes += Number(imageModelResidentBytes) || 0;"));
+check("the resident size comes from what the backend really loaded", serveSource.includes("const imageBytes = Number(imageModelResidentBytes) || 0;"));
 check(
   "the configured image model is no longer counted by itself",
   !/if \(\(backendReady \|\| backendProc[\s\S]{0,200}estimateModelBytes\(imageModel\)/.test(serveSource)

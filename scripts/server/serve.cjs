@@ -1887,21 +1887,50 @@ function estimateModelBytes(modelPath) {
   return 0;
 }
 
-function residentHeavyModelBytes() {
-  let bytes = 0;
-  bytes += Number(imageModelResidentBytes) || 0;
+/**
+ * What "loaded models" is made of, one entry per thing holding memory.
+ *
+ * The library card printed a single 13.71 GB with no way to tell whether that
+ * was the chat model, the image model, or both — and "which one do I unload" is
+ * the only question the number raises. The names come from whatever is actually
+ * resident, so the answer is the one the machine would give.
+ */
+function residentModelBreakdown() {
+  const parts = [];
+  const imageBytes = Number(imageModelResidentBytes) || 0;
+  if (imageBytes > 0) {
+    parts.push({
+      kind: "image",
+      label: path.basename(String(currentSettings?.model || "")) || "the image model",
+      bytes: imageBytes,
+    });
+  }
   // In-flight loads: not answering yet, but the bytes are already spoken for.
-  bytes += Number(imageModelLoadingBytes) || 0;
-  bytes += Number(llmModelLoadingBytes) || 0;
+  const imageLoadingBytes = Number(imageModelLoadingBytes) || 0;
+  if (imageLoadingBytes > 0) {
+    parts.push({ kind: "image-loading", label: "an image model that is still loading", bytes: imageLoadingBytes });
+  }
+  const textLoadingBytes = Number(llmModelLoadingBytes) || 0;
+  if (textLoadingBytes > 0) {
+    parts.push({ kind: "text-loading", label: "the text model that is still loading", bytes: textLoadingBytes });
+  }
   if ((llmReady || llmProc) && llmSettings.model) {
-    bytes += estimateModelBytes(path.join(LLM_MODELS, path.basename(String(llmSettings.model))));
+    const name = path.basename(String(llmSettings.model));
+    parts.push({ kind: "text", label: name, bytes: estimateModelBytes(path.join(LLM_MODELS, name)) });
   }
   if (textModelPoolInstance) {
     for (const instance of textModelPoolInstance.instances.values()) {
-      bytes += Number(instance.sizeBytes) || 0;
+      const size = Number(instance.sizeBytes) || 0;
+      if (size > 0) {
+        parts.push({ kind: "arena", label: String(instance.model || instance.modelId || "an Arena model"), bytes: size });
+      }
     }
   }
-  return bytes;
+  return parts.filter((part) => part.bytes > 0);
+}
+
+function residentHeavyModelBytes() {
+  return residentModelBreakdown().reduce((sum, part) => sum + part.bytes, 0);
 }
 
 function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayers = null } = {}) {
@@ -2062,24 +2091,31 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
   // actually refused, so the user can unload something in time.
   let pressureRatio = 0;
   if (targetBytes === 0) {
-    const poolBytes = Math.max(0, totalRamBytes - reserveBytes);
+    // One pool, not two. This block used to recompute the pool as total RAM
+    // minus the reserve, while the budget a load is actually refused against is
+    // the unified working set minus that same reserve — so the card said
+    // "13.71 GB of the 16 GB usable pool (86%)" three lines above "model budget
+    // 12.04 GB", and the percentage was measured against a number the loader
+    // never uses.
+    const poolGb = Number((poolBytes / 1024 ** 3).toFixed(2));
     pressureRatio = poolBytes > 0 ? Number((residentBytes / poolBytes).toFixed(2)) : 0;
-    const poolGb = Number((poolBytes / 1024 ** 3).toFixed(1));
     const percent = Math.round(pressureRatio * 100);
+    const overGb = Number(Math.max(0, (residentBytes - poolBytes) / 1024 ** 3).toFixed(2));
     if (residentBytes > 0 && pressureRatio >= blockRatio) {
       warnings.push({
         code: "MODEL_MEMORY_PRESSURE",
         severity: "danger",
         message:
-          `Loaded models already use ${residentGb} GB of the ${poolGb} GB usable pool (${percent}%). ` +
-          `Another model will be refused unless you unload one in AI Library.`,
+          `Loaded models already use ${residentGb} GB of the ${poolGb} GB this machine gives them (${percent}%). ` +
+          `That is ${overGb} GB past the budget, so macOS is compressing memory to keep them running — ` +
+          `another model will be refused unless you unload one in AI Library.`,
       });
     } else if (residentBytes > 0 && pressureRatio >= warnRatio) {
       warnings.push({
         code: "MODEL_MEMORY_PRESSURE",
         severity: "warning",
         message:
-          `Loaded models use ${residentGb} GB of the ${poolGb} GB usable pool (${percent}%). ` +
+          `Loaded models use ${residentGb} GB of the ${poolGb} GB this machine gives them (${percent}%). ` +
           `Only about ${availableGb} GB is left, so a large model may not fit.`,
       });
     }
@@ -2100,6 +2136,23 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     poolGb: Number((poolBytes / 1024 ** 3).toFixed(2)),
     workingSetGb: Number(workingSetGb.toFixed(2)),
     measuredWorkingSetGb: Number(measuredWorkingSetGb.toFixed(2)),
+    // How that pool was arrived at, so the card can justify the number in the
+    // same breath it prints it — 12.04 GB out of an 18 GB machine is not a
+    // number anyone can check by looking at it.
+    poolDetail: {
+      source: measuredWorkingSetGb > 0 ? "measured" : "estimated",
+      totalRamGb,
+      workingSetGb: Number(workingSetGb.toFixed(2)),
+      ratio: measuredWorkingSetGb > 0 ? null : Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78),
+      reserveGb: learningUnified ? 0 : reserveGb,
+      calibrationGb: Number((calibrationBytes / 1024 ** 3).toFixed(2)),
+      unified: unifiedMemory,
+      overBudgetGb: Number(Math.max(0, (residentBytes - poolBytes) / 1024 ** 3).toFixed(2)),
+    },
+    // Which models the resident figure is made of, largest first.
+    resident: residentModelBreakdown()
+      .map((part) => ({ kind: part.kind, label: part.label, gb: Number((part.bytes / 1024 ** 3).toFixed(2)) }))
+      .sort((a, b) => b.gb - a.gb),
     // Largest model that still fits: available = size * (1 + overhead) + fixed.
     maxModelGb: Number(
       (Math.max(0, availableBytes - perModelOverheadGb * 1024 ** 3) / (1 + overheadRatio) / 1024 ** 3).toFixed(2)
