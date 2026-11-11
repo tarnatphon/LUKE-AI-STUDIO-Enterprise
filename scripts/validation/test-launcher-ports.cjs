@@ -16,9 +16,15 @@
  *
  * The replacement, stop_existing_servers, is the thing this suite runs: it asks
  * with SIGTERM, waits up to five seconds, escalates only for whatever is still
- * there, and names the port it is reclaiming. Port discovery is replaced with a
- * stub `lsof` on PATH (this sandbox has no lsof at all), so the kill/wait/escalate
- * logic is exercised for real rather than grepped for.
+ * there, and names the port each PID is holding. Port discovery is replaced with
+ * a stub `lsof` on PATH (this sandbox has no lsof at all), so the
+ * kill/wait/escalate logic is exercised for real rather than grepped for.
+ *
+ * It also pins the second half of that fix: `lsof -t -i:1420` returns every
+ * process with a socket on the port, clients included — the browser showing the
+ * app, a curl tailing the log — and the launcher SIGTERMed all of them. It now
+ * asks for `-sTCP:LISTEN` only, and prints the port and the command beside each
+ * PID so a three-line takeover cannot be mistaken for three copies of the app.
  *
  * Run: node scripts/validation/test-launcher-ports.cjs
  */
@@ -54,7 +60,13 @@ function extractHelper(file) {
 // the PID we told it to, once per port asked, so the dedupe gets exercised too.
 const shimDir = path.join(temp, "shim");
 fs.mkdirSync(shimDir, { recursive: true });
-fs.writeFileSync(path.join(shimDir, "lsof"), '#!/bin/sh\nprintf "%s\\n" "$FAKE_PIDS"\n', { mode: 0o755 });
+// The shim also records the arguments it was called with, so the suite can
+// check *what the launcher asked for* — a listener, not every client.
+fs.writeFileSync(
+  path.join(shimDir, "lsof"),
+  '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_LSOF_LOG"\nprintf "%s\\n" "$FAKE_PIDS"\n',
+  { mode: 0o755 }
+);
 const envWithShim = {
   ...process.env,
   PATH: `${shimDir}${path.delimiter}${process.env.PATH || ""}`,
@@ -66,11 +78,15 @@ const envWithShim = {
 // spawnSync would block this process's event loop, so the child we just killed
 // would stay a zombie — still visible to `kill -0` — for the whole five-second
 // wait, and every run would look like the escalation path.
+let runCount = 0;
 function runHelper(file, fakePids) {
   const started = Date.now();
+  runCount += 1;
+  const lsofLog = path.join(temp, `lsof-${runCount}.log`);
+  fs.writeFileSync(lsofLog, "");
   return new Promise((resolve) => {
     const proc = spawn("bash", ["-c", `set -euo pipefail\n${extractHelper(file)}\nstop_existing_servers`], {
-      env: { ...envWithShim, FAKE_PIDS: fakePids },
+      env: { ...envWithShim, FAKE_PIDS: fakePids, FAKE_LSOF_LOG: lsofLog },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -80,7 +96,7 @@ function runHelper(file, fakePids) {
     const timer = setTimeout(() => proc.kill("SIGKILL"), 30000);
     const finish = (status, signal) => {
       clearTimeout(timer);
-      resolve({ status, signal, stdout, stderr, elapsed: Date.now() - started });
+      resolve({ status, signal, stdout, stderr, elapsed: Date.now() - started, lsofLog });
     };
     proc.on("exit", finish);
     proc.on("error", (error) => finish(null, String(error)));
@@ -141,9 +157,29 @@ function sleeper(stubborn) {
     const asked = await runHelper(launcher, String(polite.pid));
     check(asked.status === 0, "stopping an earlier copy succeeds", `exit ${asked.status} ${asked.stderr}`);
     check(
-      asked.stdout.includes(`An earlier copy is still holding port 14200 — stopping it: ${polite.pid}`),
-      "it says which port it is reclaiming and from which PID, once",
+      asked.stdout.includes("An earlier copy is still running — stopping it:"),
+      "it says it is taking over",
       JSON.stringify(asked.stdout)
+    );
+    check(
+      new RegExp(`\\n\\s+${polite.pid} {3}port 14200 {3}\\S`).test(asked.stdout),
+      "and names the PID, the port that PID holds, and what the process is",
+      JSON.stringify(asked.stdout)
+    );
+    check(
+      (asked.stdout.match(/port 14200/g) || []).length === 1,
+      "one line per PID, even though lsof is asked about three ports",
+      JSON.stringify(asked.stdout)
+    );
+    check(
+      /-sTCP:LISTEN/.test(fs.readFileSync(asked.lsofLog, "utf8")),
+      "it asks lsof for the process holding the port, not the clients connected to it",
+      fs.readFileSync(asked.lsofLog, "utf8").trim()
+    );
+    check(
+      /-i:14200/.test(fs.readFileSync(asked.lsofLog, "utf8")),
+      "and it asks about the frontend port it is about to bind",
+      fs.readFileSync(asked.lsofLog, "utf8").trim()
     );
     const politeGone = await waitExit(polite, 3000);
     check(politeGone, "the earlier copy is gone");
