@@ -229,6 +229,28 @@ async function main() {
     check("the original model benchmark endpoint is untouched", /req\.url === "\/api\/llm\/benchmark"/.test(serverSource));
     check("it recommends a thread count", Number(planResponse.data?.recommended?.threads) > 0);
     check("it reports the hardware it looked at", Boolean(planResponse.data?.hardware?.ramGb));
+    check("it says which mode the numbers were planned for", typeof planResponse.data?.isGpuMode === "boolean");
+    check(
+      "and that the caller decided it",
+      planResponse.data?.gpuModeSource === "requested",
+      String(planResponse.data?.gpuModeSource)
+    );
+
+    // Callers used to pass `isGpuMode: true` as a guess, including on machines
+    // where the GPU backend had failed and everything runs on the CPU. Without
+    // the field the server has to decide from the backend it will really use.
+    const backends = await call("/api/backend-options", null, "GET");
+    const expectedGpu = String(backends.data?.defaultBackendType || "cpu") !== "cpu";
+    const detected = await call("/api/llm/performance-plan", {});
+    check(
+      "a caller that does not guess gets the mode of the backend this machine will run",
+      detected.data?.gpuModeSource === "detected" && detected.data?.isGpuMode === expectedGpu,
+      `${detected.data?.isGpuMode} vs ${expectedGpu} for ${backends.data?.defaultBackendType}`
+    );
+    check(
+      "so an explicit request still wins, for the callers that know better",
+      planResponse.data?.isGpuMode === true
+    );
 
     const noModel = await call("/api/llm/measure", {});
     check("measuring without a loaded model is refused, not crashed", noModel.status === 409, `status ${noModel.status} ${String(noModel.data?.error || "").slice(0, 160)}`);

@@ -30774,7 +30774,17 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
     try {
       const body = await readJsonRequestBody(req);
       const specs = getHardwareSpecs();
-      const isGpuMode = body.isGpuMode !== false;
+      // The server is the only part of this app that knows which backend the
+      // machine will really use, and callers were passing `isGpuMode: true` as a
+      // guess — including on Macs where Metal had failed validation and every
+      // model runs on the CPU. An explicit value still wins, for the callers
+      // that legitimately know better; otherwise the default backend decides.
+      const requested = typeof body.isGpuMode === "boolean" ? body.isGpuMode : null;
+      let detectedGpuMode = false;
+      try {
+        detectedGpuMode = String(getBackendOptions().defaultBackendType || "cpu") !== "cpu";
+      } catch (_) {}
+      const isGpuMode = requested === null ? detectedGpuMode : requested;
       const modelSizeGb = Number(body.modelSizeGb) || 0;
       const recommended = planRuntimeSettings({
         cpuCores: specs.cpu_cores_physical || specs.cpu_cores_logical || 4,
@@ -30801,6 +30811,11 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
           gpu: specs.gpu_name,
           tier: specs.tier,
         },
+        // Which mode the numbers above were planned for, and who decided: so a
+        // card can print "planned for this machine's CPU" instead of implying
+        // the GPU picked them.
+        isGpuMode,
+        gpuModeSource: requested === null ? "detected" : "requested",
         recommended,
         draft,
       });

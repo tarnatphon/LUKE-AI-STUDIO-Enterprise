@@ -96,4 +96,29 @@ check(/<a href="#performance"/.test(chat), "and so does the stalled-load message
 check(/Cache it once button on the text model card/.test(chat),
   "which also admits the faster route: the button on the card");
 
+console.log("\n  and the first-launch tune says what it did");
+
+check(!/isGpuMode: true/.test(app), "the app no longer tells the server that this machine has a GPU");
+check(!/isGpuMode: true/.test(panel), "and the Performance card does not tell it either");
+check(
+  /typeof body\.isGpuMode === "boolean" \? body\.isGpuMode : null/.test(serve),
+  "the plan endpoint decides the mode itself when it is not told"
+);
+check(
+  /gpuModeSource: requested === null \? "detected" : "requested"/.test(serve),
+  "and reports who decided, so a CPU-only machine is not described as a GPU one"
+);
+check(/runtimeTunedNote: \{/.test(app),
+  "the tune writes down what it applied, to which machine, and why");
+check(/const keepThreads = currentThreads > 0 && currentThreads !== defaultThreads;/.test(app),
+  "a thread count that is not the default is the user's, and is kept");
+check(/tunedNote\.keptThreads \? `threads left at your \$\{tunedNote\.threads\}`/.test(panel),
+  "the card says the kept count was kept, instead of quietly showing the machine's");
+check(/Applied for you on first launch/.test(panel),
+  "the card says the values were applied — not that they were always there");
+check(/Nothing is re-applied after this/.test(panel),
+  "and that nothing will overwrite them again");
+check(/updateTextSetting\("runtimeTunedNote"/.test(panel),
+  "pressing the button updates the explanation with the values, instead of leaving a stale one");
+
 console.log(`\nPASS: ${checks} checks — the advice points at a place that exists, and the app can take you there.`);
