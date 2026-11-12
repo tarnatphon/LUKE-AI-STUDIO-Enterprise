@@ -28,6 +28,8 @@ import {
   importLlmModel,
   getLlmStatus,
   getLlmLoadOutlook,
+  getModelCacheStatus,
+  primeModelCache,
   searchHuggingFaceModels,
   listSpeechModels,
   startSpeech,
@@ -52,6 +54,15 @@ import {
   unloadAllModelArenaModels
 } from "../services/api";
 import "./ModelManager.css";
+
+// Seconds as "2 min 4 s" — the copy estimate and its countdown are both spoken
+// in minutes, because a 7 GB read never is one.
+function formatCopyDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes} min ${rest} s` : `${rest} s`;
+}
 
 
 const TEXT_LIBRARY_SECTIONS = [
@@ -307,6 +318,9 @@ function ModelManager({
   const downloadPollingRef = React.useRef(null);
   const [loadingModelId, setLoadingModelId] = useState(null);
   const [modelLoadProgress, setModelLoadProgress] = useState(null);
+  // A copy onto the internal disk runs for minutes; the card watches it here so
+  // the button that starts it can show progress instead of a dead click.
+  const [cacheCopy, setCacheCopy] = useState(null);
   const [importProgress, setImportProgress] = useState(null); // null when not importing
   const [importInfo, setImportInfo] = useState({ filename: "", speed: "0.0", eta: 0, status: "" });
   const [downloadUrl, setDownloadUrl] = useState("");
@@ -674,6 +688,36 @@ function ModelManager({
     fetchModels();
     checkActiveDownload();
   }, [activeModelType]);
+
+  // Copy the model that just loaded slowly onto the internal disk. The estimate
+  // beside the button is the same measurement the load printed, because the copy
+  // reads the same volume at the same speed.
+  const copySlowModelToInternalDisk = async (modelId) => {
+    if (!modelId) return;
+    setCacheCopy({ model: modelId, copiedBytes: 0, totalBytes: 0, done: false, error: "" });
+    try {
+      const answer = await primeModelCache(modelId, { scope: "text", useInternalDisk: true });
+      setCacheCopy(answer?.copy || answer?.result || { model: modelId, done: true, error: "" });
+    } catch (error) {
+      setCacheCopy((prev) => ({ ...(prev || {}), model: modelId, done: true, error: error.message || String(error) }));
+    }
+  };
+
+  const cacheCopyRunning = Boolean(cacheCopy && !cacheCopy.done);
+  useEffect(() => {
+    if (!cacheCopyRunning) return undefined;
+    let active = true;
+    const tick = async () => {
+      const status = await getModelCacheStatus(true);
+      const job = status?.result?.copy || status?.copy || null;
+      if (active && job) setCacheCopy(job);
+    };
+    const timer = window.setInterval(tick, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [cacheCopyRunning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1932,6 +1976,54 @@ function ModelManager({
                 <p style={{ fontSize: "0.8rem", marginTop: "4px", opacity: 0.85 }}>
                   {backendInfo.llmLastLoad.message}
                 </p>
+              )}
+              {!backendInfo.llmLastLoad?.cached && backendInfo.llmLoadOutlook?.level === "warn" && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+                  {cacheCopy && !cacheCopy.done ? (
+                    <>
+                      <div className="model-progress-bar" style={{ flex: "1 1 160px", margin: 0 }}>
+                        <div
+                          className="model-progress-fill"
+                          style={{
+                            width: `${cacheCopy.totalBytes > 0 ? Math.min(100, Math.round((cacheCopy.copiedBytes / cacheCopy.totalBytes) * 100)) : 5}%`,
+                            transition: "width 0.3s ease",
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "0.78rem", opacity: 0.85 }}>
+                        Copying to the internal disk — {Math.round((cacheCopy.copiedBytes / Math.max(1, cacheCopy.totalBytes)) * 100)}%
+                        {cacheCopy.bytesPerSecond > 0 && cacheCopy.totalBytes > cacheCopy.copiedBytes
+                          ? `, about ${formatCopyDuration(Math.round((cacheCopy.totalBytes - cacheCopy.copiedBytes) / cacheCopy.bytesPerSecond))} left`
+                          : ""}
+                      </span>
+                    </>
+                  ) : cacheCopy?.error ? (
+                    <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>{cacheCopy.error}</span>
+                  ) : cacheCopy?.done ? (
+                    <span style={{ fontSize: "0.78rem" }}>
+                      Copied to the internal disk{cacheCopy.finishedAt && cacheCopy.startedAt ? ` in ${formatCopyDuration(Math.round((cacheCopy.finishedAt - cacheCopy.startedAt) / 1000))}` : ""} — the next load reads it from there.
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="m3-btn m3-btn-filled"
+                        style={{ height: "32px", padding: "0 14px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                        onClick={() => copySlowModelToInternalDisk(activeLlmModel)}
+                      >
+                        <HardDrive size={13} />
+                        Cache it once
+                        {backendInfo.llmLoadOutlook?.estimatedSeconds
+                          ? ` (about ${formatCopyDuration(backendInfo.llmLoadOutlook.estimatedSeconds)})`
+                          : ""}
+                      </button>
+                      <span style={{ fontSize: "0.78rem", opacity: 0.8 }}>
+                        One read of the same file, then every launch loads from the internal disk in seconds. The copy is
+                        disposable and the model itself stays where it is; the copy slows the current model while it runs.
+                      </span>
+                    </>
+                  )}
+                </div>
               )}
               {backendInfo.llmBackendMode && (
                 <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
