@@ -67,6 +67,9 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // What the Context Size slider above means when it says 0: the number the
   // app picks, the memory it has to work with, and the price of the next step.
   const [contextPlan, setContextPlan] = useState(null);
+  // The loads this app has actually measured, not just the last one, so the
+  // argument for the internal-disk copy is backed by this machine's own numbers.
+  const [loadHistory, setLoadHistory] = useState(null);
 
   // A download started from this panel is followed here, not only in Text
   // Models: the card that offered the button is the card that reports it.
@@ -110,7 +113,13 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     try {
       const statusResponse = await fetch("/api/llm/status");
       const statusData = await statusResponse.json();
-      if (statusResponse.ok) setMmapStatus(statusData.mmap || null);
+      if (statusResponse.ok) {
+        setMmapStatus(statusData.mmap || null);
+        setLoadHistory({
+          entries: Array.isArray(statusData.loadHistory) ? statusData.loadHistory : [],
+          summary: statusData.loadSummary || null,
+        });
+      }
     } catch {}
     try {
       const processResponse = await fetch("/api/llm/processes");
@@ -273,6 +282,20 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     return `${head} ${budget}${nextNote}${manual}${pendingNote}`;
   })();
 
+  // Three lines are enough to see the pattern; the average above them is the
+  // part that answers "is it always like this?".
+  const historyLines = (loadHistory?.entries || []).slice(0, 3).map((entry) => {
+    const when = new Date(Number(entry.at) || Date.now());
+    const stamp = Number.isNaN(when.getTime())
+      ? ""
+      : when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const seconds = Math.round((Number(entry.elapsedMs) || 0) / 1000);
+    const duration = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`;
+    const rate = Number(entry.bytesPerSecond) || 0;
+    const bySpeed = rate > 0 ? ` at ${Math.round(rate / 1024 / 1024)} MB/s` : "";
+    return `${entry.filename} — ${duration}${bySpeed} · ${entry.cached ? "internal copy" : "the model's own disk"}${stamp ? ` · ${stamp}` : ""}`;
+  });
+
   const measure = async () => {
     setBusy("measure");
     try {
@@ -395,6 +418,19 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         <span style={descStyle}>
           Tuned for this machine: {recommended.reason.threads}, and batch {recommended.batchSize} because {recommended.reason.batchSize}.
         </span>
+      )}
+      {loadHistory?.summary?.message && (
+        <>
+          <div style={{ ...headingStyle, marginTop: 14 }}>
+            <strong>Load history</strong>
+          </div>
+          <span style={descStyle}>{loadHistory.summary.message}</span>
+          {historyLines.map((line) => (
+            <span key={line} style={{ ...descStyle, display: "block", fontFamily: "monospace", fontSize: "0.74rem" }}>
+              {line}
+            </span>
+          ))}
+        </>
       )}
       {tunedNote && (
         <span style={descStyle}>
