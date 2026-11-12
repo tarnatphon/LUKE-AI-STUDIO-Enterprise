@@ -195,6 +195,9 @@ module.exports = {
   outlook,
   completion,
   clearMeasurements,
+  // "4 min 1 s" — shared so the history and the completion line word a
+  // duration the same way.
+  secondsText,
   // exposed for the tests' sake, not for callers
   __secondsText: secondsText,
   __mbPerSecond: mbPerSecond,

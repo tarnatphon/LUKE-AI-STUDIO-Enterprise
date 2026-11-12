@@ -93,6 +93,9 @@ const { checkModel: checkModelIntegrity } = require("./model-integrity.cjs");
 const backendArchLimits = require("./backend-architecture-limits.cjs");
 const { findBackendLeftovers } = require("./backend-leftovers.cjs");
 const loadOutlook = require("./model-load-outlook.cjs");
+// What loads have cost, kept across restarts: the completion line alone dies
+// with the process, so the app could never show that the copy worked.
+const loadHistory = require("./load-history.cjs");
 const { TelemetryDemand } = require("./telemetry-demand.cjs");
 const {
   ENGINE_RULES,
@@ -7011,6 +7014,11 @@ async function startLlm(settings = {}) {
             predictedSeconds: lastLlmLoadReport.predictedSeconds,
           });
           console.log(`  [llm] ${lastLlmLoadReport.message}`);
+          // Kept across restarts, so "it used to take four minutes" is a fact
+          // the app can still state tomorrow.
+          try {
+            loadHistory.record(LLM_PREFS_DIR, { ...lastLlmLoadReport, backend: backend.mode });
+          } catch (_) {}
         } catch (_) {}
         // It loaded, so whatever the ledger said about this architecture is out
         // of date — success is the strongest evidence there is.
@@ -27670,6 +27678,7 @@ const handleRequest = async (req, res) => {
   if (req.url === "/api/llm/status" && req.method === "GET") {
     const backend = getLlmBackend();
     const probe = getLlmBackendProbe();
+    const recentLoads = loadHistory.read(LLM_PREFS_DIR);
     return json(res, 200, {
       ready: llmReady,
       running: llmProc !== null,
@@ -27680,6 +27689,10 @@ const handleRequest = async (req, res) => {
       // What the last load cost and what the next one should cost, so a slow
       // load can be explained without reading the terminal.
       lastLoad: lastLlmLoadReport,
+      // The same numbers, but not forgotten at the next restart, and separated
+      // into "from the model's own disk" and "from the internal copy".
+      loadHistory: recentLoads,
+      loadSummary: loadHistory.summarize(recentLoads),
       loadOutlook: lastLlmLoadOutlook,
       mmap: describeMmap(),
       settings: llmSettings,

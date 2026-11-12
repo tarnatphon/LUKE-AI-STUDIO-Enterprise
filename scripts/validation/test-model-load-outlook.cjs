@@ -221,6 +221,56 @@ check(!/can take up to 30 seconds/.test(chat), "the blanket \"up to 30 seconds\"
 check(/this volume measured \$\{Math\.round\(loadProgress\.outlook\.bytesPerSecond/.test(chat),
   "the stalled-load advice quotes the measured speed instead of repeating itself");
 
+console.log("\n  and the history of loads survives a restart");
+
+const history = require(path.join(root, "scripts", "server", "load-history.cjs"));
+const stateDir = path.join(temp, "runtime-state");
+history.record(stateDir, {
+  filename: "qwen.gguf", sizeBytes: 7 * GB, elapsedMs: 241000,
+  bytesPerSecond: 31 * 1024 * 1024, cached: false, at: Date.now() - 60000,
+});
+history.record(stateDir, { filename: "qwen.gguf", sizeBytes: 7 * GB, elapsedMs: 9000, cached: true, at: Date.now() });
+
+const stored = history.read(stateDir);
+check(stored.length === 2, "both loads are remembered", String(stored.length));
+check(stored[0].cached === true, "newest first");
+check(fs.existsSync(history.historyFile(stateDir)), "on disk, not only in memory", history.historyFile(stateDir));
+
+const summary = history.summarize(stored);
+check(/1 load from the model's own disk averaged 4 min 1 s/.test(summary.message),
+  "the external load is averaged on its own", summary.message);
+check(/1 load from the internal copy averaged 9 s/.test(summary.message),
+  "and the cached one on its own — averaging the two together would hide the point", summary.message);
+check(/saves about 3 min 52 s on every load/.test(summary.message),
+  "the difference is named as the saving", summary.message);
+check(summary.savedSeconds === 232, "and as a number the card can use", String(summary.savedSeconds));
+check(
+  !/saves about/.test(history.summarize([{ cached: false, elapsedMs: 120000 }]).message),
+  "no saving is claimed before there is a cached load to compare with"
+);
+
+const cappedDir = path.join(temp, "runtime-state-cap");
+for (let i = 0; i < 30; i += 1) history.record(cappedDir, { filename: "m.gguf", elapsedMs: 1000 + i });
+check(history.read(cappedDir).length === history.MAX_ENTRIES,
+  `only the last ${history.MAX_ENTRIES} loads are kept`, String(history.read(cappedDir).length));
+check(history.read(cappedDir)[0].elapsedMs === 1029, "with the newest still first");
+
+const junkDir = path.join(temp, "runtime-state-junk");
+check(history.record(junkDir, { filename: "", elapsedMs: 5000 }).length === 0, "a load with no model name is not recorded");
+check(history.record(junkDir, { filename: "x.gguf", elapsedMs: 0 }).length === 0, "nor one with no duration");
+
+check(/loadHistory\.record\(LLM_PREFS_DIR, \{ \.\.\.lastLlmLoadReport, backend: backend\.mode \}\)/.test(serve),
+  "the load path records every successful load");
+check(serve.indexOf("loadHistory.record(LLM_PREFS_DIR") > serve.indexOf("lastLlmLoadReport.message = loadOutlook.completion("),
+  "after the duration is known, not before");
+check(/loadSummary: loadHistory\.summarize\(recentLoads\)/.test(serve), "and the status publishes the averages");
+
+const panelSource = read("app", "frontend", "src", "components", "PerformancePanel.jsx");
+check(/<strong>Load history<\/strong>/.test(panelSource), "the Performance card prints them");
+check(/loadHistory\.summary\.message/.test(panelSource) && /internal copy/.test(panelSource),
+  "including which kind of load each line was");
+check(/setLoadHistory\(\{/.test(panelSource), "from the status it already polls");
+
 console.log("\n  and the endpoint answers a live server");
 
 const net = require("node:net");
@@ -267,6 +317,8 @@ try {
   const status = await (await fetch(`http://127.0.0.1:${port}/api/llm/status`)).json();
   check(Object.prototype.hasOwnProperty.call(status, "loadOutlook") && Object.prototype.hasOwnProperty.call(status, "lastLoad"),
     "the status still publishes both for the screen");
+  check(Array.isArray(status.loadHistory) && typeof status.loadSummary === "object" && status.loadSummary !== null,
+    "and the load history with its averages");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => child.once("exit", resolve));
