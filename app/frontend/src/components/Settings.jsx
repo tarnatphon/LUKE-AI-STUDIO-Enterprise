@@ -499,6 +499,27 @@ function Settings({
     });
   };
 
+  // The Performance card lives inside Text Generation, below Context Size, and
+  // the rest of the app points at it by name. So a #performance link has to do
+  // the two clicks the breadcrumb used to describe: open the section, then put
+  // the card on screen.
+  useEffect(() => {
+    const revealIfAsked = () => {
+      if (window.location.hash.replace(/^#/, "") !== "performance") return;
+      setExpandedSections((prev) => (prev.text ? prev : { ...prev, text: true }));
+      localStorage.setItem("settings_section_text", "true");
+      window.setTimeout(() => {
+        const card = document.getElementById("performance-panel");
+        if (card && typeof card.scrollIntoView === "function") {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 150);
+    };
+    revealIfAsked();
+    window.addEventListener("hashchange", revealIfAsked);
+    return () => window.removeEventListener("hashchange", revealIfAsked);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const fetchLlmStatus = async () => {

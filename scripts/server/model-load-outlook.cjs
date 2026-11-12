@@ -8,14 +8,16 @@
  * every time it is loaded. That is the whole load time on a slow external disk:
  * everything else llama.cpp does — parsing the header, allocating the tensors,
  * copying them to the GPU — is seconds. The user sees a spinner and a terminal
- * that says "cache it in Settings > Performance to load it faster", which is
- * true and unquantified.
+ * that says "cache it to load it faster" — true, unquantified, and (until the
+ * cache card learned to say where it lives) pointing at a Settings entry the
+ * sidebar does not have.
  *
  * So measure the source volume once per file, with a short sequential read that
  * is exactly the access pattern of the load, and say the number:
  *
  *     [llm] Reading 9.0 GB from AI at about 78 MB/s — roughly 118 s before the
- *           model answers, every load. Cache it (Settings > Performance) ...
+ *           model answers, every load. Cache it once from the text model card,
+ *           or in Settings → Text Generation → Performance ...
  *
  * Nothing here changes what the app does; it changes what it says. The estimate
  * is a floor (the file is read sequentially at the speed the volume just
@@ -149,8 +151,9 @@ function outlook({ filename = "", sizeBytes = 0, volume = "", bytesPerSecond = 0
     sizeBytes: size,
     message:
       `Reading ${gb(size)}${where} at about ${mbPerSecond(rate)} MB/s — ${why}, so roughly ` +
-      `${secondsText(estimatedSeconds)} before the model answers. Cache it once (Settings > Performance) ` +
-      "to load from the internal disk instead, or move the models to an internal APFS disk.",
+      `${secondsText(estimatedSeconds)} before the model answers. Cache it once from the text model card ` +
+      "(or Settings → Text Generation → Performance) to read it from the internal disk instead, " +
+      "or move the models to an internal APFS disk.",
   };
 }
 

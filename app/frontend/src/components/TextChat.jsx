@@ -3330,7 +3330,11 @@ function TextChat({
                   {loadProgress.outlook?.bytesPerSecond
                     ? ` — this volume measured ${Math.round(loadProgress.outlook.bytesPerSecond / (1024 * 1024))} MB/s, so the copy is a one-time read of the same size as the load`
                     : ""}
-                  — cache it in Settings, then Performance, and later loads start in seconds.
+                  — cache it in{" "}
+                  <a href="#performance" style={{ color: "var(--md-sys-color-primary)" }}>
+                    Settings → Text Generation → Performance
+                  </a>
+                  , or with the Cache it once button on the text model card, and later loads start in seconds.
                 </p>
               )}
               <button className="m3-btn m3-btn-error" onClick={handleCancelLlmLoad}

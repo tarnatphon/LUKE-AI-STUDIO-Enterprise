@@ -286,10 +286,10 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const draftFit = plan?.draft;
 
   return (
-    <div style={rowStyle}>
+    <div style={rowStyle} id="performance-panel">
       <div style={headingStyle}>
         <Gauge size={15} />
-        <strong>Performance</strong>
+        <strong>Performance &amp; model cache</strong>
       </div>
 
       <span style={descStyle}>
@@ -298,6 +298,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
           : measured?.error
             ? measured.error
             : "Measure once to see what this machine actually does — then tune with numbers instead of guesses."}
+        {" "}This card is Settings → Text Generation → Performance; the app links straight here from the model cards.
       </span>
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <button type="button" style={buttonStyle} onClick={measure} disabled={busy === "measure"}>
