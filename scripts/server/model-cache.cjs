@@ -58,6 +58,39 @@ function internalCacheRoot() {
   return path.join(os.homedir(), ".cache", "luke-ai-studio", "model-cache");
 }
 
+/**
+ * Free space on the disk a folder is (or will be) on.
+ *
+ * A copy that does not fit fails four minutes in, having written most of a
+ * model it now has to throw away. The check costs one syscall, so it belongs
+ * before the copy rather than after it. Walks up to the nearest folder that
+ * exists, because the cache folder itself is created by the copy.
+ */
+function freeBytesFor(dirPath) {
+  if (typeof fs.statfsSync !== "function") return null;
+  let probe = path.resolve(String(dirPath || "."));
+  for (let depth = 0; depth < 24; depth += 1) {
+    try {
+      const stats = fs.statfsSync(probe);
+      const available = Number(stats.bavail) * Number(stats.bsize);
+      return Number.isFinite(available) ? available : null;
+    } catch {
+      const parent = path.dirname(probe);
+      if (parent === probe) return null;
+      probe = parent;
+    }
+  }
+  return null;
+}
+
+/**
+ * Room a copy must leave behind. Not the storage planner's reserve — that one
+ * is sized for data the user keeps, and 10 GB of headroom would refuse a 7 GB
+ * cache copy on a machine that can hold it comfortably. A cache copy is
+ * disposable and this is only what the copy plus its manifest needs.
+ */
+const CACHE_COPY_MARGIN_BYTES = 512 * 1024 * 1024;
+
 /** Which volume a path lives on, so we never copy a file onto the same disk. */
 function volumeOf(filePath) {
   const value = path.resolve(String(filePath || ""));
@@ -297,6 +330,8 @@ async function cachePlan(modelPath, options = {}) {
   const cachedStat = await statOrNull(cachedPath);
   const fresh = Boolean(entry && cachedStat && fingerprintMatches(entry, fingerprint));
   const isDirectory = fingerprint.kind === "directory";
+  const freeBytes = Number.isFinite(options.freeBytes) ? Number(options.freeBytes) : freeBytesFor(dir);
+  const neededBytes = Number(fingerprint.totalBytes) + CACHE_COPY_MARGIN_BYTES;
   return {
     source,
     kind: fingerprint.kind,
@@ -309,6 +344,12 @@ async function cachePlan(modelPath, options = {}) {
     // Copying a file onto the same disk it is already on buys nothing.
     shouldCache: differentVolume,
     cached: fresh,
+    // Whether there is room for it, so the card can say so before the user
+    // spends four minutes finding out.
+    freeBytes,
+    freeGb: freeBytes === null ? null : Number((freeBytes / 1024 ** 3).toFixed(2)),
+    neededBytes,
+    fits: freeBytes === null ? true : freeBytes >= neededBytes,
     cachedPath: fresh ? cachedPath : null,
     cacheDir: dir,
     reason: fresh
@@ -391,6 +432,16 @@ async function primeCache(modelPath, { onProgress = null, ...options } = {}) {
     const nothingToGain = new Error("The model is already on the same disk as the cache, so copying it would gain nothing.");
     nothingToGain.statusCode = 400;
     throw nothingToGain;
+  }
+  if (plan.fits === false) {
+    const gb = (bytes) => `${(Number(bytes) / 1024 ** 3).toFixed(1)} GB`;
+    const noRoom = new Error(
+      `Copying ${gb(plan.sizeBytes)} needs about ${gb(plan.neededBytes)} of free space, and ` +
+      `${useInternalDisk ? "the internal disk" : "the disk the cache is on"} has ${gb(plan.freeBytes)}. ` +
+      "Delete a cached model, or free some space, and try again.",
+    );
+    noRoom.statusCode = 400;
+    throw noRoom;
   }
   if (!plan.source || plan.reason === "the model file could not be found") {
     const notFound = new Error("That model file could not be found.");
@@ -490,8 +541,10 @@ async function clearCache(options = {}) {
 }
 
 module.exports = {
+  CACHE_COPY_MARGIN_BYTES,
   cachePlan,
   cacheRoot,
+  freeBytesFor,
   cacheStatus,
   cachedCopyFor,
   clearCache,

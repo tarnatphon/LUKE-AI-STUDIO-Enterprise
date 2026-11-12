@@ -396,11 +396,26 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
           </span>
           <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "grid", gap: 6 }}>
             {externalModels.map((entry) => (
-              <li key={entry.source} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".7rem" }}>
-                <code style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.source.split("/").pop()}</code>
+              <li key={entry.source} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: ".7rem" }}>
+                <code style={{ flex: 1, minWidth: "8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.source.split("/").pop()}</code>
                 <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.label || (entry.kind === "image" ? "Image model" : "Text model")}</span>
                 <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.sizeGb} GB</span>
-                <button type="button" style={buttonStyle} onClick={() => copyToInternalDisk(entry.source, entry.kind)} disabled={copying === entry.source}>
+                {/* A copy that does not fit fails minutes in; say so instead. */}
+                {entry.fits === false ? (
+                  <span style={{ color: "var(--md-sys-color-error)", flexBasis: "100%" }}>
+                    Needs about {Math.round((Number(entry.neededBytes) / 1024 ** 3) * 10) / 10} GB free; this disk has {entry.freeGb} GB.
+                    Delete a cached model or free some space.
+                  </span>
+                ) : entry.freeGb !== null && entry.freeGb !== undefined ? (
+                  <span style={{ color: "var(--md-sys-color-outline)" }}>{entry.freeGb} GB free</span>
+                ) : null}
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => copyToInternalDisk(entry.source, entry.kind)}
+                  disabled={copying === entry.source || entry.fits === false}
+                  title={entry.fits === false ? "There is not enough room on the internal disk for this copy." : undefined}
+                >
                   <HardDriveDownload size={13} />
                   {copying === entry.source ? "Copying…" : "Copy"}
                 </button>

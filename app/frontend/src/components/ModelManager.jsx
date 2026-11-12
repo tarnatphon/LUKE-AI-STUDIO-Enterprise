@@ -703,6 +703,29 @@ function ModelManager({
     }
   };
 
+  // Whether caching is worth offering at all, and whether it would even fit —
+  // a copy that runs out of room fails four minutes in, so the card asks first.
+  const canOfferCache = Boolean(
+    !backendInfo.llmLastLoad?.cached && backendInfo.llmLoadOutlook?.level === "warn" && activeLlmModel
+  );
+  const [cachePlanForActive, setCachePlanForActive] = useState(null);
+  useEffect(() => {
+    if (!canOfferCache || !activeLlmModel) {
+      setCachePlanForActive(null);
+      return undefined;
+    }
+    let active = true;
+    (async () => {
+      const status = await getModelCacheStatus(true);
+      const plans = Array.isArray(status?.result?.plans) ? status.result.plans : [];
+      const match = plans.find((entry) => String(entry?.source || "").split("/").pop() === activeLlmModel) || null;
+      if (active) setCachePlanForActive(match);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [canOfferCache, activeLlmModel]);
+
   const cacheCopyRunning = Boolean(cacheCopy && !cacheCopy.done);
   useEffect(() => {
     if (!cacheCopyRunning) return undefined;
@@ -1977,7 +2000,7 @@ function ModelManager({
                   {backendInfo.llmLastLoad.message}
                 </p>
               )}
-              {!backendInfo.llmLastLoad?.cached && backendInfo.llmLoadOutlook?.level === "warn" && (
+              {canOfferCache && (
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginTop: "10px" }}>
                   {cacheCopy && !cacheCopy.done ? (
                     <>
@@ -2002,6 +2025,12 @@ function ModelManager({
                   ) : cacheCopy?.done ? (
                     <span style={{ fontSize: "0.78rem" }}>
                       Copied to the internal disk{cacheCopy.finishedAt && cacheCopy.startedAt ? ` in ${formatCopyDuration(Math.round((cacheCopy.finishedAt - cacheCopy.startedAt) / 1000))}` : ""} — the next load reads it from there.
+                    </span>
+                  ) : cachePlanForActive && cachePlanForActive.fits === false ? (
+                    <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>
+                      The internal disk has {cachePlanForActive.freeGb} GB free and this copy needs about{" "}
+                      {Math.round((Number(cachePlanForActive.neededBytes) / 1024 ** 3) * 10) / 10} GB. Delete a cached
+                      model there, or free some space, and this button comes back.
                     </span>
                   ) : (
                     <>
