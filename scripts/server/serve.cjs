@@ -2027,6 +2027,18 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     ? Math.max(0, workingSetGb * 1024 ** 3 - calibrationBytes - (learningUnified ? 0 : reserveBytes))
     : Math.max(0, totalRamBytes - reserveBytes - calibrationBytes);
 
+  // What the pool was measured against. On unified memory that is the driver's
+  // working set; on a discrete GPU or a CPU-only box there is no such ceiling —
+  // system RAM *is* the pool, minus the reserve. Reporting the unified figure
+  // there was wrong twice over: it printed a ceiling the machine does not have
+  // (78 % of RAM on a box where 100 % is addressable), and it made the pool look
+  // larger than the set it came from — 14.00 GB of a "12.48 GB working set" on a
+  // 16 GB runner. That is what test-memory-pool-explained.cjs has been failing
+  // on, on main, for every merge since the test was written.
+  const poolBasisGb = unifiedMemory
+    ? (poolBytes + calibrationBytes) / 1024 ** 3 + (learningUnified ? 0 : reserveGb)
+    : (poolBytes + calibrationBytes + reserveBytes) / 1024 ** 3;
+
   // On macOS most RAM is used by the file cache, so os.freemem() looks almost
   // empty all the time. "Available" is measured against what the models we know
   // about already hold, which is what actually matters for a new load.
@@ -2151,7 +2163,10 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     totalRamGb,
     pressureRatio,
     poolGb: Number((poolBytes / 1024 ** 3).toFixed(2)),
-    workingSetGb: Number(workingSetGb.toFixed(2)),
+    // The set the pool was measured against, whatever kind of memory this is.
+    // Kept under the same name because the AI Library card and its suite both
+    // read it as "the ceiling the pool came from".
+    workingSetGb: Number(poolBasisGb.toFixed(2)),
     measuredWorkingSetGb: Number(measuredWorkingSetGb.toFixed(2)),
     // How that pool was arrived at, so the card can justify the number in the
     // same breath it prints it — 12.04 GB out of an 18 GB machine is not a
@@ -2159,8 +2174,10 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     poolDetail: {
       source: measuredWorkingSetGb > 0 ? "measured" : "estimated",
       totalRamGb,
-      workingSetGb: Number(workingSetGb.toFixed(2)),
-      ratio: measuredWorkingSetGb > 0 ? null : Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78),
+      workingSetGb: Number(poolBasisGb.toFixed(2)),
+      // The ratio only describes a unified-memory estimate; on discrete or CPU
+      // memory there is no ratio, the pool is RAM minus the reserve.
+      ratio: !unifiedMemory ? null : (measuredWorkingSetGb > 0 ? null : Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78)),
       reserveGb: learningUnified ? 0 : reserveGb,
       calibrationGb: Number((calibrationBytes / 1024 ** 3).toFixed(2)),
       unified: unifiedMemory,
