@@ -180,5 +180,37 @@ check(
 );
 check("the plan reports the pool it used, so the log line can be checked", budgeted.poolGb === 12.04, String(budgeted.poolGb));
 
+section("8. The number it picks is on screen, next to the slider");
+const panelSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "app", "frontend", "src", "components", "PerformancePanel.jsx"), "utf8");
+const settingsSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "app", "frontend", "src", "components", "Settings.jsx"), "utf8");
+check("there is an endpoint that answers for a model", /req\.url\.startsWith\("\/api\/llm\/context-plan"\)/.test(serveSource));
+check("it returns the automatic size and the plan behind it", /automatic: plan\.contextSize/.test(serveSource) && /plan,\s*\n\s*next,/.test(serveSource));
+check(
+  "and the price of the next step up the same ladder",
+  /const index = CONTEXT_LADDER\.indexOf\(plan\.contextSize\)/.test(serveSource)
+    && /overByGb: Number\(Math\.max\(0,/.test(serveSource),
+  "a bigger window is only a real choice if its cost is known"
+);
+check("the planner is imported by name, not re-implemented", /LADDER: CONTEXT_LADDER,/.test(serveSource));
+check("the Performance card asks for it", /fetch\("\/api\/llm\/context-plan"\)/.test(panelSource));
+check("and prints what the app chose", /Context window \(the slider above\)/.test(panelSource) && /Automatic: \$\{automatic\} tokens/.test(panelSource));
+check(
+  "including the memory arithmetic, not just the number",
+  /is free after the model and the GPU buffer/.test(panelSource) && /set aside for the KV cache/.test(panelSource)
+);
+check(
+  "and where the KV cost came from",
+  /measured from llama.cpp/.test(panelSource) && /an estimate until the model has run once/.test(panelSource)
+);
+check(
+  "a window the user chose is reported as theirs, with the reason the app stopped",
+  /Saved: \$\{contextPlan\.effective\} tokens/.test(panelSource) && /compresses memory/.test(panelSource)
+);
+check(
+  "the slider itself points at that line instead of saying \"0 uses default limit\"",
+  /0 lets the app choose a size from the memory this machine actually has/.test(settingsSource)
+    && !/0 uses default limit/.test(settingsSource)
+);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

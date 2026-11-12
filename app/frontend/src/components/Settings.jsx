@@ -1212,7 +1212,7 @@ function Settings({
                   style={getSliderStyle(pendingTextSettings.contextSize || 0, 0, 20000)}
                 />
                 <span className="settings-option-desc">
-                  Model memory limit. 0 uses default limit. (Recommended: 0)
+                  0 lets the app choose a size from the memory this machine actually has. The Performance card below, and the Context window line in it, says what it chose and why it is that size.
                 </span>
               </div>
 
