@@ -151,5 +151,34 @@ check("the planner is used for the choice", serveSource.includes("planContextSiz
 check("the reason is logged, including what is resident", serveSource.includes("nothing else is loaded") && serveSource.includes("residentBreakdown()"));
 check("the real KV cost is learned from the backend log", serveSource.includes("parseKvSelfSizeMib(output)") && serveSource.includes("recordKvProfile("));
 
+section("7. The pool is the model budget, not total RAM");
+check(
+  "the planner asks the budget for its pool",
+  /const budget = evaluateModelMemoryBudget\(\{ targetPaths: \[\], targetType: "context" \}\);/.test(serveSource)
+);
+check("and hands that in as the pool", /systemRamGb: poolGb/.test(serveSource));
+check("without applying the working set twice", /workingSetGb: 0,/.test(serveSource));
+check(
+  "so the log line quotes the same number the memory card shows",
+  /model budget \$\{plan\.poolGb\} GB/.test(serveSource),
+  "the two figures have to be the same figure, or one of them is a lie"
+);
+
+// The consequence, with the numbers from the machine that reported 0 GB free:
+// 18 GB of RAM, a 6.9 GB model, Metal's 18 GB of shared video memory.
+const generous = planContextSize({ modelSizeGb: 6.9, isGpu: true, vramGb: 18, systemRamGb: 18 });
+const budgeted = planContextSize({ modelSizeGb: 6.9, isGpu: true, vramGb: 18, systemRamGb: 12.04 });
+check(`planning against all 18 GB still offers ${generous.contextSize} tokens`, generous.contextSize === 16384);
+check(
+  `planning against the 12.04 GB budget offers ${budgeted.contextSize}, not 16384`,
+  budgeted.contextSize === 8192,
+  "the KV cache that did not fit is the memory the machine was compressing"
+);
+check(
+  `and the KV budget shrinks with it (${generous.kvBudgetGb} GB → ${budgeted.kvBudgetGb} GB)`,
+  budgeted.kvBudgetGb < generous.kvBudgetGb
+);
+check("the plan reports the pool it used, so the log line can be checked", budgeted.poolGb === 12.04, String(budgeted.poolGb));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
