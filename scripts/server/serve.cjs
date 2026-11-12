@@ -6813,17 +6813,6 @@ function evaluateContextPlan(modelFilename, isGpu) {
     }
   } catch (_) {}
 
-  let availableGb = 0;
-  let bufferGb = 2.0;
-
-  if (isGpu && vramGb > 0) {
-    availableGb = vramGb;
-    bufferGb = 1.5;
-  } else {
-    availableGb = systemRamGb;
-    bufferGb = 2.5;
-  }
-
   // The KV cache cost is learned from llama.cpp itself once the model has run:
   // it prints "KV self size = 604.00 MiB" at start-up, which is exact, while
   // any guess from the file size is either pessimistic or dangerous.
@@ -6832,14 +6821,24 @@ function evaluateContextPlan(modelFilename, isGpu) {
     modelFilename,
   );
 
+  // The pool a context has to fit in is the model budget — the same number the
+  // memory card prints and the load is refused against: the working set Metal
+  // allows (78% of RAM until Metal is measured), minus the reserve the app keeps
+  // for itself. Planning against os.totalmem() instead is how a machine ended up
+  // reporting "0 GB left" while the context planner had just handed it 16k tokens
+  // of KV cache, chosen against memory the app had already promised elsewhere.
+  const budget = evaluateModelMemoryBudget({ targetPaths: [], targetType: "context" });
+  const poolGb = budget.poolGb > 0 ? budget.poolGb : systemRamGb;
+
   const plan = planContextSize({
     modelSizeGb,
     projectorSizeGb,
     isVision: isVisionModel,
     isGpu,
     vramGb,
-    systemRamGb,
-    workingSetGb: memoryCalibration.workingSetGb(),
+    // The pool is already the working set, so it is not applied a second time.
+    systemRamGb: poolGb,
+    workingSetGb: 0,
     residentGb,
     kvGbPerToken,
   });
@@ -6854,8 +6853,9 @@ function chooseAutoContext(modelFilename, isGpu) {
   const { plan, residentNote } = evaluateContextPlan(modelFilename, isGpu);
   console.log(
     `  [llm] Auto-selected context size: ${plan.contextSize} tokens ` +
-      `(pool ${plan.poolGb} GB, ${plan.freeGb} GB free, ${residentNote}, ` +
-      `KV cache ${plan.usedLearnedKv ? "measured" : "estimated"} at ${plan.kvGbPer4096} GB per 4096 tokens).`
+      `(model budget ${plan.poolGb} GB, ${plan.freeGb} GB free, ${residentNote}, ` +
+      `KV cache ${plan.usedLearnedKv ? "measured" : "estimated"} at ${plan.kvGbPer4096} GB per 4096 tokens). ` +
+      `That budget is the number the memory card shows; set a context size yourself to override it.`
   );
   return plan.contextSize;
 }
