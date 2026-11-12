@@ -1542,10 +1542,25 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
   // to preview these numbers, so the two cannot disagree.
   const plan = resolveImagePlan(constraints, activeModelName);
 
+  // `-1` means "pick one for me", and the sdapi route does not echo back the
+  // seed it picked: routes_sdapi.cpp sets out["parameters"] = the request body it
+  // received and out["info"] = "", while the engine resolves -1 inside
+  // resolve_seed() after the handler has already serialised. So a run with -1
+  // came back labelled -1, and "Reuse this seed" re-sent -1 and produced a
+  // different picture — the exact button that exists to make a result
+  // reproducible.
+  //
+  // The choice is therefore made here, where it can be reported, and the number
+  // the user sees is the number the request carried.
+  const requestedSeed = Number.isFinite(Number(payload.seed)) ? Math.round(Number(payload.seed)) : -1;
+  const effectiveSeed = requestedSeed >= 0
+    ? requestedSeed
+    : Math.floor(Math.random() * 4294967296); // unsigned 32-bit, like the engine's
+
   let genBody = buildTxt2ImgBody(plan, {
     prompt: payload.prompt,
     negativePrompt: payload.negative_prompt,
-    seed: payload.seed,
+    seed: effectiveSeed,
   });
 
   // img2img extra fields
@@ -1562,7 +1577,7 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       // barely move the picture (see planImageSteps above).
       steps:              img2imgSteps.sent,
       cfg_scale:          payload.cfg_scale,
-      seed:               payload.seed,
+      seed:               effectiveSeed,
       width:              payload.width,
       height:             payload.height,
       sampler_name:       payload.sampler || "euler_a",
@@ -1611,10 +1626,10 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
         const durationSec = parseFloat(((Date.now() - startTime) / 1000).toFixed(1));
         return {
           image:        `data:image/png;base64,${normalizedB64}`,
-          // The backend never echoes the seed it actually used on the sdapi
-          // family, so report what the request carried: -1 means the backend
-          // chose one, and the metadata file records that faithfully.
-          seed:         data.data?.[0]?.seed ?? payload.seed,
+          // The seed the request actually carried. A positive one is the user's
+          // own; when they asked for a random one, this is the number chosen
+          // above, which is the number the engine received — so it reproduces.
+          seed:         data.data?.[0]?.seed ?? effectiveSeed,
           duration_sec: durationSec,
           // What the request asked for, what it carried, and whether the backend
           // ceiling stopped the run short of the requested steps. A txt2img run
@@ -1691,6 +1706,11 @@ async function looksLikeMissingSdapi(response) {
  * shown settings that were not applied.
  */
 async function generateImageViaOpenAiCompat({ baseUrl, payload, prompt, negativePrompt, seed, signal, constraints, startTime }) {
+  // Same reason as the sdapi path: this route does not echo a seed either, so
+  // -1 has to be resolved where it can be reported.
+  const requestedSeed = Number.isFinite(Number(seed)) ? Math.round(Number(seed)) : -1;
+  const effectiveSeed = requestedSeed >= 0 ? requestedSeed : Math.floor(Math.random() * 4294967296);
+
   const response = await fetchWithTimeoutAndRetry(`${baseUrl}/v1/images/generations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1704,7 +1724,7 @@ async function generateImageViaOpenAiCompat({ baseUrl, payload, prompt, negative
       // Still sent: a backend newer than the pin does read these here.
       steps: payload.steps,
       cfg_scale: payload.cfg_scale,
-      seed,
+      seed: effectiveSeed,
       sample_method: payload.sampler || "euler_a",
     }),
   }, {
@@ -1730,7 +1750,7 @@ async function generateImageViaOpenAiCompat({ baseUrl, payload, prompt, negative
   const normalizedB64 = String(imgB64).replace(/^data:[^;]+;base64,/, "");
   return {
     image: `data:image/png;base64,${normalizedB64}`,
-    seed: data.data?.[0]?.seed ?? seed,
+    seed: data.data?.[0]?.seed ?? effectiveSeed,
     duration_sec: parseFloat(((Date.now() - startTime) / 1000).toFixed(1)),
     steps: payload.steps,
     stepsSent: payload.steps,

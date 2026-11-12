@@ -53,3 +53,28 @@ export const THAI_IMAGE_PROMPT_SYSTEM = [
   "",
   "Output ONLY the English prompt. No preamble, no quotes, no explanation.",
 ].join("\n");
+
+/**
+ * Trim a rewrite back to the model's attention budget, on a clause boundary.
+ *
+ * The templates ask for 55 words, but a local text model does not always obey a
+ * word count — and an Enhance button that quietly hands the diffusion model a
+ * 90-word prompt has made the picture worse while looking helpful. Cutting at
+ * a comma keeps whole clauses (and so whole facts) instead of truncating
+ * mid-phrase.
+ *
+ * Returns the text unchanged when it already fits.
+ */
+export function fitToPromptBudget(text, maxWords = 59) {
+  const source = String(text || "").trim();
+  if (!source) return source;
+  const words = source.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return source;
+
+  // Prefer a clause boundary in the second half of the budget; fall back to the
+  // last comma, then to a hard cut.
+  const kept = words.slice(0, maxWords).join(" ");
+  const lastComma = Math.max(kept.lastIndexOf(","), kept.lastIndexOf(";"));
+  const cut = lastComma > kept.length * 0.5 ? kept.slice(0, lastComma) : kept;
+  return cut.replace(/[\s,;]+$/, "").trim();
+}

@@ -610,9 +610,31 @@ async function main() {
     });
   }
 
+  await test("the seed a run reports is the seed the request carried", async () => {
+    // routes_sdapi.cpp sets out["parameters"] = the body it received and
+    // out["info"] = "", and resolve_seed() runs after serialisation — so the
+    // backend never tells us which seed it used for a -1. Resolving it in the
+    // browser is the only way the number on screen can be the number that ran.
+    const { seen, result } = await capture(() =>
+      frontend.generateImage("a cat", "", { ...CONSTRAINTS, seed: -1 }, "cyberrealistic_v8.safetensors", null, undefined, undefined, [], {})
+    );
+    const carried = seen[0].body.seed;
+    assert.ok(Number.isInteger(carried) && carried >= 0, "a random seed is resolved before it is sent");
+    assert.ok(carried < 4294967296, "and stays inside the engine's unsigned 32-bit range");
+    assert.strictEqual(result.seed, carried, "the reported seed is the one that was sent");
+
+    // The point of all of it: reuse must reproduce.
+    const reuse = await capture(() =>
+      frontend.generateImage("a cat", "", { ...CONSTRAINTS, seed: result.seed }, "cyberrealistic_v8.safetensors", null, undefined, undefined, [], {})
+    );
+    assert.strictEqual(reuse.seen[0].body.seed, carried, "reusing the reported seed resends the same seed");
+    assert.strictEqual(reuse.result.seed, carried);
+  });
+
   globalThis.fetch = realFetch;
 
   // ── 7. the server publishes the same advice ────────────────────────────
+
   section("7. the server publishes the machine's half of the answer");
 
   await test("the hardware endpoint carries recommended_image_settings", () => {
@@ -745,6 +767,18 @@ async function main() {
       assert.match(tpl, /ONLY/i, `${name}: forbids preamble`);
     }
     assert.match(thai, /translate/i, "the Thai template still translates first");
+  });
+
+  await test("an Enhance result is trimmed to one chunk, on a clause boundary", async () => {
+    const templates = await import(pathToFileURL(path.join(root, "app", "frontend", "src", "services", "imagePromptTemplates.js")).href);
+    const long = Array.from({ length: 90 }, (_, i) => (i % 6 === 5 ? `clause${i},` : `word${i}`)).join(" ");
+    const fitted = templates.fitToPromptBudget(long);
+    assert.ok(fitted.split(/\s+/).length <= 59, "never longer than one CLIP chunk");
+    assert.doesNotMatch(fitted, /[,\s]$/, "and does not end on a dangling comma");
+    // A rewrite inside the budget is left exactly as written.
+    const short = "a market stall at dawn, steamed noodles, warm rim light";
+    assert.strictEqual(templates.fitToPromptBudget(short), short);
+    assert.strictEqual(templates.fitToPromptBudget(""), "");
   });
 
   // ── 8. the panel exists and the workspace opens simple ─────────────────

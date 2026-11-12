@@ -21,7 +21,7 @@ import {
   containsThai,
   cleanEnhancedPrompt
 } from "../services/api";
-import { THAI_IMAGE_PROMPT_SYSTEM, ENGLISH_IMAGE_PROMPT_SYSTEM } from "../services/imagePromptTemplates";
+import { THAI_IMAGE_PROMPT_SYSTEM, ENGLISH_IMAGE_PROMPT_SYSTEM, fitToPromptBudget } from "../services/imagePromptTemplates";
 import "./Generator.css";
 
 const GalleryItem = memo(({ img, idx, isSelected, onClick }) => {
@@ -359,7 +359,11 @@ function Generator({
       temperature: temp,
       maxTokens: 128,
     });
-    return cleanEnhancedPrompt(response.content);
+    // The templates ask for 55 words; the local text model does not always
+    // comply. Handing the image model a 90-word rewrite would make the picture
+    // worse while looking helpful, so the result is trimmed to one CLIP chunk
+    // on a clause boundary before it replaces the user's prompt.
+    return fitToPromptBudget(cleanEnhancedPrompt(response.content));
   };
 
   const handleEnhancePrompt = async () => {
@@ -723,15 +727,26 @@ function Generator({
         originalThaiPrompt: thaiOriginal,
         negativePrompt: negativePrompt,
         seed: result.seed,
-        steps: constraints.steps,
+        // The plan is what the request was built from, so its numbers are the
+        // truthful record; `constraints` is only what the controls last showed.
+        steps: imagePlan.steps,
         // img2img at a low denoise sends more steps than the user asked for so
         // the backend's trim still leaves `steps` of real sampling (see api.js).
         stepsSent: result.stepsSent ?? plannedRunSteps,
         stepsCapped: result.stepsCapped === true,
-        cfgScale: constraints.cfgScale,
-        width: constraints.width,
-        height: constraints.height,
-        sampler: constraints.sampler,
+        cfgScale: imagePlan.cfgScale,
+        // What actually ran, not what the sliders said. With a shape chosen or a
+        // hardware clamp in play these differ, and the metadata file is the only
+        // record of a run — a wrong size in it makes "reproduce this" a guess.
+        width: imagePlan.width,
+        height: imagePlan.height,
+        aspect: imagePlan.aspect,
+        hires: imagePlan.hires?.enabled ? { ...imagePlan.hires } : null,
+        family: imagePlan.family,
+        preset: imagePlan.preset,
+        sampler: imagePlan.sampler,
+        scheduler: imagePlan.scheduler,
+        clipSkip: imagePlan.clipSkip,
         model: activeModel,
         mode: (baseImage || getBestReferenceSource()) ? "img2img-reference" : "txt2img-reference",
         denoisingStrength: (baseImage || getBestReferenceSource()) ? constraints.denoisingStrength : null,

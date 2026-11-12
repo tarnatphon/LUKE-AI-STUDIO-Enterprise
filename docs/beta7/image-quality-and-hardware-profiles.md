@@ -378,3 +378,81 @@ with its own pixels), pins that a shape beats a stale size and that a typed size
 still beats nothing, checks the counter's three thresholds including the
 58-of-59 edge case, and SSR-renders the panel to prove the row and the counter
 reach the screen.
+
+---
+
+## 11. Reproducibility: the seed was never the seed
+
+Reading `routes_sdapi.cpp` for §9 turned up something worse than a cosmetic bug.
+
+```cpp
+// examples/server/routes_sdapi.cpp, text-to-image handler
+out["images"]     = json::array();
+out["parameters"] = j;      // the request body, echoed back
+out["info"]       = "";
+```
+
+`out["parameters"]` is the body the server *received*. The engine resolves `-1`
+later, inside `resolve_seed()`, which runs during `generate_image()` — after the
+handler has already serialised its answer. So for a request carrying `seed: -1`
+**the backend never tells anyone which seed it used.**
+
+The app had done the right thing about this (pass `-1` through, report `-1` back
+faithfully) and written a comment saying so. But the consequence was severe:
+every run started with the default `seed: -1`, so **every image recorded
+`seed: -1`, and the "Reuse this seed" button re-sent `-1` and produced a
+different picture.** The one control that exists to make a result reproducible
+could not reproduce anything.
+
+The fix moves the resolution to the only place that can report it — the caller:
+
+| Request carries | Sent to the backend | Reported back |
+| --- | --- | --- |
+| `seed: -1` | a random unsigned 32-bit integer | that same integer |
+| `seed: 0` | `0` | `0` |
+| `seed: 12345` | `12345` | `12345` |
+
+Both transports do this now: the sdapi path and the OpenAI-compatible fallback.
+Verified end to end with a mocked fetch — a `-1` run carries `2152744160`,
+reports `2152744160`, and re-sending it carries the same number.
+
+### Why this is the right layer
+
+The alternative — asking the backend to echo the seed — is not available at this
+pin, and inventing it in the handler would be a backend patch the installer
+cannot apply. Resolving in the caller is also *more* honest than the engine's own
+behaviour: `resolve_seed()` calls `srand(time(nullptr))` and `rand()`, so two
+generations in the same second get the **same** "random" seed. The browser's
+`Math.random()` does not have that collision, which matters when a user is
+generating a batch to choose from.
+
+---
+
+## 12. The metadata file recorded the sliders, not the run
+
+`saveGeneratedOutput` writes a metadata record beside every image, and it was
+built from `constraints` — what the controls last showed. With a shape chosen
+(§9.1) or a hardware clamp in play, `constraints.width` is *not* what ran: the
+plan resolves the pixels, and `constraints` still holds whatever a preset last
+wrote there. So a run at 1152×640 could be filed as 1024×1024.
+
+The record now comes from `imagePlan` — the same object the request was built
+from — and gained the fields that make a run reproducible: `aspect`, `hires`,
+`family`, `preset`, `scheduler`, `clipSkip`. `steps`, `cfgScale` and `sampler`
+were switched over too, for the same reason.
+
+This matters beyond tidiness: a wrong size in the metadata makes "generate this
+again" a guess, and the file is the only record of a run once the image is on
+disk.
+
+---
+
+## 13. Enhance could undo its own fix
+
+§9.2 asked the rewrite for 55 words. A local text model does not reliably obey a
+word count, and the result replaced the user's prompt wholesale — so Enhance
+could hand the diffusion model a 90-word prompt, past the chunk boundary, having
+been *added* to fix exactly that. `fitToPromptBudget()` now trims the rewrite to
+one chunk on a clause boundary (the last comma in the back half of the budget),
+so whole facts survive instead of being cut mid-phrase. Verified: 87 words in,
+59 out, ending on `Kodak Portra tones` with no dangling comma.
