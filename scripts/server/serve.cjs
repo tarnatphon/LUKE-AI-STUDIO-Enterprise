@@ -7550,7 +7550,7 @@ async function startBackend(settings = {}) {
       const shape = imageCachePlan.isDirectory ? `${imageCachePlan.fileCount} files, ${imageCachePlan.sizeGb} GB` : `${imageCachePlan.sizeGb} GB`;
       console.log(`  [backend] Loading ${path.basename(imageModelPath)} from the ${where} cache (${shape}).`);
     } else if (imageCachePlan.shouldCache) {
-      console.log(`  [backend] ${path.basename(imageModelPath)} is on an external volume — cache it in Settings → Text Generation → Performance (that card lists image models too) to load it from the internal disk instead.`);
+      console.log(`  [backend] ${path.basename(imageModelPath)} is on an external volume — cache it once from the image model card to load it from the internal disk instead.`);
     }
   } catch (_) {}
 

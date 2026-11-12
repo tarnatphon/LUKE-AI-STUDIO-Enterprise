@@ -64,6 +64,78 @@ function formatCopyDuration(totalSeconds) {
   return minutes > 0 ? `${minutes} min ${rest} s` : `${rest} s`;
 }
 
+/**
+ * "Cache it once" — one shared piece of UI, because the offer is identical for a
+ * text model (one 7 GB file) and an image model (a folder of tens of thousands
+ * of small files, which is the slowest thing an external disk can be asked to
+ * read). Progress, the space check and the honest note about competing with the
+ * model that is running all live here rather than twice.
+ */
+function CacheCopyOffer({ estimateSeconds, plan, copy, onCopy }) {
+  const percent = copy && copy.totalBytes > 0
+    ? Math.min(100, Math.round((copy.copiedBytes / copy.totalBytes) * 100))
+    : 0;
+  const remaining = copy && copy.bytesPerSecond > 0 && copy.totalBytes > copy.copiedBytes
+    ? formatCopyDuration(Math.round((copy.totalBytes - copy.copiedBytes) / copy.bytesPerSecond))
+    : "";
+  const neededGb = plan ? Math.round((Number(plan.neededBytes) / 1024 ** 3) * 10) / 10 : 0;
+
+  if (copy && !copy.done) {
+    return (
+      <>
+        <div className="model-progress-bar" style={{ flex: "1 1 160px", margin: 0 }}>
+          <div className="model-progress-fill" style={{ width: `${Math.max(5, percent)}%`, transition: "width 0.3s ease" }} />
+        </div>
+        <span style={{ fontSize: "0.78rem", opacity: 0.85 }}>
+          Copying to the internal disk — {percent}%{remaining ? `, about ${remaining} left` : ""}
+        </span>
+      </>
+    );
+  }
+  if (copy?.error) {
+    return <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>{copy.error}</span>;
+  }
+  if (copy?.done) {
+    return (
+      <span style={{ fontSize: "0.78rem" }}>
+        Copied to the internal disk
+        {copy.finishedAt && copy.startedAt ? ` in ${formatCopyDuration(Math.round((copy.finishedAt - copy.startedAt) / 1000))}` : ""}
+        {" "}— the next load reads it from there.
+      </span>
+    );
+  }
+  if (plan && plan.fits === false) {
+    return (
+      <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>
+        The internal disk has {plan.freeGb} GB free and this copy needs about {neededGb} GB. Delete a cached model
+        there, or free some space, and this button comes back.
+      </span>
+    );
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="m3-btn m3-btn-filled"
+        style={{ height: "32px", padding: "0 14px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "6px" }}
+        onClick={onCopy}
+      >
+        <HardDrive size={13} />
+        Cache it once
+        {estimateSeconds ? ` (about ${formatCopyDuration(estimateSeconds)})` : plan?.sizeGb ? ` (${plan.sizeGb} GB)` : ""}
+      </button>
+      <span style={{ fontSize: "0.78rem", opacity: 0.8 }}>
+        One read now, then every launch loads from the internal disk in seconds. The copy is disposable and the model
+        itself stays where it is; the copy slows the current model while it runs.{" "}
+        <a href="#performance" style={{ color: "var(--md-sys-color-primary)" }}>
+          The same switch is in Settings → Text Generation → Performance
+        </a>
+        .
+      </span>
+    </>
+  );
+}
+
 
 const TEXT_LIBRARY_SECTIONS = [
   { id: "text", label: "Text AI" },
@@ -692,11 +764,11 @@ function ModelManager({
   // Copy the model that just loaded slowly onto the internal disk. The estimate
   // beside the button is the same measurement the load printed, because the copy
   // reads the same volume at the same speed.
-  const copySlowModelToInternalDisk = async (modelId) => {
+  const copyModelToInternalDisk = async (modelId, scope = "text") => {
     if (!modelId) return;
     setCacheCopy({ model: modelId, copiedBytes: 0, totalBytes: 0, done: false, error: "" });
     try {
-      const answer = await primeModelCache(modelId, { scope: "text", useInternalDisk: true });
+      const answer = await primeModelCache(modelId, { scope, useInternalDisk: true });
       setCacheCopy(answer?.copy || answer?.result || { model: modelId, done: true, error: "" });
     } catch (error) {
       setCacheCopy((prev) => ({ ...(prev || {}), model: modelId, done: true, error: error.message || String(error) }));
@@ -725,6 +797,30 @@ function ModelManager({
       active = false;
     };
   }, [canOfferCache, activeLlmModel]);
+
+  // Image models are folders; the slowest thing an external disk can be asked to
+  // read, and until now the only way to cache one was the Settings card buried
+  // inside the Text Generation section.
+  const [imageCachePlan, setImageCachePlan] = useState(null);
+  useEffect(() => {
+    if (activeModelType !== "image" || !activeModel) {
+      setImageCachePlan(null);
+      return undefined;
+    }
+    let active = true;
+    (async () => {
+      const status = await getModelCacheStatus(true);
+      const plans = Array.isArray(status?.result?.plans) ? status.result.plans : [];
+      const match = plans.find(
+        (entry) => entry?.kind === "image" && String(entry?.source || "").split("/").pop() === activeModel,
+      ) || null;
+      if (active) setImageCachePlan(match);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [activeModelType, activeModel]);
+  const canOfferImageCache = Boolean(imageCachePlan && imageCachePlan.external !== false && !imageCachePlan.cached);
 
   const cacheCopyRunning = Boolean(cacheCopy && !cacheCopy.done);
   useEffect(() => {
@@ -1962,6 +2058,16 @@ function ModelManager({
               <p style={{ fontSize: "0.85rem", marginTop: "2px", opacity: 0.9 }}>
                 The local C++ stable-diffusion server is running. Real-time telemetry is displaying performance status in the top bar.
               </p>
+              {canOfferImageCache && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+                  <CacheCopyOffer
+                    estimateSeconds={null}
+                    plan={imageCachePlan}
+                    copy={cacheCopy && cacheCopy.model === activeModel ? cacheCopy : null}
+                    onCopy={() => copyModelToInternalDisk(activeModel, "image")}
+                  />
+                </div>
+              )}
               {(backendInfo.backendMode || backendInfo.backendDevice || backendInfo.backendBinary) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "10px" }}>
                   {backendInfo.backendMode && (
@@ -2002,60 +2108,12 @@ function ModelManager({
               )}
               {canOfferCache && (
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-                  {cacheCopy && !cacheCopy.done ? (
-                    <>
-                      <div className="model-progress-bar" style={{ flex: "1 1 160px", margin: 0 }}>
-                        <div
-                          className="model-progress-fill"
-                          style={{
-                            width: `${cacheCopy.totalBytes > 0 ? Math.min(100, Math.round((cacheCopy.copiedBytes / cacheCopy.totalBytes) * 100)) : 5}%`,
-                            transition: "width 0.3s ease",
-                          }}
-                        />
-                      </div>
-                      <span style={{ fontSize: "0.78rem", opacity: 0.85 }}>
-                        Copying to the internal disk — {Math.round((cacheCopy.copiedBytes / Math.max(1, cacheCopy.totalBytes)) * 100)}%
-                        {cacheCopy.bytesPerSecond > 0 && cacheCopy.totalBytes > cacheCopy.copiedBytes
-                          ? `, about ${formatCopyDuration(Math.round((cacheCopy.totalBytes - cacheCopy.copiedBytes) / cacheCopy.bytesPerSecond))} left`
-                          : ""}
-                      </span>
-                    </>
-                  ) : cacheCopy?.error ? (
-                    <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>{cacheCopy.error}</span>
-                  ) : cacheCopy?.done ? (
-                    <span style={{ fontSize: "0.78rem" }}>
-                      Copied to the internal disk{cacheCopy.finishedAt && cacheCopy.startedAt ? ` in ${formatCopyDuration(Math.round((cacheCopy.finishedAt - cacheCopy.startedAt) / 1000))}` : ""} — the next load reads it from there.
-                    </span>
-                  ) : cachePlanForActive && cachePlanForActive.fits === false ? (
-                    <span style={{ fontSize: "0.78rem", color: "var(--md-sys-color-error)" }}>
-                      The internal disk has {cachePlanForActive.freeGb} GB free and this copy needs about{" "}
-                      {Math.round((Number(cachePlanForActive.neededBytes) / 1024 ** 3) * 10) / 10} GB. Delete a cached
-                      model there, or free some space, and this button comes back.
-                    </span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="m3-btn m3-btn-filled"
-                        style={{ height: "32px", padding: "0 14px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "6px" }}
-                        onClick={() => copySlowModelToInternalDisk(activeLlmModel)}
-                      >
-                        <HardDrive size={13} />
-                        Cache it once
-                        {backendInfo.llmLoadOutlook?.estimatedSeconds
-                          ? ` (about ${formatCopyDuration(backendInfo.llmLoadOutlook.estimatedSeconds)})`
-                          : ""}
-                      </button>
-                      <span style={{ fontSize: "0.78rem", opacity: 0.8 }}>
-                        One read of the same file, then every launch loads from the internal disk in seconds. The copy is
-                        disposable and the model itself stays where it is; the copy slows the current model while it runs.{" "}
-                        <a href="#performance" style={{ color: "var(--md-sys-color-primary)" }}>
-                          The same switch is in Settings → Text Generation → Performance
-                        </a>
-                        .
-                      </span>
-                    </>
-                  )}
+                  <CacheCopyOffer
+                    estimateSeconds={backendInfo.llmLoadOutlook?.estimatedSeconds || null}
+                    plan={cachePlanForActive}
+                    copy={cacheCopy && cacheCopy.model === activeLlmModel ? cacheCopy : null}
+                    onCopy={() => copyModelToInternalDisk(activeLlmModel, "text")}
+                  />
                 </div>
               )}
               {backendInfo.llmBackendMode && (

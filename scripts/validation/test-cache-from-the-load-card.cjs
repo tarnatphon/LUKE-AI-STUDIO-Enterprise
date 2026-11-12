@@ -78,19 +78,36 @@ check(/export async function getModelCacheStatus\(useInternalDisk = false\)/.tes
 check(/export async function primeModelCache\(model, \{ scope = "text", useInternalDisk = true \} = \{\}\)/.test(api),
   "and start a copy, defaulting to the internal disk — the only copy that helps");
 check(/^  getModelCacheStatus,$/m.test(manager) && /^  primeModelCache,$/m.test(manager), "ModelManager imports both");
-check(/const copySlowModelToInternalDisk = async \(modelId\) => \{/.test(manager), "the card has the action");
-check(/await primeModelCache\(modelId, \{ scope: "text", useInternalDisk: true \}\)/.test(manager),
+check(/const copyModelToInternalDisk = async \(modelId, scope = "text"\) => \{/.test(manager), "the card has the action");
+check(/await primeModelCache\(modelId, \{ scope, useInternalDisk: true \}\)/.test(manager),
   "which asks for the internal disk explicitly, never the default folder on the same volume");
+check(/^function CacheCopyOffer\(\{ estimateSeconds, plan, copy, onCopy \}\)/m.test(manager),
+  "and it is one offer, shared by both model cards");
+check((manager.match(/\n\s+Cache it once\n/g) || []).length === 1, "written once, not once per card",
+  String((manager.match(/\n\s+Cache it once\n/g) || []).length));
 check(/const cacheCopyRunning = Boolean\(cacheCopy && !cacheCopy\.done\);/.test(manager), "the card polls only while a copy is in flight");
 check(/const job = status\?\.result\?\.copy \|\| status\?\.copy \|\| null;/.test(manager), "and takes the job from the status route");
 check(/!backendInfo\.llmLastLoad\?\.cached && backendInfo\.llmLoadOutlook\?\.level === "warn"/.test(manager),
   "the offer appears only for a load that was slow AND did not read a copy");
 check(/Cache it once/.test(manager), "the button says what it costs: one read");
-check(/about \$\{formatCopyDuration\(backendInfo\.llmLoadOutlook\.estimatedSeconds\)\}/.test(manager),
+check(/estimateSeconds \? ` \(about \$\{formatCopyDuration\(estimateSeconds\)\}\)`/.test(manager),
   "with the measured duration, the same one the load printed");
 check(/Copying to the internal disk — /.test(manager), "and shows progress while the copy runs");
 check(/the next load reads it from there/.test(manager), "then says what changed");
 check(/the copy slows the current model while it runs/.test(manager), "without pretending it is free I/O");
+
+console.log("\n  and image models get the same offer, where they are loaded");
+
+check(/const canOfferImageCache = Boolean\(imageCachePlan && imageCachePlan\.external !== false && !imageCachePlan\.cached\)/.test(manager),
+  "an image model on an external disk and not yet cached is offered the copy");
+check(/entry\?\.kind === "image" && String\(entry\?\.source \|\| ""\)\.split\("\/"\)\.pop\(\) === activeModel/.test(manager),
+  "matched against the image model that is actually loaded");
+check(/onCopy=\{\(\) => copyModelToInternalDisk\(activeModel, "image"\)\}/.test(manager),
+  "and the copy is started with the image scope, so the route finds the right folder");
+check(/onCopy=\{\(\) => copyModelToInternalDisk\(activeLlmModel, "text"\)\}/.test(manager),
+  "while the text card asks for the text scope");
+check(/estimateSeconds=\{null\}/.test(manager),
+  "no invented duration for a folder: an image model is thousands of files, not one measurable file");
 
 console.log("\n  the copy itself reports byte progress");
 

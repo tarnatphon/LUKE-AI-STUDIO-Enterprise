@@ -92,9 +92,9 @@ async function main() {
   const manager = read("app", "frontend", "src", "components", "ModelManager.jsx");
   const panel = read("app", "frontend", "src", "components", "PerformancePanel.jsx");
 
-  check(/cachePlanForActive && cachePlanForActive\.fits === false/.test(manager),
-    "the model card checks whether the copy fits");
-  check(/The internal disk has \{cachePlanForActive\.freeGb\} GB free and this copy needs about/.test(manager),
+  check(/if \(plan && plan\.fits === false\) \{/.test(manager),
+    "the shared cache offer checks whether the copy fits");
+  check(/The internal disk has \{plan\.freeGb\} GB free and this copy needs about \{neededGb\} GB/.test(manager),
     "and says both numbers when it does not", "the card must not start a copy it knows will fail");
   check(/Delete a cached/.test(manager) && /the internal disk/.test(manager), "with the way out");
   check(/getModelCacheStatus\(true\)/.test(manager), "asking about the internal disk, which is where the copy goes");
