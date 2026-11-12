@@ -133,6 +133,21 @@ check(/9\.0 GB/.test(done), "with the size");
 check(/MB\/s/.test(done), "and the effective throughput, so the prediction can be judged");
 check(/of the 78 MB\/s this volume measured/.test(done), "next to the speed the volume measured");
 
+// The estimate was quoted before the wait started, so the wait has to be
+// judged against it — otherwise a load twice as slow as promised reads as normal.
+const late = outlook.completion({
+  filename: "qwen.gguf", sizeBytes: 9 * GB, elapsedMs: 252000, bytesPerSecond: 78 * 1024 * 1024, predictedSeconds: 180,
+});
+check(/loaded in 4 min 12 s/.test(late), "a slow load reports its real duration", late);
+check(/The estimate before it started was 3 min,/.test(late), "next to the estimate that was quoted for it", late);
+check(/this read was slower than this volume had been/.test(late), "and says which way it went");
+check(
+  !/estimate before it started/.test(outlook.completion({
+    filename: "qwen.gguf", sizeBytes: 9 * GB, elapsedMs: 228000, predictedSeconds: 225,
+  })),
+  "an estimate that was close is not commented on"
+);
+
 const quick = outlook.completion({ filename: "small.gguf", sizeBytes: 1 * GB, elapsedMs: 4000 });
 check(/loaded in 4 s/.test(quick) && /256 MB\/s/.test(quick), "a fast load says so in seconds", quick);
 check(/loaded in/.test(outlook.completion({ elapsedMs: 0 })), "a load with no size still reads as a sentence");
@@ -143,6 +158,19 @@ const serve = read("scripts", "server", "serve.cjs");
 check(/require\("\.\/model-load-outlook\.cjs"\)/.test(serve), "serve.cjs requires it");
 check(/const speed = loadOutlook\.volumeSpeed\(loadPath\)/.test(serve), "the measurement is taken on the file that is actually loaded, cache copy or not");
 check(/mmapDisabled: !mmapDecision\.mmap/.test(serve), "and the sentence knows whether mmap was turned off");
+check(
+  /predictedSeconds: lastLlmLoadReport\.predictedSeconds/.test(serve),
+  "the estimate that was quoted before the load is handed to the completion sentence"
+);
+
+console.log("\n  and the number stays on screen where the wait happened");
+
+const chatSource = read("app", "frontend", "src", "components", "TextChat.jsx");
+check(/const after = await getLlmStatus\(\);/.test(chatSource) && /setLastLoadNote\(after\.lastLoad\)/.test(chatSource),
+  "the chat reads the completion sentence when the load finishes");
+check(/\{lastLoadNote && !loadingModel && \(/.test(chatSource), "and shows it after the spinner is gone");
+check(/\{lastLoadNote\.message\}/.test(chatSource), "in the same words the terminal printed");
+check(/onClick=\{\(\) => setLastLoadNote\(null\)\}/.test(chatSource), "dismissable, because it is an answer and not furniture");
 check(/if \(!llmLoadOutlookPrinted\) \{/.test(serve), "it is printed once per load, not once per backend attempt");
 check(/llmLoadOutlookPrinted = false;/.test(serve), "and reset for the next one");
 check(/loadOutlook\.completion\(/.test(serve), "the actual duration is reported too");

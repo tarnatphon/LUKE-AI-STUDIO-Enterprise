@@ -465,6 +465,10 @@ function TextChat({
   // one is running — and what llama.cpp last printed — is the difference
   // between "slow" and "broken", which a spinner alone cannot tell apart.
   const [loadProgress, setLoadProgress] = useState(null);
+  // What the wait turned out to cost, kept on screen after the spinner goes
+  // away. The number existed only in the terminal and on the Text Models card,
+  // which is not where the wait happened.
+  const [lastLoadNote, setLastLoadNote] = useState(null);
   // Set when the model writes the round instructions back instead of doing the
   // work twice over. Better a sentence explaining it than a run that spins.
   const [workEchoNotice, setWorkEchoNotice] = useState("");
@@ -1492,6 +1496,14 @@ function TextChat({
       setStatus({ ...status, ...result, ready: true, running: true, settings: result.settings });
       setMessages([]);
       setTokenUsage({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+      // Same sentence the terminal printed, so the screen and the log cannot
+      // disagree about how long it took.
+      try {
+        const after = await getLlmStatus();
+        if (after?.lastLoad?.message) setLastLoadNote(after.lastLoad);
+      } catch {
+        // The load succeeded; a missing sentence is not worth an alert.
+      }
     } catch (err) {
       if (loadingModelRef.current === filename) {
         showAlert({ title: "Text Model Load Failed", message: err.message, danger: true });
@@ -3267,6 +3279,29 @@ function TextChat({
             <button type="button" onClick={() => moveMessageSearch(1)} disabled={!messageSearchResults.length} aria-label="Next search result"><ChevronRight size={15} /></button>
             <button type="button" onClick={() => { setShowMessageSearch(false); setMessageSearchQuery(""); }} aria-label="Close chat search"><X size={15} /></button>
             {activeSearchResult && <small title={activeSearchResult.text}>{activeSearchResult.conversationTitle} · {activeSearchResult.role === "user" ? "You" : "LUKE AI"}</small>}
+          </div>
+        )}
+
+        {lastLoadNote && !loadingModel && (
+          <div
+            role="status"
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 10,
+              margin: "8px 16px 0", padding: "8px 12px", borderRadius: 8,
+              background: "var(--md-sys-color-surface-variant)",
+              color: "var(--md-sys-color-on-surface-variant)",
+              fontSize: "0.82rem", lineHeight: 1.45,
+            }}
+          >
+            <span style={{ flex: 1 }}>{lastLoadNote.message}</span>
+            <button
+              type="button"
+              className="m3-btn m3-btn-text"
+              onClick={() => setLastLoadNote(null)}
+              style={{ padding: "2px 8px", fontSize: "0.78rem" }}
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

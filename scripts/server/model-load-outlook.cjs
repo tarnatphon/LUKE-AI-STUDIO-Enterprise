@@ -158,15 +158,28 @@ function outlook({ filename = "", sizeBytes = 0, volume = "", bytesPerSecond = 0
 }
 
 /** What actually happened, next to what was predicted. */
-function completion({ filename = "", sizeBytes = 0, elapsedMs = 0, bytesPerSecond = 0 } = {}) {
+function completion({
+  filename = "",
+  sizeBytes = 0,
+  elapsedMs = 0,
+  bytesPerSecond = 0,
+  predictedSeconds = 0,
+} = {}) {
   const seconds = Math.max(0, Math.round((Number(elapsedMs) || 0) / 1000));
   const size = Number(sizeBytes) || 0;
-  if (!size) return `${filename || "Model"} loaded in ${secondsText(seconds)}.`;
+  // How far the estimate was off is the part that makes the next estimate worth
+  // believing, and the only part that says whether the wait was an anomaly.
+  // Silent when it was close: a prediction that was right needs no commentary.
+  const estimate = Number(predictedSeconds) || 0;
+  const prediction = estimate > 0 && seconds > 0 && Math.abs(seconds - estimate) / estimate > 0.15
+    ? ` The estimate before it started was ${secondsText(estimate)}, so this read was ${seconds > estimate ? "slower" : "faster"} than this volume had been.`
+    : "";
+  if (!size) return `${filename || "Model"} loaded in ${secondsText(seconds)}.${prediction}`;
   const effective = seconds > 0 ? size / seconds : Number(bytesPerSecond) || 0;
   const measuredSuffix = bytesPerSecond
     ? ` (${mbPerSecond(effective)} MB/s of the ${mbPerSecond(bytesPerSecond)} MB/s this volume measured)`
     : ` (${mbPerSecond(effective)} MB/s)`;
-  return `${filename || "Model"} loaded in ${secondsText(seconds)} — ${gb(size)}${measuredSuffix}.`;
+  return `${filename || "Model"} loaded in ${secondsText(seconds)} — ${gb(size)}${measuredSuffix}.${prediction}`;
 }
 
 /** Tests only: forget the measurements taken so far. */
