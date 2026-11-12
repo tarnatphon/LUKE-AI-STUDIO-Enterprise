@@ -22,6 +22,16 @@ function lukeArchiveChatMarkdown(req, res, projectRoot) {
   });
 }
 
+// LUKE_IMAGE_QUALITY_PROFILE_V1
+// Which settings produce a good image for a model on a machine, and the exact
+// body /sdapi/v1/txt2img reads. The Generator imports the same module, so the
+// numbers it shows and the numbers it sends cannot drift — the arrangement the
+// step-budget rule (img2img-steps.cjs) follows too.
+const {
+  planImageQuality,
+  hardwareImageProfile: planImageQualityProfile,
+} = require("./image-quality.cjs");
+
 // LUKE_SOCIAL_AGENCY_RUNTIME_IMPORT_V1
 const { SocialAgencyRuntime } = require("./social-agency-runtime.cjs");
 // LUKE_AI_WORKFLOW_BUILDER_V1
@@ -4071,6 +4081,19 @@ function getHardwareSpecs() {
     ];
   }
 
+  // What the image workspace should default to on this machine.
+  //
+  // `tier` has been computed here for a long time but only ever reached the text
+  // side, so the image settings were the same numbers on a 4 GB laptop and a
+  // 24 GB card — 1024² SDXL on the first is an out-of-memory error, 512² on the
+  // second throws away detail the card has already paid for.
+  //
+  // The model is unknown here (the server does not know which checkpoint the
+  // Generator has loaded when this is called), so the machine half is published
+  // alone: the side, the hires budget and whether VAE tiling is needed. The
+  // family half is filled in by the frontend, from the same module.
+  const imageProfile = planImageQualityProfile({ tier, vramGb: gpuVramGb });
+
   return {
     os_name: `${os.type()} ${os.release()}`,
     cpu_name: cpus[0]?.model || "Unavailable",
@@ -4083,6 +4106,12 @@ function getHardwareSpecs() {
     tier,
     recommended_models,
     recommended_text_settings: recommendedTextSettings[tier] || recommendedTextSettings.mid,
+    recommended_image_settings: {
+      ...imageProfile,
+      // A worked example at this tier, so a caller with no model name still gets
+      // usable numbers rather than a shape it has to interpret.
+      example: planImageQuality({ tier, vramGb: gpuVramGb, preset: "auto" }),
+    },
   };
 }
 

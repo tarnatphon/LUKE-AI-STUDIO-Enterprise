@@ -597,3 +597,292 @@
   gap: 6px;
   margin: 10px 0;
 }
+
+/* ─── Quality panel ──────────────────────────────────────────────────────────
+   The simple face of the image workspace: three presets, the honest numbers
+   always on screen, and the full set behind one chevron. Every number here is
+   rendered from the plan the request is built from, so nothing it shows can
+   disagree with what the sampler receives. */
+
+.quality-panel {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quality-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quality-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--md-sys-color-on-surface);
+}
+
+.quality-family-badge,
+.quality-machine-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  text-transform: capitalize;
+}
+
+.quality-machine-badge {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.quality-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .18s ease, color .18s ease;
+}
+
+.quality-details-toggle:hover {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+
+.quality-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quality-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.quality-preset:hover:not(:disabled) {
+  border-color: var(--md-sys-color-primary);
+  transform: translateY(-1px);
+}
+
+.quality-preset.active {
+  background: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.quality-preset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quality-preset-icon { font-size: 0.9rem; }
+
+.quality-preset-hint {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-outline);
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.quality-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quality-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid transparent;
+}
+
+.quality-chip-warn {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #b45309;
+}
+
+.quality-details {
+  border-top: 1px dashed var(--md-sys-color-outline-variant);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quality-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.quality-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quality-field-wide { grid-column: 1 / -1; }
+
+.quality-field label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.quality-field input[type="number"],
+.quality-field select,
+.quality-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.84rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.quality-field input:focus,
+.quality-field select:focus,
+.quality-field textarea:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+}
+
+.quality-field-hint {
+  font-size: 0.7rem;
+  color: var(--md-sys-color-outline);
+  line-height: 1.4;
+}
+
+.quality-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+}
+
+.quality-notes {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-high);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.quality-notes svg { flex-shrink: 0; margin-top: 2px; }
+
+.quality-reset { align-self: flex-start; height: 34px; }
+
+/* The workspace: parameters on the left, the image on the right, on any screen
+   wide enough to hold both. Below that they stack in one column, which is what
+   the layout did at every width before. */
+.generator-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1080px) {
+  .generator-layout {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  /* The preview stays in view while the prompt and settings scroll. */
+  .generator-layout > .output-panel {
+    position: sticky;
+    top: 12px;
+  }
+}
+
+/* A prompt box you can actually write in. */
+.generator-prompt {
+  min-height: 108px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* Advanced sections start folded: the workspace opens with a prompt, a quality
+   choice and a button, which is the whole flow for most images. */
+.generator-advanced {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  overflow: hidden;
+}
+
+.generator-advanced > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container-low);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.generator-advanced > summary::-webkit-details-marker { display: none; }
+
+.generator-advanced[open] > summary {
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.generator-advanced-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}

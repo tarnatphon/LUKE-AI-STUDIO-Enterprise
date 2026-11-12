@@ -4,8 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 // requires the same file) so the Generator and the Social Agency cannot drift apart.
 // It is CommonJS, so take the default export and destructure it.
 import img2imgSteps from "../../../../scripts/server/img2img-steps.cjs";
+// Which settings actually produce a good image for a given model on a given
+// machine, and the exact body /sdapi/v1/txt2img expects. Shared with
+// scripts/server/serve.cjs, which publishes the same recommendations on
+// GET /api/hardware-specs, so "Auto (this machine)" means the same thing on
+// both sides of the wire.
+import imageQuality from "../../../../scripts/server/image-quality.cjs";
 
 const { planImg2ImgSteps } = img2imgSteps;
+const { planImageQuality, buildTxt2ImgBody, detectModelFamily } = imageQuality;
 
 // Helper to check if running inside Tauri desktop container
 export const isTauri = () => {
@@ -1450,7 +1457,11 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
     height: constraints.height || 512,
     steps: constraints.steps || 20,
     cfg_scale: constraints.cfgScale || 7.0,
-    seed: constraints.seed === -1 ? Math.floor(Math.random() * 1000000) : constraints.seed,
+    // Passed through as-is: -1 means "the backend picks", and the seed it picks
+    // is reported back on the response. Resolving it here recorded a number in
+    // the metadata that no image was made from, so "reuse this seed" reproduced
+    // a different picture.
+    seed: Number.isFinite(Number(constraints.seed)) ? Number(constraints.seed) : -1,
     sampler: constraints.sampler || "euler_a",
     image: inputImageBase64 || null, // Image to image source (base64)
     denoising_strength: img2imgPlan ? img2imgPlan.strength : (constraints.denoisingStrength || 0.7),
@@ -1498,7 +1509,22 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
   const baseUrl = await getBackendBaseUrl();
 
 
-  // txt2img uses /v1/images/generations; img2img uses /sdapi/v1/img2img.
+  // ── Which endpoint ───────────────────────────────────────────────────────
+  //
+  // img2img uses /sdapi/v1/img2img, txt2img uses /sdapi/v1/txt2img.
+  //
+  // It used to be /v1/images/generations for txt2img, and that was the single
+  // most expensive bug in this workspace: the OpenAI-compatibility endpoint in
+  // the pinned backend (master-685-19bdfe2, examples/server/routes_openai.cpp,
+  // build_openai_generation_request) reads only prompt, n, size, output_format
+  // and output_compression, then starts from *runtime.default_gen_params. So
+  // steps, cfg_scale, seed, sample_method and negative_prompt in our body were
+  // silently ignored — the process's launch flags decided them.
+  //
+  // /sdapi/v1/txt2img reads every one of them (routes_sdapi.cpp,
+  // build_sdapi_img_gen_request), plus scheduler, clip_skip and a high-res fix
+  // pass. Sending the same fields to an endpoint that reads them is the fix;
+  // nothing about the numbers changed to make this work.
   const isImg2Img = !!payload.image;
   // What the request carries as `steps`, and what the backend will sample out of
   // it. For txt2img `sent` is the number the user set.
@@ -1509,22 +1535,18 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       `sending steps=${img2imgSteps.sent}${img2imgSteps.capped ? " (capped; expect a shorter run)" : ""}`
     );
   }
-  let endpoint = `${baseUrl}/v1/images/generations`;
+  let endpoint = `${baseUrl}/sdapi/v1/txt2img`;
 
-  let genBody = {
-    prompt:           payload.prompt,
-    negative_prompt:  payload.negative_prompt || "",
-    n:                1,
-    size:             `${payload.width}x${payload.height}`,
-    response_format:  "b64_json",
-    // Generation parameters — read by stable-diffusion.cpp from the request body
-    steps:            payload.steps,
-    cfg_scale:        payload.cfg_scale,
-    seed:             payload.seed,
-    sample_method:    payload.sampler || "euler_a",
-    reference_images: payload.reference_images || [],
-    reference_settings: payload.reference_settings || {},
-  };
+  // The quality shape the user chose (family defaults, hardware clamp, hires
+  // pass, clip skip). resolveImagePlan is the same function the Generator uses
+  // to preview these numbers, so the two cannot disagree.
+  const plan = resolveImagePlan(constraints, activeModelName);
+
+  let genBody = buildTxt2ImgBody(plan, {
+    prompt: payload.prompt,
+    negativePrompt: payload.negative_prompt,
+    seed: payload.seed,
+  });
 
   // img2img extra fields
   if (isImg2Img) {
@@ -1544,6 +1566,7 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       width:              payload.width,
       height:             payload.height,
       sampler_name:       payload.sampler || "euler_a",
+      scheduler:          plan.scheduler,
       sample_method:      payload.sampler || "euler_a",
       batch_size:         1,
       n_iter:             1,
@@ -1553,11 +1576,13 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
       reference_settings: payload.reference_settings || {},
       reference_mode:     normalizeReferenceMode(referenceSettings.mode),
     };
+    if (Number(plan.clipSkip) > 0) genBody.clip_skip = Number(plan.clipSkip);
   }
 
   // Attempt real HTTP call
+  let response;
   try {
-    const response = await fetchWithTimeoutAndRetry(endpoint, {
+    response = await fetchWithTimeoutAndRetry(endpoint, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       signal:  signal,
@@ -1570,8 +1595,10 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
 
     if (response.ok) {
       const data = await response.json();
-      // Response: { data: [{ b64_json: "..." }] }
-      const imgB64 = data?.data?.[0]?.b64_json ?? data?.images?.[0];
+      // /sdapi/v1/* answers { images: [b64] }; /v1/images/generations answers
+      // { data: [{ b64_json }] }. Both shapes are still read, because a backend
+      // older than the sdapi family falls back to the OpenAI endpoint below.
+      const imgB64 = data?.images?.[0] ?? data?.data?.[0]?.b64_json;
       if (imgB64) {
         const normalizedB64 = String(imgB64).replace(/^data:[^;]+;base64,/, "");
         const header = atob(normalizedB64.slice(0, 24));
@@ -1584,22 +1611,47 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
         const durationSec = parseFloat(((Date.now() - startTime) / 1000).toFixed(1));
         return {
           image:        `data:image/png;base64,${normalizedB64}`,
+          // The backend never echoes the seed it actually used on the sdapi
+          // family, so report what the request carried: -1 means the backend
+          // chose one, and the metadata file records that faithfully.
           seed:         data.data?.[0]?.seed ?? payload.seed,
           duration_sec: durationSec,
           // What the request asked for, what it carried, and whether the backend
-          // ceiling stopped the run short of the requested steps.
+          // ceiling stopped the run short of the requested steps. A txt2img run
+          // is never scaled, but hires adds a second pass whose steps are extra;
+          // `hires` reports that separately instead of inflating the count.
           steps:        img2imgSteps.steps,
           stepsSent:    img2imgSteps.sent,
           stepsCapped:  img2imgSteps.capped,
+          hires:        isImg2Img ? null : { ...plan.hires },
+          family:       plan.family,
+          preset:       plan.preset,
         };
       }
+    } else if (!isImg2Img && [400, 404, 405, 501].includes(response.status) && await looksLikeMissingSdapi(response)) {
+      // A backend that predates /sdapi/v1/txt2img. Fall back to the OpenAI
+      // endpoint, which carries only prompt/size — worse, but it is the only
+      // thing that answers. Reported through `degraded` so the UI can say so
+      // instead of quietly losing the settings the user chose.
+      console.warn("This backend has no /sdapi/v1/txt2img; falling back to /v1/images/generations (settings are limited).");
+      return await generateImageViaOpenAiCompat({
+        baseUrl, payload, prompt: payload.prompt, negativePrompt: payload.negative_prompt,
+        seed: payload.seed, signal, constraints, startTime,
+      });
     } else {
       let errMsg = `Generation failed (HTTP ${response.status})`;
       try {
         const errJson = await response.json();
-        if (errJson?.detail || errJson?.error?.message) {
-          errMsg = errJson.detail || errJson.error.message;
-        }
+        // build_sdapi_img_gen_request answers {error: "invalid params"} — a
+        // string, not an object — so the status alone was being shown and the
+        // reason thrown away.
+        const detail = errJson?.detail
+          || (typeof errJson?.error === "string" ? errJson.error : errJson?.error?.message)
+          || errJson?.message;
+        // Keeps the "Generation failed" prefix: the catch below uses it to tell
+        // a real generation error apart from a dead connection, and a message
+        // that dropped it sent a bad-request straight to "the server crashed".
+        if (detail) errMsg = `Generation failed (HTTP ${response.status}): ${detail}`;
       } catch (_) {}
       throw new Error(errMsg);
     }
@@ -1612,6 +1664,190 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
     );
   }
 }
+
+/**
+ * Did the backend answer "I have no /sdapi/v1/txt2img"?
+ *
+ * A 404 from a server that is otherwise alive, or a body that names the route,
+ * is that answer. Anything else (a real bad-request, an OOM) must not be
+ * retried against an endpoint that would ignore half the settings.
+ */
+async function looksLikeMissingSdapi(response) {
+  try {
+    const text = await response.clone().text();
+    if (response.status === 404 && !/prompt/i.test(text)) return true;
+    if (/404|not found|no such|unknown route|unsupported/i.test(text) && /txt2img|sdapi/i.test(text)) return true;
+    return false;
+  } catch (_) {
+    return response.status === 404 || response.status === 405;
+  }
+}
+
+/**
+ * The last-resort path for a backend without the sdapi family.
+ *
+ * Kept deliberately small and honest: this endpoint reads only prompt, n, size
+ * and output format, so the caller is told the run is degraded instead of being
+ * shown settings that were not applied.
+ */
+async function generateImageViaOpenAiCompat({ baseUrl, payload, prompt, negativePrompt, seed, signal, constraints, startTime }) {
+  const response = await fetchWithTimeoutAndRetry(`${baseUrl}/v1/images/generations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify({
+      prompt,
+      negative_prompt: negativePrompt || "",
+      n: 1,
+      size: `${payload.width}x${payload.height}`,
+      response_format: "b64_json",
+      // Still sent: a backend newer than the pin does read these here.
+      steps: payload.steps,
+      cfg_scale: payload.cfg_scale,
+      seed,
+      sample_method: payload.sampler || "euler_a",
+    }),
+  }, {
+    timeoutMs: constraints?.requestTimeoutMs || DEFAULT_IMAGE_TIMEOUT_MS,
+    retries: constraints?.requestRetries ?? 1,
+    retryDelayMs: 2500,
+  });
+  // The body is read once, as text, and parsed here: readJsonResponse() also
+  // consumes it, so calling both left this function parsing an empty object and
+  // reporting "no image" for a perfectly good response.
+  const rawText = await response.text();
+  let data = {};
+  try {
+    data = JSON.parse(rawText || "{}");
+  } catch (_) {
+    throw new Error("The local server returned an invalid generation response.");
+  }
+  if (!response.ok || data?.ok === false) {
+    throw new Error(data?.error?.message || data?.error || data?.detail || `Generation failed (HTTP ${response.status})`);
+  }
+  const imgB64 = data?.data?.[0]?.b64_json ?? data?.images?.[0];
+  if (!imgB64) throw new Error("Generation returned no image.");
+  const normalizedB64 = String(imgB64).replace(/^data:[^;]+;base64,/, "");
+  return {
+    image: `data:image/png;base64,${normalizedB64}`,
+    seed: data.data?.[0]?.seed ?? seed,
+    duration_sec: parseFloat(((Date.now() - startTime) / 1000).toFixed(1)),
+    steps: payload.steps,
+    stepsSent: payload.steps,
+    stepsCapped: false,
+    hires: null,
+    degraded: "This backend has no /sdapi/v1/txt2img, so steps, CFG, sampler and the negative prompt were not applied.",
+  };
+}
+
+/**
+ * The numbers a prompt will really be generated with.
+ *
+ * One function, called by the Generator to render the preview chips and by
+ * generateImage to build the request, so the screen and the wire cannot drift.
+ *
+ * Precedence is deliberate: **what the user set always wins.** The plan fills in
+ * only the blanks — the sampler and scheduler the family wants when the user has
+ * never chosen one, the negative prompt when the field is empty, clip skip, and
+ * the high-res pass — and clamps the high-res pass to what the machine can
+ * afford. Nothing is silently overridden; a preset is applied to `constraints`
+ * by the UI (see applyQualityPreset), where the user can see the numbers change.
+ */
+export function resolveImagePlan(constraints = {}, activeModelName = "") {
+  const plan = planImageQuality({
+    model: activeModelName,
+    family: constraints?.modelFamily,
+    tier: constraints?.hardwareTier,
+    vramGb: constraints?.vramGb,
+    preset: constraints?.qualityPreset,
+  });
+
+  const numberOr = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const textOr = (value, fallback) => {
+    const s = String(value ?? "").trim();
+    return s && s !== "auto" ? s : fallback;
+  };
+  const to64 = (value, fallback) => Math.max(64, Math.round(numberOr(value, fallback) / 64) * 64);
+
+  const hiresChosen = constraints?.hiresFix;
+
+  const resolved = {
+    ...plan,
+
+    steps: Math.round(numberOr(constraints?.steps, plan.steps)),
+    cfgScale: Number.isFinite(Number(constraints?.cfgScale)) && Number(constraints?.cfgScale) > 0
+      ? Number(constraints.cfgScale)
+      : plan.cfgScale,
+    sampler: textOr(constraints?.sampler, plan.sampler),
+    scheduler: textOr(constraints?.scheduler, plan.scheduler),
+    clipSkip: Number.isFinite(Number(constraints?.clipSkip)) ? Number(constraints.clipSkip) : plan.clipSkip,
+    width: to64(constraints?.width, plan.width),
+    height: to64(constraints?.height, plan.height),
+    // The user can switch the second pass off; they cannot switch it on where the
+    // machine has no budget for it (a 4 GB card asked for 2× hires does not
+    // produce a slower image, it produces an out-of-memory error).
+    hires: hiresChosen === false || !plan.hires.enabled ? { ...plan.hires, enabled: false } : plan.hires,
+    negativePrompt: String(constraints?.negativePromptDefault || "").trim() || plan.negativePrompt,
+  };
+
+  // The badge has to tell the truth: say "custom" whenever the numbers on screen
+  // are not the ones the named preset would produce — whoever changed them, and
+  // whether or not the constraint object was marked by a hand edit. A preset
+  // label over numbers that are not the preset's is exactly the kind of quiet
+  // disagreement this workspace is being fixed for.
+  const asPreset = planImageQuality({
+    model: activeModelName,
+    family: constraints?.modelFamily,
+    tier: constraints?.hardwareTier,
+    vramGb: constraints?.vramGb,
+    preset: resolved.preset,
+  });
+  const differs = resolved.steps !== asPreset.steps
+    || Math.abs(Number(resolved.cfgScale) - Number(asPreset.cfgScale)) > 1e-6
+    || resolved.sampler !== asPreset.sampler
+    || resolved.scheduler !== asPreset.scheduler
+    || resolved.width !== asPreset.width
+    || resolved.height !== asPreset.height;
+  if (differs && constraints?.qualityPreset !== "custom") resolved.preset = "custom";
+  if (constraints?.qualityPreset === "custom") resolved.preset = "custom";
+  return resolved;
+}
+
+/**
+ * Write a preset onto the constraints the UI edits.
+ *
+ * Called when the user picks Draft / Balanced / Best, so the sliders move to the
+ * numbers the preset means. This is the "simple face" of the workspace: one
+ * click, visible consequences, every knob still reachable afterwards.
+ */
+export function applyQualityPreset(constraints = {}, preset, activeModelName = "", tier = "") {
+  const plan = planImageQuality({
+    model: activeModelName,
+    family: constraints?.modelFamily,
+    tier: constraints?.hardwareTier || tier,
+    vramGb: constraints?.vramGb,
+    preset,
+  });
+  return {
+    ...constraints,
+    qualityPreset: preset,
+    qualityPinned: false,
+    steps: plan.steps,
+    cfgScale: plan.cfgScale,
+    sampler: plan.sampler,
+    scheduler: plan.scheduler,
+    clipSkip: plan.clipSkip,
+    width: plan.width,
+    height: plan.height,
+    hiresFix: plan.hires.enabled,
+    vaeTiling: plan.vaeTiling,
+  };
+}
+
+export { detectModelFamily, planImageQuality };
 
 // Perform model file import (copy to USB in Tauri, simulated in Web mode)
 export async function importModelFile(sourcePath, onProgress, signal) {

@@ -290,11 +290,23 @@ async function main() {
         assert.strictEqual(result.stepsCapped, false);
       });
 
-      test("the Generator's txt2img request is untouched", async () => {
+      test("the Generator's txt2img request is not step-scaled", async () => {
+        // The endpoint changed from /v1/images/generations to /sdapi/v1/txt2img
+        // because the former ignores steps, cfg, seed, sampler and the negative
+        // prompt (routes_openai.cpp at the pinned tag reads five fields). What
+        // this test is for — that nothing trims a txt2img schedule, so its steps
+        // are its steps — is unchanged, and is asserted below.
         const { result, seen } = await callOnce(null, {});
-        assert.ok(seen[0].url.endsWith("/v1/images/generations"), seen[0].url);
+        assert.ok(seen[0].url.endsWith("/sdapi/v1/txt2img"), seen[0].url);
         assert.strictEqual(seen[0].body.steps, 20, "nothing trims a txt2img run");
         assert.strictEqual(result.stepsSent, 20);
+        assert.strictEqual(result.stepsCapped, false);
+        // The fields that endpoint alone reads, so the settings on screen are the
+        // settings on the wire.
+        assert.strictEqual(seen[0].body.cfg_scale, 7);
+        assert.ok(typeof seen[0].body.negative_prompt === "string", "the negative prompt travels");
+        assert.ok(seen[0].body.sampler_name, "the sampler travels");
+        assert.ok(seen[0].body.scheduler, "the scheduler travels");
       });
 
       test("the Generator's denoise window did not move (0.15–0.75)", () => {

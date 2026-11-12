@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useState, useEffect, useRef, useCallback, us
 import Sidebar from "./components/Sidebar";
 import TopStatusBar from "./components/TopStatusBar";
 import Home from "./components/Home";
-import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer } from "./services/api";
+import { cleanupCandidates, formatBytes, getCleanupCandidates, getDiagnostics, getHardwareSpecs, getHealth, getTelemetry, getBackendOptions, getBackendStatus, listGeneratedOutputs, listLlmConversations, saveLlmConversation, deleteLlmConversation, listSpeechTranscriptions, deleteSpeechTranscription, listTtsOutputs, deleteTtsOutput, stopServer, applyQualityPreset, detectModelFamily } from "./services/api";
 import "./App.css";
 import { canonicalThemeId } from "./themes";
 import { missingGrants, normaliseFailedFolders, restoreProjectGrants, stripGrants, withRestoredGrants } from "./lib/work-grants.mjs";
@@ -1059,70 +1059,43 @@ function App() {
     };
   }, []);
 
-  // Sync active model settings default parameters
+  // Sync active model settings default parameters.
+  //
+  // One source of truth: scripts/server/image-quality.cjs, which knows what each
+  // architecture actually wants (DPM++ 2M + karras + clip skip 2 for SD 1.5,
+  // euler + CFG 1 + `simple` for FLUX, low CFG for distilled Lightning/Turbo
+  // builds) and clamps the size to this machine's tier.
+  //
+  // This ran as a chain of `name.includes("flux")` guesses before, and it only
+  // ever touched steps/cfg/size — never the sampler, the scheduler or clip skip,
+  // which is where most of the quality difference lives. It also fired on every
+  // model switch, overwriting settings the user had deliberately set; it now
+  // leaves a pinned choice alone.
   useEffect(() => {
-    if (activeModel) {
-      const name = activeModel.toLowerCase();
-      if (name.includes("lcm-dreamshaper-v7-fp16")) {
-        setConstraints((prev) => ({
+    if (!activeModel) return;
+    setConstraints((prev) => {
+      // A user who has tuned the numbers keeps them across a model switch. They
+      // can return to the machine's advice from the quality panel at any time.
+      if (prev.qualityPinned === true) {
+        return {
           ...prev,
-          steps: 4,
-          npuSteps: 4,
-          cfgScale: 1.0,
-          width: 512,
-          height: 512,
-          backendType: "openvino-npu",
-          useGpu: true,
-        }));
-      } else if (name.includes("flux") || name.includes("schnell")) {
-        setConstraints((prev) => ({
-          ...prev,
-          steps: 4,
-          standardSteps: 4,
-          cfgScale: 1.0,
-          width: 1024,
-          height: 1024,
-        }));
-      } else if (name.includes("lightning") || name.includes("turbo")) {
-        setConstraints((prev) => ({
-          ...prev,
-          steps: 4,
-          standardSteps: 4,
-          cfgScale: 1.5,
-          width: 1024,
-          height: 1024,
-        }));
-      } else if (name.includes("sd15")) {
-        setConstraints((prev) => ({
-          ...prev,
-          steps: 25,
-          standardSteps: 25,
-          cfgScale: 7.0,
-          width: 512,
-          height: 512,
-        }));
-      } else if (name.includes("sd35")) {
-        setConstraints((prev) => ({
-          ...prev,
-          steps: 20,
-          standardSteps: 20,
-          cfgScale: 4.5,
-          width: 1024,
-          height: 1024,
-        }));
-      } else {
-        // Fallback for custom or SD 1.x models (like CyberRealistic or arbitrary safetensors)
-        setConstraints((prev) => ({
-          ...prev,
-          steps: 20,
-          standardSteps: 20,
-          cfgScale: 7.0,
-          width: 512,
-          height: 512,
-        }));
+          modelFamily: detectModelFamily(activeModel),
+          hardwareTier: specs?.tier || prev.hardwareTier,
+        };
       }
-    }
-  }, [activeModel]);
+      const next = applyQualityPreset(
+        { ...prev, hardwareTier: specs?.tier || prev.hardwareTier },
+        prev.qualityPreset === "custom" ? "auto" : (prev.qualityPreset || "auto"),
+        activeModel,
+        specs?.tier
+      );
+      return {
+        ...next,
+        modelFamily: detectModelFamily(activeModel),
+        standardSteps: next.steps,
+      };
+    });
+  }, [activeModel, specs?.tier]);
 
   // Tab contents are kept mounted to preserve loading/generation state when switching tabs
 

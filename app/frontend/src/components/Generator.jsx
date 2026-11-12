@@ -1,9 +1,12 @@
-import React, { memo, useState, useRef, useCallback, useEffect } from "react";
-import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus } from "lucide-react";
+import React, { memo, useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus, ChevronRight } from "lucide-react";
 import ReferenceManager from "./ReferenceManager";
+import QualityPanel from "./QualityPanel";
 import { 
   generateImage, 
   planImageSteps,
+  resolveImagePlan,
+  applyQualityPreset,
   startServer, 
   stopServer, 
   waitForServerReady, 
@@ -241,6 +244,25 @@ function Generator({
   }, [normalizedReferenceSettings]);
 
   const activeReferences = referenceImages.filter((item) => item.enabled);
+
+  // The numbers this prompt will really be generated with.
+  //
+  // One plan, computed from the same shared module the server publishes
+  // recommendations from, used by the quality panel (to show them) and by
+  // api.js's generateImage (to send them). A value on screen that the request
+  // does not carry is how the workspace lost its settings to a backend endpoint
+  // that ignored them; this is the structural fix for that class of bug.
+  const imagePlan = useMemo(
+    () => resolveImagePlan(
+      { ...constraints, negativePromptDefault: "" },
+      activeModel
+    ),
+    [constraints, activeModel]
+  );
+
+  const handleApplyPreset = useCallback((preset) => {
+    setConstraints((prev) => applyQualityPreset(prev, preset, activeModel, specs?.tier));
+  }, [setConstraints, activeModel, specs]);
 
   const referencePayload = activeReferences.map((item) => ({
     id: item.id,
@@ -956,10 +978,10 @@ function Generator({
               <div className="m3-text-field">
                 <label className="m3-text-field-label">Image Prompt</label>
                 <textarea
-                  className="m3-textarea"
+                  className="m3-textarea generator-prompt"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Enter a descriptive prompt (e.g. 'A futuristic city in cyberpunk aesthetic, high details, cinematic lighting')..."
+                  placeholder="Describe the image — subject, setting, light, style. e.g. 'a market stall at dawn, steamed noodles, warm rim light, 35mm, shallow depth of field'"
                   disabled={isGenerating}
                 />
               </div>
@@ -1002,110 +1024,140 @@ function Generator({
                 Auto-translate Thai prompt to English before Generate
               </label>
 
-              {constraints.backendType !== "apple-npu" && constraints.backendType !== "openvino-npu" && (
-                <div className="m3-text-field">
-                  <label className="m3-text-field-label">Base Image (Optional)</label>
-                  {baseImage ? (
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "12px", background: "var(--md-sys-color-surface-variant)", borderRadius: "var(--md-shape-corner-medium)", border: "1px solid var(--md-sys-color-outline-variant)" }}>
-                      <img src={baseImage} alt="Base" style={{ width: "64px", height: "64px", objectFit: "cover", borderRadius: "8px", flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>Base image ready</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)" }}>
-                          The AI will redraw this image guided by your prompt.
-                        </div>
-                      </div>
-                      <button type="button" className="m3-btn m3-btn-error" style={{ height: "34px", flexShrink: 0 }} onClick={handleClearBaseImage} disabled={isGenerating}>
-                        <Trash2 size={14} />
-                        <span>Remove</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="import-box" style={{ margin: 0, padding: "16px", cursor: isGenerating ? "not-allowed" : "pointer" }}>
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        style={{ display: "none" }}
-                        onChange={handleBaseImageSelect}
-                        disabled={isGenerating}
-                      />
-                      <ImagePlus className="import-icon" />
-                      <span style={{ fontWeight: 600 }}>Upload a base image</span>
-                      <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)", textAlign: "center" }}>
-                        Optional. Generate a new image based on one of your own.
-                      </span>
-                    </label>
-                  )}
-
-                  {baseImage && (
-                    <div style={{ marginTop: "12px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: "4px" }}>
-                        <span>Transformation strength</span>
-                        <span>{constraints.denoisingStrength.toFixed(2)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="1"
-                        step="0.05"
-                        value={constraints.denoisingStrength}
-                        onChange={(e) => setConstraints((prev) => ({ ...prev, denoisingStrength: parseFloat(e.target.value) }))}
-                        disabled={isGenerating}
-                        style={{ width: "100%" }}
-                      />
-                      <div style={{ fontSize: "0.72rem", color: "var(--md-sys-color-outline)", marginTop: "2px" }}>
-                        Lower = closer to your image; higher = more creative freedom. 0.7 is a good start.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="reference-generation-note">
-                <strong>Reference guidance active:</strong> {buildReferenceStatusText()}
-                <span> Single Face / Appearance Lock mode is active. Pin the clearest face photo as Primary for closest likeness.</span>
-              </div>
-
-              <ReferenceManager
-                referenceImages={referenceImages}
-                setReferenceImages={setReferenceImages}
-                referenceSettings={normalizedReferenceSettings}
-                setReferenceSettings={setReferenceSettings}
-                onUseAsBase={handleUseReferenceAsBase}
+              {/* ── The simple face ──────────────────────────────────────
+                  Prompt, one quality choice, and the honest numbers. Everything
+                  else — base image, references, backends, seed, memory flags —
+                  lives in the details section below, which most images never
+                  need to open. */}
+              <QualityPanel
+                plan={imagePlan}
+                constraints={constraints}
+                setConstraints={setConstraints}
+                activeModel={activeModel}
+                specs={specs}
+                negativePrompt={negativePrompt}
+                setNegativePrompt={setNegativePrompt}
+                onPreset={handleApplyPreset}
                 disabled={isGenerating}
+                tier={specs?.tier}
               />
 
-              {/* Configuration Status Chips (Material 3 style) */}
-              <div className="m3-text-field">
-                <label className="m3-text-field-label">Active Image Constraints</label>
-                <div className="chips-container">
-                  <div className="status-chip">
-                    <Sliders size={14} />
-                    <span>Resolution: {constraints.width}x{constraints.height}</span>
+              <details className="generator-advanced">
+                <summary>
+                  <ChevronRight size={14} />
+                  <span>References, base image, seed and engine</span>
+                </summary>
+                <div className="generator-advanced-body">
+                  {constraints.backendType !== "apple-npu" && constraints.backendType !== "openvino-npu" && (
+                    <div className="m3-text-field">
+                      <label className="m3-text-field-label">Base Image (Optional)</label>
+                      {baseImage ? (
+                        <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "12px", background: "var(--md-sys-color-surface-variant)", borderRadius: "var(--md-shape-corner-medium)", border: "1px solid var(--md-sys-color-outline-variant)" }}>
+                          <img src={baseImage} alt="Base" style={{ width: "64px", height: "64px", objectFit: "cover", borderRadius: "8px", flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>Base image ready</div>
+                            <div style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)" }}>
+                              The AI will redraw this image guided by your prompt.
+                            </div>
+                          </div>
+                          <button type="button" className="m3-btn m3-btn-error" style={{ height: "34px", flexShrink: 0 }} onClick={handleClearBaseImage} disabled={isGenerating}>
+                            <Trash2 size={14} />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="import-box" style={{ margin: 0, padding: "16px", cursor: isGenerating ? "not-allowed" : "pointer" }}>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            style={{ display: "none" }}
+                            onChange={handleBaseImageSelect}
+                            disabled={isGenerating}
+                          />
+                          <ImagePlus className="import-icon" />
+                          <span style={{ fontWeight: 600 }}>Upload a base image</span>
+                          <span style={{ fontSize: "0.75rem", color: "var(--md-sys-color-outline)", textAlign: "center" }}>
+                            Optional. Generate a new image based on one of your own.
+                          </span>
+                        </label>
+                      )}
+
+                      {baseImage && (
+                        <div style={{ marginTop: "12px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: "4px" }}>
+                            <span>Transformation strength</span>
+                            <span>{constraints.denoisingStrength.toFixed(2)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1"
+                            step="0.05"
+                            value={constraints.denoisingStrength}
+                            onChange={(e) => setConstraints((prev) => ({ ...prev, denoisingStrength: parseFloat(e.target.value) }))}
+                            disabled={isGenerating}
+                            style={{ width: "100%" }}
+                          />
+                          <div style={{ fontSize: "0.72rem", color: "var(--md-sys-color-outline)", marginTop: "2px" }}>
+                            Lower = closer to your image; higher = more creative freedom. 0.7 is a good start.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="reference-generation-note">
+                    <strong>Reference guidance active:</strong> {buildReferenceStatusText()}
+                    <span> Single Face / Appearance Lock mode is active. Pin the clearest face photo as Primary for closest likeness.</span>
                   </div>
-                  <div className="status-chip">
-                    <RefreshCw size={14} />
-                    <span>Steps: {constraints.steps}</span>
-                  </div>
-                  <div className="status-chip">
-                    <Sparkles size={14} />
-                    <span>Sampler: {constraints.sampler}</span>
-                  </div>
-                  <div className="status-chip">
-                    <span>Seed: {constraints.seed === -1 ? "Random" : constraints.seed}</span>
+
+                  <ReferenceManager
+                    referenceImages={referenceImages}
+                    setReferenceImages={setReferenceImages}
+                    referenceSettings={normalizedReferenceSettings}
+                    setReferenceSettings={setReferenceSettings}
+                    onUseAsBase={handleUseReferenceAsBase}
+                    disabled={isGenerating}
+                  />
+
+                  {/* Seed + engine. Steps / CFG / sampler now live in the
+                      quality panel, which is where they take effect. */}
+                  <div className="m3-text-field">
+                    <label className="m3-text-field-label">Seed</label>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        type="number"
+                        className="m3-input"
+                        value={constraints.seed}
+                        onChange={(e) => setConstraints((prev) => ({
+                          ...prev,
+                          // 0 is a seed; only an empty box means "pick one".
+                          seed: e.target.value === "" ? -1 : parseInt(e.target.value, 10),
+                        }))}
+                        placeholder="-1 for a random seed"
+                      />
+                      <button
+                        className="m3-btn m3-btn-tonal"
+                        type="button"
+                        onClick={() => setConstraints((prev) => ({ ...prev, seed: -1 }))}
+                      >
+                        Random
+                      </button>
+                      {outputSeed != null && (
+                        <button
+                          className="m3-btn m3-btn-outlined"
+                          type="button"
+                          onClick={() => setConstraints((prev) => ({ ...prev, seed: outputSeed }))}
+                          title="Reproduce the last image bit for bit"
+                        >
+                          Reuse {outputSeed}
+                        </button>
+                      )}
+                    </div>
+                    <span className="quality-field-hint">The same seed, prompt and settings reproduce the same image.</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Manual prompt enhance / Thai-to-English translate */}
-              <button
-                className="m3-btn m3-btn-outlined"
-                style={{ height: "48px", marginTop: "8px" }}
-                onClick={handleEnhancePrompt}
-                disabled={isGenerating || isEnhancing || !prompt.trim()}
-              >
-                <Sparkles size={18} />
-                <span>{isEnhancing ? "Enhancing..." : "Enhance Prompt"}</span>
-              </button>
+              </details>
 
               {/* Generate Trigger Button */}
               <button
