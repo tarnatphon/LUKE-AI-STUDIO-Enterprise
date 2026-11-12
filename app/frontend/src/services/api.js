@@ -496,6 +496,31 @@ export async function getLlmStatus() {
   }
 }
 
+// Where the temporary copy of a model is, and how far a copy in flight has got.
+// The cache is what turns a slow external-disk load into a few seconds, so the
+// card that offers the copy needs to be able to watch it.
+export async function getModelCacheStatus(useInternalDisk = false) {
+  try {
+    const res = await fetch("/api/model-cache/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ useInternalDisk }),
+    });
+    return await readJsonResponse(res, "The local server returned invalid cache status.");
+  } catch (err) {
+    return { ok: false, error: err.message, result: { plans: [], copy: null } };
+  }
+}
+
+export async function primeModelCache(model, { scope = "text", useInternalDisk = true } = {}) {
+  const res = await fetch("/api/model-cache/prime", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, scope, useInternalDisk }),
+  });
+  return await readJsonResponse(res, "The local server returned an invalid answer to the copy request.");
+}
+
 // "How long will loading this take?" answered while the user is still deciding.
 // The backend measures the volume the model will be read from, so the number is
 // the same one the load prints — not an estimate of an estimate.

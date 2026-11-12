@@ -1697,6 +1697,13 @@ function describeLlmLoad() {
 let lastLlmLoadOutlook = null;
 let lastLlmLoadReport = null;
 let llmLoadOutlookPrinted = false;
+// Whether the last load read a cache copy rather than the model's own volume —
+// the difference between "this will be slow every launch" and "this is fast now".
+let lastLlmLoadCached = false;
+// A copy onto the internal disk takes minutes, and the POST that starts it only
+// answers when it is finished. The screen needs a number before that, so the
+// progress lives here and /api/model-cache/status publishes it.
+let cacheCopyJob = null;
 let llmOperationQueue = Promise.resolve();
 let speechReady = false;
 let speechError = null;
@@ -6939,6 +6946,7 @@ async function startLlm(settings = {}) {
 
   const loadStartedAt = Date.now();
   llmLoadOutlookPrinted = false;
+  lastLlmLoadCached = false;
   const failures = [];
   const totalAttempts = sortedCandidates.reduce(
     (sum, candidate) => sum + buildLlmLoadProfiles(settings, candidate).length,
@@ -6973,6 +6981,9 @@ async function startLlm(settings = {}) {
             elapsedMs,
             bytesPerSecond: lastLlmLoadOutlook ? lastLlmLoadOutlook.bytesPerSecond : 0,
             predictedSeconds: lastLlmLoadOutlook ? lastLlmLoadOutlook.estimatedSeconds : null,
+            // Read from the cache copy or from the model's own volume: the card
+            // only offers to cache when this is false.
+            cached: lastLlmLoadCached,
             at: Date.now(),
           };
           // One sentence, used by the terminal and by the screen, so the two
@@ -7072,9 +7083,10 @@ async function startLlmWithBackend(settings = {}, backend) {
       loadPath = plan.cachedPath;
       console.log(`  [llm] Loading ${filename} from the ${plan.onInternalDisk ? "internal disk" : "app"} cache (${plan.sizeGb} GB).`);
     } else if (plan.shouldCache) {
-      console.log(`  [llm] ${filename} is on an external volume — cache it in Settings > Performance to load it faster.`);
+      console.log(`  [llm] ${filename} is on an external volume — the estimate below says what that costs each launch; cache it once from the text model card (or Settings > Performance) to read from the internal disk instead.`);
     }
   } catch (_) {}
+  lastLlmLoadCached = loadPath !== modelPath;
 
   if (!backend) {
     throw new Error("llama.cpp is not installed. Run the platform setup script to install the text backend.");
@@ -30833,6 +30845,9 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
         plan.name = found?.name || path.basename(String(plan.source || ""));
       }
       status.internalCacheAvailable = true;
+      // A copy in flight, with the numbers the button needs: how much of it is
+      // done, and how long the same measurement says it will take.
+      status.copy = cacheCopyJob;
       status.note = "Everything stays on the disk the app runs from unless you switch the temporary cache on.";
       return json(res, 200, { ok: true, result: status });
     } catch (error) {
@@ -30858,8 +30873,62 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
       if (!fs.existsSync(found.path)) {
         return json(res, 400, { ok: false, error: "That model file could not be found." });
       }
-      const result = await modelCache.primeCache(found.path, { useInternalDisk: body.useInternalDisk === true });
-      return json(res, 200, { ok: true, result });
+      if (cacheCopyJob && !cacheCopyJob.done && cacheCopyJob.model === filename) {
+        const percent = cacheCopyJob.totalBytes > 0
+          ? Math.round((cacheCopyJob.copiedBytes / cacheCopyJob.totalBytes) * 100)
+          : 0;
+        return json(res, 409, {
+          ok: false,
+          error: `"${filename}" is already being copied — ${percent}% done. The progress is on the model card.`,
+          copy: cacheCopyJob,
+        });
+      }
+      // The copy reads the same volume at the same speed the load just measured,
+      // so the load's own estimate is the honest answer for "how long will this
+      // take" — and it is already on screen next to the button.
+      let sizeBytes = 0;
+      try {
+        sizeBytes = fs.statSync(found.path).size;
+      } catch (_) {}
+      const speed = loadOutlook.volumeSpeed(found.path);
+      cacheCopyJob = {
+        model: filename,
+        scope: found.kind,
+        startedAt: Date.now(),
+        copiedBytes: 0,
+        totalBytes: sizeBytes,
+        bytesPerSecond: speed ? speed.bytesPerSecond : 0,
+        estimatedSeconds: speed && sizeBytes ? Math.round(sizeBytes / speed.bytesPerSecond) : null,
+        useInternalDisk: body.useInternalDisk === true,
+        done: false,
+        error: "",
+      };
+      const job = cacheCopyJob;
+      try {
+        const result = await modelCache.primeCache(found.path, {
+          useInternalDisk: body.useInternalDisk === true,
+          onProgress: (progress) => {
+            const copied = Number(progress?.copiedBytes) || 0;
+            if (copied > cacheCopyJob.copiedBytes) cacheCopyJob.copiedBytes = copied;
+          },
+        });
+        cacheCopyJob = {
+          ...job,
+          copiedBytes: job.totalBytes,
+          done: true,
+          finishedAt: Date.now(),
+          cachedPath: result?.path || "",
+        };
+        return json(res, 200, { ok: true, result, copy: cacheCopyJob });
+      } catch (error) {
+        cacheCopyJob = {
+          ...job,
+          done: true,
+          finishedAt: Date.now(),
+          error: error.message || String(error),
+        };
+        throw error;
+      }
     } catch (error) {
       return json(res, error.statusCode || 500, { ok: false, error: error.message || String(error) });
     }
