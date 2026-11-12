@@ -110,6 +110,7 @@ const {
   payloadTokens,
 } = require("./context-compaction.cjs");
 const {
+  LADDER: CONTEXT_LADDER,
   parseKvSelfSizeMib,
   planContextSize,
   readKvProfile,
@@ -6904,6 +6905,20 @@ function buildLlmLoadProfiles(settings = {}, backend = {}) {
   return profiles;
 }
 
+// One rule for "does this backend run the model on the GPU", used by the load
+// and by the context-plan endpoint, so the two can never disagree about which
+// mode they planned for.
+function backendRunsOnGpu(backend) {
+  const mode = String(backend?.mode || "");
+  return (
+    mode.includes("GPU") ||
+    mode.includes("CUDA") ||
+    mode.includes("Vulkan") ||
+    mode.includes("Metal") ||
+    mode.startsWith("Auto")
+  );
+}
+
 async function startLlm(settings = {}) {
   const filename = path.basename(String(settings.model || ""));
   const modelPath = path.join(LLM_MODELS, filename);
@@ -7106,7 +7121,7 @@ async function startLlmWithBackend(settings = {}, backend) {
 
   const loadProfile = settings.__loadProfile || {};
   let contextSize = Number(loadProfile.contextSize ?? settings.contextSize);
-  const isGpu = backend.mode.includes("GPU") || backend.mode.includes("CUDA") || backend.mode.includes("Vulkan") || backend.mode.includes("Metal") || backend.mode.startsWith("Auto");
+  const isGpu = backendRunsOnGpu(backend);
   if (!contextSize || contextSize <= 0) {
     contextSize = chooseAutoContext(filename, isGpu);
   } else {
@@ -27714,6 +27729,47 @@ const handleRequest = async (req, res) => {
       });
     } catch (error) {
       return json(res, 404, { ok: false, error: `That model cannot be measured: ${error.message}` });
+    }
+  }
+
+  // "Auto" is a number the app chose, so it has to be a number the app can show.
+  // The same arithmetic the load uses decides the answer, and the next rung of
+  // the ladder is included with its price so the trade can be read instead of
+  // guessed at.
+  if (req.url.startsWith("/api/llm/context-plan") && req.method === "GET") {
+    const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const filename = path.basename(String(parsed.searchParams.get("model") || llmSettings.model || "").trim());
+    if (!filename) return json(res, 400, { ok: false, error: "model is required" });
+    try {
+      const backend = getLlmBackend();
+      const isGpu = backendRunsOnGpu(backend);
+      const { plan, residentNote } = evaluateContextPlan(filename, isGpu);
+      const index = CONTEXT_LADDER.indexOf(plan.contextSize);
+      const nextTokens = index > 0 ? CONTEXT_LADDER[index - 1] : 0;
+      const next = nextTokens
+        ? {
+            tokens: nextTokens,
+            kvGb: Number(((plan.kvGbPer4096 * nextTokens) / 4096).toFixed(2)),
+            fits: (plan.kvGbPer4096 * nextTokens) / 4096 <= plan.kvBudgetGb,
+            // How far over the KV budget the bigger window goes, so the card can
+            // say by how much rather than just "no".
+            overByGb: Number(Math.max(0, (plan.kvGbPer4096 * nextTokens) / 4096 - plan.kvBudgetGb).toFixed(2)),
+          }
+        : null;
+      const savedContextSize = Number(llmSettings.__loadProfile?.contextSize ?? llmSettings.contextSize) || 0;
+      return json(res, 200, {
+        ok: true,
+        model: filename,
+        isGpu,
+        automatic: plan.contextSize,
+        savedContextSize,
+        effective: savedContextSize > 0 ? Math.max(512, Math.min(LLM_CONTEXT_CEILING, savedContextSize)) : plan.contextSize,
+        plan,
+        next,
+        residentNote,
+      });
+    } catch (error) {
+      return json(res, 404, { ok: false, error: `That model cannot be planned: ${error.message}` });
     }
   }
 

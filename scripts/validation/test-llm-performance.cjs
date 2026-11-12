@@ -252,6 +252,25 @@ async function main() {
       planResponse.data?.isGpuMode === true
     );
 
+    // The Context Size slider says 0 means "the app decides". This is where the
+    // decision is asked for, before a model is loaded rather than after.
+    const contextPlan = await call("/api/llm/context-plan?model=no-such-model.gguf", null, "GET");
+    check("the context plan answers for a model", contextPlan.status === 200 && contextPlan.data?.ok === true, `status ${contextPlan.status} ${String(contextPlan.data?.error || "").slice(0, 120)}`);
+    check(
+      "it names the automatic size and the pool it came from",
+      [16384, 12288, 8192, 4096, 2048].includes(contextPlan.data?.automatic) && Number(contextPlan.data?.plan?.poolGb) > 0,
+      `automatic ${contextPlan.data?.automatic}, pool ${contextPlan.data?.plan?.poolGb}`
+    );
+    check(
+      "and prices the next step up, so a bigger window is a choice and not a guess",
+      !contextPlan.data?.next || (
+        Number(contextPlan.data.next.tokens) > Number(contextPlan.data.automatic)
+        && typeof contextPlan.data.next.fits === "boolean"
+        && Number(contextPlan.data.next.kvGb) > 0
+      )
+    );
+    check("it says whether the pool was planned for a GPU", typeof contextPlan.data?.isGpu === "boolean");
+
     const noModel = await call("/api/llm/measure", {});
     check("measuring without a loaded model is refused, not crashed", noModel.status === 409, `status ${noModel.status} ${String(noModel.data?.error || "").slice(0, 160)}`);
 

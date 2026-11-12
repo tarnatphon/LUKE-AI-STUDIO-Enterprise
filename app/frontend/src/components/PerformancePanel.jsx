@@ -64,6 +64,9 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
   const [useInternalDisk, setUseInternalDisk] = useState(false);
+  // What the Context Size slider above means when it says 0: the number the
+  // app picks, the memory it has to work with, and the price of the next step.
+  const [contextPlan, setContextPlan] = useState(null);
 
   // A download started from this panel is followed here, not only in Text
   // Models: the card that offered the button is the card that reports it.
@@ -97,6 +100,13 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       const planData = await planResponse.json();
       if (planResponse.ok) setPlan(planData);
     } catch {}
+    try {
+      const contextResponse = await fetch("/api/llm/context-plan");
+      const contextData = await contextResponse.json();
+      setContextPlan(contextResponse.ok ? contextData : null);
+    } catch {
+      setContextPlan(null);
+    }
     try {
       const statusResponse = await fetch("/api/llm/status");
       const statusData = await statusResponse.json();
@@ -235,6 +245,34 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     return bits ? `${bits}, running on ${target}` : `this machine, running on ${target}`;
   })();
 
+  const contextLine = (() => {
+    if (!contextPlan?.plan) return "";
+    const { plan, automatic, savedContextSize, next } = contextPlan;
+    const model = contextPlan.model || "";
+    const kvSource = plan.usedLearnedKv
+      ? "measured from llama.cpp"
+      : "an estimate until the model has run once";
+    const head = savedContextSize > 0
+      ? `Saved: ${contextPlan.effective} tokens${model ? ` for ${model}` : ""}. Automatic would use ${automatic}.`
+      : `Automatic: ${automatic} tokens${model ? ` for ${model}` : ""}.`;
+    const budget = `The model budget is ${plan.poolGb} GB, ${plan.freeGb} GB is free after the model and the GPU buffer, and ${plan.kvBudgetGb} GB of that is set aside for the KV cache at ${plan.kvGbPer4096} GB per 4096 tokens (${kvSource}).`;
+    const nextNote = !next
+      ? ""
+      : next.fits
+        ? ` The next step up, ${next.tokens}, also fits: it needs ${next.kvGb} GB of KV cache.`
+        : ` ${next.tokens} tokens would need ${next.kvGb} GB of KV cache — ${next.overByGb} GB more than that — so the app stops at ${automatic}. Drag the slider to take the larger window anyway.`;
+    const manual = savedContextSize > automatic
+      ? " A window larger than the budget is the reason macOS compresses memory for this model."
+      : "";
+    // The slider can hold an edit that has not been saved; the line describes
+    // what the load will do, so it has to say which is which.
+    const pendingContext = Number(pendingTextSettings?.contextSize) || 0;
+    const pendingNote = pendingContext === savedContextSize
+      ? ""
+      : ` The slider above shows ${pendingContext > 0 ? pendingContext : "automatic"}, which is not saved yet.`;
+    return `${head} ${budget}${nextNote}${manual}${pendingNote}`;
+  })();
+
   const measure = async () => {
     setBusy("measure");
     try {
@@ -323,6 +361,15 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         <Gauge size={15} />
         <strong>Performance &amp; model cache</strong>
       </div>
+
+      {contextPlan?.plan && (
+        <>
+          <div style={{ ...headingStyle, marginTop: 12 }}>
+            <strong>Context window (the slider above)</strong>
+          </div>
+          <span style={descStyle}>{contextLine}</span>
+        </>
+      )}
 
       <span style={descStyle}>
         {measured?.tokensPerSecond
