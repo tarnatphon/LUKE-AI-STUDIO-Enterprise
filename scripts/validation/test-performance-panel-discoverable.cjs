@@ -108,7 +108,7 @@ check(
   /gpuModeSource: requested === null \? "detected" : "requested"/.test(serve),
   "and reports who decided, so a CPU-only machine is not described as a GPU one"
 );
-check(/runtimeTunedNote: \{/.test(app),
+check(/runtimeTunedNote: buildNote\(/.test(app),
   "the tune writes down what it applied, to which machine, and why");
 check(/const keepThreads = currentThreads > 0 && currentThreads !== defaultThreads;/.test(app),
   "a thread count that is not the default is the user's, and is kept");
@@ -120,5 +120,24 @@ check(/Nothing is re-applied after this/.test(panel),
   "and that nothing will overwrite them again");
 check(/updateTextSetting\("runtimeTunedNote"/.test(panel),
   "pressing the button updates the explanation with the values, instead of leaving a stale one");
+
+// #142 shipped a note that only a *new* install could ever read: a profile that
+// was tuned before it existed kept `runtimeTuned: true` and got nothing.
+check(/if \(prev\.runtimeTuned\) \{/.test(app) && /if \(prev\.runtimeTunedNote\) return prev;/.test(app),
+  "an install tuned before the note existed gets one now, without re-applying anything");
+check(/backfilled: true/.test(app), "marked as recorded now rather than applied now");
+check(/Already in place from an earlier tune/.test(panel),
+  "and the card says which it was, instead of claiming a first launch that already happened");
+check(/const buildNote = \(\{ threads, keptThreads, batchSize, ubatchSize, backfilled \}\) => \(\{/.test(app),
+  "one note shape for both paths, so they cannot drift apart");
+
+// A tune is planned for one backend. If the machine starts running models
+// somewhere else, those numbers are someone else's.
+check(/const tunedModeMismatch = Boolean\(tunedNote\)/.test(panel) && /tunedNote\.gpuMode !== plan\.isGpuMode/.test(panel),
+  "the card compares the backend the values were planned for with the one in use");
+check(/Those values were planned for \{tunedNote\.gpuMode \? "the GPU" : "the CPU"\}/.test(panel),
+  "and says which, when they no longer match");
+check(/Press the button above to plan them again for the current backend\./.test(panel),
+  "with the one action that fixes it");
 
 console.log(`\nPASS: ${checks} checks — the advice points at a place that exists, and the app can take you there.`);

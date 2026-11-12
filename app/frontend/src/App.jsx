@@ -875,8 +875,43 @@ function App() {
           const recommended = tuneData?.recommended;
           if (tuneResponse.ok && recommended) {
             const defaultThreads = Number(hardware.cpu_cores_physical) || 4;
+            // One note shape for both paths: the values that are in force, the
+            // machine they were chosen for, and the sentence behind each. An
+            // install that was tuned before the note existed gets the same
+            // explanation, marked as recorded now rather than applied now.
+            const buildNote = ({ threads, keptThreads, batchSize, ubatchSize, backfilled }) => ({
+              threads,
+              keptThreads,
+              batchSize,
+              ubatchSize,
+              reasonThreads: String(recommended.reason?.threads || ""),
+              reasonBatch: String(recommended.reason?.batchSize || ""),
+              gpuMode: tuneData.isGpuMode !== false,
+              gpuModeSource: String(tuneData.gpuModeSource || ""),
+              cpu: String(tuneData.hardware?.cpu || ""),
+              gpu: String(tuneData.hardware?.gpu || ""),
+              cores: Number(tuneData.hardware?.coresPhysical) || defaultThreads,
+              ramGb: Number(tuneData.hardware?.ramGb) || 0,
+              backfilled: backfilled === true,
+              at: new Date().toISOString(),
+            });
             setTextSettings((prev) => {
-              if (prev.runtimeTuned) return prev;
+              if (prev.runtimeTuned) {
+                // Tuned by an older build that wrote nothing down: describe the
+                // values that are already in force instead of leaving the card
+                // silent about numbers the app chose itself.
+                if (prev.runtimeTunedNote) return prev;
+                return {
+                  ...prev,
+                  runtimeTunedNote: buildNote({
+                    threads: Number(prev.threads) || recommended.threads,
+                    keptThreads: false,
+                    batchSize: Number(prev.batchSize) || recommended.batchSize,
+                    ubatchSize: Number(prev.ubatchSize) || recommended.ubatchSize,
+                    backfilled: true,
+                  }),
+                };
+              }
               const currentThreads = Number(prev.threads) || 0;
               // A thread count that is not the default one is the user's own
               // choice, and a tune must not overwrite it on first launch.
@@ -887,21 +922,13 @@ function App() {
                 batchSize: recommended.batchSize,
                 ubatchSize: recommended.ubatchSize,
                 runtimeTuned: true,
-                runtimeTunedNote: {
+                runtimeTunedNote: buildNote({
                   threads: keepThreads ? currentThreads : recommended.threads,
                   keptThreads: keepThreads,
                   batchSize: recommended.batchSize,
                   ubatchSize: recommended.ubatchSize,
-                  reasonThreads: String(recommended.reason?.threads || ""),
-                  reasonBatch: String(recommended.reason?.batchSize || ""),
-                  gpuMode: tuneData.isGpuMode !== false,
-                  gpuModeSource: String(tuneData.gpuModeSource || ""),
-                  cpu: String(tuneData.hardware?.cpu || ""),
-                  gpu: String(tuneData.hardware?.gpu || ""),
-                  cores: Number(tuneData.hardware?.coresPhysical) || defaultThreads,
-                  ramGb: Number(tuneData.hardware?.ramGb) || 0,
-                  at: new Date().toISOString(),
-                },
+                  backfilled: false,
+                }),
               };
             });
           }

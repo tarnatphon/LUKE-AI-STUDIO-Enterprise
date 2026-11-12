@@ -241,6 +241,15 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   // did it to. Without this the values simply appeared, and an overridden
   // thread count looked like a setting that had never been touched.
   const tunedNote = pendingTextSettings?.runtimeTunedNote || null;
+  // The tune records the backend it was planned for. If the machine now runs
+  // models somewhere else (Metal stopped validating, a GPU was installed, the
+  // user switched backend), those numbers are someone else's: say so instead of
+  // presenting a stale decision as the current one.
+  const tunedModeMismatch = Boolean(tunedNote)
+    && Boolean(plan)
+    && typeof plan.isGpuMode === "boolean"
+    && typeof tunedNote.gpuMode === "boolean"
+    && tunedNote.gpuMode !== plan.isGpuMode;
   const tunedMachine = (() => {
     if (!tunedNote) return "";
     const bits = [
@@ -434,10 +443,16 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       )}
       {tunedNote && (
         <span style={descStyle}>
-          {`${tunedNote.appliedByUser ? "Applied from this card" : "Applied for you on first launch"}: ${tunedNote.keptThreads ? `threads left at your ${tunedNote.threads}` : `${tunedNote.threads} threads`}, batch ${tunedNote.batchSize}, ubatch ${tunedNote.ubatchSize}.`}
+          {`${tunedNote.appliedByUser ? "Applied from this card" : tunedNote.backfilled ? "Already in place from an earlier tune" : "Applied for you on first launch"}: ${tunedNote.keptThreads ? `threads left at your ${tunedNote.threads}` : `${tunedNote.threads} threads`}, batch ${tunedNote.batchSize}, ubatch ${tunedNote.ubatchSize}.`}
           {tunedMachine ? ` Chosen for ${tunedMachine}.` : ""}
           {` Why: ${tunedNote.reasonThreads}${tunedNote.reasonBatch ? ` — and batch ${tunedNote.batchSize} because ${tunedNote.reasonBatch}` : ""}.`}
           {tunedNote.appliedByUser ? "" : " Nothing is re-applied after this; the button above changes the values only when you press it."}
+        </span>
+      )}
+      {tunedModeMismatch && (
+        <span style={{ ...descStyle, color: "var(--md-sys-color-error)" }}>
+          Those values were planned for {tunedNote.gpuMode ? "the GPU" : "the CPU"}, and this machine now runs models on{" "}
+          {plan.isGpuMode ? "the GPU" : "the CPU"}. Press the button above to plan them again for the current backend.
         </span>
       )}
 
