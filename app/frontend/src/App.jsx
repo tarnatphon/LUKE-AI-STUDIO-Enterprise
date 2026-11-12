@@ -859,23 +859,51 @@ function App() {
           threads: prev.threads || hardware.cpu_cores_physical || 4
         }));
         // One-time runtime tune. The server knows the machine it is running
-        // on, so it picks thread and batch counts instead of leaving them at
-        // "one thread per core", which is wrong once the GPU runs the model.
+        // on — and which backend it will actually use — so it picks thread and
+        // batch counts instead of leaving them at "one thread per core", which
+        // is wrong once the GPU runs the model. What was applied is written
+        // down in `runtimeTunedNote`: the Performance card prints it, so the
+        // values appear with a reason instead of silently replacing whatever
+        // was there.
         try {
           const tuneResponse = await fetch("/api/llm/performance-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isGpuMode: true }),
+            body: JSON.stringify({}),
           });
           const tuneData = await tuneResponse.json();
-          if (tuneResponse.ok && tuneData?.recommended) {
-            setTextSettings((prev) => (prev.runtimeTuned ? prev : {
-              ...prev,
-              threads: tuneData.recommended.threads,
-              batchSize: tuneData.recommended.batchSize,
-              ubatchSize: tuneData.recommended.ubatchSize,
-              runtimeTuned: true,
-            }));
+          const recommended = tuneData?.recommended;
+          if (tuneResponse.ok && recommended) {
+            const defaultThreads = Number(hardware.cpu_cores_physical) || 4;
+            setTextSettings((prev) => {
+              if (prev.runtimeTuned) return prev;
+              const currentThreads = Number(prev.threads) || 0;
+              // A thread count that is not the default one is the user's own
+              // choice, and a tune must not overwrite it on first launch.
+              const keepThreads = currentThreads > 0 && currentThreads !== defaultThreads;
+              return {
+                ...prev,
+                threads: keepThreads ? currentThreads : recommended.threads,
+                batchSize: recommended.batchSize,
+                ubatchSize: recommended.ubatchSize,
+                runtimeTuned: true,
+                runtimeTunedNote: {
+                  threads: keepThreads ? currentThreads : recommended.threads,
+                  keptThreads: keepThreads,
+                  batchSize: recommended.batchSize,
+                  ubatchSize: recommended.ubatchSize,
+                  reasonThreads: String(recommended.reason?.threads || ""),
+                  reasonBatch: String(recommended.reason?.batchSize || ""),
+                  gpuMode: tuneData.isGpuMode !== false,
+                  gpuModeSource: String(tuneData.gpuModeSource || ""),
+                  cpu: String(tuneData.hardware?.cpu || ""),
+                  gpu: String(tuneData.hardware?.gpu || ""),
+                  cores: Number(tuneData.hardware?.coresPhysical) || defaultThreads,
+                  ramGb: Number(tuneData.hardware?.ramGb) || 0,
+                  at: new Date().toISOString(),
+                },
+              };
+            });
           }
         } catch (_) {}
       } catch (err) {

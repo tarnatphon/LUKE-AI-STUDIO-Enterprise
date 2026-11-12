@@ -86,10 +86,13 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       if (response.ok) setCache(data.result || null);
     } catch {}
     try {
+      // No `isGpuMode` guess: the server decides from the backend it will
+      // actually run, so the numbers on this card are the numbers the machine
+      // uses — and the numbers the first launch applied.
       const planResponse = await fetch("/api/llm/performance-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isGpuMode: true }),
+        body: JSON.stringify({}),
       });
       const planData = await planResponse.json();
       if (planResponse.ok) setPlan(planData);
@@ -215,6 +218,23 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     return () => clearInterval(timer);
   }, [backgroundModel?.download?.active, loadBackgroundModel]);
 
+  // What the one-time tune did on first launch, in the words of the machine it
+  // did it to. Without this the values simply appeared, and an overridden
+  // thread count looked like a setting that had never been touched.
+  const tunedNote = pendingTextSettings?.runtimeTunedNote || null;
+  const tunedMachine = (() => {
+    if (!tunedNote) return "";
+    const bits = [
+      tunedNote.cpu,
+      tunedNote.cores ? `${tunedNote.cores} cores` : "",
+      tunedNote.ramGb ? `${Math.round(tunedNote.ramGb)} GB` : "",
+    ].filter(Boolean).join(", ");
+    const target = tunedNote.gpuMode
+      ? `the GPU${tunedNote.gpu ? ` (${tunedNote.gpu})` : ""}`
+      : "the CPU";
+    return bits ? `${bits}, running on ${target}` : `this machine, running on ${target}`;
+  })();
+
   const measure = async () => {
     setBusy("measure");
     try {
@@ -239,6 +259,18 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     updateTextSetting("threads", recommended.threads);
     updateTextSetting("batchSize", recommended.batchSize);
     updateTextSetting("ubatchSize", recommended.ubatchSize);
+    // The note that explains the values has to follow them, or it describes a
+    // tune that is no longer the one running.
+    updateTextSetting("runtimeTunedNote", {
+      ...(tunedNote || {}),
+      threads: recommended.threads,
+      keptThreads: false,
+      batchSize: recommended.batchSize,
+      ubatchSize: recommended.ubatchSize,
+      reasonThreads: String(recommended.reason?.threads || ""),
+      reasonBatch: String(recommended.reason?.batchSize || ""),
+      appliedByUser: true,
+    });
     if (typeof onApply === "function") onApply();
   };
 
@@ -315,6 +347,14 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       {recommended && (
         <span style={descStyle}>
           Tuned for this machine: {recommended.reason.threads}, and batch {recommended.batchSize} because {recommended.reason.batchSize}.
+        </span>
+      )}
+      {tunedNote && (
+        <span style={descStyle}>
+          {`${tunedNote.appliedByUser ? "Applied from this card" : "Applied for you on first launch"}: ${tunedNote.keptThreads ? `threads left at your ${tunedNote.threads}` : `${tunedNote.threads} threads`}, batch ${tunedNote.batchSize}, ubatch ${tunedNote.ubatchSize}.`}
+          {tunedMachine ? ` Chosen for ${tunedMachine}.` : ""}
+          {` Why: ${tunedNote.reasonThreads}${tunedNote.reasonBatch ? ` — and batch ${tunedNote.batchSize} because ${tunedNote.reasonBatch}` : ""}.`}
+          {tunedNote.appliedByUser ? "" : " Nothing is re-applied after this; the button above changes the values only when you press it."}
         </span>
       )}
 
