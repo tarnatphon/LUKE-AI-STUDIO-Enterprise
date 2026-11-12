@@ -1,5 +1,6 @@
 import React, { memo, useMemo, useState } from "react";
-import { Sparkles, Sliders, ChevronDown, Cpu, Wand2, Info } from "lucide-react";
+import { Sparkles, Sliders, ChevronDown, Cpu, Wand2, Info, Type } from "lucide-react";
+import { describePromptLength } from "../../../../scripts/server/image-prompt-budget.cjs";
 import "../components/Generator.css";
 
 /**
@@ -74,6 +75,7 @@ function QualityPanel({
   specs,
   negativePrompt,
   setNegativePrompt,
+  prompt = "",
   onPreset,
   disabled = false,
   tier,
@@ -95,6 +97,15 @@ function QualityPanel({
   };
 
   const currentPreset = constraints?.qualityPreset === "custom" ? null : (constraints?.qualityPreset || "auto");
+
+  // The prompt's length against what the model can attend to. This is the least
+  // visible quality lever there is: past one CLIP chunk the tail is split into a
+  // second chunk and attended separately, so it is not ignored — it is heard
+  // more quietly, which reads exactly like being ignored.
+  const promptLength = useMemo(
+    () => (String(prompt || "").trim() ? describePromptLength(prompt, plan.family) : null),
+    [prompt, plan.family]
+  );
   const effectivePreset = plan.preset;
 
   const chips = useMemo(() => {
@@ -177,6 +188,50 @@ function QualityPanel({
           </span>
         )}
       </div>
+
+      {/* Shape. A hosted model reads "wide shot" out of the sentence; a
+          diffusion model cannot, so the canvas has to be a control. */}
+      <div className="quality-shapes" role="group" aria-label="Image shape">
+        {(plan.shapes || []).map((shape) => {
+          const active = plan.aspect === shape.id;
+          const ratio = shape.units[0] / shape.units[1];
+          // A proportional glyph, so the row reads before it is read.
+          const boxW = ratio >= 1 ? 16 : Math.round(16 * ratio);
+          const boxH = ratio >= 1 ? Math.round(16 / ratio) : 16;
+          return (
+            <button
+              key={shape.id}
+              type="button"
+              className={`quality-shape ${active ? "active" : ""}`}
+              onClick={() => update("aspect", shape.id)}
+              disabled={disabled}
+              aria-pressed={active}
+              title={`${shape.label} — ${shape.units[0]}:${shape.units[1]}`}
+            >
+              <span className="quality-shape-glyph" aria-hidden="true">
+                <span style={{ width: `${boxW}px`, height: `${boxH}px` }} />
+              </span>
+              <span className="quality-shape-label">{shape.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* The prompt's length against what the model can attend to. This is the
+          least visible quality lever there is: past one CLIP chunk the tail of
+          the prompt is split into a second chunk and attended separately, so it
+          is not ignored — it is heard more quietly, which reads as being ignored. */}
+      {promptLength && (
+        <div
+          className={`quality-prompt-length quality-prompt-${promptLength.status}`}
+          title={promptLength.hint}
+        >
+          <Type size={12} />
+          <span>
+            {promptLength.words} words · {promptLength.hint}
+          </span>
+        </div>
+      )}
 
       {open && (
         <div className="quality-details">

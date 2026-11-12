@@ -886,3 +886,101 @@
   flex-direction: column;
   gap: 14px;
 }
+
+/* ── Shape row ──────────────────────────────────────────────────────────────
+   The canvas is the one thing a prompt cannot ask for. Five shapes, each with a
+   proportional glyph so the row reads before it is read; the active one is
+   stated by weight and border, not colour alone. */
+.quality-shapes {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.quality-shape {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 4px;
+  border-radius: 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.quality-shape:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.quality-shape.active {
+  border-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  color: var(--md-sys-color-primary);
+}
+
+.quality-shape:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quality-shape-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+}
+
+.quality-shape-glyph > span {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.quality-shape-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── Prompt length ──────────────────────────────────────────────────────────
+   Not a warning for its own sake: past one CLIP chunk the prompt is split and
+   its tail attended separately, which reads as being ignored. Say it in words
+   the user can count, and only get loud when it is actually costing them. */
+.quality-prompt-length {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--md-sys-color-outline);
+}
+
+.quality-prompt-length svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.quality-prompt-near {
+  color: var(--md-sys-color-tertiary, #d9a441);
+}
+
+.quality-prompt-over {
+  color: var(--md-sys-color-error);
+}
+
+.quality-prompt-over svg {
+  opacity: 1;
+}

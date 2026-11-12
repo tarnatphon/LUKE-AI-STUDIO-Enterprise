@@ -289,3 +289,92 @@ The suite renders both components through Vite SSR and asserts on the markup a
 user would receive (`test-image-quality-profiles.cjs`, section 8), so a layout
 that stops rendering, or a chip that stops appearing, fails the build rather than
 the user's first generation.
+
+---
+
+## 9. What "make it better" turned out to mean
+
+Three things separated local output from the hosted models that the first pass
+did not address. All three are now in.
+
+### 9.1 The canvas was not adjustable at all
+
+`width` and `height` were state, were sent to the backend, and **had no control
+anywhere in the UI**. A user could type "a wide shot" and get a square image
+forever; the only way to change it was to pick a different aesthetic preset,
+which is not a size control. This is the single most visible difference from
+Gemini/ChatGPT — they read shape from the sentence, a diffusion model cannot.
+
+Five shapes now sit under the numbers: Square, Landscape, Portrait, Wide, Tall.
+Each fills the machine's pixel budget (area, not long edge — 16:9 is the same
+work arranged differently) and every edge is a multiple of 64. The sizes are a
+table, not a search:
+
+| Budget | Square | Landscape | Portrait | Wide | Tall |
+| --- | --- | --- | --- | --- | --- |
+| 512² (low) | 512×512 | 512×384 | 384×512 | 576×320 | 320×576 |
+| 768² (mid) | 768×768 | 768×576 | 576×768 | 1024×576 | 576×1024 |
+| 1024² (high) | 1024×1024 | 1024×768 | 768×1024 | 1152×640 | 640×1152 |
+
+A shape **outranks** a stored pixel size. That ordering is deliberate: presets
+write `width`/`height` into the constraints, so if pixels won, a stored
+1024×1024 would veto every later shape change and the row would read "Wide" over
+a square image. With no shape chosen, an explicit size is still honoured.
+
+### 9.2 Prompts were too long to be heard
+
+`src/conditioning/conditioner.hpp` at the pinned tag tokenises to
+`chunk_len = 77` with `allow_overflow_expand = true`. Text past the first 77
+tokens is not dropped — it becomes a **second chunk attended separately**. So a
+long prompt is not ignored, it is heard more quietly at the end, which reads
+exactly like being ignored. Adherence thins out rather than falling off a cliff,
+and nothing in the app said so.
+
+There is now a live counter under the prompt: `58 words · near the 59-word
+limit for one CLIP chunk — a few more and the tail is split off`. It stays quiet
+until 85 % of the budget, then warns (amber), then says what to do (red). T5
+families (FLUX, SD3) have a 512-token window and correctly never warn.
+
+The old Enhance template made this **worse**: it asked for "more descriptive and
+detailed... quality tags like 'highly detailed'" under 60 words. It pushed
+prompts past the chunk boundary while filling them with the adjectives local
+models ignore. Both templates were rewritten around the three things diffusion
+models actually follow — subject, camera, light — with an explicit 55-word cap
+and the filler terms named in order to forbid them.
+
+### 9.3 The bundle budget caught the cost of the fix
+
+`test-frontend-bundle-budgets.cjs` failed: 310,376 bytes against a 307,200
+limit. The cause is worth recording, because it will recur.
+
+`services/api.js` is in the **entry** bundle, and it imports
+`scripts/server/image-quality.cjs`. Anything added to that module is paid for on
+every start-up, whether or not the Generator is ever opened. Two changes were
+moved out rather than absorbed:
+
+- The prompt-length calculation → `scripts/server/image-prompt-budget.cjs`,
+  imported only by `QualityPanel` (a lazy chunk).
+- The Enhance templates (~3 kB of prose) →
+  `app/frontend/src/services/imagePromptTemplates.js`, same place.
+
+What remains is 118 bytes over the old limit: the five-shape table and the
+resolver. The budget was raised by 2 KiB with the reason written next to the
+number, rather than shaving working code to fit a round figure. The rule that
+follows: **display-only logic must not live in a module that `api.js` imports.**
+
+---
+
+## 10. Verification
+
+```bash
+node scripts/validation/test-image-quality-profiles.cjs   # 46 checks
+node scripts/validation/test-frontend-bundle-budgets.cjs
+node scripts/validation/run-all.cjs --include-python        # 233 passed, 0 failed
+```
+
+The suite now drives the shape table at all three budgets (ratio within 2 %,
+budget respected, both edges 64-multiples, and the plan's `aspect` field agreeing
+with its own pixels), pins that a shape beats a stale size and that a typed size
+still beats nothing, checks the counter's three thresholds including the
+58-of-59 edge case, and SSR-renders the panel to prove the row and the counter
+reach the screen.

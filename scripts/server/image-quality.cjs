@@ -274,6 +274,53 @@ function hardwareImageProfile({ tier = "low", vramGb = 0 } = {}) {
   };
 }
 
+// ── Shape ───────────────────────────────────────────────────────────────────
+// A hosted model reads shape from the sentence; a diffusion model does not, so
+// the canvas is a setting. These are the shapes, as width:height units.
+
+const ASPECT_RATIOS = [
+  { id: "square", label: "Square", units: [1, 1] },
+  { id: "landscape", label: "Landscape", units: [4, 3] },
+  { id: "portrait", label: "Portrait", units: [3, 4] },
+  { id: "wide", label: "Wide", units: [16, 9] },
+  { id: "tall", label: "Tall", units: [9, 16] },
+];
+
+const DEFAULT_ASPECT = "square";
+
+function normaliseAspect(aspect) {
+  const value = String(aspect || "").trim().toLowerCase();
+  return ASPECT_RATIOS.some((a) => a.id === value) ? value : null;
+}
+
+// The five shapes at the three budgets the tiers produce. A table, not a search:
+// a runtime search for the closest 64-multiple pair was 2.7 kB in the entry
+// bundle for five constant answers. Area is what a budget limits, so each shape
+// fills the same number of pixels (0.95 headroom absorbs rounding to 64).
+const SHAPE_SIZES = {
+  [512 * 512]: { square: [512, 512], landscape: [512, 384], portrait: [384, 512], wide: [576, 320], tall: [320, 576] },
+  [768 * 768]: { square: [768, 768], landscape: [768, 576], portrait: [576, 768], wide: [1024, 576], tall: [576, 1024] },
+  [1024 * 1024]: { square: [1024, 1024], landscape: [1024, 768], portrait: [768, 1024], wide: [1152, 640], tall: [640, 1152] },
+};
+
+function aspectSize(aspect, budgetPixels) {
+  const chosen = ASPECT_RATIOS.find((a) => a.id === normaliseAspect(aspect));
+  if (!chosen) return null;
+  const budget = Number(budgetPixels) > 0 ? Number(budgetPixels) : 512 * 512;
+
+  const known = SHAPE_SIZES[budget]?.[chosen.id];
+  if (known) return { width: known[0], height: known[1], label: chosen.label };
+
+  // Fallback for a budget the tiers do not produce: coarser, never over budget.
+  const [uw, uh] = chosen.units;
+  const scale = Math.sqrt((budget * 0.95) / (uw * uh));
+  return {
+    width: roundTo64(uw * scale),
+    height: roundTo64(uh * scale),
+    label: chosen.label,
+  };
+}
+
 // ── The plan ────────────────────────────────────────────────────────────────
 
 function clampNumber(value, min, max) {
@@ -305,6 +352,7 @@ const HIRES_UPSCALERS = {
  * @param {string} [options.preset]   draft | balanced | best | auto
  * @param {number} [options.width]    when provided, kept (and hires scales it)
  * @param {number} [options.height]
+ * @param {string} [options.aspect]   square | landscape | portrait | wide | tall
  * @returns {object} a plan the request is built from, with `notes` explaining it
  */
 function planImageQuality(options = {}) {
@@ -342,9 +390,19 @@ function planImageQuality(options = {}) {
   const hasRequestedSize = Number.isFinite(requestedWidth) && requestedWidth > 0
     && Number.isFinite(requestedHeight) && requestedHeight > 0;
 
+  // A picked shape outranks width/height: presets write pixels into the
+  // constraints, so a stored 1024×1024 would otherwise veto every later shape
+  // change and the row would read "Wide" over a square image. With no shape set,
+  // an explicit pixel request is still honoured unchanged.
+  const aspect = normaliseAspect(options.aspect);
+  const shaped = aspect ? aspectSize(aspect, machine.budgetPixels) : null;
+
   let width;
   let height;
-  if (hasRequestedSize) {
+  if (shaped) {
+    width = shaped.width;
+    height = shaped.height;
+  } else if (hasRequestedSize) {
     width = roundTo64(requestedWidth);
     height = roundTo64(requestedHeight);
   } else {
@@ -413,6 +471,7 @@ function planImageQuality(options = {}) {
     notes.push("model family not recognised from its filename — using the SD 1.5 profile; set the sampler by hand if this is not an SD 1.x checkpoint");
   }
 
+
   return {
     family,
     familyLabel: defaults.label,
@@ -426,11 +485,30 @@ function planImageQuality(options = {}) {
     clipSkip: defaults.clipSkip,
     width,
     height,
+    // The shape actually in play: the user's pick, or "custom" when the pixels
+    // are not one of the offered shapes (a typed size, a family default).
+    aspect: shaped ? aspect : (aspectDetail(width, height) || "custom"),
+    // Carried on the plan so the UI renders the row from the same table the
+    // request is built from, instead of importing it into the entry bundle.
+    shapes: ASPECT_RATIOS,
     hires,
     vaeTiling: machine.vaeTiling,
     negativePrompt: defaultNegativePrompt(family, model),
     notes,
   };
+}
+
+/** Which offered shape these pixels are, or null when they are not one. */
+function aspectDetail(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!(w > 0) || !(h > 0)) return null;
+  const ratio = w / h;
+  for (const candidate of ASPECT_RATIOS) {
+    const [uw, uh] = candidate.units;
+    if (Math.abs(ratio - uw / uh) < 0.02) return candidate.id;
+  }
+  return null;
 }
 
 // ── What the request carries ────────────────────────────────────────────────
@@ -503,6 +581,11 @@ const BACKEND_HIRES_UPSCALERS = [
 ];
 
 module.exports = {
+  ASPECT_RATIOS,
+  DEFAULT_ASPECT,
+  normaliseAspect,
+  aspectSize,
+  aspectDetail,
   detectModelFamily,
   familyDefaults,
   defaultNegativePrompt,

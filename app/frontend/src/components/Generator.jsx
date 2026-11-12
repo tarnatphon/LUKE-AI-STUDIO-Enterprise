@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { Sparkles, Download, Copy, RefreshCw, Check, Sliders, Trash2, ImagePlus, ChevronRight } from "lucide-react";
+import { Sparkles, Download, Copy, RefreshCw, Check, Trash2, ImagePlus, ChevronRight } from "lucide-react";
 import ReferenceManager from "./ReferenceManager";
 import QualityPanel from "./QualityPanel";
 import { 
@@ -19,10 +19,9 @@ import {
   startLlm,
   chatWithLlm,
   containsThai,
-  THAI_IMAGE_PROMPT_SYSTEM,
-  ENGLISH_IMAGE_PROMPT_SYSTEM,
   cleanEnhancedPrompt
 } from "../services/api";
+import { THAI_IMAGE_PROMPT_SYSTEM, ENGLISH_IMAGE_PROMPT_SYSTEM } from "../services/imagePromptTemplates";
 import "./Generator.css";
 
 const GalleryItem = memo(({ img, idx, isSelected, onClick }) => {
@@ -254,10 +253,12 @@ function Generator({
   // that ignored them; this is the structural fix for that class of bug.
   const imagePlan = useMemo(
     () => resolveImagePlan(
-      { ...constraints, negativePromptDefault: "" },
+      // The prompt travels with the plan so the panel can report its length
+      // against the model's attention window without a second calculation.
+      { ...constraints, negativePromptDefault: "", prompt },
       activeModel
     ),
-    [constraints, activeModel]
+    [constraints, activeModel, prompt]
   );
 
   const handleApplyPreset = useCallback((preset) => {
@@ -351,7 +352,13 @@ function Generator({
     ];
 
     const temp = textSettings?.temperature || 0.7;
-    const response = await chatWithLlm(messages, { temperature: temp, maxTokens: 160 });
+    const response = await chatWithLlm(messages, {
+      // 55 words is roughly 75 tokens; 128 leaves room to finish a sentence
+      // without the model truncating mid-clause, which used to happen at 160
+      // only after it had already padded the prompt with filler.
+      temperature: temp,
+      maxTokens: 128,
+    });
     return cleanEnhancedPrompt(response.content);
   };
 
@@ -1037,6 +1044,7 @@ function Generator({
                 specs={specs}
                 negativePrompt={negativePrompt}
                 setNegativePrompt={setNegativePrompt}
+                prompt={prompt}
                 onPreset={handleApplyPreset}
                 disabled={isGenerating}
                 tier={specs?.tier}

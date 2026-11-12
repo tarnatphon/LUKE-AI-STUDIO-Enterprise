@@ -49,6 +49,7 @@ const FRONTEND_ENTRY = path.join(root, "app", "frontend", "src", "services", "ap
 const MODULE = path.join(root, "scripts", "server", "image-quality.cjs");
 
 const iq = require(MODULE);
+const promptBudgetModule = require(path.join(root, "scripts", "server", "image-prompt-budget.cjs"));
 
 // 1×1 transparent PNG — an image the file-type check accepts.
 const PNG_BASE64 = Buffer.from(
@@ -119,9 +120,10 @@ async function renderWorkspace() {
       qualityPreset: "balanced", modelFamily: "sdxl", hardwareTier: "high",
     };
     const panel = built.renderToStaticMarkup(built.createElement(built.QualityPanel, {
-      plan: iq.planImageQuality({ family: "sdxl", tier: "high", preset: "balanced" }),
-      constraints, setConstraints: noop,
+      plan: iq.planImageQuality({ family: "sdxl", tier: "high", preset: "balanced", aspect: "wide", prompt: "a wide shot of a harbour at dawn, cranes and container ships in mist" }),
+      constraints: { ...constraints, aspect: "wide" }, setConstraints: noop,
       activeModel: "juggernautXL_v9.safetensors",
+      prompt: "a wide shot of a harbour at dawn, cranes and container ships in mist",
       specs: { tier: "high", cpu_name: "Apple M3 Pro", ram_total_gb: 18, gpu_vram_gb: 16 },
     }));
     // SD 1.5 is where clip skip applies, so that is where the chip has to appear.
@@ -624,6 +626,125 @@ async function main() {
     const api = fs.readFileSync(FRONTEND_ENTRY, "utf8");
     assert.match(api, /scripts\/server\/image-quality\.cjs/, "api.js names the shared module it imports");
     assert.match(api, /buildTxt2ImgBody/, "and builds the body with it");
+  });
+
+  // ── 7b. shape and prompt length ────────────────────────────────────────
+  section("7b. the canvas, and how much prompt the model can hear");
+
+  await test("every shape is a shape, at every tier, and the budget holds", () => {
+    const budget = { low: 512 * 512, mid: 768 * 768, high: 1024 * 1024 };
+    for (const tier of ["low", "mid", "high"]) {
+      for (const shape of iq.ASPECT_RATIOS) {
+        const plan = iq.planImageQuality({ family: "sd15", tier, aspect: shape.id });
+        const target = shape.units[0] / shape.units[1];
+        const error = Math.abs(plan.width / plan.height - target) / target;
+        assert.ok(error < 0.02, `${tier}/${shape.id}: ${plan.width}×${plan.height} is ${(error * 100).toFixed(1)}% off ${shape.units.join(":")}`);
+        assert.ok(plan.width * plan.height <= budget[tier], `${tier}/${shape.id} must fit the budget`);
+        // Both edges have to be multiples of 64 or the backend rounds them itself
+        // and the size on the chip is not the size that ran.
+        assert.strictEqual(plan.width % 64, 0, `${tier}/${shape.id} width is a multiple of 64`);
+        assert.strictEqual(plan.height % 64, 0, `${tier}/${shape.id} height is a multiple of 64`);
+        // ...and the plan must not claim a shape it did not deliver.
+        assert.strictEqual(plan.aspect, shape.id, `${tier}/${shape.id} reports the shape it is`);
+      }
+    }
+  });
+
+  await test("a shape outranks a stored pixel size, but a typed size outranks neither", () => {
+    // Presets write width/height into the constraints. If a stored 1024×1024
+    // could veto them, the shape row would show "Wide" over a square image.
+    const wide = iq.planImageQuality({ family: "sd15", tier: "high", aspect: "wide", width: 1024, height: 1024 });
+    assert.ok(wide.width > wide.height, "the shape decides the canvas, not the stale pixels");
+    assert.strictEqual(wide.aspect, "wide");
+    // With no shape chosen, an explicit size is still theirs.
+    const typed = iq.planImageQuality({ family: "sd15", tier: "high", width: 768, height: 512 });
+    assert.strictEqual(typed.width, 768);
+    assert.strictEqual(typed.height, 512);
+  });
+
+  await test("a square plan is unchanged by the shape work", () => {
+    // SD 1.5's own side is 512 and that is what "no shape chosen" must still
+    // give: adding shapes must not quietly promote every SD 1.5 run to 1024².
+    const sd15 = iq.planImageQuality({ family: "sd15", tier: "high" });
+    assert.strictEqual(sd15.width, 512);
+    assert.strictEqual(sd15.height, 512);
+    assert.strictEqual(sd15.aspect, "square");
+    // SDXL's natural side is 1024 and it keeps it.
+    const sdxl = iq.planImageQuality({ family: "sdxl", tier: "high" });
+    assert.strictEqual(sdxl.width, 1024);
+    assert.strictEqual(sdxl.aspect, "square");
+  });
+
+  await test("the prompt budget is the backend's chunk size, not a guess", () => {
+    // src/conditioning/conditioner.hpp: chunk_len = 77, allow_overflow_expand.
+    assert.strictEqual(promptBudgetModule.CLIP_CHUNK_TOKENS, 77);
+    assert.strictEqual(promptBudgetModule.promptBudget("sd15").tokens, 77);
+    assert.strictEqual(promptBudgetModule.promptBudget("sdxl").tokens, 77);
+    // T5 families have a 512-token window and are not chunked this way.
+    assert.strictEqual(promptBudgetModule.promptBudget("flux").usesT5, true);
+    assert.strictEqual(promptBudgetModule.promptBudget("flux").tokens, 512);
+    // It must not be in the entry-bundle module: that is the whole reason it is
+    // a separate file.
+    assert.strictEqual(iq.promptBudget, undefined, "the display calculation is not in the shipped module");
+  });
+
+  await test("the counter is honest at the edge, not only past it", () => {
+    const words = (n) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+    assert.strictEqual(promptBudgetModule.describePromptLength(words(5), "sd15").status, "oneChunk");
+    // 58 of 59 is the edge, and the copy says so rather than "one chunk".
+    const edge = promptBudgetModule.describePromptLength(words(58), "sd15");
+    assert.strictEqual(edge.status, "oneChunk");
+    assert.match(edge.hint, /near the 59-word limit/);
+    assert.strictEqual(promptBudgetModule.describePromptLength(words(75), "sd15").status, "near");
+    assert.strictEqual(promptBudgetModule.describePromptLength(words(130), "sd15").status, "over");
+    // The same prompt is comfortable on a T5 model.
+    assert.strictEqual(promptBudgetModule.describePromptLength(words(130), "flux").status, "oneChunk");
+  });
+
+  await test("the counter is what the panel shows, and the panel shows it", () => {
+    // The plan carrying this note was moved to the panel (see the bundle note in
+    // image-prompt-budget.cjs); the point to pin is that the user is still told.
+    const panel = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "QualityPanel.jsx"), "utf8");
+    assert.match(panel, /describePromptLength/, "the panel computes the length");
+    assert.match(panel, /quality-prompt-length/, "and renders it");
+  });
+
+  await test("the shape row and the counter reach the screen", async () => {
+    const rendered2 = await renderWorkspace();
+    for (const label of ["Square", "Landscape", "Portrait", "Wide", "Tall"]) {
+      assert.ok(rendered2.panel.includes(label), `${label} is offered`);
+    }
+    assert.ok(/quality-shape active/.test(rendered2.panel), "one shape is shown as chosen");
+    assert.ok(rendered2.panel.includes("quality-prompt-length"), "the prompt counter renders");
+  });
+
+  await test("the Enhance prompt asks for adherence, not adjectives", async () => {
+    const templates = await import(pathToFileURL(path.join(root, "app", "frontend", "src", "services", "imagePromptTemplates.js")).href);
+    const english = templates.ENGLISH_IMAGE_PROMPT_SYSTEM;
+    const thai = templates.THAI_IMAGE_PROMPT_SYSTEM;
+    // They must not also be in api.js: that file is in the entry bundle.
+    assert.ok(!/ENGLISH_IMAGE_PROMPT_SYSTEM/.test(fs.readFileSync(FRONTEND_ENTRY, "utf8")),
+      "the templates are out of the entry bundle");
+    assert.ok(english && thai, "both templates are exported");
+    for (const [name, tpl] of [["english", english], ["thai", thai]]) {
+      // The old template asked for 60 words and "quality tags like highly
+      // detailed" — past the chunk boundary, and the filler terms local models
+      // ignore. Neither may come back.
+      // Naming the filler terms in order to forbid them is the point. Strip the
+      // sentences that forbid them, then check nothing asks for them.
+      const withoutWarnings = tpl
+        .split(/\n|\.\s/)
+        .filter((sentence) => !/\b(never|do not|don't|delete|avoid)\b/i.test(sentence))
+        .join(" ");
+      assert.doesNotMatch(withoutWarnings, /masterpiece|8k|ultra detailed|highly detailed|quality tag/i,
+        `${name}: nothing outside a warning asks for filler terms`);
+      assert.match(tpl, /\b(never|delete)\b/i, `${name}: explicitly forbids filler terms`);
+      assert.match(tpl, /55 words|at most \d+ words/i, `${name}: states a cap inside one chunk`);
+      assert.match(tpl, /light/i, `${name}: names lighting as a lever`);
+      assert.match(tpl, /camera|shot size|angle/i, `${name}: names the camera as a lever`);
+      assert.match(tpl, /ONLY/i, `${name}: forbids preamble`);
+    }
+    assert.match(thai, /translate/i, "the Thai template still translates first");
   });
 
   // ── 8. the panel exists and the workspace opens simple ─────────────────

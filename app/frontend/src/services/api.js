@@ -1754,12 +1754,15 @@ async function generateImageViaOpenAiCompat({ baseUrl, payload, prompt, negative
  * by the UI (see applyQualityPreset), where the user can see the numbers change.
  */
 export function resolveImagePlan(constraints = {}, activeModelName = "") {
+  // The shape is resolved by the shared module, so the request and the chip
+  // cannot disagree about which pixels are about to be sampled.
   const plan = planImageQuality({
     model: activeModelName,
     family: constraints?.modelFamily,
     tier: constraints?.hardwareTier,
     vramGb: constraints?.vramGb,
     preset: constraints?.qualityPreset,
+    aspect: constraints?.aspect,
   });
 
   const numberOr = (value, fallback) => {
@@ -1830,6 +1833,9 @@ export function applyQualityPreset(constraints = {}, preset, activeModelName = "
     tier: constraints?.hardwareTier || tier,
     vramGb: constraints?.vramGb,
     preset,
+    // The shape survives a preset change: Draft/Best changes how hard the model
+    // works, not what shape the picture is.
+    aspect: constraints?.aspect,
   });
   return {
     ...constraints,
@@ -2617,8 +2623,6 @@ const THAI_CHAR_RANGE = /[\u0E00-\u0E7F]/;
 export function containsThai(text) {
   return THAI_CHAR_RANGE.test(String(text || ""));
 }
-export const THAI_IMAGE_PROMPT_SYSTEM = "You are a Stable Diffusion prompt translator. The user's image prompt may be written in Thai, English, or a mix. ALWAYS output one English image prompt: translate any Thai to English first, then expand with concrete visual details (subject, action, setting, art style, lighting, composition, quality tags like 'highly detailed'). Keep it under 60 words to fit the CLIP token window. Output ONLY the final English prompt, no quotes, no explanation.";
-export const ENGLISH_IMAGE_PROMPT_SYSTEM = "You are a helpful assistant. Rewrite the user's image prompt to be more descriptive and detailed for image generation. Keep it under 60 words. Output ONLY the rewritten prompt, no explanation or introductory text.";
 export function cleanEnhancedPrompt(text) {
   let out = String(text || "").trim();
   if (out.length > 1 && out.startsWith('"') && out.endsWith('"')) {
