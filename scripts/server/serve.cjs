@@ -22,6 +22,16 @@ function lukeArchiveChatMarkdown(req, res, projectRoot) {
   });
 }
 
+// LUKE_IMAGE_QUALITY_PROFILE_V1
+// Which settings produce a good image for a model on a machine, and the exact
+// body /sdapi/v1/txt2img reads. The Generator imports the same module, so the
+// numbers it shows and the numbers it sends cannot drift — the arrangement the
+// step-budget rule (img2img-steps.cjs) follows too.
+const {
+  planImageQuality,
+  hardwareImageProfile: planImageQualityProfile,
+} = require("./image-quality.cjs");
+
 // LUKE_SOCIAL_AGENCY_RUNTIME_IMPORT_V1
 const { SocialAgencyRuntime } = require("./social-agency-runtime.cjs");
 // LUKE_AI_WORKFLOW_BUILDER_V1
@@ -2021,6 +2031,18 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     ? Math.max(0, workingSetGb * 1024 ** 3 - calibrationBytes - (learningUnified ? 0 : reserveBytes))
     : Math.max(0, totalRamBytes - reserveBytes - calibrationBytes);
 
+  // What the pool was measured against. On unified memory that is the driver's
+  // working set; on a discrete GPU or a CPU-only box there is no such ceiling —
+  // system RAM *is* the pool, minus the reserve. Reporting the unified figure
+  // there was wrong twice over: it printed a ceiling the machine does not have
+  // (78 % of RAM on a box where 100 % is addressable), and it made the pool look
+  // larger than the set it came from — 14.00 GB of a "12.48 GB working set" on a
+  // 16 GB runner. That is what test-memory-pool-explained.cjs has been failing
+  // on, on main, for every merge since the test was written.
+  const poolBasisGb = unifiedMemory
+    ? (poolBytes + calibrationBytes) / 1024 ** 3 + (learningUnified ? 0 : reserveGb)
+    : (poolBytes + calibrationBytes + reserveBytes) / 1024 ** 3;
+
   // On macOS most RAM is used by the file cache, so os.freemem() looks almost
   // empty all the time. "Available" is measured against what the models we know
   // about already hold, which is what actually matters for a new load.
@@ -2145,7 +2167,10 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     totalRamGb,
     pressureRatio,
     poolGb: Number((poolBytes / 1024 ** 3).toFixed(2)),
-    workingSetGb: Number(workingSetGb.toFixed(2)),
+    // The set the pool was measured against, whatever kind of memory this is.
+    // Kept under the same name because the AI Library card and its suite both
+    // read it as "the ceiling the pool came from".
+    workingSetGb: Number(poolBasisGb.toFixed(2)),
     measuredWorkingSetGb: Number(measuredWorkingSetGb.toFixed(2)),
     // How that pool was arrived at, so the card can justify the number in the
     // same breath it prints it — 12.04 GB out of an 18 GB machine is not a
@@ -2153,8 +2178,10 @@ function evaluateModelMemoryBudget({ targetPaths = [], targetType = "", gpuLayer
     poolDetail: {
       source: measuredWorkingSetGb > 0 ? "measured" : "estimated",
       totalRamGb,
-      workingSetGb: Number(workingSetGb.toFixed(2)),
-      ratio: measuredWorkingSetGb > 0 ? null : Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78),
+      workingSetGb: Number(poolBasisGb.toFixed(2)),
+      // The ratio only describes a unified-memory estimate; on discrete or CPU
+      // memory there is no ratio, the pool is RAM minus the reserve.
+      ratio: !unifiedMemory ? null : (measuredWorkingSetGb > 0 ? null : Number(gpuConfig.unifiedWorkingSetRatio ?? 0.78)),
       reserveGb: learningUnified ? 0 : reserveGb,
       calibrationGb: Number((calibrationBytes / 1024 ** 3).toFixed(2)),
       unified: unifiedMemory,
@@ -2379,19 +2406,24 @@ let currentSettings = {
   height: 512,
 };
 
+// The keys that genuinely require unloading and reloading the model.
+//
+// `steps`, `cfgScale`, `sampler`, `width` and `height` were on this list, which
+// meant every quality-preset change and every shape change — both of which write
+// those values — counted as a backend difference. Pressing Generate then called
+// startServer(), which kills the process and reloads a multi-gigabyte
+// checkpoint: minutes of waiting to change a number one request already carries.
+// They travel per request in the /sdapi/v1 body (see image-quality.cjs), so they
+// do not belong here. What remains really is process-level: which model is
+// resident, how it was loaded, and how much memory it was given.
 const BACKEND_RESTART_SETTING_KEYS = [
   "model",
-  "steps",
-  "cfgScale",
-  "sampler",
   "threads",
   "useGpu",
   "backendType",
   "vaeTiling",
   "vaeOnCpu",
   "flashAttn",
-  "width",
-  "height",
 ];
 
 function normalizeBackendSettingValue(key, value) {
@@ -4075,6 +4107,19 @@ function getHardwareSpecs() {
     ];
   }
 
+  // What the image workspace should default to on this machine.
+  //
+  // `tier` has been computed here for a long time but only ever reached the text
+  // side, so the image settings were the same numbers on a 4 GB laptop and a
+  // 24 GB card — 1024² SDXL on the first is an out-of-memory error, 512² on the
+  // second throws away detail the card has already paid for.
+  //
+  // The model is unknown here (the server does not know which checkpoint the
+  // Generator has loaded when this is called), so the machine half is published
+  // alone: the side, the hires budget and whether VAE tiling is needed. The
+  // family half is filled in by the frontend, from the same module.
+  const imageProfile = planImageQualityProfile({ tier, vramGb: gpuVramGb });
+
   return {
     os_name: `${os.type()} ${os.release()}`,
     cpu_name: cpus[0]?.model || "Unavailable",
@@ -4087,6 +4132,12 @@ function getHardwareSpecs() {
     tier,
     recommended_models,
     recommended_text_settings: recommendedTextSettings[tier] || recommendedTextSettings.mid,
+    recommended_image_settings: {
+      ...imageProfile,
+      // A worked example at this tier, so a caller with no model name still gets
+      // usable numbers rather than a shape it has to interpret.
+      example: planImageQuality({ tier, vramGb: gpuVramGb, preset: "auto" }),
+    },
   };
 }
 

@@ -30,7 +30,16 @@ const cssGzipBytes = zlib.gzipSync(fs.readFileSync(entryCss)).length;
 // taxes the app's start-up. If this budget is ever hit again, the first
 // question is whether the new rules belong to a workspace.
 const limits = {
-  initialJsBytes: 300 * 1024,
+  // Raised from 300 KiB (307200) by 2 KiB when the image workspace gained the
+  // aspect-ratio table (ASPECT_RATIOS + aspectSize in scripts/server/
+  // image-quality.cjs). That module is reachable from services/api.js, which is
+  // in the entry, so its growth is entry growth. The raise is deliberate and
+  // small: the table is five shapes by three tiers, and everything display-only
+  // that could have come with it (the prompt-length calculation, the Enhance
+  // templates) was moved out to image-prompt-budget.cjs and
+  // services/imagePromptTemplates.js so it ships in the Generator's lazy chunk
+  // instead. Anything larger than this should be split, not absorbed.
+  initialJsBytes: 302 * 1024,
   initialCssGzipBytes: 26 * 1024,
 };
 
