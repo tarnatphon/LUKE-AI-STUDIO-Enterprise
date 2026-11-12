@@ -83,17 +83,23 @@ function QualityPanel({
   const [open, setOpen] = useState(false);
   const machine = specs?.recommended_image_settings;
 
+  // Two kinds of edit, and they are not the same promise.
+  //
+  // `aspect` is not one of the preset's numbers: Draft/Balanced/Best decide how
+  // hard the model works, the shape decides what canvas it works on. Picking a
+  // shape must not relabel the user's choice as "custom", because the numbers on
+  // screen still are the preset's.
+  //
+  // Steps / CFG / sampler / scheduler / clip skip / hires ARE the preset's
+  // numbers, so changing one means the label would be a lie. It also has to pin
+  // them, or the next model switch would re-apply the family's numbers over a
+  // hand edit.
   const update = (key, value) => {
-    setConstraints((prev) => ({
-      ...prev,
-      [key]: value,
-      // A hand edit means the numbers are no longer "the preset's": say so, and
-      // stop a preset from being re-applied over the top on the next model
-      // switch. `qualityPinned` is that promise; `qualityPreset: "custom"` is
-      // what the panel shows.
-      qualityPinned: true,
-      qualityPreset: "custom",
-    }));
+    setConstraints((prev) => (
+      key === "aspect"
+        ? { ...prev, aspect: value }
+        : { ...prev, [key]: value, qualityPinned: true, qualityPreset: "custom" }
+    ));
   };
 
   const currentPreset = constraints?.qualityPreset === "custom" ? null : (constraints?.qualityPreset || "auto");

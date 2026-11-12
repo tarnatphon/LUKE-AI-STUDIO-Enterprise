@@ -984,3 +984,27 @@
 .quality-prompt-over svg {
   opacity: 1;
 }
+
+/* Five labels in a narrow column would ellipsis into "Sq… La… Po…". The
+   longest is "Landscape" (nine characters), which at 0.6rem still fits a fifth
+   of a 320 px column — so the labels stay, only smaller. Hiding them would leave
+   the proportional glyph to carry the whole meaning, and a glyph alone is not a
+   label. */
+@media (max-width: 520px) {
+  .quality-shapes {
+    gap: 4px;
+  }
+
+  .quality-shape {
+    padding: 7px 2px;
+  }
+
+  .quality-shape-label {
+    font-size: 0.6rem;
+    letter-spacing: 0;
+  }
+
+  .quality-shape-glyph {
+    height: 15px;
+  }
+}

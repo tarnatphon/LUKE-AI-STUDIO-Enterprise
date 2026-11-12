@@ -1796,6 +1796,11 @@ export function resolveImagePlan(constraints = {}, activeModelName = "") {
   const to64 = (value, fallback) => Math.max(64, Math.round(numberOr(value, fallback) / 64) * 64);
 
   const hiresChosen = constraints?.hiresFix;
+  // Does the plan own the canvas, or does an explicit pixel size? This must be
+  // "did the user pick a shape", not "is the result one of the shapes" — the
+  // family's own default canvas is square too, and treating that as a choice
+  // silently threw away a typed 768×512.
+  const shaped = plan.shapeChosen === true;
 
   const resolved = {
     ...plan,
@@ -1807,8 +1812,13 @@ export function resolveImagePlan(constraints = {}, activeModelName = "") {
     sampler: textOr(constraints?.sampler, plan.sampler),
     scheduler: textOr(constraints?.scheduler, plan.scheduler),
     clipSkip: Number.isFinite(Number(constraints?.clipSkip)) ? Number(constraints.clipSkip) : plan.clipSkip,
-    width: to64(constraints?.width, plan.width),
-    height: to64(constraints?.height, plan.height),
+    // When a shape is chosen the plan has already turned it into pixels, and
+    // those are the answer — `constraints.width` is only a stale copy a preset
+    // wrote earlier. Letting it win here is exactly the disagreement (a row
+    // reading "Wide" over a square request) that the shared module exists to
+    // prevent, so it is checked here as well as there.
+    width: to64(shaped ? plan.width : constraints?.width, plan.width),
+    height: to64(shaped ? plan.height : constraints?.height, plan.height),
     // The user can switch the second pass off; they cannot switch it on where the
     // machine has no budget for it (a 4 GB card asked for 2× hires does not
     // produce a slower image, it produces an out-of-memory error).
@@ -1828,12 +1838,16 @@ export function resolveImagePlan(constraints = {}, activeModelName = "") {
     vramGb: constraints?.vramGb,
     preset: resolved.preset,
   });
+  // Size is compared only when nothing else owns the canvas: with a shape
+  // chosen the pixels are the shape's, not the preset's, so comparing them
+  // would relabel "Best on a wide canvas" as "custom" and hide the preset the
+  // user actually picked.
+  const comparesSize = !shaped;
   const differs = resolved.steps !== asPreset.steps
     || Math.abs(Number(resolved.cfgScale) - Number(asPreset.cfgScale)) > 1e-6
     || resolved.sampler !== asPreset.sampler
     || resolved.scheduler !== asPreset.scheduler
-    || resolved.width !== asPreset.width
-    || resolved.height !== asPreset.height;
+    || (comparesSize && (resolved.width !== asPreset.width || resolved.height !== asPreset.height));
   if (differs && constraints?.qualityPreset !== "custom") resolved.preset = "custom";
   if (constraints?.qualityPreset === "custom") resolved.preset = "custom";
   return resolved;

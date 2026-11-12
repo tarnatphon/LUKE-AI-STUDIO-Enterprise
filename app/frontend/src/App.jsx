@@ -286,14 +286,23 @@ function App() {
   });
 
   // Default Image Constraints
+  //
+  // These are the numbers *until a model is chosen*: the first model switch
+  // fills in the family's own (see the applyQualityPreset effect below). They
+  // used to be FLUX Schnell's profile applied to everyone — 1024² at CFG 1 and
+  // 4 steps — which on a 4 GB machine is four times over budget and on an SD 1.5
+  // checkpoint produces a burnt, prompt-ignoring image. Mid-tier SD 1.5 values
+  // are the safer "nothing chosen yet" default; the plan replaces them the
+  // moment it knows what it is running.
   const [constraints, setConstraints] = useState({
-    width: 1024,
-    height: 1024,
-    steps: 4,          // Recommended default steps for Flux.1 Schnell/Lightning
+    width: 512,
+    height: 512,
+    steps: 25,
     npuSteps: 4,
     standardSteps: 20,
-    cfgScale: 1.0,     // Recommended default CFG for Flux.1 Schnell
-    sampler: "euler_a",
+    cfgScale: 6.5,
+    sampler: "dpm++2m",
+    scheduler: "karras",
     seed: -1,
     denoisingStrength: 0.7,
     useGpu: true,

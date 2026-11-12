@@ -360,7 +360,12 @@ function planImageQuality(options = {}) {
   // An explicit family (from a model library entry or a user override) always
   // wins: filename sniffing is a guess, and the guess must be overridable.
   const hinted = String(options.family || "").trim().toLowerCase();
-  const family = hinted && FAMILY_DEFAULTS[hinted] ? hinted : detectModelFamily(model);
+  // Own properties only: FAMILY_DEFAULTS["__proto__"] is Object.prototype, which
+  // is truthy, so a hint like that sailed past this check and produced a plan
+  // full of undefined/NaN.
+  const family = hinted && Object.prototype.hasOwnProperty.call(FAMILY_DEFAULTS, hinted)
+    ? hinted
+    : detectModelFamily(model);
   const defaults = familyDefaults(family, model);
   const preset = normalisePreset(options.preset);
   const machine = hardwareImageProfile({ tier: options.tier, vramGb: options.vramGb });
@@ -397,14 +402,24 @@ function planImageQuality(options = {}) {
   const aspect = normaliseAspect(options.aspect);
   const shaped = aspect ? aspectSize(aspect, machine.budgetPixels) : null;
 
+  // A size past what any machine can hold is a typo, not a request: the backend
+  // would try to allocate it and die. Clamped to the largest tier's side rather
+  // than accepted, and the plan says so below.
+  const HARD_SIDE = 4096;
   let width;
   let height;
+  let clampedRequest = false;
   if (shaped) {
     width = shaped.width;
     height = shaped.height;
   } else if (hasRequestedSize) {
     width = roundTo64(requestedWidth);
     height = roundTo64(requestedHeight);
+    if (width > HARD_SIDE || height > HARD_SIDE) {
+      clampedRequest = true;
+      width = Math.min(width, HARD_SIDE);
+      height = Math.min(height, HARD_SIDE);
+    }
   } else {
     // The family's natural side, but never more than the machine's budget: on a
     // 4 GB card a 1024² SDXL pass from `Auto` would OOM, and an OOM reads to the
@@ -415,6 +430,9 @@ function planImageQuality(options = {}) {
   }
 
   const pixels = width * height;
+  if (clampedRequest) {
+    notes.push(`the requested size was past anything a GPU can hold and was clamped to ${width}×${height}`);
+  }
   if (pixels > machine.budgetPixels * 1.05) {
     notes.push(
       `${width}×${height} is above this machine's ${machine.side} px budget — expect it to be slow or to fall back to CPU`
@@ -485,9 +503,16 @@ function planImageQuality(options = {}) {
     clipSkip: defaults.clipSkip,
     width,
     height,
-    // The shape actually in play: the user's pick, or "custom" when the pixels
-    // are not one of the offered shapes (a typed size, a family default).
-    aspect: shaped ? aspect : (aspectDetail(width, height) || "custom"),
+    // The shape actually in play. When the user picked one, that. When they did
+    // not, there is no size control in the UI, so any non-default pixels came
+    // from somewhere the row cannot represent — "custom" is the honest answer,
+    // and the row shows nothing selected rather than claiming "Square" over a
+    // 768×512 request.
+    aspect: shaped ? aspect : "custom",
+    // Whether the user actually picked a shape. `aspect` cannot answer this: a
+    // default 512² is also "square", and callers must not treat the family's own
+    // default canvas as a choice that outranks an explicit pixel size.
+    shapeChosen: Boolean(shaped),
     // Carried on the plan so the UI renders the row from the same table the
     // request is built from, instead of importing it into the entry bundle.
     shapes: ASPECT_RATIOS,
@@ -522,8 +547,12 @@ function aspectDetail(width, height) {
  * does not read (scheduler is read, `n_iter` is not) are included only where a
  * WebUI-lineage server would also accept them harmlessly.
  */
-function buildTxt2ImgBody(plan, { prompt = "", negativePrompt = "", seed = -1, batchSize = 1 } = {}) {
-  const p = plan || planImageQuality({});
+function buildTxt2ImgBody(plan, requestOptions) {
+  // Normalised by hand rather than destructured in the signature: destructuring
+  // a `null` second argument throws before any default can apply, and a null
+  // plan did not reach its own fallback either.
+  const { prompt = "", negativePrompt = "", seed = -1, batchSize = 1 } = requestOptions || {};
+  const p = plan && typeof plan === "object" ? plan : planImageQuality({});
   const negative = String(negativePrompt || "").trim() || p.negativePrompt || "";
   const body = {
     prompt: String(prompt || ""),
@@ -537,7 +566,10 @@ function buildTxt2ImgBody(plan, { prompt = "", negativePrompt = "", seed = -1, b
     seed: Number.isFinite(Number(seed)) ? Math.round(Number(seed)) : -1,
     sampler_name: p.sampler,
     scheduler: p.scheduler,
-    batch_size: Math.max(1, Math.round(Number(batchSize) || 1)),
+    // Capped: a batch of 1000 is 1000 images the backend will genuinely attempt,
+    // on whatever card is installed. Eight is more than anyone picks by hand and
+    // the most a single run can safely be asked for.
+    batch_size: Math.min(8, Math.max(1, Math.round(Number(batchSize) || 1))),
     n_iter: 1,
     send_images: true,
     save_images: false,

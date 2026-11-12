@@ -456,3 +456,86 @@ been *added* to fix exactly that. `fitToPromptBudget()` now trims the rewrite to
 one chunk on a clause boundary (the last comma in the back half of the budget),
 so whole facts survive instead of being cut mid-phrase. Verified: 87 words in,
 59 out, ending on `Kodak Portra tones` with no dangling comma.
+
+---
+
+## 14. Pre-merge audit: five more bugs, one of them expensive
+
+Before merging, I went looking for the disagreements between layers that the
+earlier rounds had created rather than fixed. Five turned up.
+
+### 14.1 Changing a preset or a shape reloaded the model (the expensive one)
+
+`BACKEND_RESTART_SETTING_KEYS` in `serve.cjs` still listed `steps`, `cfgScale`,
+`sampler`, `width` and `height`, and `Generator.jsx` had a second copy of the
+same comparison in its pre-flight check. Both the quality presets and the shape
+row **write those values** — so clicking Balanced→Best, or picking Wide, made
+the next Generate call `startServer()`, which kills the process and reloads a
+multi-gigabyte checkpoint.
+
+Minutes of waiting, to change a number that already travels per request in the
+`/sdapi/v1` body. The list is now only what really is process-level:
+
+```js
+["model", "threads", "useGpu", "backendType", "vaeTiling", "vaeOnCpu", "flashAttn"]
+```
+
+Verified against the real `backendSettingsMatch()`:
+
+| Change | Before | Now |
+| --- | --- | --- |
+| Balanced → Best (steps 25→35) | reload | per-request |
+| Square → Wide (512²→1152×640) | reload | per-request |
+| sampler, CFG | reload | per-request |
+| model, threads, GPU, backend | reload | reload |
+
+This is the bug that would have been blamed on "the generator is slow", and it
+only existed because the quality work started writing pixels into `constraints`.
+
+### 14.2 `resolveImagePlan` let stale pixels veto the shape
+
+The module resolved 640×1152 for Tall, and then this function overwrote it with
+the constraints' stale 1024×1024 — a row reading "Tall" over a square request,
+the exact disagreement the shared module exists to prevent. The shape now wins in
+both layers, and `shapeChosen` (not the resulting label) is what records that the
+user made a choice.
+
+### 14.3 Picking a shape killed the preset
+
+The panel treated every edit as "a hand edit": picking Wide wrote
+`qualityPreset: "custom"` and threw away the user's Best. The shape is not one of
+the preset's numbers — it decides the canvas, not how hard the model works — so
+it is written without touching the preset, and the badge comparison skips size
+when a shape owns the canvas.
+
+### 14.4 Defaults that contradicted the plan
+
+The first-run `constraints` were FLUX Schnell's profile (1024², CFG 1, 4 steps)
+applied to every model: on a 512² machine that is four times over budget before
+a single setting is touched, and on an SD 1.5 checkpoint it produces a burnt,
+prompt-ignoring image. They are now neutral SD 1.5 values, replaced by the plan
+the moment a model is chosen.
+
+### 14.5 Hostile input reached the backend
+
+- `family: "__proto__"` passed the "is this a known family" check, because
+  `FAMILY_DEFAULTS["__proto__"]` is `Object.prototype` — truthy — and produced a
+  plan of `NaN`. Now own-properties only.
+- `width: 1e9` was accepted verbatim; the backend would try to allocate it. Now
+  clamped to 4096 with a note saying so.
+- `buildTxt2ImgBody(plan, null)` threw, because destructuring a null second
+  argument happens before any default. Now normalised by hand.
+- `batchSize: 1000` was passed through as 1000 images. Now capped at 8.
+
+---
+
+## 15. Where this leaves the image path
+
+One module decides the numbers, one plan builds the request, one plan feeds the
+metadata file, and the tests render the real components. The full run is
+**233 passed · 0 failed · 0 blocked** across 229 suites, and
+`test-image-quality-profiles.cjs` is **54 checks**.
+
+The rule that came out of §9.3 and §14.1 is worth stating once: **if two layers
+both decide something, one of them is eventually wrong.** Sizes, seeds, presets
+and restart decisions each had two, and every one of them had already drifted.

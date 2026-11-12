@@ -7,9 +7,11 @@ tree today, with the evidence next to it. Items are ordered by what they cost
 the user, not by how interesting they are to fix.
 
 The one thing this review does **not** claim is that the product is far from
-finished. 233 validation suites pass, the image path is now correct end to end,
-and the parts that exist are unusually honest about their limits (see
-`image-quality-and-hardware-profiles.md` §6). What follows is the next layer.
+finished. The validation run is 229 suites (233 commands once the release build and the
+Python worker are included), every one passing, and the image path is now
+correct end to end. The parts that exist are unusually honest about their
+limits (see `image-quality-and-hardware-profiles.md` §6). What follows is the
+next layer.
 
 ---
 
@@ -86,8 +88,8 @@ speech do not.
 
 ## 4. Validation is strong but centred on regressions
 
-233 suites, and the ones added this session caught four real bugs — that is a
-good ratio. The shape, though, is almost entirely *"this bug cannot come back"*.
+229 suites run; the ones added this session caught seven real bugs across three
+rounds — that is a good ratio. The shape, though, is almost entirely *"this bug cannot come back"*.
 There is little *"this feature works"*: nothing generates an image with a real
 backend, nothing runs a real conversation, nothing posts to a real API.
 

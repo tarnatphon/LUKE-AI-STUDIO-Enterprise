@@ -347,6 +347,39 @@ async function main() {
     }
   });
 
+  await test("an inherited property is not a model family", () => {
+    // FAMILY_DEFAULTS["__proto__"] is Object.prototype — truthy — so a hint like
+    // that used to sail past the "is it a known family" check and produce a plan
+    // full of NaN.
+    for (const bad of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      const plan = iq.planImageQuality({ family: bad, tier: "high" });
+      assert.strictEqual(plan.family, "unknown", `${bad} is not a family`);
+      assert.ok(Number.isFinite(plan.width) && plan.width > 0, `${bad} must not produce NaN`);
+    }
+  });
+
+  await test("a size past what a machine can hold is clamped, not attempted", () => {
+    const huge = iq.planImageQuality({ family: "sd15", tier: "high", width: 1e9, height: 1e9 });
+    assert.strictEqual(huge.width, 4096);
+    assert.ok(huge.notes.some((n) => /clamped/.test(n)), "and the plan says it was clamped");
+    // A sane request is untouched.
+    const normal = iq.planImageQuality({ family: "sd15", tier: "high", width: 768, height: 512 });
+    assert.deepStrictEqual([normal.width, normal.height], [768, 512]);
+  });
+
+  await test("the request body survives nulls and caps the batch", () => {
+    const plan = iq.planImageQuality({ family: "sd15" });
+    for (const [a, b] of [[null, undefined], [plan, null], [null, null]]) {
+      const body = iq.buildTxt2ImgBody(a, b);
+      assert.strictEqual(body.seed, -1);
+      assert.strictEqual(body.batch_size, 1);
+      assert.ok(body.negative_prompt.length > 0, "the family's negatives still fill in");
+    }
+    // 1000 images is a request the backend would genuinely attempt.
+    assert.strictEqual(iq.buildTxt2ImgBody(plan, { batchSize: 1000 }).batch_size, 8);
+    assert.strictEqual(iq.buildTxt2ImgBody(plan, { batchSize: 3 }).batch_size, 3);
+  });
+
   await test("garbage in cannot produce NaN or an unbounded request", () => {
     for (const preset of [undefined, null, "", "ultra", 42, {}]) {
       for (const tier of [undefined, null, "", "enormous", 3]) {
@@ -637,6 +670,28 @@ async function main() {
 
   section("7. the server publishes the machine's half of the answer");
 
+  await test("changing a preset or a shape does not reload the model", () => {
+    // Found by audit, and the most expensive bug in this batch: steps, cfgScale,
+    // sampler, width and height were in BACKEND_RESTART_SETTING_KEYS, and both
+    // the preset and the shape write those. Pressing Generate then killed and
+    // reloaded a multi-gigabyte checkpoint — minutes of waiting to change a
+    // number that travels per request.
+    const serve = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
+    const list = serve.slice(serve.indexOf("const BACKEND_RESTART_SETTING_KEYS = ["), serve.indexOf("];", serve.indexOf("const BACKEND_RESTART_SETTING_KEYS = [")));
+    for (const perRequest of ["steps", "cfgScale", "sampler", "width", "height"]) {
+      assert.ok(!new RegExp(`"${perRequest}"`).test(list), `${perRequest} must not force a reload — it travels per request`);
+    }
+    for (const processLevel of ["model", "threads", "useGpu", "backendType"]) {
+      assert.ok(new RegExp(`"${processLevel}"`).test(list), `${processLevel} really does need a reload`);
+    }
+    // The Generator's own pre-flight check must agree with the server's list.
+    const generator = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "Generator.jsx"), "utf8");
+    const check = generator.slice(generator.indexOf("// Only process-level differences reload the model"), generator.indexOf("needsRestart = true;"));
+    for (const perRequest of ["settings.steps", "settings.cfgScale", "settings.sampler", "settings.width", "settings.height"]) {
+      assert.ok(!check.includes(perRequest), `${perRequest} must not trigger a restart in the frontend either`);
+    }
+  });
+
   await test("the hardware endpoint carries recommended_image_settings", () => {
     const serve = fs.readFileSync(path.join(root, "scripts", "server", "serve.cjs"), "utf8");
     assert.match(serve, /recommended_image_settings:/, "the UI can only offer 'Auto (this machine)' if the server says what that is");
@@ -684,17 +739,66 @@ async function main() {
     assert.strictEqual(typed.height, 512);
   });
 
+  await test("resolveImagePlan does not let stale pixels veto the shape", async () => {
+    // Found by audit: the shape module resolved 640×1152 and then this function
+    // overwrote it with the constraints' stale 1024×1024 — a row reading "Tall"
+    // over a square request, the exact disagreement the shared module exists to
+    // prevent. Both layers now agree that a picked shape owns the canvas.
+    const wide = frontend.resolveImagePlan(
+      { ...CONSTRAINTS, aspect: "wide", width: 1024, height: 1024, hardwareTier: "high" },
+      "juggernautXL_v9.safetensors"
+    );
+    assert.ok(wide.width > wide.height, `a picked shape must decide the canvas, got ${wide.width}×${wide.height}`);
+    assert.strictEqual(wide.aspect, "wide");
+    assert.deepStrictEqual(
+      [wide.width, wide.height],
+      [iq.planImageQuality({ family: "sdxl", tier: "high", aspect: "wide" }).width,
+       iq.planImageQuality({ family: "sdxl", tier: "high", aspect: "wide" }).height],
+      "and it must be the same pixels the module resolved"
+    );
+    // With no shape picked, a typed size is still the user's.
+    const typed = frontend.resolveImagePlan({ ...CONSTRAINTS, width: 768, height: 512 }, "cyberrealistic_v8.safetensors");
+    assert.strictEqual(typed.width, 768);
+    assert.strictEqual(typed.height, 512);
+    assert.strictEqual(typed.aspect, "custom", "pixels the row cannot represent are labelled custom, not Square");
+  });
+
+  await test("choosing a shape does not relabel the preset as custom", async () => {
+    // Found by audit: the panel treated every edit the same, so picking Wide
+    // rewrote qualityPreset to "custom" and threw away the user's Best. The
+    // shape is not one of the preset's numbers.
+    const panel = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "QualityPanel.jsx"), "utf8");
+    assert.match(panel, /key === "aspect"[\s\S]{0,80}\? \{ \.\.\.prev, aspect: value \}/,
+      "an aspect change is written without touching the preset");
+    // And the badge agrees: a preset on a shaped canvas is still that preset.
+    const best = frontend.applyQualityPreset(
+      { width: 512, height: 512, steps: 25, cfgScale: 6.5, sampler: "dpm++2m", scheduler: "karras" },
+      "best", "cyberrealistic_v8.safetensors", "high"
+    );
+    for (const aspect of ["wide", "tall", "square"]) {
+      const plan = frontend.resolveImagePlan({ ...best, aspect }, "cyberrealistic_v8.safetensors");
+      assert.strictEqual(plan.preset, "best", `${aspect} keeps the Best label`);
+    }
+  });
+
   await test("a square plan is unchanged by the shape work", () => {
     // SD 1.5's own side is 512 and that is what "no shape chosen" must still
     // give: adding shapes must not quietly promote every SD 1.5 run to 1024².
     const sd15 = iq.planImageQuality({ family: "sd15", tier: "high" });
     assert.strictEqual(sd15.width, 512);
     assert.strictEqual(sd15.height, 512);
-    assert.strictEqual(sd15.aspect, "square");
+    assert.strictEqual(sd15.shapeChosen, false, "the family's own canvas is not a choice");
     // SDXL's natural side is 1024 and it keeps it.
     const sdxl = iq.planImageQuality({ family: "sdxl", tier: "high" });
     assert.strictEqual(sdxl.width, 1024);
-    assert.strictEqual(sdxl.aspect, "square");
+    // "custom" is the honest label when nobody picked a shape: the row shows no
+    // selection rather than claiming "Square" over a default canvas.
+    assert.strictEqual(sdxl.aspect, "custom");
+    // And picking Square explicitly is a choice, which the row does show.
+    const picked = iq.planImageQuality({ family: "sdxl", tier: "high", aspect: "square" });
+    assert.strictEqual(picked.aspect, "square");
+    assert.strictEqual(picked.shapeChosen, true);
+    assert.strictEqual(picked.width, 1024);
   });
 
   await test("the prompt budget is the backend's chunk size, not a guess", () => {

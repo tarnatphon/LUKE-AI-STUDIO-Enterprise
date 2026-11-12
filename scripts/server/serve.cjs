@@ -2385,19 +2385,24 @@ let currentSettings = {
   height: 512,
 };
 
+// The keys that genuinely require unloading and reloading the model.
+//
+// `steps`, `cfgScale`, `sampler`, `width` and `height` were on this list, which
+// meant every quality-preset change and every shape change — both of which write
+// those values — counted as a backend difference. Pressing Generate then called
+// startServer(), which kills the process and reloads a multi-gigabyte
+// checkpoint: minutes of waiting to change a number one request already carries.
+// They travel per request in the /sdapi/v1 body (see image-quality.cjs), so they
+// do not belong here. What remains really is process-level: which model is
+// resident, how it was loaded, and how much memory it was given.
 const BACKEND_RESTART_SETTING_KEYS = [
   "model",
-  "steps",
-  "cfgScale",
-  "sampler",
   "threads",
   "useGpu",
   "backendType",
   "vaeTiling",
   "vaeOnCpu",
   "flashAttn",
-  "width",
-  "height",
 ];
 
 function normalizeBackendSettingValue(key, value) {

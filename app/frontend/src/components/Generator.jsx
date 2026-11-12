@@ -457,14 +457,15 @@ function Generator({
         const shouldCompareModel = requestedBackend !== "openvino-npu";
         const isCoreMLBackend = requestedBackend === "apple-npu";
 
+        // Only process-level differences reload the model. steps / cfgScale /
+        // sampler / width / height are per-request (they ride in the
+        // /sdapi/v1 body), so comparing them here meant every quality-preset or
+        // shape change triggered a full checkpoint reload — minutes of waiting
+        // to change a number the request already carries. The server's own
+        // BACKEND_RESTART_SETTING_KEYS holds the same, shorter list.
         if ((shouldCompareModel && currentModelName !== targetModelName) ||
-            (!isCoreMLBackend && parseInt(settings.steps) !== parseInt(constraints.steps)) ||
-            (!isCoreMLBackend && Math.abs(parseFloat(settings.cfgScale) - parseFloat(constraints.cfgScale)) > 0.05) ||
-            (!isCoreMLBackend && settings.sampler !== constraints.sampler) ||
             (!isCoreMLBackend && parseInt(settings.threads) !== parseInt(constraints.threads)) ||
             Boolean(settings.useGpu) !== (constraints.useGpu !== false) ||
-            parseInt(settings.width || 512) !== parseInt(constraints.width || 512) ||
-            parseInt(settings.height || 512) !== parseInt(constraints.height || 512) ||
             currentBackend !== requestedBackend) {
           needsRestart = true;
         }
@@ -1061,7 +1062,7 @@ function Generator({
                 setNegativePrompt={setNegativePrompt}
                 prompt={prompt}
                 onPreset={handleApplyPreset}
-                disabled={isGenerating}
+                disabled={isGenerating || isEnhancing}
                 tier={specs?.tier}
               />
 
