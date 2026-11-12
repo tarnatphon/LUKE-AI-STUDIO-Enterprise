@@ -2019,7 +2019,11 @@ function ModelManager({
                       </button>
                       <span style={{ fontSize: "0.78rem", opacity: 0.8 }}>
                         One read of the same file, then every launch loads from the internal disk in seconds. The copy is
-                        disposable and the model itself stays where it is; the copy slows the current model while it runs.
+                        disposable and the model itself stays where it is; the copy slows the current model while it runs.{" "}
+                        <a href="#performance" style={{ color: "var(--md-sys-color-primary)" }}>
+                          The same switch is in Settings → Text Generation → Performance
+                        </a>
+                        .
                       </span>
                     </>
                   )}

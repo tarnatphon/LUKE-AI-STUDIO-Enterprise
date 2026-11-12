@@ -200,6 +200,19 @@ function App() {
 
   // Navigation
   const [activeTab, setActiveTab] = useState("home");
+  // A link to #performance lands where it says. That card lives inside the Text
+  // Generation section of Settings, so the breadcrumb the slow-load message used
+  // to print — Settings, then Performance — described two levels that are not in
+  // the sidebar at all. The fragment opens the panel; Settings expands the
+  // section and scrolls to the card.
+  useEffect(() => {
+    const openIfAsked = () => {
+      if (window.location.hash.replace(/^#/, "") === "performance") setActiveTab("settings");
+    };
+    openIfAsked();
+    window.addEventListener("hashchange", openIfAsked);
+    return () => window.removeEventListener("hashchange", openIfAsked);
+  }, []);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set(["home"]));
 
   useEffect(() => {

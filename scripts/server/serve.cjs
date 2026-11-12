@@ -7083,7 +7083,7 @@ async function startLlmWithBackend(settings = {}, backend) {
       loadPath = plan.cachedPath;
       console.log(`  [llm] Loading ${filename} from the ${plan.onInternalDisk ? "internal disk" : "app"} cache (${plan.sizeGb} GB).`);
     } else if (plan.shouldCache) {
-      console.log(`  [llm] ${filename} is on an external volume — the estimate below says what that costs each launch; cache it once from the text model card (or Settings > Performance) to read from the internal disk instead.`);
+      console.log(`  [llm] ${filename} is on an external volume — the estimate below says what that costs each launch; cache it once from the text model card (or Settings → Text Generation → Performance) to read from the internal disk instead.`);
     }
   } catch (_) {}
   lastLlmLoadCached = loadPath !== modelPath;
@@ -7550,7 +7550,7 @@ async function startBackend(settings = {}) {
       const shape = imageCachePlan.isDirectory ? `${imageCachePlan.fileCount} files, ${imageCachePlan.sizeGb} GB` : `${imageCachePlan.sizeGb} GB`;
       console.log(`  [backend] Loading ${path.basename(imageModelPath)} from the ${where} cache (${shape}).`);
     } else if (imageCachePlan.shouldCache) {
-      console.log(`  [backend] ${path.basename(imageModelPath)} is on an external volume — cache it in Settings > Performance to load it faster.`);
+      console.log(`  [backend] ${path.basename(imageModelPath)} is on an external volume — cache it in Settings → Text Generation → Performance (that card lists image models too) to load it from the internal disk instead.`);
     }
   } catch (_) {}
 

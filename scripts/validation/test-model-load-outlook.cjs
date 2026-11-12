@@ -111,7 +111,8 @@ check(slow.estimatedSeconds === Math.round((9 * GB) / (78 * 1024 * 1024)), "the 
 check(slow.level === "warn", "and it is a warning, because the wait is minutes");
 check(slow.message.includes("9.0 GB") && slow.message.includes("78 MB/s"), "the sentence carries both numbers", slow.message);
 check(/mmap off on this filesystem/.test(slow.message), "and says why the whole file is read: mmap is off here");
-check(/Settings > Performance/.test(slow.message) && /internal APFS/.test(slow.message), "with the two things that actually fix it");
+check(/Settings → Text Generation → Performance/.test(slow.message) && /internal APFS/.test(slow.message),
+  "with the two things that actually fix it, and a path that exists in the UI", slow.message);
 check(/the AI volume/.test(slow.message), "and names the disk the model is on");
 
 const fast = outlook.outlook({ sizeBytes: 9 * GB, bytesPerSecond: 800 * 1024 * 1024, mmapDisabled: true });
