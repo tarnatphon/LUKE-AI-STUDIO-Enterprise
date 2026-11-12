@@ -7008,6 +7008,7 @@ async function startLlm(settings = {}) {
             sizeBytes: stats.size,
             elapsedMs,
             bytesPerSecond: lastLlmLoadReport.bytesPerSecond,
+            predictedSeconds: lastLlmLoadReport.predictedSeconds,
           });
           console.log(`  [llm] ${lastLlmLoadReport.message}`);
         } catch (_) {}
