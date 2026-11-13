@@ -1423,13 +1423,21 @@ export async function listOpenVinoModels() {
 //
 // Exported so the Generator can size its progress estimate with the same numbers
 // that generateImage will send.
+// The window planImageSteps clamps denoiseGuidance to. Exported so the control
+// that sets it cannot drift from the request that sends it: the Generator's
+// slider stopped at 0.85 while the wire stopped at 0.75, so the top two stops
+// did nothing and the number on screen was not the number sent.
+export const DENOISE_GUIDANCE_MIN = 0.15;
+export const DENOISE_GUIDANCE_MAX = 0.75;
+
 export function planImageSteps(constraints = {}, referenceSettings = {}, hasInitImage = false) {
   const steps = constraints.steps || 20;
   if (!hasInitImage) return planImg2ImgSteps(steps, 1); // nothing trims a txt2img run
   const raw = Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? 0.38);
-  // Same window this function has always applied to denoiseGuidance (0.15–0.75);
-  // a value that is not a number falls back to the default instead of NaN.
-  const denoise = Number.isFinite(raw) ? Math.min(0.75, Math.max(0.15, raw)) : 0.38;
+  // A value that is not a number falls back to the default instead of NaN.
+  const denoise = Number.isFinite(raw)
+    ? Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw))
+    : 0.38;
   return planImg2ImgSteps(steps, denoise);
 }
 
