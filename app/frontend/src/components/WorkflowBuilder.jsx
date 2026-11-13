@@ -13,6 +13,7 @@ import {
   CHANNELS, CHANNEL_GROUPS, channelById, composeChannelPost, CHANNEL_AUTOMATION_LABEL,
   CHANNEL_LINK_TYPE_LABEL, CHANNELS_REVIEWED_AT,
 } from "../workflow-builder/channels.js";
+import { getLlmStatus, readMaxAnswerTokens } from "../services/api";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
 import BuildStamp from "./BuildStamp";
 
@@ -306,7 +307,7 @@ function Inspector({ step, steps, onChange, channelCredentials = {}, onSetCreden
               <input type="range" min="0" max="2" step="0.1" value={cfg.temperature ?? 0.7} onChange={(e) => set("temperature", Number(e.target.value))} />
             </Field>
             <Field label="Max tokens">
-              <input type="number" min="32" max="8192" value={cfg.maxTokens ?? 1024} onChange={(e) => set("maxTokens", Number(e.target.value))} />
+              <input type="number" min="32" max={maxAnswerTokens} value={cfg.maxTokens ?? 1024} onChange={(e) => set("maxTokens", Number(e.target.value))} />
             </Field>
           </div>
           <p className="awb-req-hint">ต้องเปิดโมเดลแชทไว้ในหน้า Chat ก่อนรันโหนดนี้</p>
@@ -756,6 +757,10 @@ export default function WorkflowBuilder() {
   const [steps, setSteps] = useState([]);
   const [wfName, setWfName] = useState("");
   const [dirty, setDirty] = useState(false);
+  // The ceiling on how many tokens one chat answer may ask for. Read from the
+  // server so the chat-node input cannot drift from the request — the input
+  // used to offer 8192 while doLlmChat clamped the request to 4096.
+  const [maxAnswerTokens, setMaxAnswerTokens] = useState(4096);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [selectedStepId, setSelectedStepId] = useState(null);
@@ -776,8 +781,9 @@ export default function WorkflowBuilder() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await api("/api/ai-workflow/state");
-      setState(data.state);
+      const [wfData, status] = await Promise.all([api("/api/ai-workflow/state"), getLlmStatus()]);
+      setState(wfData.state);
+      setMaxAnswerTokens(readMaxAnswerTokens(status));
       setError("");
     } catch (err) {
       setError(err.message);

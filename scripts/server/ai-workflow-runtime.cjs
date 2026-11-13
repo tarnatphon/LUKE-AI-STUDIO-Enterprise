@@ -42,7 +42,7 @@ function cleanText(value, { max = MAX_TEXT_FIELD, allowEmpty = true } = {}) {
 
 // Sanitize one step of a workflow. Throws on invalid input so the API returns
 // a clear 400 instead of persisting junk.
-function sanitizeStep(raw, index) {
+function sanitizeStep(raw, index, maxAnswerTokens = 4096) {
   if (!raw || typeof raw !== "object") throw new Error(`โหนดที่ ${index + 1} ไม่ถูกต้อง`);
   const type = String(raw.type || "");
   if (!STEP_TYPES.includes(type)) throw new Error(`โหนดที่ ${index + 1}: ชนิด "${type}" ไม่รองรับ`);
@@ -56,7 +56,7 @@ function sanitizeStep(raw, index) {
       config.system = cleanText(config.system);
       config.prompt = cleanText(config.prompt, { allowEmpty: false });
       config.temperature = clampNumber(config.temperature, 0, 2, 0.7);
-      config.maxTokens = clampNumber(config.maxTokens, 32, 8192, 1024);
+      config.maxTokens = clampNumber(config.maxTokens, 32, maxAnswerTokens, 1024);
       break;
     case "image":
       config.prompt = cleanText(config.prompt, { allowEmpty: false });
@@ -114,10 +114,10 @@ function sanitizeStep(raw, index) {
   return { id: cleanText(raw.id, { max: 40, allowEmpty: false }), type, name, config };
 }
 
-function sanitizeSteps(rawSteps) {
+function sanitizeSteps(rawSteps, maxAnswerTokens = 4096) {
   if (!Array.isArray(rawSteps)) throw new Error("steps ต้องเป็นอาร์เรย์");
   if (rawSteps.length > MAX_STEPS_PER_WORKFLOW) throw new Error(`โหนดเยอะเกินไป (สูงสุด ${MAX_STEPS_PER_WORKFLOW} โหนด)`);
-  const steps = rawSteps.map(sanitizeStep);
+  const steps = rawSteps.map((s, i) => sanitizeStep(s, i, maxAnswerTokens));
   const ids = new Set(steps.map((s) => s.id));
   if (ids.size !== steps.length) throw new Error("มีโหนดที่ id ซ้ำกัน");
   return steps;
@@ -238,8 +238,13 @@ function seedWorkflows() {
 const STEP_DEFAULT_NAMES = {};
 
 class AiWorkflowRuntime {
-  constructor({ root }) {
+  constructor({ root, maxAnswerTokens }) {
     this.root = root;
+    // The ceiling on a chat node's max-tokens value. Passed in by serve.cjs
+    // (LLM_MAX_ANSWER_TOKENS) so the save-time clamp here and the request-time
+    // clamp in doLlmChat are the same number. Defaults to 4096 for a standalone
+    // call that does not pass it.
+    this.maxAnswerTokens = Number.isFinite(Number(maxAnswerTokens)) ? Number(maxAnswerTokens) : 4096;
     this.stateDir = path.join(root, "app", "runtime-state", "ai-workflow");
     this.filePath = path.join(this.stateDir, "state.json");
     // Publishing keys live in their own file and never travel in a workflow or
@@ -538,7 +543,7 @@ class AiWorkflowRuntime {
     const wf = state.workflows.find((w) => w.id === id);
     if (!wf) throw new Error("ไม่พบเวิร์กโฟลว์นี้");
     if (patch.name !== undefined) wf.name = cleanText(patch.name, { max: 80, allowEmpty: false });
-    if (patch.steps !== undefined) wf.steps = sanitizeSteps(patch.steps);
+    if (patch.steps !== undefined) wf.steps = sanitizeSteps(patch.steps, this.maxAnswerTokens);
     wf.updatedAt = new Date().toISOString();
     this._write(state);
     return wf;

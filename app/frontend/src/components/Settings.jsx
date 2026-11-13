@@ -24,6 +24,7 @@ import {
   getDownloadProgress,
   getBackendOptions,
   readContextCeiling,
+  readMaxAnswerTokens,
 } from "../services/api";
 import { THEME_LIST } from "../themes";
 import "./Settings.css";
@@ -569,6 +570,11 @@ function Settings({
   // the load would really run. The Model Manager's context-window card sets the
   // same setting through the same helper, so the two cannot disagree.
   const contextCeiling = readContextCeiling(llmStatus);
+  // The ceiling on how many tokens one answer may ask for. doLlmChat clamps
+  // every request to this, and the slider takes its top from here rather than
+  // keeping a copy — a copy is how the Workflow Builder's chat input came to
+  // offer 8192 while the request stopped at 4096.
+  const maxAnswerTokens = readMaxAnswerTokens(llmStatus);
   // What the next load will use. 0 is "let the app choose", so it is left alone;
   // a size past the ceiling is shown as the ceiling, not as a number the request
   // quietly cuts down.
@@ -1337,9 +1343,9 @@ function Settings({
                       value={pendingTextSettings.maxTokens || 1024}
                       onChange={(e) => updateTextSetting("maxTokens", parseInt(e.target.value))}
                       min="64"
-                      max="4096"
+                      max={maxAnswerTokens}
                       step="64"
-                      style={getSliderStyle(pendingTextSettings.maxTokens || 1024, 64, 4096)}
+                      style={getSliderStyle(pendingTextSettings.maxTokens || 1024, 64, maxAnswerTokens)}
                     />
                     <span className="settings-option-desc">
                       Manual uses the slider value.
