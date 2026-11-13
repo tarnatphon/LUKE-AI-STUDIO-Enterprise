@@ -113,6 +113,11 @@ const MAX_WORK_AGENT_ROUNDS = 6;
 // same number the compaction config keeps (keepLastMessages).
 const ARCHIVE_LIVE_MESSAGES = 6;
 /** How long something has been going, in the units a load is measured in. */
+// Below this, waiting again is cheaper than a multi-gigabyte copy, so no offer
+// is made. Above it, the wait was long enough that the copy pays for itself on
+// the second load.
+const LOAD_WORTH_CACHING_MS = 60000;
+
 const formatLoadDuration = (ms) => {
   const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
   const minutes = Math.floor(total / 60);
@@ -469,6 +474,12 @@ function TextChat({
   // away. The number existed only in the terminal and on the Text Models card,
   // which is not where the wait happened.
   const [lastLoadNote, setLastLoadNote] = useState(null);
+  // The copy offer, made at the moment the wait ended: the four minutes are on
+  // screen, so the fix belongs next to them and not one tab away on the card.
+  const [cacheOffer, setCacheOffer] = useState(null);
+  const [cacheStarted, setCacheStarted] = useState(false);
+  const [cacheCopy, setCacheCopy] = useState(null);
+  const [cacheError, setCacheError] = useState("");
   // Set when the model writes the round instructions back instead of doing the
   // work twice over. Better a sentence explaining it than a run that spins.
   const [workEchoNotice, setWorkEchoNotice] = useState("");
@@ -1497,12 +1508,30 @@ function TextChat({
       setMessages([]);
       setTokenUsage({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
       // Same sentence the terminal printed, so the screen and the log cannot
-      // disagree about how long it took.
+      // disagree about how long it took. And, if the wait was long enough to be
+      // worth avoiding, the offer to fix it sits next to the number.
+      setCacheOffer(null);
+      setCacheCopy(null);
+      setCacheStarted(false);
+      setCacheError("");
       try {
         const after = await getLlmStatus();
-        if (after?.lastLoad?.message) setLastLoadNote(after.lastLoad);
+        const lastLoad = after?.lastLoad || null;
+        setLastLoadNote(lastLoad?.message ? lastLoad : null);
+        const slow = Number(lastLoad?.elapsedMs) >= LOAD_WORTH_CACHING_MS && lastLoad?.cached !== true;
+        if (slow) {
+          const cacheResponse = await fetch("/api/model-cache/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ useInternalDisk: true }),
+          });
+          const cacheData = await cacheResponse.json();
+          const plans = cacheData?.result?.plans || [];
+          const plan = plans.find((entry) => entry.kind !== "image" && String(entry.source).split("/").pop() === filename);
+          if (plan && plan.external !== false && !plan.cached) setCacheOffer({ source: plan.source, plan });
+        }
       } catch {
-        // The load succeeded; a missing sentence is not worth an alert.
+        // No offer is better than a broken one.
       }
     } catch (err) {
       if (loadingModelRef.current === filename) {
@@ -1540,6 +1569,71 @@ function TextChat({
       window.clearInterval(timer);
     };
   }, [loadingModel]);
+
+  // One click, then the copy runs on the server — the same endpoint the model
+  // card uses — so leaving the chat does not abandon it.
+  const startCacheCopy = async () => {
+    if (!cacheOffer?.source) return;
+    setCacheStarted(true);
+    setCacheError("");
+    try {
+      const response = await fetch("/api/model-cache/prime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: cacheOffer.source, scope: "text", useInternalDisk: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The copy could not be started.");
+    } catch (error) {
+      setCacheStarted(false);
+      setCacheError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  useEffect(() => {
+    if (!cacheStarted) return undefined;
+    let active = true;
+    const tick = async () => {
+      try {
+        const response = await fetch("/api/model-cache/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ useInternalDisk: true }),
+        });
+        const data = await response.json();
+        const copy = data?.result?.copy || null;
+        if (!active) return;
+        if (copy?.error) {
+          setCacheStarted(false);
+          setCacheError(String(copy.error));
+          return;
+        }
+        if (copy) setCacheCopy(copy);
+        if (copy?.done) setCacheStarted(false);
+      } catch {
+        // A poll that fails is retried by the next tick.
+      }
+    };
+    void tick();
+    const timer = window.setInterval(tick, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [cacheStarted]);
+
+  const cacheProgressText = (() => {
+    if (!cacheCopy) return "Starting the copy…";
+    const total = Number(cacheCopy.totalBytes) || 0;
+    const copied = Number(cacheCopy.copiedBytes) || 0;
+    const gb = (bytes) => (Math.max(0, Number(bytes) || 0) / 1024 ** 3).toFixed(1);
+    const rate = Number(cacheCopy.bytesPerSecond) || 0;
+    const left = rate > 0 && total > copied ? Math.round((total - copied) / rate) : 0;
+    const leftText = left >= 60
+      ? `about ${Math.floor(left / 60)} min ${left % 60} s left`
+      : left > 0 ? `about ${left} s left` : "";
+    return total > 0 ? `Copying ${gb(copied)} of ${gb(total)} GB${leftText ? ` · ${leftText}` : ""}` : "Copying…";
+  })();
 
   useEffect(() => {
     let active = true;
@@ -3293,11 +3387,42 @@ function TextChat({
               fontSize: "0.82rem", lineHeight: 1.45,
             }}
           >
-            <span style={{ flex: 1 }}>{lastLoadNote.message}</span>
+            <div style={{ flex: 1 }}>
+              <span>{lastLoadNote.message}</span>
+              {cacheOffer && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  {cacheCopy?.done ? (
+                    <span>Cached — the next load reads from the internal disk in seconds.</span>
+                  ) : cacheStarted ? (
+                    <span>{cacheProgressText}</span>
+                  ) : cacheOffer.plan?.fits === false ? (
+                    <span>
+                      There is not enough room on the internal disk for that copy right now; the text model card shows how much it needs.
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="m3-btn m3-btn-outlined"
+                        onClick={() => void startCacheCopy()}
+                        style={{ padding: "3px 10px", fontSize: "0.78rem" }}
+                      >
+                        {cacheOffer.plan?.sizeGb ? `Cache it once (${cacheOffer.plan.sizeGb} GB)` : "Cache it once"}
+                      </button>
+                      <span>One read now, then every load reads from the internal disk instead of the slow volume.</span>
+                    </>
+                  )}
+                  {cacheError && <span style={{ color: "var(--md-sys-color-error)" }}>{cacheError}</span>}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="m3-btn m3-btn-text"
-              onClick={() => setLastLoadNote(null)}
+              onClick={() => {
+                setLastLoadNote(null);
+                setCacheOffer(null);
+              }}
               style={{ padding: "2px 8px", fontSize: "0.78rem" }}
             >
               Dismiss

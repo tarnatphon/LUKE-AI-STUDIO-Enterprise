@@ -194,6 +194,36 @@ try {
   fs.rmSync(created, { force: true });
 }
 
+// #136/#139 put the button on the model card. The wait, though, happens in the
+// chat: the screen that just reported four minutes dropped straight back to the
+// conversation, so acting on the number meant changing tab and finding the file
+// again. The offer now appears next to the number that justifies it.
+console.log("\n  and the offer is made where the wait happened");
+
+const chat = read("app", "frontend", "src", "components", "TextChat.jsx");
+check(/const LOAD_WORTH_CACHING_MS = 60000;/.test(chat),
+  "a fast load is not offered a multi-gigabyte copy");
+check(/Number\(lastLoad\?\.elapsedMs\) >= LOAD_WORTH_CACHING_MS && lastLoad\?\.cached !== true/.test(chat),
+  "the offer depends on how long this load took and whether it already came from the copy");
+check(/String\(entry\.source\)\.split\("\/"\)\.pop\(\) === filename/.test(chat),
+  "the plan is matched to the model that was just loaded, not to whatever is first in the list");
+check(/plan\.external !== false && !plan\.cached/.test(chat),
+  "and only when there is something to copy");
+check(/\{cacheOffer\.plan\?\.sizeGb \? `Cache it once \(\$\{cacheOffer\.plan\.sizeGb\} GB\)` : "Cache it once"\}/.test(chat),
+  "the button names what it will cost");
+check(/body: JSON\.stringify\(\{ model: cacheOffer\.source, scope: "text", useInternalDisk: true \}\)/.test(chat),
+  "and starts the same server-side copy the model card starts");
+check(/if \(copy\?\.done\) setCacheStarted\(false\);/.test(chat),
+  "progress is polled until the copy finishes, then the polling stops");
+check(/Copying \$\{gb\(copied\)\} of \$\{gb\(total\)\} GB/.test(chat),
+  "a 6.9 GB copy is not silent while it runs");
+check(/cacheOffer\.plan\?\.fits === false/.test(chat),
+  "a copy with no room is explained instead of attempted");
+check(/setCacheError\(error instanceof Error \? error\.message : String\(error\)\)/.test(chat),
+  "and a refusal from the server is shown in its own words");
+check(/setLastLoadNote\(null\);\s*\n\s*setCacheOffer\(null\);/.test(chat),
+  "dismissing the sentence dismisses the offer too");
+
 console.log(`\nPASS: ${checks} checks — the number and the button that acts on it are on the same card.`);
 }
 
