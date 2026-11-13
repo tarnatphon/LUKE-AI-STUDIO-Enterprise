@@ -1646,6 +1646,11 @@ export async function generateImage(prompt, negativePrompt, constraints, activeM
           steps:        img2imgSteps.steps,
           stepsSent:    img2imgSteps.sent,
           stepsCapped:  img2imgSteps.capped,
+          // The denoise the request carried. For img2img this is the clamped
+          // reference setting, not the image's own strength field: they are the
+          // same knob, and only one of them reaches the wire. Reported so the
+          // metadata can record what ran rather than what a slider said.
+          denoise:      isImg2Img ? img2imgSteps.strength : null,
           hires:        isImg2Img ? null : { ...plan.hires },
           family:       plan.family,
           preset:       plan.preset,

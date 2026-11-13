@@ -290,6 +290,33 @@ async function main() {
         assert.strictEqual(result.stepsCapped, false);
       });
 
+      test("the strength the request carried comes back, so the metadata can record it", async () => {
+        const { result } = await callOnce(`data:image/png;base64,${PNG_BASE64}`, { denoiseGuidance: 0.62 });
+        assert.strictEqual(result.denoise, 0.62, "what the request carried, not what the slider held");
+        const high = await callOnce(`data:image/png;base64,${PNG_BASE64}`, { denoiseGuidance: 0.9 });
+        assert.strictEqual(high.result.denoise, 0.75, "clamped before it goes on the wire");
+        const txt = await callOnce(null, {});
+        assert.strictEqual(txt.result.denoise, null, "a txt2img run carries no denoise");
+      });
+
+      test("the Transformation strength slider drives the setting the request reads", () => {
+        // The slider used to write constraints.denoisingStrength, which the
+        // request never reads once there is an init image — it reads the
+        // reference setting. So it was visible exactly when it could do
+        // nothing, and the number on screen was not the number the backend got.
+        const generator = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "Generator.jsx"), "utf8");
+        assert.match(generator, /setReferenceSettings\(\(prev\) => \(\{ \.\.\.prev, denoiseGuidance: Number\(e\.target\.value\) \}\)\)/,
+          "it writes the reference setting the request reads");
+        assert.match(generator, /<span>\{transformationStrength\.toFixed\(2\)\}<\/span>/,
+          "and the number beside it is that setting, clamped to the window");
+        assert.match(generator, /min=\{DENOISE_GUIDANCE_MIN\}\s*\n\s*max=\{DENOISE_GUIDANCE_MAX\}/,
+          "with its ends taken from the same constants the request clamps to");
+        assert.match(generator, /denoisingStrength: result\.denoise \?\? null,/,
+          "and the metadata records what the request carried");
+        assert.doesNotMatch(generator, /denoisingStrength: \(baseImage \|\| getBestReferenceSource\(\)\) \? constraints\.denoisingStrength : null,/,
+          "not the constraint the request ignores");
+      });
+
       test("the Generator's txt2img request is not step-scaled", async () => {
         // The endpoint changed from /v1/images/generations to /sdapi/v1/txt2img
         // because the former ignores steps, cfg, seed, sampler and the negative
