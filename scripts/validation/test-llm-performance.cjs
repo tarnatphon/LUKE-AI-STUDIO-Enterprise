@@ -353,6 +353,44 @@ async function main() {
       /const LLM_CONTEXT_CEILING = /.test(serverSource)
       && /LUKE_LLM_MAX_CONTEXT/.test(serverSource));
 
+    section("8. The max-answer-tokens ceiling is published, so no input offers a number the request will not take");
+
+    // doLlmChat clamps every chat request's max_tokens to 4096. The Settings
+    // slider already stopped at 4096, but the Workflow Builder's chat-node
+    // input offered 8192 and the workflow save-time clamp allowed 8192 — so
+    // the top of that input showed a number the request would silently cut
+    // down. The ceiling is now one constant on the server, published on the
+    // status route, and every consumer reads it.
+    const wbSource = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "WorkflowBuilder.jsx"), "utf8");
+    const statusForMax = await call("/api/llm/status", null, "GET");
+    check("the status route publishes the max-answer-tokens ceiling", statusForMax.status === 200
+      && Number(statusForMax.data?.maxAnswerTokens) > 0, String(statusForMax.data?.maxAnswerTokens));
+    check("and it is the ceiling the request clamps to, not a copy",
+      statusForMax.data?.maxAnswerTokens === 4096, String(statusForMax.data?.maxAnswerTokens));
+
+    check("the server names the ceiling once, beside the other LLM bounds",
+      /const LLM_MAX_ANSWER_TOKENS = 4096;/.test(serverSource));
+    check("doLlmChat clamps the request with the constant, not a literal",
+      /Math\.min\(LLM_MAX_ANSWER_TOKENS, Number\(body\.max_tokens\)/.test(serverSource)
+      && /Math\.max\(1, Math\.min\(LLM_MAX_ANSWER_TOKENS, Number\(body\.max_tokens\)/.test(serverSource));
+
+    check("the reader keeps the default in one place, as a fallback for an older server",
+      /export const MAX_ANSWER_TOKENS_FALLBACK = 4096;/.test(apiSource)
+      && /if \(!Number\.isFinite\(max\) \|\| max < 32\) return MAX_ANSWER_TOKENS_FALLBACK;/.test(apiSource));
+    check("the Settings slider takes its top end from the reader",
+      /max=\{maxAnswerTokens\}/.test(settingsSource)
+      && /getSliderStyle\(pendingTextSettings\.maxTokens \|\| 1024, 64, maxAnswerTokens\)/.test(settingsSource)
+      && /const maxAnswerTokens = readMaxAnswerTokens\(llmStatus\);/.test(settingsSource));
+    check("it no longer hard-codes the 4096 the request no longer stops at",
+      !/min="64"[\s\S]{0,40}max="4096"/.test(settingsSource));
+    check("the Workflow Builder chat input takes its ceiling from the same reader",
+      /max=\{maxAnswerTokens\}/.test(wbSource)
+      && /import \{ getLlmStatus, readMaxAnswerTokens \} from "..\/services\/api";/.test(wbSource));
+    check("and no chat-node input offers the 8192 the request would never take",
+      !/max="8192"/.test(wbSource));
+    check("the workflow save-time clamp uses the bound the request uses",
+      /config\.maxTokens = clampNumber\(config\.maxTokens, 32, maxAnswerTokens, 1024\);/.test(fs.readFileSync(path.join(root, "scripts", "server", "ai-workflow-runtime.cjs"), "utf8")));
+
     console.log(`\n${passed} passed, ${failed} failed`);
     if (failed > 0) process.exitCode = 1;
   } finally {

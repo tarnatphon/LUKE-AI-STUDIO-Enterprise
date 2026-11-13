@@ -1446,6 +1446,20 @@ export function readContextCeiling(status) {
   return Math.floor(max);
 }
 
+// The ceiling on how many tokens one chat answer may ask for. doLlmChat
+// clamps every request to this number, and the server publishes it on
+// /api/llm/status as maxAnswerTokens. The two controls that offer a
+// max-tokens value — the Settings slider and the Workflow Builder's
+// chat-node input — read it from here so they cannot drift from the request.
+// The fallback is for an older server, not a bound.
+export const MAX_ANSWER_TOKENS_FALLBACK = 4096;
+
+export function readMaxAnswerTokens(status) {
+  const max = Number(status?.maxAnswerTokens);
+  if (!Number.isFinite(max) || max < 32) return MAX_ANSWER_TOKENS_FALLBACK;
+  return Math.floor(max);
+}
+
 export function planImageSteps(constraints = {}, referenceSettings = {}, hasInitImage = false) {
   const steps = constraints.steps || 20;
   if (!hasInitImage) return planImg2ImgSteps(steps, 1); // nothing trims a txt2img run

@@ -1233,6 +1233,15 @@ const LLM_CONTEXT_CEILING = (() => {
 const LLM_BATCH_SIZE_MIN = 128;
 const LLM_BATCH_SIZE_MAX = 2048;
 
+// The ceiling on how many tokens one chat answer may ask for. doLlmChat
+// clamps every request to this, and it is published on /api/llm/status so the
+// controls that offer a max-tokens value — the Settings slider and the
+// Workflow Builder's chat-node input — take their ceiling from here instead
+// of keeping a copy. The Workflow Builder used to offer 8192 while the
+// request stopped at 4096, so the top of the input showed a number the
+// process would never run.
+const LLM_MAX_ANSWER_TOKENS = 4096;
+
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
 const SERVER_BUILD = "text-image-v1";
 const ROOT    = path.join(__dirname, "..", "..");
@@ -1273,7 +1282,7 @@ function getSocialAgencyRuntime() {
 let aiWorkflowRuntime = null;
 function getAiWorkflowRuntime() {
   if (!aiWorkflowRuntime) {
-    aiWorkflowRuntime = new AiWorkflowRuntime({ root: ROOT });
+    aiWorkflowRuntime = new AiWorkflowRuntime({ root: ROOT, maxAnswerTokens: LLM_MAX_ANSWER_TOKENS });
   }
   return aiWorkflowRuntime;
 }
@@ -27764,6 +27773,7 @@ const handleRequest = async (req, res) => {
       // can raise the ceiling to 262144.
       contextCeiling: LLM_CONTEXT_CEILING,
       batchWindow: { min: LLM_BATCH_SIZE_MIN, max: LLM_BATCH_SIZE_MAX },
+      maxAnswerTokens: LLM_MAX_ANSWER_TOKENS,
       backendInstalled: Boolean(backend),
       backendMode: backend?.mode || "",
       backendPath: backend?.path || "",
@@ -28531,7 +28541,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
     const compactionConfig = readContextCompactionConfig(ROOT);
     const answerTokens = Math.max(
       128,
-      Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)
+      Math.min(LLM_MAX_ANSWER_TOKENS, Number(body.max_tokens) || Number(body.maxTokens) || 1024)
     );
     const requestMessages = compactionConfig.enabled === false
       ? webAugmentation.messages
@@ -28566,7 +28576,7 @@ async function doLlmChat(req, res, body, retryCount = 0) {
       model: llmSettings.model || "local-model",
       messages: fittedMessages,
       temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.7,
-      max_tokens: Math.max(1, Math.min(4096, Number(body.max_tokens) || Number(body.maxTokens) || 1024)),
+      max_tokens: Math.max(1, Math.min(LLM_MAX_ANSWER_TOKENS, Number(body.max_tokens) || Number(body.maxTokens) || 1024)),
       stream: isStream,
       // New sampling parameters
       top_p: Number.isFinite(Number(body.top_p)) ? Number(body.top_p) : 0.95,
