@@ -77,6 +77,28 @@ function describeMeasurementAge(at) {
   return `Measured ${Math.round(hours / 24)} d ago`;
 }
 
+// Where a disposable copy goes: the machine's own disk, or the cache folder on
+// the disk the app runs from. It is a choice about this machine, so it lives
+// past the visit that made it — and the card below reads what the loader will
+// actually do, which is not always the same thing as what this switch says.
+const INTERNAL_DISK_KEY = "luke.modelCache.internalDisk";
+
+function readInternalDiskChoice() {
+  try {
+    return window.localStorage.getItem(INTERNAL_DISK_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function writeInternalDiskChoice(on) {
+  try {
+    window.localStorage.setItem(INTERNAL_DISK_KEY, on ? "on" : "off");
+  } catch {
+    // A full or disabled localStorage must not lose the choice on screen.
+  }
+}
+
 export default function PerformancePanel({ pendingTextSettings, updateTextSetting, onApply, showAlert }) {
   const [plan, setPlan] = useState(null);
   const [cache, setCache] = useState(null);
@@ -100,7 +122,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
   const [backgroundNote, setBackgroundNote] = useState("");
   // Everything this app owns stays on the disk the user chose. The internal
   // disk is only used for a disposable copy, and only when asked for.
-  const [useInternalDisk, setUseInternalDisk] = useState(false);
+  const [useInternalDisk, setUseInternalDisk] = useState(() => readInternalDiskChoice());
   // What the Context Size slider above means when it says 0: the number the
   // app picks, the memory it has to work with, and the price of the next step.
   const [contextPlan, setContextPlan] = useState(null);
@@ -182,6 +204,15 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
     }
     return `${when} uses ${effective ? "--mmap" : "--no-mmap"}, not what Settings asks for: ${mmapStatus.reason || "this volume decides it."}`;
   })();
+
+  // Copies already sitting on the internal disk. The loader looks there first
+  // whichever way the switch below sits, so the card has to count them before it
+  // says where the next load will come from — otherwise "off" reads as "every
+  // load comes off the external disk", which a copy the app itself made would
+  // contradict on the very next load.
+  const internalDiskCopies = Array.isArray(cache?.internalDiskCache?.sources)
+    ? cache.internalDiskCache.sources.length
+    : 0;
 
   const saveGovernor = async (overrides) => {
     setBusy("governor-save");
@@ -546,14 +577,19 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
         <input
           type="checkbox"
           checked={useInternalDisk}
-          onChange={(event) => setUseInternalDisk(event.target.checked)}
+          onChange={(event) => {
+            const next = event.target.checked;
+            setUseInternalDisk(next);
+            writeInternalDiskChoice(next);
+          }}
         />
         Use the internal disk for a temporary {externalModels[0]?.sizeGb ? `${externalModels[0].sizeGb} GB ` : ""}copy (faster loading, deletable any time)
       </label>
       {!useInternalDisk && (
         <span style={descStyle}>
-          Off: the model is loaded from your external disk every time. Turning this on trades internal disk space for much faster loading;
-          your model itself never moves.
+          {internalDiskCopies > 0
+            ? `${internalDiskCopies} ${internalDiskCopies === 1 ? "model already has" : "models already have"} a copy on the internal disk, so those load from there — this switch only decides where new copies go. Turn it on to copy the rest.`
+            : "Off: the model is loaded from your external disk every time. Turning this on trades internal disk space for much faster loading; your model itself never moves."}
         </span>
       )}
       {useInternalDisk && externalModels.length === 0 && (

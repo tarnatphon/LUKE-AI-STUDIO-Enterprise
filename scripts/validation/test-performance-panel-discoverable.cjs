@@ -163,4 +163,35 @@ check(/describeMeasurementAge\(measured\.at\)\}\$\{measured\.model \? ` on \$\{m
 check(/measured\?\.tokensPerSecond \? "Measure again" : "Measure speed"/.test(panel),
   "and the button offers to take a new one instead of pretending none exists");
 
+console.log("\n  and the internal-disk switch says what the next load will actually do");
+
+// The switch decides where a *new* copy goes. The loader looks on the internal
+// disk first whichever way it sits, so a copy made while it was on is still
+// used after it is turned off — and the card used to say "the model is loaded
+// from your external disk every time" unconditionally, which the app's own
+// copy would contradict on the next load.
+check(/const INTERNAL_DISK_KEY = "luke\.modelCache\.internalDisk";/.test(panel),
+  "the switch is a choice about this machine, so it has a key of its own");
+check(/const \[useInternalDisk, setUseInternalDisk\] = useState\(\(\) => readInternalDiskChoice\(\)\)/.test(panel),
+  "and is put back when the card opens, instead of starting from off every time");
+check(/writeInternalDiskChoice\(next\)/.test(panel) && /setUseInternalDisk\(next\);/.test(panel),
+  "changing it writes the choice down as well as changing what is on screen");
+check(/const internalDiskCopies = Array\.isArray\(cache\?\.internalDiskCache\?\.sources\)/.test(panel),
+  "the card counts the copies that are already on the internal disk");
+check(/internalDiskCopies > 0\s*\?/.test(panel),
+  "and the off sentence branches on that count");
+check(/so those load from there — this switch only decides where new copies go/.test(panel),
+  "the off state says those loads come from the internal disk, not from the external one");
+check(/"Off: the model is loaded from your external disk every time\./.test(panel),
+  "the plain sentence survives for the case where there is nothing on the internal disk");
+check(panel.indexOf("internalDiskCopies > 0") < panel.indexOf("Off: the model is loaded from your external disk every time"),
+  "and only as the else branch of the count, never on its own");
+
+check(/const internal = useInternalDisk\s*\? status\s*: await modelCache\.cacheStatus\(listed\.map\(\(entry\) => entry\.path\), \{ useInternalDisk: true \}\);/.test(serve),
+  "the status route reports the internal-disk cache even when the switch is off");
+check(/status\.internalDiskCache = \{/.test(serve) && /cachedGb: internal\.cachedGb,/.test(serve),
+  "with its size, so the card can say how much of the model is already there");
+check(/\.filter\(\(plan\) => plan\.cached\)\s*\n\s*\.map\(\(plan\) => path\.basename\(String\(plan\.source \|\| ""\)\)\),/.test(serve),
+  "and the names of the models that have one, so the count is about this machine");
+
 console.log(`\nPASS: ${checks} checks — the advice points at a place that exists, and the app can take you there.`);

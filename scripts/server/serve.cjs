@@ -30981,6 +30981,20 @@ if (req.url === "/api/image-to-video/generate" && req.method === "POST") {
         plan.name = found?.name || path.basename(String(plan.source || ""));
       }
       status.internalCacheAvailable = true;
+      // The loader looks on the internal disk first, whichever way this switch
+      // sits — a copy made while the switch was on is still used after it is
+      // turned off. The card below says what the next load will do, and it can
+      // only say that honestly if it is told about a copy it is not looking at.
+      const internal = useInternalDisk
+        ? status
+        : await modelCache.cacheStatus(listed.map((entry) => entry.path), { useInternalDisk: true });
+      status.internalDiskCache = {
+        cachedGb: internal.cachedGb,
+        cachedBytes: internal.cachedBytes,
+        sources: (internal.plans || [])
+          .filter((plan) => plan.cached)
+          .map((plan) => path.basename(String(plan.source || ""))),
+      };
       // A copy in flight, with the numbers the button needs: how much of it is
       // done, and how long the same measurement says it will take.
       status.copy = cacheCopyJob;
