@@ -1430,6 +1430,21 @@ export async function listOpenVinoModels() {
 export const DENOISE_GUIDANCE_MIN = 0.15;
 export const DENOISE_GUIDANCE_MAX = 0.75;
 
+// The window the context size is clamped to, and the number to fall back to
+// when the server does not publish it. Exported so the two controls that set
+// the same setting — the Model settings slider and the Model Manager's
+// context-window card — cannot drift from each other or from the request that
+// sends it. The fallback is for an older server, not a bound: the server's
+// LLM_CONTEXT_CEILING defaults to 20000 but LUKE_LLM_MAX_CONTEXT raises it to
+// 262144, and both controls used to hard-code the default.
+export const CONTEXT_CEILING_FALLBACK = 20000;
+
+export function readContextCeiling(status) {
+  const max = Number(status?.contextCeiling);
+  if (!Number.isFinite(max) || max < 512) return CONTEXT_CEILING_FALLBACK;
+  return Math.floor(max);
+}
+
 export function planImageSteps(constraints = {}, referenceSettings = {}, hasInitImage = false) {
   const steps = constraints.steps || 20;
   if (!hasInitImage) return planImg2ImgSteps(steps, 1); // nothing trims a txt2img run

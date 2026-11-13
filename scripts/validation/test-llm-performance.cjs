@@ -26,6 +26,7 @@ const { ensureRuntimeStateLayout } = require("./helpers/runtime-state-paths.cjs"
 
 ensureRuntimeStateLayout(root);
 const serverFile = path.join(root, "scripts", "server", "serve.cjs");
+const apiFile = path.join(root, "app", "frontend", "src", "services", "api.js");
 const {
   planRuntimeSettings,
   planDraftSettings,
@@ -189,6 +190,7 @@ async function main() {
   // ── 5. The endpoints ────────────────────────────────────────────────────
   section("5. The endpoints answer");
   const serverSource = fs.readFileSync(serverFile, "utf8");
+  const apiSource = fs.readFileSync(apiFile, "utf8");
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [serverFile], {
@@ -296,6 +298,7 @@ async function main() {
       window?.min === 128 && window?.max === 2048, JSON.stringify(window));
 
     const settingsSource = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "Settings.jsx"), "utf8");
+    const managerSource = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "ModelManager.jsx"), "utf8");
     check("the Batch Size slider takes its ends from the published window",
       /min=\{batchWindow\.min\}\s*\n\s*max=\{batchWindow\.max\}/.test(settingsSource));
     check("read off the status the panel already fetches, with the old numbers only as a fallback",
@@ -333,8 +336,15 @@ async function main() {
       /value=\{contextSizeValue\}\s*\n\s*onChange=\{\(e\) => updateTextSetting\("contextSize", parseInt\(e\.target\.value\)\)\}\s*\n\s*min="0"\s*\n\s*max=\{String\(contextCeiling\)\}/.test(settingsSource));
     check("and the track is drawn over the same ceiling",
       /getSliderStyle\(contextSizeValue, 0, contextCeiling\)/.test(settingsSource));
-    check("read off the status the panel already fetches, with the default only as a fallback",
-      /const contextCeiling = \(\(\) => \{/.test(settingsSource) && /llmStatus\?\.contextCeiling/.test(settingsSource));
+    check("read off the status the panel already fetches, through the reader both controls share",
+      /const contextCeiling = readContextCeiling\(llmStatus\);/.test(settingsSource)
+      && /readContextCeiling,/.test(settingsSource));
+    check("and the reader keeps the default in one place, as a fallback for an older server",
+      /export const CONTEXT_CEILING_FALLBACK = 20000;/.test(apiSource)
+      && /if \(!Number\.isFinite\(max\) \|\| max < 512\) return CONTEXT_CEILING_FALLBACK;/.test(apiSource));
+    check("the Model Manager's context-window card takes its ceiling from the same reader",
+      /const contextCeiling = readContextCeiling\(backendInfo\);/.test(managerSource)
+      && /contextCeiling: llmStatus\.contextCeiling \?\? null,/.test(managerSource));
     check("and the number beside it is the clamped one, not the stored one",
       /<span className="settings-value-badge">\{contextSizeValue\}<\/span>/.test(settingsSource));
     check("it no longer hard-codes the 20000 the request no longer stops at",
