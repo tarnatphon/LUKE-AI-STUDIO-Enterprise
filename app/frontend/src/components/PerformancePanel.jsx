@@ -40,11 +40,48 @@ const buttonStyle = {
   fontSize: ".7rem",
 };
 
+// A measurement is a fact about this machine and this model. Keeping it only in
+// component state means "Measure once" really means "measure once per visit",
+// and the card goes back to claiming it knows nothing every time it is opened.
+const MEASURED_KEY = "luke.performance.measured";
+
+function readStoredMeasurement() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MEASURED_KEY) || "null");
+    if (!parsed || !Number(parsed.tokensPerSecond)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function storeMeasurement(result, model) {
+  try {
+    window.localStorage.setItem(
+      MEASURED_KEY,
+      JSON.stringify({ ...result, model: String(model || ""), at: Date.now() }),
+    );
+  } catch {
+    // A full or disabled localStorage must not lose the measurement on screen.
+  }
+}
+
+/** "Measured just now" / "Measured 3 h ago" — a number without an age is a claim. */
+function describeMeasurementAge(at) {
+  const ageMs = Date.now() - (Number(at) || 0);
+  if (!Number.isFinite(ageMs) || ageMs < 120000) return "Measured just now";
+  const minutes = Math.round(ageMs / 60000);
+  if (minutes < 60) return `Measured ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Measured ${hours} h ago`;
+  return `Measured ${Math.round(hours / 24)} d ago`;
+}
+
 export default function PerformancePanel({ pendingTextSettings, updateTextSetting, onApply, showAlert }) {
   const [plan, setPlan] = useState(null);
   const [cache, setCache] = useState(null);
   const [busy, setBusy] = useState("");
-  const [measured, setMeasured] = useState(null);
+  const [measured, setMeasured] = useState(() => readStoredMeasurement());
   const [copying, setCopying] = useState(null);
   // The governor releases models when the machine is short; until this card
   // existed, that only ever appeared as a line in the terminal.
@@ -315,7 +352,8 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "The model could not be measured.");
-      setMeasured(data.result);
+      setMeasured({ ...data.result, model: String(mmapStatus?.model || ""), at: Date.now() });
+      storeMeasurement(data.result, mmapStatus?.model);
     } catch (error) {
       setMeasured({ error: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -405,7 +443,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
 
       <span style={descStyle}>
         {measured?.tokensPerSecond
-          ? `Measured just now: ${measured.tokensPerSecond.toFixed(1)} tokens/s to write, ${(measured.promptTokensPerSecond || 0).toFixed(0)} tokens/s to read the chat.`
+          ? `${describeMeasurementAge(measured.at)}${measured.model ? ` on ${measured.model}` : ""}: ${measured.tokensPerSecond.toFixed(1)} tokens/s to write, ${(measured.promptTokensPerSecond || 0).toFixed(0)} tokens/s to read the chat.`
           : measured?.error
             ? measured.error
             : "Measure once to see what this machine actually does — then tune with numbers instead of guesses."}
@@ -414,7 +452,7 @@ export default function PerformancePanel({ pendingTextSettings, updateTextSettin
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <button type="button" style={buttonStyle} onClick={measure} disabled={busy === "measure"}>
           <Zap size={13} />
-          {busy === "measure" ? "Measuring…" : "Measure speed"}
+          {busy === "measure" ? "Measuring…" : measured?.tokensPerSecond ? "Measure again" : "Measure speed"}
         </button>
         {recommended && (
           <button type="button" style={buttonStyle} onClick={applyRecommended} disabled={alreadyApplied}>

@@ -140,4 +140,27 @@ check(/Those values were planned for \{tunedNote\.gpuMode \? "the GPU" : "the CP
 check(/Press the button above to plan them again for the current backend\./.test(panel),
   "with the one action that fixes it");
 
+console.log("\n  and a measurement outlives the visit that took it");
+
+// "Measure once" that forgets the result the moment the panel closes makes the
+// card claim it knows nothing every time it is opened — and the number was the
+// point of the button.
+check(/const MEASURED_KEY = "luke\.performance\.measured";/.test(panel),
+  "the measurement has a key of its own");
+check(/const \[measured, setMeasured\] = useState\(\(\) => readStoredMeasurement\(\)\)/.test(panel),
+  "and is put back when the card opens, before anything is measured again");
+check(/storeMeasurement\(data\.result, mmapStatus\?\.model\)/.test(panel),
+  "a successful measurement is stored with the model it was taken on");
+check(panel.indexOf("storeMeasurement(data.result") > panel.indexOf("if (!response.ok) throw new Error"),
+  "only on success — a failure is a message, not a result");
+check(!/storeMeasurement\(\{ error/.test(panel), "an error is never written to storage");
+check(/function describeMeasurementAge\(at\)/.test(panel) && /return "Measured just now";/.test(panel),
+  "the age is printed, because a number without one is a claim about right now");
+check(/Measured \$\{minutes\} min ago/.test(panel) && /Measured \$\{Math\.round\(hours \/ 24\)\} d ago/.test(panel),
+  "in minutes, hours and days");
+check(/describeMeasurementAge\(measured\.at\)\}\$\{measured\.model \? ` on \$\{measured\.model\}`/.test(panel),
+  "next to the model it describes");
+check(/measured\?\.tokensPerSecond \? "Measure again" : "Measure speed"/.test(panel),
+  "and the button offers to take a new one instead of pretending none exists");
+
 console.log(`\nPASS: ${checks} checks — the advice points at a place that exists, and the app can take you there.`);
