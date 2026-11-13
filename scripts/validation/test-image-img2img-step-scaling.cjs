@@ -359,10 +359,19 @@ async function main() {
           "a value stored above the ceiling is shown as what it will really be used for");
         assert.strictEqual(frontend.DENOISE_GUIDANCE_MIN, 0.15);
         assert.strictEqual(frontend.DENOISE_GUIDANCE_MAX, 0.75);
-        // The Social Agency drawer already stopped at 0.75; the Generator was the
-        // outlier, so the two controls describe one window.
+        // The Reference Manager's slider, the Generator's own slider and the
+        // Social Agency drawer all set the same number. Each of them used to keep
+        // its own copy of the ends, and the server kept a third, so the window
+        // had to be argued about one file at a time. They now read one pair of
+        // constants out of the shared step rule.
         const drawers = fs.readFileSync(path.join(root, "app", "frontend", "src", "social-agency", "drawers.jsx"), "utf8");
-        assert.match(drawers, /type="range" min="0.15" max="0.75"/, "and it is the same window the Social Agency offers");
+        assert.match(drawers, /type="range" min={DENOISE_GUIDANCE_MIN} max={DENOISE_GUIDANCE_MAX}/,
+          "and the Social Agency drawer takes its ends from the same pair");
+        const runtime = fs.readFileSync(path.join(root, "scripts", "server", "social-agency-runtime.cjs"), "utf8");
+        assert.match(runtime, /min: DENOISE_GUIDANCE_MIN,\s*\n\s*max: DENOISE_GUIDANCE_MAX,\s*\n\s*def: DEFAULT_IMG2IMG_DENOISE,/,
+          "and the server's PRODUCT_REF_DENOISE is built from them, not written out");
+        assert.doesNotMatch(runtime, /PRODUCT_REF_DENOISE = \{ min: 0\.\d+, max: 0\.\d+, def: 0\.\d+ \}/,
+          "with no copy of the numbers left in the file");
         assert.strictEqual(
           frontend.planImageSteps({ steps: 20 }, { denoiseGuidance: frontend.DENOISE_GUIDANCE_MAX }, true).strength,
           0.75,

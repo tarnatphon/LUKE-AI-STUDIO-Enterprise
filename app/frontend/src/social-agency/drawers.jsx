@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { safeExternalUrl } from "../lib/safe-link.mjs";
+// The denoise window the product-reference slider offers. Read from the shared
+// step rule rather than written here: the Generator, the Reference Manager and
+// this drawer all set the same number, and each of them used to keep its own
+// copy of the ends.
+import img2imgSteps from "../../../../scripts/server/img2img-steps.cjs";
 import PostPreview from "./PostPreview.jsx";
 import { captionForPost } from "./post-copy.js";
 import CaptionPresets from "./CaptionPresets.jsx";
@@ -13,6 +18,8 @@ import {
   PRODUCT_REF_MODE_LABEL, productRefNotice, ensureProductRef500, isValidEnglishSubject,
   postOutlook,
 } from "./lib.js";
+
+const { DENOISE_GUIDANCE_MIN, DENOISE_GUIDANCE_MAX } = img2imgSteps;
 
 function Drawer({ title, onClose, children, footer }) {
   useEffect(() => {
@@ -1106,7 +1113,7 @@ export function ConnectorsDrawer({ client, connectors, onClose, onSave, onTest, 
                 <label className="sa-field">
                   <span>Denoise ของ img2img — {Number(form.settings.productRefDenoise).toFixed(2)} (ต่ำ = สินค้าตรง แต่ฉากคล้ายรูปเดิม)</span>
                   <input
-                    type="range" min="0.15" max="0.75" step="0.01"
+                    type="range" min={DENOISE_GUIDANCE_MIN} max={DENOISE_GUIDANCE_MAX} step="0.01"
                     value={form.settings.productRefDenoise}
                     onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, productRefDenoise: Number(e.target.value) } }))}
                   />

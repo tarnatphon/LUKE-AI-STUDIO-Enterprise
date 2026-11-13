@@ -43,8 +43,20 @@
 // Same default the Social Agency ships with (PRODUCT_REF_DENOISE.def) and the
 // same one the Generator's reference settings use.
 const DEFAULT_DENOISE = 0.38;
+// The window a denoise *setting* lives in: the ends the UI offers and the bounds
+// the request clamps to. One definition on purpose — three controls set this
+// number (the Generator's Transformation strength, the Reference Manager's
+// Denoise Guidance and the Social Agency's product-reference denoise) and each
+// of them kept its own copy of these two, which is how one of them came to stop
+// at 0.85 while the wire stopped at 0.75.
+const DENOISE_GUIDANCE_MIN = 0.15;
+const DENOISE_GUIDANCE_MAX = 0.75;
 // A caller that hands us 0 or a negative denoise would ask for infinite steps.
 // Nothing below the app's own 0.15 slider can be reached with a real setting.
+// Deliberately *lower* than DENOISE_GUIDANCE_MIN: this is the floor of the
+// steps maths, not a setting anyone can pick — clampDenoise has to accept
+// whatever a stored value is, so a hand-edited one cannot ask for infinite
+// steps and still be planned.
 const MIN_DENOISE = 0.01;
 // sd-webui's own ceiling. A request that never finishes is worse than a short
 // one, so the scaling stops here and reports that it was capped.
@@ -102,4 +114,6 @@ module.exports = {
   planImg2ImgSteps,
   MAX_IMG2IMG_SENT_STEPS: MAX_SENT_STEPS,
   DEFAULT_IMG2IMG_DENOISE: DEFAULT_DENOISE,
+  DENOISE_GUIDANCE_MIN,
+  DENOISE_GUIDANCE_MAX,
 };

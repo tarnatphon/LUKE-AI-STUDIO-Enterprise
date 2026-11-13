@@ -9,6 +9,7 @@ import {
   // screen was not the number sent.
   DENOISE_GUIDANCE_MIN,
   DENOISE_GUIDANCE_MAX,
+  DEFAULT_IMG2IMG_DENOISE,
 } from "../services/api";
 import {
   UploadCloud,
@@ -611,7 +612,7 @@ function ReferenceManager({
   // for, instead of as a number the app quietly ignores.
   const denoiseGuidance = (() => {
     const raw = Number(referenceSettings.denoiseGuidance);
-    if (!Number.isFinite(raw)) return 0.38;
+    if (!Number.isFinite(raw)) return DEFAULT_IMG2IMG_DENOISE;
     return Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw));
   })();
 

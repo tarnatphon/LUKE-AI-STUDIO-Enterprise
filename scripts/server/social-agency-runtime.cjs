@@ -16,7 +16,12 @@ const { exec } = require("child_process");
 // imports this same file): `denoising_strength` trims the schedule instead of
 // lengthening it, so the request has to carry more steps to spend the budget the
 // user asked for. See img2img-steps.cjs for the backend source it mirrors.
-const { planImg2ImgSteps } = require("./img2img-steps.cjs");
+const {
+  planImg2ImgSteps,
+  DEFAULT_IMG2IMG_DENOISE,
+  DENOISE_GUIDANCE_MIN,
+  DENOISE_GUIDANCE_MAX,
+} = require("./img2img-steps.cjs");
 // "ลูกค้ารายนี้ทำธุรกิจอะไร" → มุมคอนเทนต์/แคปชัน/แฮชแท็ก/เสาหลักของเขา
 // (ดู social-agency-content-kinds.cjs). มุมคอนเทนต์เดิมทั้ง 5 เป็นของ kind
 // `goods` จึงไม่มีการเปลี่ยนชื่ออะไรให้ข้อมูลเดิมพัง — แต่ละลูกค้าได้ชุดของ
@@ -522,7 +527,16 @@ const PRODUCT_REF_NEGATIVE =
 //   reference — the old behaviour: prompt boost plus `reference_images` in the
 //               request body. Kept for backends that really do honour it.
 const PRODUCT_REF_MODES = ["img2img", "reference"];
-const PRODUCT_REF_DENOISE = { min: 0.15, max: 0.75, def: 0.38 };
+// The window the product-reference denoise is allowed to live in. Taken from
+// the shared step rule rather than written here: the Generator's
+// Transformation strength, the Reference Manager's Denoise Guidance and
+// this one all set the same number, and each of them used to keep its own
+// copy of the ends.
+const PRODUCT_REF_DENOISE = {
+  min: DENOISE_GUIDANCE_MIN,
+  max: DENOISE_GUIDANCE_MAX,
+  def: DEFAULT_IMG2IMG_DENOISE,
+};
 // ขนาดภาพปฏิทิน Social Agency — แบนเนอร์ (ตั้งได้รายลูกค้า, ต้องหารด้วย 8 ลงตัว)
 const SA_IMAGE_SIZE = { width: 1024, height: 600, min: 256, max: 1536, step: 8 };
 // รูปสินค้าจริงที่แนบไปกับโพสต์ Facebook: ไม่แก้ไขอะไรนอกจากย่อด้านยาวสุดให้เท่ากับค่านี้
