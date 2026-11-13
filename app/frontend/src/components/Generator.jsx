@@ -10,6 +10,7 @@ import {
   // it takes its ends from here rather than writing the window a second time.
   DENOISE_GUIDANCE_MIN,
   DENOISE_GUIDANCE_MAX,
+  DEFAULT_IMG2IMG_DENOISE,
   resolveImagePlan,
   applyQualityPreset,
   startServer, 
@@ -217,7 +218,7 @@ function Generator({
     hairLock: true,
     clothingLock: true,
     bodyLock: true,
-    denoiseGuidance: 0.38,
+    denoiseGuidance: DEFAULT_IMG2IMG_DENOISE,
     preset: "",
     ...referenceSettings,
   };
@@ -229,7 +230,7 @@ function Generator({
   // number the backend received.
   const transformationStrength = (() => {
     const raw = Number(normalizedReferenceSettings.denoiseGuidance);
-    if (!Number.isFinite(raw)) return 0.38;
+    if (!Number.isFinite(raw)) return DEFAULT_IMG2IMG_DENOISE;
     return Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw));
   })();
 

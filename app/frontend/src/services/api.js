@@ -11,7 +11,7 @@ import img2imgSteps from "../../../../scripts/server/img2img-steps.cjs";
 // both sides of the wire.
 import imageQuality from "../../../../scripts/server/image-quality.cjs";
 
-const { planImg2ImgSteps } = img2imgSteps;
+const { planImg2ImgSteps, DEFAULT_IMG2IMG_DENOISE, DENOISE_GUIDANCE_MIN, DENOISE_GUIDANCE_MAX } = img2imgSteps;
 const { planImageQuality, buildTxt2ImgBody, detectModelFamily } = imageQuality;
 
 // Helper to check if running inside Tauri desktop container
@@ -1423,12 +1423,13 @@ export async function listOpenVinoModels() {
 //
 // Exported so the Generator can size its progress estimate with the same numbers
 // that generateImage will send.
-// The window planImageSteps clamps denoiseGuidance to. Exported so the control
-// that sets it cannot drift from the request that sends it: the Generator's
-// slider stopped at 0.85 while the wire stopped at 0.75, so the top two stops
-// did nothing and the number on screen was not the number sent.
-export const DENOISE_GUIDANCE_MIN = 0.15;
-export const DENOISE_GUIDANCE_MAX = 0.75;
+// The window planImageSteps clamps denoiseGuidance to. Re-exported from the
+// step rule that consumes it (scripts/server/img2img-steps.cjs) rather than
+// defined here, so the control that sets it cannot drift from the request that
+// sends it: the Generator's slider stopped at 0.85 while the wire stopped at
+// 0.75, so the top two stops did nothing and the number on screen was not the
+// number sent. Three controls set this number; each used to keep its own copy.
+export { DENOISE_GUIDANCE_MIN, DENOISE_GUIDANCE_MAX, DEFAULT_IMG2IMG_DENOISE };
 
 // The window the context size is clamped to, and the number to fall back to
 // when the server does not publish it. Exported so the two controls that set
@@ -1448,11 +1449,11 @@ export function readContextCeiling(status) {
 export function planImageSteps(constraints = {}, referenceSettings = {}, hasInitImage = false) {
   const steps = constraints.steps || 20;
   if (!hasInitImage) return planImg2ImgSteps(steps, 1); // nothing trims a txt2img run
-  const raw = Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? 0.38);
+  const raw = Number(referenceSettings.denoiseGuidance ?? constraints.denoisingStrength ?? DEFAULT_IMG2IMG_DENOISE);
   // A value that is not a number falls back to the default instead of NaN.
   const denoise = Number.isFinite(raw)
     ? Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw))
-    : 0.38;
+    : DEFAULT_IMG2IMG_DENOISE;
   return planImg2ImgSteps(steps, denoise);
 }
 

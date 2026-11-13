@@ -137,7 +137,10 @@ async function main() {
     assert.match(drawers, /productRefDenoise/);
     assert.match(drawers, /<option value="img2img">/);
     assert.match(drawers, /<option value="reference">/);
-    assert.match(drawers, /type="range" min="0.15" max="0.75"/);
+    // The ends come from the shared step rule, not written here: the Generator,
+    // the Reference Manager and this drawer all set the same number.
+    assert.match(drawers, /type="range" min={DENOISE_GUIDANCE_MIN} max={DENOISE_GUIDANCE_MAX}/);
+    assert.match(drawers, /from "\.\.\/\.\.\/\.\.\/\.\.\/scripts\/server\/img2img-steps\.cjs"/);
   });
 
   // ── the helper the interface reads, exercised for real ───────────────────
