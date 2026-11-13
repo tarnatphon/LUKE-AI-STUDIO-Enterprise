@@ -5,6 +5,11 @@ import QualityPanel from "./QualityPanel";
 import { 
   generateImage, 
   planImageSteps,
+  // The window the request clamps the denoise to. The strength slider below
+  // drives the same setting the Reference Manager's Denoise Guidance does, so
+  // it takes its ends from here rather than writing the window a second time.
+  DENOISE_GUIDANCE_MIN,
+  DENOISE_GUIDANCE_MAX,
   resolveImagePlan,
   applyQualityPreset,
   startServer, 
@@ -216,6 +221,18 @@ function Generator({
     preset: "",
     ...referenceSettings,
   };
+
+  // What the request will carry, which is what the slider has to show. The
+  // request reads the denoise off the reference settings, not off the image
+  // constraints — the slider used to write the constraints, so it was visible
+  // exactly when it could do nothing, and the number on screen was not the
+  // number the backend received.
+  const transformationStrength = (() => {
+    const raw = Number(normalizedReferenceSettings.denoiseGuidance);
+    if (!Number.isFinite(raw)) return 0.38;
+    return Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw));
+  })();
+
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [autoTranslateThai, setAutoTranslateThai] = useState(() => {
     try { return localStorage.getItem("luke.autoTranslateThai") !== "off"; } catch { return true; }
@@ -750,7 +767,10 @@ function Generator({
         clipSkip: imagePlan.clipSkip,
         model: activeModel,
         mode: (baseImage || getBestReferenceSource()) ? "img2img-reference" : "txt2img-reference",
-        denoisingStrength: (baseImage || getBestReferenceSource()) ? constraints.denoisingStrength : null,
+        // What the request carried, not what the slider held: the denoise is
+        // clamped before it goes on the wire, and a metadata file that records
+        // the unclamped number cannot reproduce the run.
+        denoisingStrength: result.denoise ?? null,
         referenceStatus: buildReferenceStatusText(),
         references: referencePayload,
         referenceSettings: normalizedReferenceSettings,
@@ -1110,20 +1130,21 @@ function Generator({
                         <div style={{ marginTop: "12px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: "4px" }}>
                             <span>Transformation strength</span>
-                            <span>{constraints.denoisingStrength.toFixed(2)}</span>
+                            <span>{transformationStrength.toFixed(2)}</span>
                           </div>
                           <input
                             type="range"
-                            min="0.1"
-                            max="1"
+                            min={DENOISE_GUIDANCE_MIN}
+                            max={DENOISE_GUIDANCE_MAX}
                             step="0.05"
-                            value={constraints.denoisingStrength}
-                            onChange={(e) => setConstraints((prev) => ({ ...prev, denoisingStrength: parseFloat(e.target.value) }))}
+                            value={transformationStrength}
+                            onChange={(e) => setReferenceSettings((prev) => ({ ...prev, denoiseGuidance: Number(e.target.value) }))}
                             disabled={isGenerating}
                             style={{ width: "100%" }}
                           />
                           <div style={{ fontSize: "0.72rem", color: "var(--md-sys-color-outline)", marginTop: "2px" }}>
-                            Lower = closer to your image; higher = more creative freedom. 0.7 is a good start.
+                            Lower = closer to your image; higher = more creative freedom. This is the same setting as Denoise Guidance in the references
+                            panel, and it is the one the request reads.
                           </div>
                         </div>
                       )}
