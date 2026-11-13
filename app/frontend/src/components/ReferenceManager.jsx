@@ -1,7 +1,15 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 
 // LUKE_AI_REFERENCE_UPLOAD_IMPORT_V1
-import { uploadReferenceAsset } from "../services/api";
+import {
+  uploadReferenceAsset,
+  // The window the request clamps denoiseGuidance to. Taken from the request
+  // rather than written here again: the slider used to stop at 0.85 while the
+  // wire stopped at 0.75, so the top two stops did nothing and the number on
+  // screen was not the number sent.
+  DENOISE_GUIDANCE_MIN,
+  DENOISE_GUIDANCE_MAX,
+} from "../services/api";
 import {
   UploadCloud,
   ImagePlus,
@@ -597,6 +605,16 @@ function ReferenceManager({
     setReferenceSettings((prev) => ({ ...prev, ...patch, mode: "Appearance Lock", lockIdentity: true }));
   }, [setReferenceSettings]);
 
+  // What the request will actually carry, which is what the control has to show.
+  // A value stored above the ceiling — from an earlier build, or imported from a
+  // JSON someone else made — is displayed as the value it will really be used
+  // for, instead of as a number the app quietly ignores.
+  const denoiseGuidance = (() => {
+    const raw = Number(referenceSettings.denoiseGuidance);
+    if (!Number.isFinite(raw)) return 0.38;
+    return Math.min(DENOISE_GUIDANCE_MAX, Math.max(DENOISE_GUIDANCE_MIN, raw));
+  })();
+
   return (
     <div className="reference-manager appearance-reference-manager">
       <div className="reference-manager-header appearance-manager-header">
@@ -643,8 +661,8 @@ function ReferenceManager({
           <input type="range" min="0" max="1.5" step="0.05" value={referenceSettings.strength ?? 1.35} onChange={(e) => updateSetting({ strength: Number(e.target.value) })} />
         </label>
         <label>
-          Denoise Guidance <span>{Number(referenceSettings.denoiseGuidance ?? 0.38).toFixed(2)}</span>
-          <input type="range" min="0.15" max="0.85" step="0.05" value={referenceSettings.denoiseGuidance ?? 0.38} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
+          Denoise Guidance <span>{denoiseGuidance.toFixed(2)}</span>
+          <input type="range" min={DENOISE_GUIDANCE_MIN} max={DENOISE_GUIDANCE_MAX} step="0.05" value={denoiseGuidance} onChange={(e) => updateSetting({ denoiseGuidance: Number(e.target.value) })} />
         </label>
         <div className="appearance-lock-toggles">
           <label><input type="checkbox" checked={referenceSettings.faceLock !== false} onChange={(e) => updateSetting({ faceLock: e.target.checked })} /> Face</label>

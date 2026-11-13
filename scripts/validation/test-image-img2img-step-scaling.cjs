@@ -318,6 +318,31 @@ async function main() {
         assert.strictEqual(frontend.planImageSteps({ steps: 20 }, {}, false).sent, 20, "no init image, no scaling");
       });
 
+      test("the Denoise Guidance slider cannot offer a value the wire will not send", () => {
+        // The slider used to stop at 0.85 while planImageSteps clamped at 0.75,
+        // so the top two stops did nothing and the number on screen was not the
+        // number sent. The window is now one exported pair of constants, and the
+        // control shows the value the request will carry.
+        const manager = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "ReferenceManager.jsx"), "utf8");
+        assert.match(manager, /type="range" min={DENOISE_GUIDANCE_MIN} max={DENOISE_GUIDANCE_MAX}/,
+          "the slider takes its ends from the same constants the request clamps to");
+        assert.match(manager, /Denoise Guidance <span>\{denoiseGuidance\.toFixed\(2\)\}<\/span>/,
+          "and the number beside it is the clamped one, not the stored one");
+        assert.match(manager, /const denoiseGuidance = \(\(\) => \{[\s\S]*?Math\.min\(DENOISE_GUIDANCE_MAX, Math\.max\(DENOISE_GUIDANCE_MIN, raw\)\)/,
+          "a value stored above the ceiling is shown as what it will really be used for");
+        assert.strictEqual(frontend.DENOISE_GUIDANCE_MIN, 0.15);
+        assert.strictEqual(frontend.DENOISE_GUIDANCE_MAX, 0.75);
+        // The Social Agency drawer already stopped at 0.75; the Generator was the
+        // outlier, so the two controls describe one window.
+        const drawers = fs.readFileSync(path.join(root, "app", "frontend", "src", "social-agency", "drawers.jsx"), "utf8");
+        assert.match(drawers, /type="range" min="0.15" max="0.75"/, "and it is the same window the Social Agency offers");
+        assert.strictEqual(
+          frontend.planImageSteps({ steps: 20 }, { denoiseGuidance: frontend.DENOISE_GUIDANCE_MAX }, true).strength,
+          0.75,
+          "the top of the slider is a value the request actually carries"
+        );
+      });
+
       test("the Generator reuses the shared rule instead of keeping a copy of it", () => {
         let compared = 0;
         // 0.15–0.75 is the Generator's own window (it clamps there); inside it,
