@@ -282,6 +282,40 @@ async function main() {
     const outside = await call("/api/model-cache/prime", { model: "/etc/hosts" });
     check("priming refuses an absolute path", outside.status === 400, `status ${outside.status}`);
 
+    section("6. The batch window is published, so the slider cannot stop elsewhere");
+
+    // The Settings slider used to stop at 64 while the request stopped at 128,
+    // so the lowest stop showed a number llama.cpp would never run. The window
+    // is now one pair of constants on the server, published on the status
+    // route, and the slider takes its ends from there.
+    const status = await call("/api/llm/status", null, "GET");
+    const window = status.data?.batchWindow;
+    check("the status route publishes the batch window", status.status === 200 && Boolean(window),
+      JSON.stringify(status.data?.batchWindow));
+    check("its floor is 128 and its ceiling 2048",
+      window?.min === 128 && window?.max === 2048, JSON.stringify(window));
+
+    const settingsSource = fs.readFileSync(path.join(root, "app", "frontend", "src", "components", "Settings.jsx"), "utf8");
+    check("the Batch Size slider takes its ends from the published window",
+      /min=\{batchWindow\.min\}\s*\n\s*max=\{batchWindow\.max\}/.test(settingsSource));
+    check("read off the status the panel already fetches, with the old numbers only as a fallback",
+      /const batchWindow = \(\(\) => \{/.test(settingsSource) && /llmStatus\?\.batchWindow\?\.min/.test(settingsSource));
+    check("and the number beside it is the clamped one, not the stored one",
+      /<span className="settings-value-badge">\{batchSizeValue\}<\/span>/.test(settingsSource));
+    check("it no longer offers the 64 the request would never take",
+      !/value=\{pendingTextSettings\.batchSize \|\| 512\}[\s\S]{0,200}?min="64"/.test(settingsSource));
+
+    check("the server names the window once, beside the other LLM bounds",
+      /const LLM_BATCH_SIZE_MIN = 128;/.test(serverSource) && /const LLM_BATCH_SIZE_MAX = 2048;/.test(serverSource));
+    check("and clamps both batch sizes with it",
+      /batchSize: Math\.max\(LLM_BATCH_SIZE_MIN, Math\.min\(LLM_BATCH_SIZE_MAX, effectiveBatchSize\)\)/.test(serverSource)
+      && /ubatchSize: Math\.max\(LLM_BATCH_SIZE_MIN, Math\.min\(LLM_BATCH_SIZE_MAX, effectiveUbatchSize\)\)/.test(serverSource));
+
+    for (const plan of [planRuntimeSettings({ ramGb: 18, gpuLayers: 99 }), planRuntimeSettings({ ramGb: 4, gpuLayers: 0 })]) {
+      check(`the planner's batch (${plan.batchSize}) is inside the window`,
+        plan.batchSize >= 128 && plan.batchSize <= 2048, String(plan.batchSize));
+    }
+
     console.log(`\n${passed} passed, ${failed} failed`);
     if (failed > 0) process.exitCode = 1;
   } finally {
