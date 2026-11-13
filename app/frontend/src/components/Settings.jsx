@@ -545,6 +545,23 @@ function Settings({
 
   const isSD15OrCustom = activeModel ? isSD15OrCustomModel(activeModel) : false;
   const isOpenVinoNpu = constraints.backendType === "openvino-npu";
+  // The window the request clamps the batch sizes to, as published by the
+  // server. The slider used to stop at 64 while the request stopped at 128, so
+  // the lowest stop showed a number the process would never run.
+  const batchWindow = (() => {
+    const min = Number(llmStatus?.batchWindow?.min);
+    const max = Number(llmStatus?.batchWindow?.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return { min: 128, max: 2048 };
+    return { min, max };
+  })();
+  // What the request will carry. A batch size stored before the window was
+  // published — or one imported from somewhere else — is shown as the value it
+  // will really be used for, not as a number the app quietly ignores.
+  const batchSizeValue = (() => {
+    const raw = Number(pendingTextSettings.batchSize);
+    if (!Number.isFinite(raw) || raw <= 0) return 512;
+    return Math.min(batchWindow.max, Math.max(batchWindow.min, raw));
+  })();
   const supportsThinking = Boolean(llmStatus.ready && llmStatus.settings?.supportsThinking);
   const availableBackends = backendOptions?.options?.length
     ? backendOptions.options
@@ -1425,17 +1442,17 @@ function Settings({
               <div className="m3-slider-group">
                 <div className="m3-slider-header">
                   <span className="m3-slider-label">Batch Size</span>
-                  <span className="settings-value-badge">{pendingTextSettings.batchSize || 512}</span>
+                  <span className="settings-value-badge">{batchSizeValue}</span>
                 </div>
                 <input
                   type="range"
                   className="m3-slider"
-                  value={pendingTextSettings.batchSize || 512}
+                  value={batchSizeValue}
                   onChange={(e) => updateTextSetting("batchSize", parseInt(e.target.value))}
-                  min="64"
-                  max="2048"
-                  step="64"
-                  style={getSliderStyle(pendingTextSettings.batchSize || 512, 64, 2048)}
+                  min={batchWindow.min}
+                  max={batchWindow.max}
+                  step={batchWindow.min}
+                  style={getSliderStyle(batchSizeValue, batchWindow.min, batchWindow.max)}
                 />
               </div>
 

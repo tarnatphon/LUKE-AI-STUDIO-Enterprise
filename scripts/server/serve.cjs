@@ -1223,6 +1223,16 @@ const LLM_CONTEXT_CEILING = (() => {
   return Math.min(262144, Math.floor(requested));
 })();
 
+// The window the batch sizes are clamped to before they reach llama.cpp.
+//
+// Both bounds are published on /api/llm/status so the controls in Settings can
+// take their ends from here instead of keeping a copy. The Settings slider used
+// to stop at 64 while the request stopped at 128, so the lowest stop showed a
+// number the process would never run — the same drift the Denoise Guidance
+// slider had, where the control stopped somewhere other than the request.
+const LLM_BATCH_SIZE_MIN = 128;
+const LLM_BATCH_SIZE_MAX = 2048;
+
 const MAX_JSON_BODY_BYTES = 64 * 1024 * 1024;
 const SERVER_BUILD = "text-image-v1";
 const ROOT    = path.join(__dirname, "..", "..");
@@ -7276,8 +7286,8 @@ async function startLlmWithBackend(settings = {}, backend) {
     mmap: settings.mmap !== false && llmSettings.mmap !== false,
     cachePrompt: settings.cachePrompt !== false && llmSettings.cachePrompt !== false,
     defragThold: Number(settings.defragThold) || llmSettings.defragThold || 0.1,
-    batchSize: Math.max(128, Math.min(2048, effectiveBatchSize)),
-    ubatchSize: Math.max(128, Math.min(2048, effectiveUbatchSize)),
+    batchSize: Math.max(LLM_BATCH_SIZE_MIN, Math.min(LLM_BATCH_SIZE_MAX, effectiveBatchSize)),
+    ubatchSize: Math.max(LLM_BATCH_SIZE_MIN, Math.min(LLM_BATCH_SIZE_MAX, effectiveUbatchSize)),
     performanceProfile: settings.performanceProfile || llmSettings.performanceProfile || "balanced",
   };
 
@@ -27747,6 +27757,11 @@ const handleRequest = async (req, res) => {
       loadOutlook: lastLlmLoadOutlook,
       mmap: describeMmap(),
       settings: llmSettings,
+      // The window the batch sizes are clamped to. Published so the slider in
+      // Settings can take its ends from here rather than keeping a copy of the
+      // numbers — a copy is how the slider came to offer 64 while the request
+      // stopped at 128.
+      batchWindow: { min: LLM_BATCH_SIZE_MIN, max: LLM_BATCH_SIZE_MAX },
       backendInstalled: Boolean(backend),
       backendMode: backend?.mode || "",
       backendPath: backend?.path || "",
