@@ -172,6 +172,25 @@ try {
     Object.keys(before.result || {}).join(","));
   check(before.result.copy === null, "which is null until something copies", JSON.stringify(before.result.copy));
 
+  // The switch on the Performance card decides where a *new* copy goes. The
+  // loader looks on the internal disk first whichever way it sits, so a copy
+  // made while it was on is still used after it is turned off — which means the
+  // card can only describe the next load honestly if the route tells it about a
+  // copy it is not looking at.
+  check(Array.isArray(before.result?.internalDiskCache?.sources),
+    "the internal-disk cache is reported even though this request did not ask for it",
+    JSON.stringify(before.result?.internalDiskCache));
+  check(typeof before.result?.internalDiskCache?.cachedGb === "number",
+    "with the size of it, so the card can say how much is already there",
+    JSON.stringify(before.result?.internalDiskCache?.cachedGb));
+  const internalOnly = await (await fetch(`http://127.0.0.1:${port}/api/model-cache/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ useInternalDisk: true }),
+  })).json();
+  check(internalOnly.result?.onInternalDisk === true && Array.isArray(internalOnly.result?.internalDiskCache?.sources),
+    "and the same field answers when the switch is on, so one shape covers both");
+
   // This sandbox has no external volume, so the copy is refused for the honest
   // reason — and the failure still has to be visible on the card.
   const refused = await fetch(`http://127.0.0.1:${port}/api/model-cache/prime`, {
@@ -188,6 +207,8 @@ try {
   check(job && job.model === "cache-card-test.gguf", "the attempt is on the status, named", JSON.stringify(job));
   check(job && job.done === true, "finished, not left running forever");
   check(job && typeof job.error === "string" && job.error.length > 0, "with the reason it could not copy", job?.error);
+  check(after.result?.internalDiskCache && typeof after.result.internalDiskCache.cachedGb === "number",
+    "the internal-disk block is still there after a copy attempt, not only on a clean start");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => child.once("exit", resolve));
