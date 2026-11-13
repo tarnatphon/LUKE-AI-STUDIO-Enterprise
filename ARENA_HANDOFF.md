@@ -9,11 +9,13 @@
 | **ทดสอบ** | `bash validate.sh` → **231 passed · 0 failed · 1 blocked** (`validate-release.sh` — เครื่องนี้ไม่มี `imageio_ffmpeg`) **· 1 skipped** |
 | **ค้าง** | PR #39 (research/reference) และ #40 (FB token) — เปิดมาตั้งแต่ ต.ค. ยังไม่ได้ตัดสินใจ |
 
-**คำสั่งเดียวที่ต้องจำ (Mac ที่ `/volumes/ai`):**
+**คำสั่งเดียวที่ต้องจำ (Mac ที่ `/volumes/ai`) — ต้องเป็นบรรทัดเดียวที่ก๊อปปี้แปะได้ทันที:**
 
 ```bash
-cd /volumes/ai && git fetch origin && git checkout main && git pull --ff-only && ./mac.sh
+cd /Volumes/AI && git fetch origin && git checkout main && git pull --ff-only && ./mac.sh
 ```
+
+**กฏที่ผู้ใช้ตั้ง (2026-11-13):** เวลาให้คำสั่ง terminal **ต้องเป็นบรรทัดเดียวที่ก๊อปปี้แปะลง terminal ได้ทันที** — ห้ามมี `cd` นำหน้าแยก, ห้ามมีขั้นตอนที่ต้องเลือกเอง, ห้ามมีตัวแปรให้แทนที่, ห้ามมีข้อความอธิบายปนใน code block. ถ้าคำสั่งนั้นขึ้นกับสภาพเครื่อง (เช่น มี local change ไหม) ให้ถามก่อน แล้วค่อยให้บรรทัดที่ถูกต้องสำหรับเครื่องนั้น หนึ่งบรรทัด
 
 แล้วกด **Cmd+Shift+R** ในแอป · `mac.sh` **ไม่ได้** `git pull` ให้ — ต้อง pull เองก่อนเสมอ
 · ถ้าแก้โค้ดเองต้อง `cd app/frontend && npm ci && npx vite build` เป็นขั้นสุดท้าย เพราะ `vite.config.js` ฝัง HEAD ไว้ (`app/dist/` อยู่ใน gitignore)
@@ -456,7 +458,7 @@ _(งานเก็บกวาด repo ข้อ 6.1–6.3 เสร็จแ�
 - [x] **Context Size** — slider หยุดที่ `20000` ซึ่งคือ default ของ `LLM_CONTEXT_CEILING` (ที่ `LUKE_LLM_MAX_CONTEXT` ยกได้ถึง `262144`) → เผยแพร่เป็น `contextCeiling` บน `/api/llm/status`
 - [x] **การ์ด Text Model Context Window** — `20000` แข็ง 10 ที่ + clamp ทั้งตัวอ่านและตัวเขียน → `readContextCeiling` ใน `api.js` เป็น reader เดียวที่สองช่องใช้ (PR #157)
 - [ ] **ค่าคงที่ชุดที่สาม** — `scripts/server/social-agency-runtime.cjs:525` ยังมี `PRODUCT_REF_DENOISE = { min: 0.15, max: 0.75, def: 0.38 }` เป็นสำเนาของค่าชุดเดียวกัน (`img2img-steps.cjs` กับ `api.js`) — ค่าตรงกัน ไม่มี drift กับ slider `drawers.jsx:1109` จึงเป็นแค่ hygiene ไม่ใช่ bug — **รอตัดสินใจว่าจะรวมเป็นแหล่งเดียวไหม**
-- [ ] **sweep ครบแล้ว** — slider ทุกอันใน frontend เทียบกับ clamp ที่เขาส่งไป ดีแล้ว ยกเว้นสองจุดที่ latent (Speech Threads ต้องเครื่อง >32 cores, CPU Threads ต้อง >64 cores) ซึ่งเครื่องผู้ใช้ไม่เจอ
+- [x] **sweep ครบ 3 รอบ — สะอาด** — slider ทุกอัน, number input ทุกช่อง, select ทุกตัวใน frontend เทียบกับ clamp ที่เขาส่งไปจริง: ทุกจุดตรงหรือ conservative ไม่มี drift · คลาสบั๊กนี้ (bound ที่คัดลอกใน UI แล้วหลุดจาก request) เจอและแก้หมดแล้ว 4 ที่ — Denoise Guidance (#152), Transformation strength (#153), Batch Size (#154), Context Size สองช่อง (#155 + #157) · ที่เหลือ: Speech Threads (slider ถึง `cpu_cores_logical`, backend cap 32) และ CPU Threads (ถึง `cpu_cores_logical`, backend cap 64) จะเป็น defect ก็ต่อเมื่อเครื่อง >32/>64 logical cores; Detail Steps สูงสุด 60 ต่ำกว่า clamp 150 ของ `img2img-steps.cjs`; `WorkflowBuilder.jsx:386` truncate `max="20000"` ตรงกับ clamp `ai-workflow-runtime.cjs:83` จึงไม่ใช่บั๊ก; `drawers.jsx` threshold 50–95 / postsPerWeek 1–7 / imageWidth 256–1536 ตรงกับ `SA_IMAGE_SIZE`
 - [ ] **ยืนยันบน Mac:** เปิด Settings › Model settings → 4 slider (Denoise Guidance / Transformation strength / Batch Size / Context Size) ต้องไม่มีเลขที่ request ไม่ใช้อยู่เหนือ slider
 
 **ค้างของ session `arena/94fe5afa…` — “จะขึ้นเองไหม” / why-not-posted (ยืนยันบน Mac ที่ `/Volumes/AI`):**
