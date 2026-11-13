@@ -27757,10 +27757,12 @@ const handleRequest = async (req, res) => {
       loadOutlook: lastLlmLoadOutlook,
       mmap: describeMmap(),
       settings: llmSettings,
-      // The window the batch sizes are clamped to. Published so the slider in
-      // Settings can take its ends from here rather than keeping a copy of the
-      // numbers — a copy is how the slider came to offer 64 while the request
-      // stopped at 128.
+      // Both Model settings sliders take their ends from the bounds the request
+      // actually applies, rather than keeping a copy of them: a copy is how the
+      // Batch Size slider came to offer 64 while the request stopped at 128, and
+      // how the Context Size slider came to stop at 20000 while LUKE_LLM_MAX_CONTEXT
+      // can raise the ceiling to 262144.
+      contextCeiling: LLM_CONTEXT_CEILING,
       batchWindow: { min: LLM_BATCH_SIZE_MIN, max: LLM_BATCH_SIZE_MAX },
       backendInstalled: Boolean(backend),
       backendMode: backend?.mode || "",

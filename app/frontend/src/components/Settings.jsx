@@ -562,6 +562,23 @@ function Settings({
     if (!Number.isFinite(raw) || raw <= 0) return 512;
     return Math.min(batchWindow.max, Math.max(batchWindow.min, raw));
   })();
+  // The window the context size is clamped to, published for the same reason as
+  // the batch window. Its default is 20000, but LUKE_LLM_MAX_CONTEXT raises it to
+  // 262144, and a copy of the default here would cap the slider below the size
+  // the load would really run.
+  const contextCeiling = (() => {
+    const max = Number(llmStatus?.contextCeiling);
+    if (!Number.isFinite(max) || max < 512) return 20000;
+    return Math.floor(max);
+  })();
+  // What the next load will use. 0 is "let the app choose", so it is left alone;
+  // a size past the ceiling is shown as the ceiling, not as a number the request
+  // quietly cuts down.
+  const contextSizeValue = (() => {
+    const raw = Number(pendingTextSettings.contextSize);
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return Math.min(contextCeiling, raw);
+  })();
   const supportsThinking = Boolean(llmStatus.ready && llmStatus.settings?.supportsThinking);
   const availableBackends = backendOptions?.options?.length
     ? backendOptions.options
@@ -1216,17 +1233,17 @@ function Settings({
               <div className="m3-slider-group">
                 <div className="m3-slider-header">
                   <span className="m3-slider-label">Context Size</span>
-                  <span className="settings-value-badge">{pendingTextSettings.contextSize || 0}</span>
+                  <span className="settings-value-badge">{contextSizeValue}</span>
                 </div>
                 <input
                   type="range"
                   className="m3-slider"
-                  value={pendingTextSettings.contextSize || 0}
+                  value={contextSizeValue}
                   onChange={(e) => updateTextSetting("contextSize", parseInt(e.target.value))}
                   min="0"
-                  max="20000"
+                  max={String(contextCeiling)}
                   step="512"
-                  style={getSliderStyle(pendingTextSettings.contextSize || 0, 0, 20000)}
+                  style={getSliderStyle(contextSizeValue, 0, contextCeiling)}
                 />
                 <span className="settings-option-desc">
                   0 lets the app choose a size from the memory this machine actually has. The Performance card below, and the Context window line in it, says what it chose and why it is that size.
