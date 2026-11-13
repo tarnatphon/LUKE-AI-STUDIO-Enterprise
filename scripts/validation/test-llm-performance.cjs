@@ -316,6 +316,33 @@ async function main() {
         plan.batchSize >= 128 && plan.batchSize <= 2048, String(plan.batchSize));
     }
 
+    section("7. The context ceiling is published, so the slider cannot cap below it");
+
+    // The Context Size slider used to stop at 20000 — a copy of the default of
+    // LLM_CONTEXT_CEILING, which LUKE_LLM_MAX_CONTEXT raises to 262144. A copy
+    // of a default is what makes the slider cap below the size the load would
+    // really run. The ceiling is now published on the status route and the
+    // slider takes its top end from there.
+    const contextStatus = await call("/api/llm/status", null, "GET");
+    check("the status route publishes the context ceiling", contextStatus.status === 200
+      && Number(contextStatus.data?.contextCeiling) > 0, String(contextStatus.data?.contextCeiling));
+    check("and it is the ceiling the request clamps to, not a copy of its default",
+      contextStatus.data?.contextCeiling === 20000, String(contextStatus.data?.contextCeiling));
+
+    check("the Context Size slider takes its top end from the published ceiling",
+      /value=\{contextSizeValue\}\s*\n\s*onChange=\{\(e\) => updateTextSetting\("contextSize", parseInt\(e\.target\.value\)\)\}\s*\n\s*min="0"\s*\n\s*max=\{String\(contextCeiling\)\}/.test(settingsSource));
+    check("and the track is drawn over the same ceiling",
+      /getSliderStyle\(contextSizeValue, 0, contextCeiling\)/.test(settingsSource));
+    check("read off the status the panel already fetches, with the default only as a fallback",
+      /const contextCeiling = \(\(\) => \{/.test(settingsSource) && /llmStatus\?\.contextCeiling/.test(settingsSource));
+    check("and the number beside it is the clamped one, not the stored one",
+      /<span className="settings-value-badge">\{contextSizeValue\}<\/span>/.test(settingsSource));
+    check("it no longer hard-codes the 20000 the request no longer stops at",
+      !/value=\{pendingTextSettings\.contextSize \|\| 0\}[\s\S]{0,200}?max="20000"/.test(settingsSource));
+    check("the server names the ceiling in one place, above the batch window",
+      /const LLM_CONTEXT_CEILING = /.test(serverSource)
+      && /LUKE_LLM_MAX_CONTEXT/.test(serverSource));
+
     console.log(`\n${passed} passed, ${failed} failed`);
     if (failed > 0) process.exitCode = 1;
   } finally {
