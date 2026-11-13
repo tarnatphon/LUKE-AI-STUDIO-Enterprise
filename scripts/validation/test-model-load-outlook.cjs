@@ -166,11 +166,12 @@ check(
 console.log("\n  and the number stays on screen where the wait happened");
 
 const chatSource = read("app", "frontend", "src", "components", "TextChat.jsx");
-check(/const after = await getLlmStatus\(\);/.test(chatSource) && /setLastLoadNote\(after\.lastLoad\)/.test(chatSource),
+check(/const after = await getLlmStatus\(\);/.test(chatSource) && /setLastLoadNote\(lastLoad\?\.message \? lastLoad : null\)/.test(chatSource),
   "the chat reads the completion sentence when the load finishes");
 check(/\{lastLoadNote && !loadingModel && \(/.test(chatSource), "and shows it after the spinner is gone");
 check(/\{lastLoadNote\.message\}/.test(chatSource), "in the same words the terminal printed");
-check(/onClick=\{\(\) => setLastLoadNote\(null\)\}/.test(chatSource), "dismissable, because it is an answer and not furniture");
+check(/setLastLoadNote\(null\);/.test(chatSource) && /setCacheOffer\(null\);/.test(chatSource),
+  "dismissable, because it is an answer and not furniture");
 check(/if \(!llmLoadOutlookPrinted\) \{/.test(serve), "it is printed once per load, not once per backend attempt");
 check(/llmLoadOutlookPrinted = false;/.test(serve), "and reset for the next one");
 check(/loadOutlook\.completion\(/.test(serve), "the actual duration is reported too");
