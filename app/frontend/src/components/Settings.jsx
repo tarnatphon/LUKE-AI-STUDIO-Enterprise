@@ -23,6 +23,7 @@ import {
   downloadBackend,
   getDownloadProgress,
   getBackendOptions,
+  readContextCeiling,
 } from "../services/api";
 import { THEME_LIST } from "../themes";
 import "./Settings.css";
@@ -565,12 +566,9 @@ function Settings({
   // The window the context size is clamped to, published for the same reason as
   // the batch window. Its default is 20000, but LUKE_LLM_MAX_CONTEXT raises it to
   // 262144, and a copy of the default here would cap the slider below the size
-  // the load would really run.
-  const contextCeiling = (() => {
-    const max = Number(llmStatus?.contextCeiling);
-    if (!Number.isFinite(max) || max < 512) return 20000;
-    return Math.floor(max);
-  })();
+  // the load would really run. The Model Manager's context-window card sets the
+  // same setting through the same helper, so the two cannot disagree.
+  const contextCeiling = readContextCeiling(llmStatus);
   // What the next load will use. 0 is "let the app choose", so it is left alone;
   // a size past the ceiling is shown as the ceiling, not as a number the request
   // quietly cuts down.

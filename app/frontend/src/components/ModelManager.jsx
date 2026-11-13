@@ -27,6 +27,7 @@ import {
   deleteLlmModel,
   importLlmModel,
   getLlmStatus,
+  readContextCeiling,
   getLlmLoadOutlook,
   getModelCacheStatus,
   primeModelCache,
@@ -404,7 +405,7 @@ function ModelManager({
   const [arenaInstances, setArenaInstances] = useState([]);
   const [memoryBudget, setMemoryBudget] = useState(null);
   const [vramWarning, setVramWarning] = useState(null);
-  const [backendInfo, setBackendInfo] = useState({ backendMode: "", backendBinary: "", backendDevice: "" });
+  const [backendInfo, setBackendInfo] = useState({ backendMode: "", backendBinary: "", backendDevice: "", contextCeiling: null });
   const [activeLlmModel, setActiveLlmModel] = useState(null);
   const [llmRunning, setLlmRunning] = useState(false);
   const [activeSpeechModel, setActiveSpeechModel] = useState(null);
@@ -464,9 +465,14 @@ function ModelManager({
     return Object.values(downloadJobs).find((job) => wanted.includes(String(job.filename)) || wanted.includes(String(job.id)));
   }, [downloadJobs]);
 
-  const contextWindow = Math.max(0, Math.min(20000, Number(textSettings?.contextSize ?? 0)));
+  // The ceiling the request clamps the context size to, published by the
+  // server. Both this card and the Model settings slider write the same
+  // setting, so both take their top end from here rather than keeping a copy
+  // of the default — a copy is how they came to disagree.
+  const contextCeiling = readContextCeiling(backendInfo);
+  const contextWindow = Math.max(0, Math.min(contextCeiling, Number(textSettings?.contextSize ?? 0)));
   const updateContextWindow = (nextValue) => {
-    const value = Math.max(0, Math.min(20000, Number.parseInt(nextValue, 10) || 0));
+    const value = Math.max(0, Math.min(contextCeiling, Number.parseInt(nextValue, 10) || 0));
     if (typeof setTextSettings === "function") {
       setTextSettings((prev) => ({ ...(prev || {}), contextSize: value }));
     }
@@ -862,6 +868,10 @@ function ModelManager({
           backendBinary: sdStatus.settings?.backendBinary || sdStatus.loading?.backendBinary || "",
           backendDevice: sdStatus.settings?.backendDevice || sdStatus.loading?.device || "",
           llmBackendMode: llmStatus.settings?.backendMode || llmStatus.settings?.backendBinary || "",
+          // The window the context size is clamped to, so this card caps at the
+          // same number the Model settings slider does. Both write the same
+          // setting; a copy of the default here would cap below it.
+          contextCeiling: llmStatus.contextCeiling ?? null,
           // What the last text model load cost, and what the next one is expected
           // to cost. Both numbers come from the backend, which measured the disk.
           llmLastLoad: llmStatus.lastLoad || null,
@@ -2248,7 +2258,7 @@ function ModelManager({
         <div className="m3-card" style={{ marginTop: "24px", marginBottom: "16px" }}>
           <div className="workspace-title-section" style={{ marginBottom: "14px" }}>
             <h3 className="m3-card-title">{isCodeLibrary ? "Code Model Context Window" : "Text Model Context Window"}</h3>
-            <span className="settings-value-badge">{contextWindow.toLocaleString()} / 20,000</span>
+            <span className="settings-value-badge">{contextWindow.toLocaleString()} / {contextCeiling.toLocaleString()}</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "12px", alignItems: "center" }}>
@@ -2266,18 +2276,18 @@ function ModelManager({
               type="range"
               className="m3-slider"
               min="0"
-              max="20000"
+              max={String(contextCeiling)}
               step="512"
               value={contextWindow}
               onChange={(event) => updateContextWindow(event.target.value)}
-              style={getSliderStyle(contextWindow, 0, 20000)}
+              style={getSliderStyle(contextWindow, 0, contextCeiling)}
             />
             <button
               type="button"
               className="m3-btn m3-btn-filled"
               style={{ height: "38px", minWidth: "44px", padding: "0 14px" }}
               onClick={() => adjustContextWindow(512)}
-              disabled={contextWindow >= 20000}
+              disabled={contextWindow >= contextCeiling}
               title="Increase context by 512"
             >
               +
@@ -2290,7 +2300,7 @@ function ModelManager({
               <input
                 type="number"
                 min="0"
-                max="20000"
+                max={String(contextCeiling)}
                 step="512"
                 value={contextWindow}
                 onChange={(event) => updateContextWindow(event.target.value)}
@@ -2301,11 +2311,11 @@ function ModelManager({
             <button type="button" className="m3-btn m3-btn-text" onClick={() => updateContextWindow(4096)}>4,096</button>
             <button type="button" className="m3-btn m3-btn-text" onClick={() => updateContextWindow(8192)}>8,192</button>
             <button type="button" className="m3-btn m3-btn-text" onClick={() => updateContextWindow(12000)}>12,000</button>
-            <button type="button" className="m3-btn m3-btn-text" onClick={() => updateContextWindow(20000)}>20,000</button>
+            <button type="button" className="m3-btn m3-btn-text" onClick={() => updateContextWindow(contextCeiling)}>{contextCeiling.toLocaleString()}</button>
           </div>
 
           <p className="settings-option-desc" style={{ marginTop: "10px" }}>
-            This value is saved to Text Chat settings and sent when loading GGUF text models. 0 keeps automatic/default context; maximum is capped at 20,000 tokens.
+            This value is saved to Text Chat settings and sent when loading GGUF text models. 0 keeps automatic/default context; maximum is capped at {contextCeiling.toLocaleString()} tokens, the ceiling the server runs with.
           </p>
         </div>
       )}
@@ -2383,7 +2393,7 @@ function ModelManager({
                       {activeModelType === "image"
                         ? (model.backendType === "openvino-npu" ? "OpenVINO NPU Model" : model.format || "Local Weights File")
                         : activeModelType === "text"
-                        ? `llama.cpp GGUF Model • Context ${contextWindow.toLocaleString()} / 20,000`
+                        ? `llama.cpp GGUF Model • Context ${contextWindow.toLocaleString()} / ${contextCeiling.toLocaleString()}`
                         : activeModelType === "speech"
                         ? `${model.language || "Whisper"} Model`
                         : "Kokoro ONNX Model"

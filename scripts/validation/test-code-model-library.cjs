@@ -363,6 +363,52 @@ async function main() {
   assert(docSource.includes("/api/coding-models"), "the doc documents the endpoint");
   assert(docSource.includes("18.6 GB") || docSource.includes("too big"), "the doc explains the too-big verdict");
 
+  // ── 7. the context-window card caps at the published ceiling ──────────────
+  //
+  // This card and the Model settings Context Size slider write the same
+  // setting. Both used to hard-code 20000 — the default of LLM_CONTEXT_CEILING,
+  // which LUKE_LLM_MAX_CONTEXT raises to 262144 — so raising the ceiling made
+  // the slider follow it and left this card capping below it, and dragging the
+  // card would write 20000 back over a larger value picked in Settings.
+  assert(/readContextCeiling/.test(apiSource), "api.js exposes the shared context-ceiling reader");
+  assert(/export const CONTEXT_CEILING_FALLBACK = 20000;/.test(apiSource),
+    "and it names the fallback, so the default lives in one place");
+  assert(/readContextCeiling,/.test(managerSource), "the Model Manager reads it");
+
+  assert(/contextCeiling: llmStatus\.contextCeiling \?\? null,/.test(managerSource),
+    "the status it already fetches is where the ceiling comes from");
+  assert(/const contextCeiling = readContextCeiling\(backendInfo\);/.test(managerSource),
+    "and the card derives its own copy of it");
+  assert(/const contextWindow = Math\.max\(0, Math\.min\(contextCeiling, Number\(textSettings\?\.contextSize \?\? 0\)\)\);/.test(managerSource),
+    "the number it shows is clamped to the ceiling");
+  assert(/const value = Math\.max\(0, Math\.min\(contextCeiling, Number\.parseInt\(nextValue, 10\) \|\| 0\)\);/.test(managerSource),
+    "and so is the number it writes back");
+
+  assert(/settings-value-badge">\{contextWindow\.toLocaleString\(\)\} \/ \{contextCeiling\.toLocaleString\(\)\}</.test(managerSource),
+    "the badge prints the ceiling, not a copy of the default");
+  assert(/max=\{String\(contextCeiling\)\}/.test(managerSource),
+    "the slider's top end is the ceiling");
+  assert(/getSliderStyle\(contextWindow, 0, contextCeiling\)/.test(managerSource),
+    "and the track is drawn over the same one");
+  assert(/disabled=\{contextWindow >= contextCeiling\}/.test(managerSource),
+    "the stepper stops there");
+  assert(/max=\{String\(contextCeiling\)\}/.test(managerSource),
+    "the number field stops there too");
+  assert(/onClick=\{\(\) => updateContextWindow\(contextCeiling\)\}>\{contextCeiling\.toLocaleString\(\)\}/.test(managerSource),
+    "and so does the quick button");
+  assert(/capped at \{contextCeiling\.toLocaleString\(\)\} tokens, the ceiling the server runs with/.test(managerSource),
+    "the note under it says the ceiling, not a number");
+  assert(/Context \$\{contextWindow\.toLocaleString\(\)\} \/ \$\{contextCeiling\.toLocaleString\(\)\}/.test(managerSource),
+    "and so does the model row");
+
+  assert(!/max="20000"/.test(managerSource), "no slider stops at a hard-coded 20000");
+  assert(!/getSliderStyle\(contextWindow, 0, 20000\)/.test(managerSource), "no track is drawn over one");
+  assert(!/disabled=\{contextWindow >= 20000\}/.test(managerSource), "no stepper stops at one");
+  assert(!/\/ 20,000/.test(managerSource), "no badge prints a hard-coded 20,000");
+  assert(!/updateContextWindow\(20000\)\}>20,000</.test(managerSource), "no quick button sets one");
+  assert(/const contextSize = Number\(model\.contextTokens\) > 0 \? Number\(model\.contextTokens\) : 20000;/.test(managerSource),
+    "the one 20000 left is a model's own declared context, not the ceiling");
+
   await liveServerChecks();
 
   console.log(`\nPASS: ${checks} checks — Code AI offers the coding models this machine can actually run.\n`);
